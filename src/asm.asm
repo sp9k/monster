@@ -349,8 +349,7 @@ ABS=6
 ABS_X=7
 ABS_Y=8
 ABS_IND=9
-bbb01:
-	.byte $ff ; implied/accumulator
+bbb01:  .byte $ff ; implied/accumulator
 	.byte $02 ; immediate
 	.byte $01 ; zp
 	.byte $05 ; zp,x
@@ -361,8 +360,7 @@ bbb01:
 	.byte $06 ; abs,y
 	.byte $ff ; (abs)
 
-bbb10:
-	.byte $02 ; implied/accumulator
+bbb10:  .byte $02 ; implied/accumulator
 	.byte $00 ; immediate
 	.byte $01 ; zp
 	.byte $05 ; zp,x
@@ -373,8 +371,7 @@ bbb10:
 	.byte $ff ; abs,y
 	.byte $ff ; (abs)
 
-bbb00:
-	.byte $ff ; implied/accumulator
+bbb00:  .byte $ff ; implied/accumulator
 	.byte $00 ; immediate
 	.byte $01 ; zp
 	.byte $05 ; zp,x
@@ -435,8 +432,8 @@ num_illegals = *-illegal_opcodes
 ;*******************************************************************************
 ; RESETPC
 ; Resets the PC for, for example, beginning a new pass on the assembler
-.export __asm_resetpc
-.proc __asm_resetpc
+.export resetpc
+.proc resetpc
 	lda #$00
 	sta pcset
 	rts
@@ -470,7 +467,7 @@ num_illegals = *-illegal_opcodes
 	sta zp::pass		; set pass #
 	cmp #$01
 	beq __asm_reset
-@pass2: jsr __asm_resetpc	; reset PC
+@pass2: jsr resetpc		; reset PC
 	jmp ctx::init		; re-init the context
 .endproc
 

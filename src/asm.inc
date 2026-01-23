@@ -5,7 +5,6 @@
 .import __asm_origin
 .import __asm_pcset
 .import __asm_reset
-.import __asm_resetpc
 .import __asm_segmentid
 .import __asm_set_pc
 .import __asm_startpass
@@ -24,7 +23,6 @@
 	origin         = __asm_origin
 	pcset          = __asm_pcset
 	reset          = __asm_reset
-	resetpc        = __asm_resetpc
 	setpc          = __asm_set_pc
 	startpass      = __asm_startpass
 	segment        = __asm_segmentid
