@@ -9,6 +9,7 @@
 
 .import __SPARESIZE__
 
+
 ;*******************************************************************************
 .segment "SPARE"
 .export __mem_spare
@@ -16,6 +17,15 @@
 .assert * & $ff = 0, error, "spare must be algined to page boundary"
 __mem_spare: .res SPARESIZE
 __mem_spareend:
+
+;*******************************************************************************
+; SPAREVEC
+; This vector resides in a location unused by user memory
+.ifdef ultimem
+.segment "ULTICFG"
+.endif
+.export __mem_sparevec
+__mem_sparevec: .word 0
 
 ;*******************************************************************************
 .BSS

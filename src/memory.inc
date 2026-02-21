@@ -7,6 +7,7 @@
 .import __mem_spare
 .import __mem_spareend
 .import __mem_filename
+.import __mem_sparevec
 
 .import __statusinfo
 .import __statusline
@@ -39,4 +40,5 @@
 	rowcolors       = __mem_rowcolors
 	rowcolors_idx   = __mem_rowcolors_idx
 	rowcolors_save  = __mem_rowcolors_save
+	sparevec        = __mem_sparevec
 .endscope

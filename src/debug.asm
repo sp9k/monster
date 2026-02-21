@@ -1568,7 +1568,7 @@ __debug_remove_breakpoint:
 ;  - .XY: the resturn address (the stack s clobbered by this procedure)
 .export __debug_save_user_zp
 .proc __debug_save_user_zp
-@ret=mem::spare
+@ret=mem::sparevec
 	stxy @ret
 
 .ifdef ultimem
@@ -1621,7 +1621,7 @@ __debug_remove_breakpoint:
 ;  - .XY: the resturn address (the stack s clobbered by this procedure)
 .export __debug_restore_user_zp
 .proc __debug_restore_user_zp
-@ret=mem::spare
+@ret=mem::sparevec
 	stxy @ret
 
 .ifdef ultimem
@@ -1701,7 +1701,7 @@ __debug_remove_breakpoint:
 ;   - .XY: the return address (stack can't be used)
 .export __debug_restore_debug_low
 .proc __debug_restore_debug_low
-@ret=mem::spare
+@ret=mem::sparevec
 .ifdef ultimem
 	; bank in the area containing prog00
 	lda #SIMDBG_BANK
@@ -1750,7 +1750,7 @@ __debug_remove_breakpoint:
 .export __debug_save_debug_zp
 .proc __debug_save_debug_zp
 @zp=dbg00
-@ret=mem::spare
+@ret=mem::sparevec
 .ifdef ultimem
 	; bank in the area containing prog00
 	lda #SIMDBG_BANK
