@@ -306,12 +306,6 @@ ret:     .word 0
 	ldx sim::reg_sp
 	txs			; restore user stack
 
-go_pre_run:
-	; buffer for pre-run command
-	nop
-	nop
-	nop
-
 	lda sim::reg_p
 	pha			; save status (will pull after bank select)
 	lda sim::reg_a
@@ -559,6 +553,12 @@ trampoline:
 	SELECT_BANK_A
 	lda #VMEM_RAM123_BANK	; $0000-$2000
 	sta $9ff4
+
+go_pre_run:
+	; buffer for pre-run command
+	nop
+	nop
+	nop
 
 	lda #$82		; enable RESTORE key interrupt
 	sta $911e

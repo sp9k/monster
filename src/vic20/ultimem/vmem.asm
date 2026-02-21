@@ -148,7 +148,7 @@ BASE=$2000
 :	cpy #>$1000
 	bcs :+
 @0400:	; $0400-$1000 (RAM123)
-	add16 #(BASE-$0400)
+	add16 #(BASE+$0400)-$0400	; Ultimem maps RAM1,2,3 offset by $400
 	lda #VMEM_RAM123_BANK
 	rts
 
@@ -172,7 +172,7 @@ BASE=$2000
 :	cpy #$a0
 	bcs :+
 @9800:	; $9800-$a000 (IO123)
-	add16 #(BASE+$1800)-$9800
+	add16 #(BASE+$1800)-$9800	; Ultimem maps RAM1,2,3 offset by $1800
 	lda #VMEM_RAM123_BANK
 	rts
 

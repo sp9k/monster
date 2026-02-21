@@ -1,7 +1,7 @@
 ;*******************************************************************************
-; DEBUGCMD.ASM
-; This file contains the code for handling debug commands.
-; Debug commands are those invoked by the TUI (monitor) interface.
+; MONITORCMD.ASM
+; This file contains the code for handling commands in the monitor (TUI)
+; interface.
 ;*******************************************************************************
 
 .include "asm.inc"
