@@ -100,7 +100,6 @@ ret:     .word 0
 	jsr $fdca	; set top of RAM to $2000 (emulate unexpanded config)
 
 :	jsr $e55b
-
 	jsr $e518	; initialize rest of hardware
 	; blank screen so user doesn't see garbage
 	;lda #$00
@@ -193,11 +192,11 @@ ret:     .word 0
 .export __run_init
 .proc __run_init
 	; copy the TRAMPOLINE handler to the user program and our RAM
-	ldy #<interrupts_size-1
-@l0:	lda __INTS_LOAD__,y
-	sta __INTS_RUN__,y
+	ldy #interrupts_size
+@l0:	lda __INTS_LOAD__-1,y
+	sta __INTS_RUN__-1,y
 	dey
-	bpl @l0
+	bne @l0
 	rts
 .endproc
 
@@ -310,8 +309,10 @@ ret:     .word 0
 	pha			; save status (will pull after bank select)
 	lda sim::reg_a
 	pha			; save .A (to be pulled after bank select)
-	ldx sim::reg_x
-	ldy sim::reg_y
+	lda sim::reg_x
+	pha
+	lda sim::reg_y
+	pha
 
 	jmp trampoline
 
@@ -562,6 +563,10 @@ go_pre_run:
 
 	lda #$82		; enable RESTORE key interrupt
 	sta $911e
+	pla
+	tay
+	pla
+	tax
 	pla			; restore .A
 	plp			; restore status
 
