@@ -9,6 +9,9 @@ beep_tmr: .byte 0
 ;******************************************************************************
 ; BEEP_SHORT
 ; Plays a short beep. Call beep::update to run the sounds player
+; Because beeps are typically returned for errors, the .C flag is returned SET
+; OUT:
+;   - .C: set
 .export __beep_short
 .proc __beep_short
 	lda #SHORT_BEEP_DURATION
@@ -19,6 +22,9 @@ beep_tmr: .byte 0
 ;******************************************************************************
 ; BEEP_LONG
 ; Plays a long beep. Call beep::update to run the sounds player
+; Because beeps are typically returned for errors, the .C flag is returned SET
+; OUT:
+;   - .C: set
 .export __beep_long
 .proc __beep_long
 	lda #LONG_BEEP_DURATION
@@ -30,6 +36,7 @@ beep_tmr: .byte 0
 
 	lda #BEEP_TONE
 	sta $900b
+	sec
 	rts
 .endproc
 

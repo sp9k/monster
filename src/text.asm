@@ -168,16 +168,14 @@ tempbuff: .res LINESIZE
 
 	lda @ch
 	bne :+
-@zero:
-	jsr __text_char_index
-	lda #$00
+@zero:  ;lda #$00
 	sta mem::linebuffer,y
-	jmp @redraw
+	beq @redraw		; branch always
 
 :	cmp #$14
 	bne @printing
 
-	; backspace
+@backspace:
 	ldx zp::curx
 	beq @err_silent	; cannot delete (cursor is at left side of screen)
 	dex
@@ -201,18 +199,15 @@ tempbuff: .res LINESIZE
 @shift_left:
 	; shift everything to the right of the char we replaced left
 	lda #$00
-	ldx @len
-	sta mem::linebuffer,x
-	txa
-	tay
-	ldx @curi
+	ldy @len		; index to stop shifting
+	sta mem::linebuffer,y
+	ldx @curi		; index to start shifting
 	dex
 	jsr linebuff::shl
 @bs_done:
-	clc		; "put" was successful
-	rts
+	RETURN_OK	; "put" was successful
 
-@err:	jsr beep::short
+@err:	jmp beep::short
 @err_silent:
 	sec		; couldn't perform action
 	rts
@@ -229,10 +224,10 @@ tempbuff: .res LINESIZE
 @slowput:
 @shift_right:
 	; insert a new char and redraw the line
+	lda #$00
 	ldx @len
 	cpx @curi
 	beq @fastputi
-	lda #$00
 	sta mem::linebuffer+2,x
 @shr:	lda mem::linebuffer,x
 	sta mem::linebuffer+1,x
@@ -243,7 +238,7 @@ tempbuff: .res LINESIZE
 	bcs @shr		; if more to shift, repeat
 
 @fastputi:
-	lda #$00
+	;lda #$00
 	sta mem::linebuffer+1,x	; keep the line 0-terminated
 
 @fastput:
@@ -251,17 +246,15 @@ tempbuff: .res LINESIZE
 @cont:	ldx @curi
 	lda @ch
 	sta mem::linebuffer,x
-	bne :+
-	RETURN_OK		; terminating 0, we're done
+	beq @done		; terminating 0, we're done
 
-:	cmp #$09		; TAB
+	cmp #$09		; TAB
 	bne @redraw
 @tab:	jsr __text_tabr_dist
 	clc
 	adc zp::curx
 	sta zp::curx
-	lda zp::cury
-	bpl @redrawline		; re-render the line
+	bpl @redrawline		; re-render the line (branch always)
 
 @redraw:
 	jsr __text_rendered_line_len
@@ -283,8 +276,9 @@ tempbuff: .res LINESIZE
 
 :	lda __text_buffer
 	bne @done
-	lda zp::cury
+
 @redrawline:
+	lda zp::cury
 	jsr __text_drawline	; re-render whole line
 	RETURN_OK
 

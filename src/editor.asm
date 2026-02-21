@@ -2135,15 +2135,13 @@ main:	jsr key::getch
 	stxy @addr
 	bcc @ok
 
-@err:	jsr beep::short
-	sec
-@ret:	rts
+@err:	jmp beep::short
 
 @ok:	jsr add_jump_point
 	ldxy @addr
 	jsr dbg::gotoaddr	; goto it
 	bcs @err
-:	rts			; return ok
+@ret:	rts			; return ok
 .endproc
 
 ;*******************************************************************************
@@ -2494,8 +2492,7 @@ __edit_refresh:
 :	ldx zp::cury
 	jsr draw::resetline	; reset color for the row
 
-	lda zp::cury
-	jsr print_line		; draw the line of text
+	jsr print_current_line	; draw the line of text
 	plp			; restore EOF flag
 	bcs @clr		; if EOF, clear rest of lines
 
@@ -2555,8 +2552,17 @@ __edit_refresh:
 .endproc
 
 ;*******************************************************************************
+; PRINT CURRENT LINE
+; Prints the contents of the linebuffer at the cursor's current y-coordinate
+.proc print_current_line
+	lda zp::cury
+
+	; fall through to print_line
+.endproc
+
+;*******************************************************************************
 ; PRINT LINE
-; Prints the line buffer at the given cursor's y-position and handles
+; Prints the line buffer at the given y-position and handles
 ; highlighting/coloring (if applicable).
 ; IN:
 ;  - .A: the row to print the linebuffer to
@@ -3415,6 +3421,15 @@ goto_buffer:
 
 :	lda #$0d
 	jsr src::insert
+
+	; save the character at the location we're terminating in case we need
+	; to undo this operation
+	jsr __text_char_index
+	lda mem::linebuffer,y
+	pha
+	tya
+	pha
+
 	lda #$00
 	jsr text::putch
 
@@ -3429,9 +3444,16 @@ goto_buffer:
 
 @err:	; invalid line, back up and return
 	jsr beep::short
+	pla
+	tay
+	pla
+	sta mem::linebuffer,y
+	jsr print_current_line
 	jmp src::backspace
 
-@ok:	pha			; save indent flag
+@ok:	plp			; clean stack
+	plp
+	pha			; save indent flag
 	jsr scroll_line
 	pla			; restore indent flag
 
@@ -3472,8 +3494,7 @@ goto_buffer:
 	lda #$01		; default to indent ON
 
 @done:	pha			; save indent hint
-	lda zp::cury
-	jsr print_line
+	jsr print_current_line
 	pla			; restore indent hint
 	plp			; restore formatting/assembly success flag
 	rts
@@ -3770,8 +3791,7 @@ goto_buffer:
 	ldx height
 	jsr scrolldown		; cursor wasn't moved, scroll
 @redraw:
-	lda zp::cury
-	jsr print_line
+	jsr print_current_line
 
 	; if in VISUAL_LINE mode, just rvs the line and return
 	lda mode
@@ -4133,8 +4153,7 @@ goto_buffer:
 	; if we're above the start line, redraw the current line (deselect)
 	jsr cmp_vis_start
 	bcs @cont
-	lda zp::cury
-	jsr print_line
+	jsr print_current_line
 	jmp @cont
 
 @chkvis:
@@ -4957,8 +4976,7 @@ __edit_gotoline:
 @longmove_cont:
 	sta zp::cury
 @l0: 	jsr src::get
-	lda zp::cury
-	jsr print_line
+	jsr print_current_line
 	jsr is_visual
 	bne @visdone
 
@@ -5025,8 +5043,7 @@ __edit_gotoline:
 	bcc @l0
 
 	jsr src::get
-	lda zp::cury
-	jsr print_line
+	jsr print_current_line
 
 	jsr is_visual
 	bne @renderdone
