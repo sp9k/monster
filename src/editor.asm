@@ -2193,7 +2193,7 @@ main:	jsr key::getch
 	ldx @join_idx
 	lda #$00
 	sta mem::linebuffer,x	; re-terminate the line buffer
-	jmp src::popgoto
+	jmp src::popgoto	; clean up and exit
 
 @bump:	jsr src::popgoto
 	jsr src::next		; move to the newline
@@ -2203,7 +2203,6 @@ main:	jsr key::getch
 	inc zp::cury
 	jsr bumpup
 	jsr text::restorebuff
-
 	jmp draw_active_line
 .endproc
 
@@ -3451,13 +3450,13 @@ goto_buffer:
 	jsr print_current_line
 	jmp src::backspace
 
-@ok:	plp			; clean stack
-	plp
-	pha			; save indent flag
+@ok:	pha			; save indent flag
 	jsr scroll_line
 	pla			; restore indent flag
 
 @fmt_done:
+	plp			; clean stack
+	plp
 	jmp start_next_line
 .endproc
 
@@ -3535,8 +3534,8 @@ goto_buffer:
 	jsr text::putch
 
 @indentdone:
-	lda zp::cury
-	jmp print_line
+	jmp *
+	jmp print_current_line
 .endproc
 
 ;******************************************************************************
