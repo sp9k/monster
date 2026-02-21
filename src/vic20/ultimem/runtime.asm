@@ -8,6 +8,7 @@
 .include "../fastcopy.inc"
 .include "../prefs.inc"
 .include "../settings.inc"
+.include "../vaddrs.inc"
 .include "../../debug.inc"
 .include "../../edit.inc"
 .include "../../irq.inc"
@@ -102,9 +103,9 @@ ret:     .word 0
 :	jsr $e55b
 	jsr $e518	; initialize rest of hardware
 	; blank screen so user doesn't see garbage
-	;lda #$00
-	;sta $9002
-	;sta $9003
+	lda #$00
+	sta $9002
+	sta $9003
 
 	jsr $e45b	; init BASIC vectors
 	jsr $e3a4	; init BASIC RAM locations
@@ -163,9 +164,9 @@ ret:     .word 0
 	lda #VMEM_IO_BANK
 	sta $9ffe		; in BLK5
 	lda #22|$80
-	sta $a402		; $a402 maps to $9002
+	sta prog9000+$02+($a000-$2000)
 	lda #23<<1
-	sta $a403		; $a403 maps to $9003
+	sta prog9000+$03+($a000-$2000)
 
 	; switch back to default config
 	lda #$55
