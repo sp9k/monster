@@ -3414,6 +3414,7 @@ goto_buffer:
 ; If successful, formats the source according to the type of the assembled line
 ; (instruction, label, etc.) and creates a line/address mapping.
 .proc linedone
+@indent=zp::editortmp
 	jsr is_readonly
 	bne :+
 	jmp begin_next_line	; if READONLY, just go down a line
@@ -3450,13 +3451,13 @@ goto_buffer:
 	jsr print_current_line
 	jmp src::backspace
 
-@ok:	pha			; save indent flag
-	jsr scroll_line
-	pla			; restore indent flag
-
+@ok:
 @fmt_done:
-	plp			; clean stack
-	plp
+	sta @indent
+	pla			; clean stack
+	pla
+	jsr scroll_line
+	lda @indent
 	jmp start_next_line
 .endproc
 
@@ -3534,7 +3535,6 @@ goto_buffer:
 	jsr text::putch
 
 @indentdone:
-	jmp *
 	jmp print_current_line
 .endproc
 

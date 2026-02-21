@@ -470,7 +470,6 @@ charaddrhi:
 	asl
 	asl
 	asl
-	sta @rowstart
 	sta @src
 	adc @offset
 	sta @dst
