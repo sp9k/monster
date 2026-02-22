@@ -2057,7 +2057,9 @@ __asm_include:
 	bcc :+
 	lda #ERR_FAILED_OPEN_INCLUDE
 @reterr:
-	plp		; clean stack
+	tax
+	pla			; clean stack
+	txa
 	sec
 	rts
 
@@ -2949,8 +2951,10 @@ __asm_include:
 	bcc @ok
 
 	; clean the stack and return error
-	plp
-	plp
+	tax
+	pla
+	pla
+	txa
 	sec
 @err:	rts
 
