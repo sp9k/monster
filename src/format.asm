@@ -80,9 +80,7 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 .proc __fmt_line
 @linecontent=r6
 @cnt=r0
-	cmp #$00
-	beq @done
-	sta @linecontent
+	sta @linecontent	; save format "type"
 
 	lda __fmt_enable
 	beq @done
@@ -118,6 +116,8 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 
 @removespaces:
 	jsr src::after_cursor
+	cmp #$0d
+	beq @left_aligned
 	jsr util::is_whitespace
 	bne @left_aligned
 
@@ -135,8 +135,9 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 	jmp label
 
 @notlabel:
-	; if comment/directive don't indent
+	; if comment/directive/NONE don't indent
 	lda @linecontent
+	beq @done			; ASM_NONE
 	and #ASM_COMMENT|ASM_DIRECTIVE
 	bne @done
 

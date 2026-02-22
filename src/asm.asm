@@ -551,7 +551,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	ldy #$00
 	sty mem::asmbuffer+LINESIZE
 	jsr line::process_ws
-	beq @noasm			; empty line -> done
+	beq noasm			; empty line -> done
 
 ;---------------------------------------
 ; check if we're in an .IF (FALSE) and if we are, return
@@ -570,7 +570,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	; asm is off, check for ENDIF or ELSE
 	; anything else: return without assembling
 	jsr is_directive
-	bcs @noasm		; if not directive continue
+	bcs noasm		; if not directive continue
 	jsr getdirective
 	bcs @ret		; if error, return it
 	ldx #ASM_DIRECTIVE
@@ -579,11 +579,17 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne :+
 	jmp do_endif		; handle .ENDIF
 :	cmp #DIRECTIVE_ELSE
-	bne @noasm
+	bne noasm
 	jmp do_else		; handle .ELSE
-@noasm:	lda #ASM_NONE
-	clc
 @ret:	rts
+.endproc
+
+;*******************************************************************************
+; NOASM
+; Returns with .A=ASM_NONE
+.proc noasm
+	lda #ASM_NONE
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -592,12 +598,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; if a label is found, for example, we will reenter here after adding the label
 ; to assemble any opcode, directive, etc. that may still be in the line
 .proc assemble_with_ctx
-	ldy #$00
-	lda (zp::line),y
-:	clc			; OK
-	beq @ret		; return with .A=0 (ASM_NONE)
 	jsr line::process_ws
-	beq :-			; empty line, done
+	beq noasm
 
 ; check if the line is a full line comment
 @chk_comment:
