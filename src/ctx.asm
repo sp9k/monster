@@ -428,12 +428,16 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 
 	incw @line
 	incw parent
+
+	; did the parent catch up to the child's context?
+	ldxy parent
+	cmpw ctx
 	bne @write
 
-	; TODO: make sure ctx isn't full
+	; parent is now overwriting this context -> return error
 	;sec
-	;lda #ERR_CTX_FULL
-	;rts
+	lda #ERR_CTX_FULL
+	rts
 
 @done:	lda #$00
 	STOREB_Y parent	; terminate this line in the buffer

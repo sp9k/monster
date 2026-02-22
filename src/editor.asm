@@ -4491,7 +4491,7 @@ goto_buffer:
 	stxy @line
 	jsr add_jump_point	; save the current position as a jump point
 	ldxy @line
-	jsr gotoline		; go to the target line
+	jmp gotoline		; go to the target line
 @done:	rts
 .endproc
 
@@ -5449,6 +5449,7 @@ __edit_gotoline:
 
 ;******************************************************************************
 commands:
+; these commands are only handled while in RW mode (NOT in the debugger)
 rw_commands:
 	.byte $49		; I (insert start of line)
 	.byte $69		; i (insert)
