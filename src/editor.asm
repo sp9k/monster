@@ -747,7 +747,7 @@ main:	jsr key::getch
 @getloop:
 	jsr text::update
 
-	jsr zp::jmpaddr		; call key-get func
+@getk:	jsr zp::jmpaddr		; call key-get func
 	cmp #$00
 	beq @getloop
 
@@ -759,22 +759,20 @@ main:	jsr key::getch
 	beq @getloop		; don't allow tabs in gets
 	cmp #K_LEFT
 	bne :+
-	ldx #$ff
+@left:	ldx #$ff
 	ldy #$00
 	jsr cur::move
 	jmp @redraw
 :	cmp #K_RIGHT
 	bne :+
 
-	ldx zp::curx
+@right:	ldx zp::curx
 	lda mem::linebuffer,x
 	beq @redraw
 	jsr cur::right
 	jmp @redraw
 
-:	cmp #$00
-	beq @getloop
-	cmp #$80		; > $80 -> not printable
+:	cmp #$80		; > $80 -> not printable
 	bcs @getloop
 	cmp #K_RETURN
 	beq @done
@@ -1257,9 +1255,9 @@ main:	jsr key::getch
 	; locate the previous empty line
 	jsr src::pushp
 	jsr src::home
-@l0:	jsr src::up
+@l0:	decw @target
+	jsr src::up
 	bcs @move
-	decw @target
 	jsr src::after_cursor
 	cmp #$0d
 	bne @l0
@@ -4866,8 +4864,11 @@ __edit_gotoline:
 	bcc :+
 	ldxy src::lines
 :	stxy @target
+	iszero @target
+	bne :+
+	ldxy #1
 
-	cmpw src::line	; is the target forward or backward?
+:	cmpw src::line	; is the target forward or backward?
 	bne :+
 	rts		; already on target line
 
@@ -4886,8 +4887,7 @@ __edit_gotoline:
 	lda @target+1
 	sbc src::line+1
 	sta @diff+1
-	beq @maybeshort
-	jmp @long
+	bne @long
 
 @maybeshort:
 	lda zp::cury
@@ -4896,7 +4896,7 @@ __edit_gotoline:
 	bcs @long	; if carry is set, must be long
 	cmp height
 	bcc @short
-	jmp @long
+	bcs @long
 
 ; get the number of lines to move backwards
 @beginbackward:
