@@ -1590,12 +1590,7 @@ __debug_remove_breakpoint:
 	sta prog00+$300+@BLK5_OFFSET,x
 	dex
 	bne :-
-
-	; reset BLK5 RAM area
-	lda #$04
-	sta $9ffe
-	lda #$55
-	sta $9ff2
+	beq reset_blk5_and_ret
 
 .else
 	ldx #$00
@@ -1609,10 +1604,24 @@ __debug_remove_breakpoint:
 	sta prog00+$300,x
 	dex
 	bne :-
+	jmp (@ret)
 .endif
+.endproc
 
+.ifdef ultimem
+;******************************************************************************
+; RESET BLK5 AND RET (ULTIMEM ONLY)
+; Resets the BLK5 configuration to its default
+.proc reset_blk5_and_ret
+@ret=mem::sparevec
+	; reset BLK5 RAM area
+	lda #$04
+	sta $9ffe
+	lda #$55
+	sta $9ff2
 	jmp (@ret)
 .endproc
+.endif
 
 ;******************************************************************************
 ; RESTORE USER ZP
@@ -1645,10 +1654,7 @@ __debug_remove_breakpoint:
 	bne :-
 
 	; reset BLK5 RAM area
-	lda #$04
-	sta $9ffe
-	lda #$55
-	sta $9ff2
+	beq reset_blk5_and_ret
 
 .else
 	ldx #$00
@@ -1662,9 +1668,8 @@ __debug_remove_breakpoint:
 	sta $300,x
 	dex
 	bne :-
-.endif
-
 	jmp (@ret)
+.endif
 .endproc
 
 ;*****************************************************************************
@@ -1684,6 +1689,7 @@ __debug_remove_breakpoint:
 	sta $00,x
 	dex
 	bne :-
+
 .ifdef ultimem
 	; reset BLK5 RAM area
 	lda #$04
@@ -1732,14 +1738,11 @@ __debug_remove_breakpoint:
 	dex
 	bpl :-
 .ifdef ultimem
-	; reset BLK5 RAM area
-	lda #$04
-	sta $9ffe
-	lda #$55
-	sta $9ff2
+	jmp reset_blk5_and_ret
+.else
+	jmp (@ret)
 .endif
 
-	jmp (@ret)
 .endproc
 
 ;******************************************************************************

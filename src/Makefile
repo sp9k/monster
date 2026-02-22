@@ -128,10 +128,10 @@ ifeq ($(TARGET),c64)
 	$(EXOMIZER) sfx basic -t64 -n -o $@ monster-disk.prg
 endif
 
-test.d81: boot.prg $(TESTS) $(TEST_INCS) $(TEST_TXTS)
+test.d81: $(TESTS) $(TEST_INCS) $(TEST_TXTS)
 ifeq ($(TARGET),vic20)
 	# create the test disk image
-	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write boot.prg -write masm.prg $(addprefix -write , $(TEST_FILES)) -write fe3firmware
+	$(C1541) -format test,1 d81 test.d81 -attach test.d81 $(addprefix -write , $(TEST_FILES))
 endif
 ifeq ($(TARGET),c64)
 	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write monster-disk.prg $(addprefix -write , $(TEST_FILES))

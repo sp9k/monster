@@ -555,18 +555,22 @@ msave: .byte 0
 @isjam:
 	ldx #@numjams-1
 :	cmp @jamops,x
-	beq @done	; if JAM, return
+	beq @done	; if JAM, return (.Z is set)
 	dex
 	bpl :-
-	; .Z = 0
+	; .X=$ff (.Z=0)
 @done:	rts
 
+.ifndef ultimem
 .PUSHSEG
 .RODATA
+.endif
 @jamops:
 .byte $02, $12, $22, $32, $42, $52, $62, $72, $92, $B2, $D2, $F2
 @numjams=*-@jamops
+.ifndef ultimem
 .POPSEG
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -884,8 +888,10 @@ msave: .byte 0
 	;sec
 	rts
 
+.ifndef ultimem
 .PUSHSEG
 .RODATA
+.endif
 .if .defined(vic20)
 	.define safety_addrs $0316, $0317, $0318, $0319
 .elseif .defined(c64)
@@ -894,7 +900,9 @@ msave: .byte 0
 	@safeaddrs_lo: .lobytes safety_addrs
 	@safeaddrs_hi: .hibytes safety_addrs
 	@num_safe_addrs=*-@safeaddrs_hi
+.ifndef ultimem
 .POPSEG
+.endif
 .endproc
 
 .ifndef ultimem
