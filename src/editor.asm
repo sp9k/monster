@@ -4490,12 +4490,8 @@ goto_buffer:
 	bcs @done
 	stxy @line
 	jsr add_jump_point	; save the current position as a jump point
-	ldx @line
-	bne :+			; LSB 0?
-	ldy @line+1
-	bne :+			; MSB 0?
-	inx			; if 0, set .XY to 1
-:	jsr gotoline		; go to the target line
+	ldxy @line
+	jsr gotoline		; go to the target line
 @done:	rts
 .endproc
 
