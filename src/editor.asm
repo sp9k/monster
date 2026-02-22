@@ -1256,7 +1256,7 @@ main:	jsr key::getch
 
 	; locate the previous empty line
 	jsr src::pushp
-
+	jsr src::home
 @l0:	jsr src::up
 	bcs @move
 	decw @target
