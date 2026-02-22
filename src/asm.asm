@@ -594,9 +594,10 @@ __asm_tokenize_pass1 = __asm_tokenize
 .proc assemble_with_ctx
 	ldy #$00
 	lda (zp::line),y
-	clc			; OK
+:	clc			; OK
 	beq @ret		; return with .A=0 (ASM_NONE)
 	jsr line::process_ws
+	beq :-			; empty line, done
 
 ; check if the line is a full line comment
 @chk_comment:
