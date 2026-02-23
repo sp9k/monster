@@ -544,7 +544,6 @@ anon_addrs: .res MAX_ANON*2
 
 	lda @allow_overwrite
 	bne :+
-	jmp *
 	RETURN_ERR ERR_LABEL_ALREADY_DEFINED
 
 :	; label exists, overwrite its old value
@@ -558,7 +557,15 @@ anon_addrs: .res MAX_ANON*2
 	; @id is the index where the new label will live
 	stxy @id
 
-	; check if label is local or not
+	; check if there's room for another label
+	ldxy numlabels
+	cmpw #MAX_LABELS
+	bcc :+
+	;sec
+	lda #ERR_TOO_MANY_LABELS
+	rts
+
+:	; check if label is local or not
 	ldxy @name
 	jsr is_local
 	beq @shift
