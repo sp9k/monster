@@ -247,7 +247,7 @@ __ram_copy_banked:
 ;*******************************************************************************
 ; MEMCPY
 ; Copies data from ram::src to ram::dst
-; The number of bytes is given in .YX
+; The number of bytes is given in .XY
 ; This routine assumes that IF the memory overlaps, that it will do so from
 ; the TOP. (dst > src)
 ; NOTE: ram::src and ram::dst are 24 bit addresses.  The MSB is the bank.

@@ -15,8 +15,8 @@
 ; DECW
 ; decrements the 16-bit value at the address w.
 ; clobbers .A
-; .Z is set if LSB of w is 0 after decrementing
-; .A is the LSB of w
+; .Z is set if LSB of w if 0 after decrementing
+; .A is the LSB of w before decrementing
 .macro decw w
 .local @skip
 	lda w

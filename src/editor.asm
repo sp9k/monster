@@ -4607,7 +4607,7 @@ goto_buffer:
 ; Searches for the text given in .YX and moves the cursor to it if it's
 ; found
 ; IN:
-;  - .YX: the text to find (0-terminated)
+;  - .XY: the text to find (0-terminated)
 .proc __edit_find
 @string=zp::str0
 @seekptr=zp::str2

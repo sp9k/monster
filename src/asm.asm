@@ -525,8 +525,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 
 ;*******************************************************************************
 ; TOKENIZE
-; Assembles the string at (YX) into an instruction in (asm::result)
-; if (YX) contains an instruction.  Any labels or comments encountered are
+; Assembles the string at (XY) into an instruction in (asm::result)
+; if (XY) contains an instruction.  Any labels or comments encountered are
 ; saved at the address in (pc).
 ; in:
 ;  - .XY: the string to assemble

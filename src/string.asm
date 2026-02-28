@@ -19,7 +19,7 @@ SLASH = SPECIAL_CHARS_START+2
 ; LEN
 ; Returns the length of the string in
 ; IN:
-;  - .YX: the string to get the length of
+;  - .XY: the string to get the length of
 ; OUT:
 ;  - .A: the length of the string
 ;  - .Y: the length of the string
@@ -27,8 +27,7 @@ SLASH = SPECIAL_CHARS_START+2
 .export __str_len
 .proc __str_len
 @str=zp::str0
-	stx @str
-	sty @str+1
+	stxy @str
 	ldy #$00
 @l0:	lda (@str),y
 	beq @done

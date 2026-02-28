@@ -1127,18 +1127,24 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 ;*******************************************************************************
 ; DOWNN
-; Advances the source by the number of lines in .YX
-;  - .YX: the number of lines that were not read
-;  - .C: set if the end was reached before the total lines requested could be
+; Advances the source by the number of lines in .XY
+; IN:
+;   - .XY: the number of lines to advance
+; OUT:
+;   - .C: set if the end was reached before the total lines requested could be
+;   - .YX: the number of lines that were not read
 ;        reached
 .export __src_downn
 .proc __src_downn
 @cnt=r4
 	stxy @cnt
-@loop:	decw @cnt
-	ora @cnt+1		; check if @cnt is zero
-	beq @done		; if it is, we're done
-	jsr __src_down
+@loop:	ldxy @cnt
+	decw @cnt
+	txa
+	bne :+
+	tya
+	beq @done
+:	jsr __src_down
 	bcc @loop
 @done:	ldxy @cnt
 	rts
@@ -1146,11 +1152,11 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 ;*******************************************************************************
 ; UPN
-; Advances the source by the number of lines in .YX
+; Advances the source by the number of lines in .XY
 ; IN:
 ;  - .XY: the number of lines to move "up"
 ; OUT:
-;  - .YX: contains the number of lines that were not read
+;  - .XY: contains the number of lines that were not read
 ;  - .C: set if the beginning was reached before the total lines requested could
 ;        be reached
 .export __src_upn
