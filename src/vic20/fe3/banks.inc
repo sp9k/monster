@@ -42,6 +42,7 @@ FINAL_BANK_SOURCE7 = $a0|$b	; source bank
 FINAL_BANK_MACROS  = $a0|4	; macro code & macro data ($a000-$c000)
 FINAL_BANK_UDGEDIT = $a0|5	; UDG editor ($a000-$c000)
 FINAL_BANK_EXPR    = $a0|5	; expression eval
+FINAL_BANK_HELP    = $a0|5	; help screen
 FINAL_BANK_MONITOR = $a0|7	; monitor ($a000-$c000)
 FINAL_BANK_BUFF    = $a0|8	; copy buffer ($a000-$c000)
 FINAL_BANK_SYMVIEW = $a0|9	; symbol viewer ($a000-$c000)

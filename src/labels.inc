@@ -21,6 +21,7 @@
 .import __label_load
 .import __label_address
 .import __label_num
+.import __label_numanon
 .import __label_name_by_id
 .import __label_popscope
 .import __label_set
@@ -34,7 +35,8 @@ SEG_ABS   = $ff	; symbol represents a constant (not tied to a segment)
 SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 
 .define MAX_LABEL_NAME_LEN 32
-.define MAX_LABELS 736
+.define MAX_LABELS         736
+.define MAX_ANON           650
 
 .scope lbl
 	add           = __label_add
@@ -60,6 +62,7 @@ SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 	isvalid       = __label_isvalid
 	name_by_id    = __label_name_by_id
 	num           = __label_num
+	numanon       = __label_numanon
 	popscope      = __label_popscope
 	set           = __label_set
 	setaddr       = __label_set_addr

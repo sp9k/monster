@@ -111,24 +111,36 @@ SEG_BSS  = 2	; flag for BSS segment (all data must be 0, PC not updated)
 ifstack:   .res MAX_IFS	; contains TRUE/FALSE values for the active IF blocks
 ifstacksp: .byte 0	; stack pointer to "if" stack
 
+.segment "SHAREBSS"
+
+;*******************************************************************************
+; ORIGIN
+; the lowest address in the program
+.export __asm_origin
+__asm_origin:
+origin: .word 0
+
+;*******************************************************************************
+; TOP
+; the highest address in the program
+.export __asm_top
+__asm_top:
+top: .word 0
+
+;*******************************************************************************
+; PCSET
+; If !0, the PC is set (a .ORG directive has been executed or the PC was
+; externally set)
 .export __asm_pcset
 __asm_pcset:
 pcset: .byte 0
 
-.export __asm_origin
-__asm_origin:
-origin: .word 0	; the lowest address in the program
-
-.export __asm_top
-__asm_top:
-top: .word 0	; the highest address in the program
-
+;*******************************************************************************
+; LINENUM
 ; TOKENIZE uses this as the line number to map the address of the assembled
 ; instruction to
 .export __asm_linenum
 __asm_linenum: .word 0
-
-.segment "SHAREBSS"
 
 ;*******************************************************************************
 ; SEGMODE

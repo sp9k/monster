@@ -745,7 +745,6 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	rts
 .endproc
 
-
 ;*******************************************************************************
 ; HOME
 ; Moves left until at the start of the source buffer or the start of the line

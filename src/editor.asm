@@ -25,6 +25,7 @@
 .include "format.inc"
 .include "gui.inc"
 .include "guis.inc"
+.include "help.inc"
 .include "io.inc"
 .include "irq.inc"
 .include "kernal.inc"
@@ -165,6 +166,9 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	sta asm::mode
 	sta zp::cury
 	jsr gotoindex
+
+	; reset assembly state
+	jsr asm::reset
 
 	jsr refresh
 
@@ -2361,6 +2365,7 @@ main:	jsr key::getch
 	next_buffer, prev_buffer, udgedit, fmt_and_enter_command, go_basic, \
 	gprefs::next_pal, gprefs::prev_pal, toggle_autoformat
 .linecont -
+
 @specialvecslo: .lobytes specialvecs
 @specialvecshi: .hibytes specialvecs
 .POPSEG
@@ -3897,6 +3902,7 @@ goto_buffer:
 	jsr scr::rvsline_part	; reverse line part from column .Y to .X
 	lda @togglecur
 	beq @done
+
 @toggle:
 	jsr cur::toggle
 @done:	RETURN_OK
@@ -4848,7 +4854,6 @@ goto_buffer:
 :	jsr src::next
 	dec @cnt
 	bne :-
-
 :				; from next_err
 @done:	rts
 .endproc
@@ -5524,6 +5529,7 @@ ro_commands:
 	.byte K_GETCMD		; get command
 	.byte K_MONITOR		; enter console
 	.byte K_NEXT_ERR	; go to next error from error log
+	.byte K_HELP		; ? (help)
 numcommands=*-commands
 
 ; command tables for COMMAND mode key commands
@@ -5539,7 +5545,8 @@ numcommands=*-commands
 	home_line, ccdel, ccright, goto_end, goto_start, find_next, find_prev, \
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
-	command_find, next_drive, prev_drive, get_command, monitor, next_err
+	command_find, next_drive, prev_drive, get_command, monitor, next_err, \
+	help::show
 .linecont -
 
 command_vecs_lo: .lobytes cmd_vecs

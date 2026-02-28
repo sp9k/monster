@@ -480,7 +480,7 @@ trampoline_size=*-trampoline
 .export STEP_MEMORY_VALUE
 .export STEP_EFFECTIVE_ADDR
 
-;******************************************************************************
+;*******************************************************************************
 ; STEPHANDLER
 ; The step handler runs a single instruction and returns to the
 ; debugger.
