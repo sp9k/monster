@@ -2458,6 +2458,46 @@ main:	jsr key::getch
 .endproc
 
 ;*******************************************************************************
+; NEW BUFFER
+; Creates a new buffer and sets it as the new active buffer
+; or returns an error if one could not be made
+; OUT:
+;  - .C: set if a buffer could not be made
+.proc new_buffer
+	ldx zp::curx
+	ldy zp::cury
+	jsr src::new
+	ldxy #strings::null
+	jsr src::name		; rename buffer to empty name
+
+	jmp home_refresh
+.endproc
+
+;*******************************************************************************
+; CLOSE_BUFFER
+; Frees the current source buffer and moves to the previous buffer (if there
+; is one) or a new source.
+.proc close_buffer
+	jsr src::close
+	bcc refresh
+
+	; if there was no buffer to switch to, reset cursor and clear screen
+	; (create a new empty buffer)
+
+	; fall through to clear
+.endproc
+
+;*******************************************************************************
+; CLEAR
+; Moves back to the origin locatin (0,0) and refreshes the screen (clears it)
+.proc home_refresh
+	lda #$00
+	sta zp::curx
+	sta zp::cury
+	beq refresh	; refresh the new buffer (branch always)
+.endproc
+
+;*******************************************************************************
 ; EXIT VISUAL
 ; If in visual mode, clears highlights from visual mode (if any)
 .proc exit_visual
@@ -2644,40 +2684,6 @@ __edit_set_breakpoint:
 @done:	ldx zp::cury
 	jsr draw::hline
 	jmp gui::refresh
-.endproc
-
-;*******************************************************************************
-; NEW BUFFER
-; Creates a new buffer and sets it as the new active buffer
-; or returns an error if one could not be made
-; OUT:
-;  - .C: set if a buffer could not be made
-.proc new_buffer
-	ldx zp::curx
-	ldy zp::cury
-	jsr src::new
-	ldxy #strings::null
-	jsr src::name		; rename buffer to empty name
-	lda #$00
-	sta zp::curx
-	sta zp::cury
-	jmp refresh
-.endproc
-
-;*******************************************************************************
-; CLOSE_BUFFER
-; Frees the current source buffer and moves to the previous buffer (if there
-; is one) or a new source.
-.proc close_buffer
-	jsr src::close
-	bcc :+
-
-	; if there was no buffer to switch to, reset cursor and clear screen
-	; (create a new empty buffer)
-	lda #$00
-	sta zp::curx
-	sta zp::cury
-:	jmp refresh	; refresh the new buffer
 .endproc
 
 ;*******************************************************************************
