@@ -166,13 +166,11 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .export __src_set
 .proc __src_set
 @save=r0
-	; set the pointers to those of the source we're switching to
 	cmp numsrcs
-	bcc @ok
-	rts		; buffer doesn't exist; return with .C set
+	bcs @ret	; buffer doesn't exist; return with .C set
 
-@ok:	tax
-
+	; set the pointers to those of the source we're switching to
+	tax
 	sta activesrc
 	asl		; *2
 	asl		; *4
@@ -199,7 +197,8 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	cpx #SAVESTATE_SIZE
 	bne @l0
 
-	RETURN_OK
+	clc			; ok
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1140,10 +1139,14 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	stxy @cnt
 @loop:	ldxy @cnt
 	decw @cnt
+
+	; if .XY == 0, we're done
+	clc
 	txa
 	bne :+
 	tya
 	beq @done
+
 :	jsr __src_down
 	bcc @loop
 @done:	ldxy @cnt

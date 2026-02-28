@@ -334,6 +334,23 @@ main:	jsr key::getch
 	jsr print_info
 
 	jsr cancel		; close errlog (if open)
+
+	; assemble the file and display the result
+	ldxy @filename
+	jsr __edit_assemble_file
+	jmp display_result
+.endproc
+
+;*******************************************************************************
+; ASSEMBLE FILE
+; Assembles the file of the given name
+; IN:
+;   - .XY: the filename
+.export __edit_assemble_file
+.proc __edit_assemble_file
+@filename=zp::editortmp
+	stxy @filename
+
 	jsr dbgi::init
 	jsr obj::init
 	jsr errlog::clear
@@ -364,9 +381,8 @@ main:	jsr key::getch
 
 	ldxy zp::asmresult
 	jsr dbgi::endblock	; end the final block
-	jsr obj::close_section	; close final OBJ section
-
-@done:	jmp display_result
+	jmp obj::close_section	; close final OBJ section
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -905,16 +921,15 @@ main:	jsr key::getch
 ; Handles a keypress from the user in COMMAND mode
 .proc onkey_cmd
 	jsr handle_universal_keys
-	bcc :+
-	rts
+	bcs @done
 
-:	ldx #$01
+	ldx #$01
 	stx cmdreps		; init reps to 1
 @getreps:
 	cmp #$5f		; <-
-	bne :+
-	rts			; exit this command
-:	; check if a number is given (to repeat the following commands)
+	beq @done
+
+	; check if a number is given (to repeat the following commands)
 	jsr key::isdec
 	bcc @check_cmds
 	cmp #'0'
@@ -1072,7 +1087,9 @@ main:	jsr key::getch
 	sta mode
 	lda #'c'
 	sta text::statusmode
-	RETURN_OK
+	clc			; OK
+
+:	rts			; <- enter_visual
 .endproc
 
 ;*******************************************************************************
@@ -1080,9 +1097,9 @@ main:	jsr key::getch
 ; Enters VISUAL mode
 .proc enter_visual
 	jsr is_visual
-	bne :+
-	rts		; already in VISUAL mode
-:	jsr cur::on
+	beq :-			; -> RTS (already in VISUAL mode)
+
+	jsr cur::on
 
 	lda #MODE_VISUAL
 	sta mode
@@ -2307,7 +2324,6 @@ main:	jsr key::getch
 	;.byte K_ASM 		; assemble
 	.byte K_ASM_DEBUG	; debug
 	.byte K_SHOW_BUFFERS	; show buffers
-	.byte K_SHOW_PROJECT	; show project
 	.byte K_REFRESH		; refresh
 	.byte K_LIST_SYMBOLS	; list symbols
 	.byte K_LINK            ; link program
@@ -2338,7 +2354,7 @@ main:	jsr key::getch
 .linecont +
 .define specialvecs ccleft, ccright, ccup, ccdown, \
 	home, \
-	command_asmdbg, show_buffers, show_proj, refresh, \
+	command_asmdbg, show_buffers, refresh, \
 	symview::enter, command_link, \
 	close_buffer, new_buffer, set_breakpoint, jumpback, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
@@ -2601,7 +2617,7 @@ __edit_set_breakpoint:
 @remove:
 	jsr dbg::removebreakpointbyid
 	lda #COLOR_NORMAL
-	bne @done
+	bne @done		; branch always
 
 @set:	jsr __edit_current_file	; get the debug file ID and line #
 	jsr dbg::setbrkatline	; create the breakpoint
@@ -2655,7 +2671,9 @@ __edit_set_breakpoint:
 .proc close_buffer
 	jsr src::close
 	bcc :+
-	; if there was no buffer to switch to, reset cursor
+
+	; if there was no buffer to switch to, reset cursor and clear screen
+	; (create a new empty buffer)
 	lda #$00
 	sta zp::curx
 	sta zp::cury
@@ -2670,11 +2688,7 @@ __edit_set_breakpoint:
 	jsr src::save		; save the active buffer's state
 	ldx src::activebuff
 	inx
-	txa
-	jsr src::setbuff
-	bcs @done
-	jmp refresh
-@done:	rts
+	bpl change_buff		; branch always
 .endproc
 
 ;*******************************************************************************
@@ -2685,7 +2699,15 @@ __edit_set_breakpoint:
 	jsr src::save		; save the active buffer's state
 	ldx src::activebuff
 	dex
-	bmi @done
+	; fall through to change_buff
+.endproc
+
+;*******************************************************************************
+; CHANGE BUFF
+; Attempts to set the buffer and, if successful, refreshes the screen
+; IN:
+;   -. X: the buffer to select
+.proc change_buff
 	txa
 	jsr src::setbuff
 	bcs @done
@@ -2799,14 +2821,6 @@ goto_buffer:
 	bcs @done		; if we can't set the buffer, exit
 	jmp refresh
 @done:	rts
-
-;*******************************************************************************
-; SHOW_PROJ
-; Displays the project configuration for the current project
-.proc show_proj
-	; TODO:
-	rts
-.endproc
 
 ;*******************************************************************************
 ; SHOW_BUFFERS

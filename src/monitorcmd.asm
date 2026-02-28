@@ -839,6 +839,9 @@ __mon_default_start_set: .byte 0
 ; Assembles the given instruction at the address of the given expression
 ; e.g.
 ;  `>A $1000, lda #$00`
+; If an enquoted value is provided, it will attempt to be opened as a file
+; and assembled at the target address (NOTE: any .ORG directive within will take
+; precedence)
 .proc assemble
 @addr=zp::debuggertmp
 	; get the address to assemble at
@@ -849,8 +852,16 @@ __mon_default_start_set: .byte 0
 
 	jsr process_ws
 	lda (zp::line),y
-	bne @getop
+	bne @getfile
 	RETURN_OK		; if no instruction provided, we're done
+
+@getfile:
+	; check if a filename was provided e.g.: >A $1000 "hello.asm"
+	jsr util::parse_enquoted_string
+	bcs @getop		; if failed to parse, try parsing opcode
+
+@assemble_file:
+	; TODO:
 
 @getop:	lda #FINAL_BANK_MAIN
 	ldxy zp::line
