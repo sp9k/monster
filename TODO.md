@@ -16,7 +16,7 @@
 - [ ] Save/restore raster position while debugging
 
 ### TODO V1
-- [ ] Ultimem: allow lablels, objects, debug info, source buffers to occupy N banks
+- [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
 - [x] fix weird off-by-1 cursor issue (on some newlines???)
 - [x] allow formatting to be disabled
 - [x] don't format if afterwards line will be too long

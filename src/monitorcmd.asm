@@ -733,8 +733,8 @@ __mon_default_start_set: .byte 0
 @addr=zp::debuggertmp
 @stopaddr=zp::debuggertmp+2
 @buff=mem::spare+40
-	; default stop address is start address + $20
-	lda #$20
+	; default stop address is start address + $10
+	lda #$10
 	jsr get_range_or_default
 	bcs @ret
 
