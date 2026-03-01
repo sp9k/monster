@@ -19,6 +19,7 @@
 .include "../../key.inc"
 .include "../../keycodes.inc"
 .include "../../macros.inc"
+.include "../../memory.inc"
 .include "../../ui.inc"
 .include "../../text.inc"
 .include "../../ram.inc"
@@ -47,8 +48,6 @@ multicolor = zp::editortmp+4	; flag for multi-color enabled (!0)
 dir        = zp::editortmp+5	; direction cursor last moved in
 result     = zp::editortmp+6
 udg = r8	; buffer where character data is stored (8 bytes)
-
-linebuffer = $0400
 
 .segment "UDGEDIT"
 ;*******************************************************************************
@@ -81,11 +80,11 @@ linebuffer = $0400
 
 	jsr draw_udg
 
-@cont:
-	; move cursor back to (0,0)
+@cont:  ; move cursor back to (0,0)
 	lda #$00
 	sta zp::curx
 	sta zp::cury
+	jsr curon
 
 	ldxy #CUR_DELAY
 	stxy cur_tmr
@@ -856,12 +855,14 @@ plot3:	lda #$03
 .proc parse_bytes
 @buff=r0
 @udg=r2
-	ldxy #linebuffer
+@numread=r4
+	ldxy #mem::linebuffer
 	stxy @buff
 	ldxy #udg
 	stxy @udg
 
 	ldy #$00
+	sty @numread
 @finddb:
 	lda (@buff),y
 	beq @err		; no .DB on this line
@@ -875,17 +876,19 @@ plot3:	lda #$03
 	beq @nextch
 	cmp #'.'
 	bne @err		; not a .DB
+
+	; found the '.', look for "db"
 	iny
 	lda (@buff),y
-	cmp #'D'
+	cmp #$44		; 'd'
 	beq :+
-	cmp #'d'
+	cmp #$64		; 'D'
 	bne @err		; not .DB
 :	iny
 	lda (@buff),y
-	cmp #'B'
+	cmp #$42		; 'b'
 	beq @getbytes
-	cmp #'b'
+	cmp #$62		; 'B'
 	beq @getbytes
 
 @err:	sec
@@ -950,7 +953,10 @@ plot3:	lda #$03
 	jmp @findcomma
 
 @next:	incw @buff
-	jmp @parsebyte
+	inc @numread
+	lda @numread
+	cmp #$08
+	bcc @parsebyte
 
 @ok:	clc
 	rts
