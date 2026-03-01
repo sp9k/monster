@@ -121,7 +121,6 @@ START_ROW = 0
 ; PRINT
 ; Dispatches to text::print
 .proc print
-.ifdef vic20
 @ret=mem::sparevec
 @a=r0
 	sta @a
@@ -130,6 +129,7 @@ START_ROW = 0
 	pla
 	sta @ret+1
 
+.ifdef vic20
 	CALLMAIN text::render_ind
 .else
 	CALLMAIN text::render
