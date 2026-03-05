@@ -6,6 +6,6 @@
 	nop
 :	nop ; err l inferred wrong
 	nop
-	jmp :-
+	jmp -
 	nop
 .eq l $10

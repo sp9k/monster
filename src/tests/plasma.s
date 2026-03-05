@@ -64,7 +64,7 @@ genColorTab:
     asl
     asl
     asl
-bcc :+
+bcc +
     eor #$ff
 :   lsr
     lsr
@@ -90,7 +90,7 @@ sync:
     ; wait until this raster (*2)
     ldx #START_LINE
 :   cpx $9004
-    bne :-
+    bne -
 
     ldy #$09
     bit $24
@@ -106,7 +106,7 @@ sync:
     cmp $9004
     bcs *+2
     dey
-    bne :-
+    bne -
 
 ; 6 cycles have passed since last
 ; $9004 change we are now on line
@@ -171,12 +171,12 @@ irq:
     lda $9114   ; get the NMI timer A
 
     cmp #$08    ; > 7 cycles ahead?
-    bcc :+
+    bcc +
     pha         ; spend 8 extra cycles
     pla
     and #$07    ; and reset high bit
 :   cmp #$04
-    bcc :+
+    bcc +
     bit $24     ; waste 4 cycles
     and #$03
 :   cmp #$02    ; spend rest of cycles
@@ -279,7 +279,7 @@ xLoop:
     adc #SCREEN_W
     sta store
     sta store2
-    bcc :+
+    bcc +
     inc store+1
     inc store2+1
 :   dec yPos

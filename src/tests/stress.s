@@ -10,12 +10,12 @@
 test0	lda #42
 	sta $1000,x
 	cmp #42
-	beq :+
+	beq +
 	lda #'b'
 	jmp fail
 :	sta $1000,y
 	cmp #42
-	beq :+
+	beq +
 	lda #'c'
 	jmp fail
 :	dex
@@ -51,7 +51,7 @@ test1
 .eq @zp3 *+1
 	lda ($00),y
 	cmp #42
-	beq :+
+	beq +
 	lda #'a'
 	jmp fail
 :	dey

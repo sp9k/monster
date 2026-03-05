@@ -42,7 +42,6 @@ __buff_num_lines_copied:	.byte 0
 .ifdef vic20
 
 ;*******************************************************************************
-.linecont +
 .macro COPYBUFFJUMP proc
 	JUMP FINAL_BANK_BUFF, proc
 .endmacro

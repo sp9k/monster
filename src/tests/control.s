@@ -1,9 +1,9 @@
 .org $1000
 	lda #$00
-	beq :++
+	beq ++
 :	asl
 :	lda #$ff
-	bne :--
+	bne --
 	nop
 	nop
 	nop

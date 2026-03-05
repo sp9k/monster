@@ -42,6 +42,7 @@
 	bcs @done
 	cmp #'0'
 	bcc @done
+	;sec
 	sbc #'0'
 	RETURN_OK
 

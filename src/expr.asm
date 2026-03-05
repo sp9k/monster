@@ -874,6 +874,8 @@ operands: .res $100
 	beq :+
 	cmp #';'
 	beq :+
+	cmp #':'
+	beq :+
 	cmp #','
 :	rts
 

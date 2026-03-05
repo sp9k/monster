@@ -181,8 +181,7 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 .export __edit_run
 .proc __edit_run
 	jsr text::update
-	lda status_row
-	jsr text::status
+	jsr draw_status_bar
 
 main:	jsr key::getch
 	beq @done
@@ -220,7 +219,15 @@ main:	jsr key::getch
 	jsr is_visual
 	beq :+
 	jsr cur::on
-:	lda status_row
+
+:	; fall through to draw_status_bar
+.endproc
+
+;******************************************************************************
+; DRAW STATUS BAR
+; Draws the row of status data
+.proc draw_status_bar
+	lda status_row
 	jmp text::status
 .endproc
 
@@ -338,23 +345,6 @@ main:	jsr key::getch
 	jsr print_info
 
 	jsr cancel		; close errlog (if open)
-
-	; assemble the file and display the result
-	ldxy @filename
-	jsr __edit_assemble_file
-	jmp display_result
-.endproc
-
-;*******************************************************************************
-; ASSEMBLE FILE
-; Assembles the file of the given name
-; IN:
-;   - .XY: the filename
-.export __edit_assemble_file
-.proc __edit_assemble_file
-@filename=zp::editortmp
-	stxy @filename
-
 	jsr dbgi::init
 	jsr obj::init
 	jsr errlog::clear
@@ -385,8 +375,8 @@ main:	jsr key::getch
 
 	ldxy zp::asmresult
 	jsr dbgi::endblock	; end the final block
-	jmp obj::close_section	; close final OBJ section
-@done:	rts
+	jsr obj::close_section	; close final OBJ section
+@done:	jmp display_result
 .endproc
 
 ;*******************************************************************************
@@ -478,12 +468,8 @@ main:	jsr key::getch
 ; Assembles the entire source of the active source buffer
 ; OUT:
 ;   - .C: set if assembly failed
-.proc command_asm
-	ldxy #strings::assembling
-	jsr print_info
-
-	lda zp::gendebuginfo
-	beq :+
+.proc command_asmdbg
+	jsr prompt_saveall
 
 	; ensure that the buffer we are assembling has a name
 	jsr __edit_current_file
@@ -492,8 +478,11 @@ main:	jsr key::getch
 	jmp report_typein_error
 
 :	jsr irq::off
-
 	jsr cancel		; close errlog (if open)
+
+	ldxy #strings::assembling
+	jsr print_info
+
 	jsr dbgi::init
 	jsr obj::init
 	jsr errlog::clear
@@ -671,19 +660,6 @@ main:	jsr key::getch
 	cmp #$6e		; 'n'?
 	bne @getch
 @done:	RETURN_OK
-.endproc
-
-;*******************************************************************************
-; COMMAND_ASMDBG
-; assembles the source and generates debug information for it
-.proc command_asmdbg
-	jsr prompt_saveall
-
-	lda #$01
-	sta zp::gendebuginfo	; enable debug info
-	jsr command_asm
-	dec zp::gendebuginfo	; turn off debug-info
-	rts
 .endproc
 
 ;*******************************************************************************
@@ -907,17 +883,7 @@ main:	jsr key::getch
 	plp			; get success state
 	popcur			; restore cursor
 
-:	rts			; <- ONKEY
-.endproc
-
-;*******************************************************************************
-; ONKEY
-; Handles a keypress from the user in INSERT mode
-.proc onkey
-@insert:
-	jsr handle_universal_keys
-	bcs :-			; -> RTS
-	jmp insert
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -951,11 +917,11 @@ main:	jsr key::getch
 	beq @found
 	dey
 	bpl :-
-	rts		; no key found
+	rts			; no key found
 
 @found:	; if we're in RO mode, make sure command can be run
 	lda readonly
-	beq :+		; not in RO mode -> continue to run command
+	beq :+			; not in RO mode -> continue to run command
 
 	; if in RO mode, and command is an RW one, just return
 	cpy #num_rw_commands
@@ -1050,6 +1016,17 @@ main:	jsr key::getch
 :	lda #EDITOR_HEIGHT
 	sta height
 	jmp refresh
+.endproc
+
+;******************************************************************************
+; COMMAND YANK
+; In SELECT mode, copies the selected text to the copy buffer. If not in SELECT
+; mode, does nothing
+.proc command_yank
+	jsr yank
+	bcc @done
+	jsr report_typein_error
+@done:	; fall through to enter_command
 .endproc
 
 ;*******************************************************************************
@@ -1810,17 +1787,6 @@ main:	jsr key::getch
 .endproc
 
 ;******************************************************************************
-; COMMAND YANK
-; In SELECT mode, copies the selected text to the copy buffer. If not in SELECT
-; mode, does nothing
-.proc command_yank
-	jsr yank
-	bcc @done
-	jsr report_typein_error
-@done:	jmp enter_command
-.endproc
-
-;******************************************************************************
 ; COMMAND_MOVE_SCR
 ; Accepts another key and moves the screen around depending on what that key is:
 ;  - l: move screen 2 characters to the left
@@ -2305,10 +2271,6 @@ main:	jsr key::getch
 	RETURN_OK	; not a universal key code; return to be handled
 
 @special:
-	; TODO: what is corrupting this (on rare occasion)?
-	; lda #$4c
-	; sta zp::jmpaddr
-
 	lda @specialvecslo,x
 	sta zp::jmpvec
 	lda @specialvecshi,x
@@ -2803,6 +2765,7 @@ __edit_set_breakpoint:
 	.byte " bd."	; ".db " (backwards)
 .POPSEG
 .else
+	; not supported
 	rts
 .endif
 .endproc
@@ -3662,7 +3625,18 @@ goto_buffer:
 .proc clrerror
 	lda #$00
 	sta mem::statusinfo
-	rts
+:	rts
+.endproc
+
+;*******************************************************************************
+; ONKEY
+; Handles a keypress from the user in INSERT mode
+.proc onkey
+@insert:
+	jsr handle_universal_keys
+	bcs :-			; -> RTS
+
+	; fall through to insert
 .endproc
 
 ;******************************************************************************
@@ -3736,7 +3710,7 @@ goto_buffer:
 @diffline:
 	ldx zp::curx
 	ldy #$00
-	beq @rvs0
+	beq @rvs0		; branch always
 
 @sameline:
 	; vis start line == current line, reverse based on cursor's column
@@ -3782,9 +3756,9 @@ goto_buffer:
 	jsr src::get	; get the contents of the line we're on now
 
 	ldx #$00
-	stx zp::cury	; row 0
+	stx zp::cury		; row 0
 	lda mem::linebuffer
-	cmp #$09	; TAB
+	cmp #$09		; TAB
 	bne :+
 	jsr src::next
 	ldx #TAB_WIDTH
@@ -3876,12 +3850,12 @@ goto_buffer:
 	ldx zp::curx
 	beq @toggle
 	inc @togglecur
-	jmp @rvs
+	bpl @rvs		; branch always
 
 @sel:	; highlight from [cur-x, end-of-line]
 	jsr text::rendered_line_len
 	ldy zp::curx
-	jmp @rvs
+	bpl @rvs		; branch always
 
 @eq:	; highlight between cur-x and visual-start-x
 	ldy zp::curx
@@ -3947,11 +3921,9 @@ goto_buffer:
 @tabcnt=r4
 @deselect=r5
 	lda zp::curx
-	bne :+
-	sec
-	rts
+	beq @nomove
 
-:	lda mode
+	lda mode
 	cmp #MODE_VISUAL_LINE
 	bne @move		; do nothing on LEFT if in VISUAL_LINE mode
 @nomove:
@@ -5465,8 +5437,7 @@ __edit_gotoline:
 	pha
 	ldx #$00
 	sta mem::statusline+KEYBUFFER_COL,x
-	lda status_row
-	jsr text::status
+	jsr draw_status_bar
 	inc bufferedkeys
 	pla
 	rts

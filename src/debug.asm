@@ -610,11 +610,10 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 	ldxy sim::pc
 	jsr edit::currentfile	; get current line # (.XY) and file ID (.A)
 	jsr dbgi::line2addr
-	bcs @done		; couldn't resolve address
+	bcs :-			; couldn't resolve address -> RTS
 	stxy sim::pc
 	jsr __debug_gotoaddr
 	jmp edit::sethighlight
-@done:	rts
 .endproc
 
 ;******************************************************************************
@@ -653,24 +652,21 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 @done:	php
 	jsr irq::on
 	plp
-	rts
+:	rts			; <- __debug_trace
 .endproc
 
 ;******************************************************************************
 ; TRACE
-; Puts the debugger into TRACE mode and steps to the next instruction to
-; begin the trace
-; OUT:
-;   - .C: set if we should stop tracing (e.g. if a watch was activated)
+; Puts the debugger into TRACE mode and traces until interrupted (breakpoint
+; or user interrupt)
 .export __debug_trace
 .proc __debug_trace
 	jsr irq::off
-
 	jsr bsp::install_tracer
 
 	; run one step (get over breakpoint if there is one)
 	jsr __debug_step
-	bcs @ret
+	bcs :-			; -> RTS
 
 	; install the breakpoints
 	jsr install_breakpoints
@@ -690,11 +686,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 	lda sim::at_brk		; check if at a BRKpoint
 	beq @trace		; if not, continue tracing
 
-@done:  jsr uninstall_breakpoints
-@ret:	php
-	jsr irq::on
-	plp
-	rts
+@done:  jmp uninstall_breakpoints
 .endproc
 
 ;******************************************************************************

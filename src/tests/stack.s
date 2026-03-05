@@ -3,7 +3,7 @@
 	ldx #$00
 :	sta $100,x
 	dex
-	bne :-
+	bne -
 	asl
 	asl
 	asl

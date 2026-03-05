@@ -95,8 +95,6 @@ ifeq ($(TARGET),c64)
 	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write boot.prg
 endif
 
-test-disk: monster-disk.prg test.d81
-
 cart: monster.bin
 
 ultimem: monster.bin
@@ -132,6 +130,9 @@ ifeq ($(TARGET),c64)
 	#$(EXOMIZER) sfx basic -t64 -n -o $@ bootloader.prg masm.prg
 	$(EXOMIZER) sfx basic -t64 -n -o $@ monster-disk.prg
 endif
+
+test-disk: $(TESTS_FILES)
+	$(C1541) -format test,1 d81 test.d81 -attach test.d81 $(addprefix -write , $(TEST_FILES))
 
 test.d81: boot.prg $(TESTS) $(TEST_INCS) $(TEST_TXTS)
 ifeq ($(TARGET),vic20)

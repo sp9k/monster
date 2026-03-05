@@ -60,7 +60,6 @@ udg = r8	; buffer where character data is stored (8 bytes)
 ;           2: graphic updated
 .export __udg_edit
 .proc __udg_edit
-	cli
 	jsr clrcanvas
 
 	lda #$0e
@@ -273,7 +272,6 @@ udg = r8	; buffer where character data is stored (8 bytes)
 	sta zp::curx
 	jmp curon
 .endproc
-
 
 ;*******************************************************************************
 ; CUROFF

@@ -700,7 +700,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 
 ; check if the line is a label definition
 @chklabels:
-	jsr is_anonref		; anonymous label (:)?
+	jsr is_anondef		; anonymous label (:)?
 	bne @label		; not an anonymous label definition
 @anonlabel:
 	jsr line::incptr
@@ -710,9 +710,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne @retlabel		; if not whitespace, go on
 :	lda zp::verify
 	bne @label_done		; if verifying, don't add a label
-	lda zp::pass
 	ldxy zp::virtualpc
-	cmp #$01		; pass 1?
+	jsr pass1		; pass 1?
 	bne @validate_anon	; if not, just validate
 	jsr lbl::addanon	; add the anonymous label
 	bcc @label_done
@@ -753,10 +752,12 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; from here on we are either reading a comment or an operand
 @getopws:
 	jsr line::process_ws
-	bne @pound
+	jsr islineterminator_or_separator
+	bne @chk_comment
 	jmp @done
 
-@pound: cmp #';'		; are we at a comment?
+@chk_comment:
+	cmp #';'		; are we at a comment?
 	bne @parse_operand
 	jmp @done		; if comment, we're done
 
@@ -890,7 +891,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	jsr line::process_ws
 
 	; check for comment or garbage
-	jsr islineterminator
+	jsr islineterminator_or_separator
 	beq @done
 	RETURN_ERR ERR_UNEXPECTED_CHAR
 
@@ -950,7 +951,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 	lda opcode
 	cmp #$20
 	bne @chkbra
-	cpx #ZEROPAGE
+
+@jsr:	cpx #ZEROPAGE
 	bne :+
 	ldx #ABS	; force ABS for JMP
 	inc operandsz
@@ -990,10 +992,10 @@ __asm_tokenize_pass1 = __asm_tokenize
 	cmp #$ff		; $ffxx might be in range
 	beq @store_offset	; continue
 
-	lda zp::pass
-	cmp #$01		; on pass 1, offset might not be correct: allow
-	beq @store_offset
+	jsr pass1
+	beq @store_offset	; on pass 1, offset might not be correct: allow
 	lda #ERR_BRANCH_OUT_OF_RANGE
+	;sec
 	rts
 
 @verifyimm:
@@ -1047,6 +1049,14 @@ __asm_tokenize_pass1 = __asm_tokenize
 	txa
 	jsr addpc		; add operand size + 1 to assembly pointers
 
+	jsr is_anondef		; is line on a ':'?
+	bne @checkdone		; if not, continue
+@nextop:
+	jsr line::incptr
+	jsr assemble_with_ctx
+	bcs @opdone
+
+@checkdone:
 	lda #ASM_OPCODE
 	clc			; ok
 @opdone:
@@ -1128,9 +1138,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 @cont:	lda zp::verify
 	bne @ok			; if verifying, don't add/check label
 
-	lda zp::pass
 	ldxy zp::line
-	cmp #$01
+	jsr pass1
 	bne @validate		; if not pass 1, don't add the label
 	lda #$ff		; infer address mode
 	jmp add_label
@@ -1146,8 +1155,20 @@ __asm_tokenize_pass1 = __asm_tokenize
 @ok:	RETURN_OK
 
 @err:	lda #ERR_LABEL_NOT_KNOWN_PASS1
-	sec
+	;sec
 @ret:	rts
+.endproc
+
+;*******************************************************************************
+; IS ANONDEF
+; Returns .Z set if zp::line points to an anonymous label definition
+; OUT:
+;  - .Z: Set if zp::line is on an anonymous label reference
+.proc is_anondef
+	ldy #$00
+	lda (zp::line),y
+	cmp #':'
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1158,8 +1179,10 @@ __asm_tokenize_pass1 = __asm_tokenize
 .proc is_anonref
 	ldy #$00
 	lda (zp::line),y
-	cmp #':'
-	rts
+	cmp #'+'
+	beq :+
+	cmp #'-'
+:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1174,9 +1197,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 ;  - .C:       set if invalid reference or on error
 ;  - zp::line: if there was an anonymous reference, updated to point past it
 .proc anonref
-	lda zp::pass
-	cmp #$02
-	beq @pass2
+	jsr pass1
+	bne @pass2
 
 @pass1:	; if pass 1, return success with dummy value
 	jsr line::process_word
@@ -1184,7 +1206,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	lda #2
 	RETURN_OK
 
-@pass2:	ldy #$01		; past the ':'
+@pass2:	ldy #$00
 	lda (zp::line),y	; forward or backward?
 	cmp #'+'
 	beq @f			; if +, forward
@@ -1207,8 +1229,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	sta zp::line
 	bcc :+
 	inc zp::line+1
-:	dey
-	tya
+:	tya
 	ldxy zp::virtualpc
 	jmp lbl::get_banon
 
@@ -1228,8 +1249,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	sta zp::line
 	bcc :+
 	inc zp::line+1
-:	dey
-	tya
+:	tya
 	ldxy zp::virtualpc
 	jmp lbl::get_fanon
 .endproc
@@ -1239,8 +1259,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; Stores the current VPC to the current source line
 ; If debug info generation is disabled, does nothing
 .proc storedebuginfo
-	lda zp::pass
-	cmp #$01		; are we on pass 1?
+	jsr pass1		; are we on pass 1?
 	beq @skip		; if so, don't generate debug info
 
 	lda zp::gendebuginfo
@@ -1317,8 +1336,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 
 ;------------------
 @oversized:
-	lda zp::pass
-	cmp #$01
+	jsr pass1
 	beq @done
 	RETURN_ERR ERR_OVERSIZED_OPERAND
 .endproc
@@ -1382,10 +1400,10 @@ __asm_tokenize_pass1 = __asm_tokenize
 	; make sure there are no trailing characters
 	ldy #$03
 	lda (zp::line),y
+	jsr islineterminator_or_separator
 	beq @done
 	jsr util::is_whitespace
-	beq @done
-	jmp @err
+	bne @err
 
 @done:	lda @op
 	tax
@@ -1456,7 +1474,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 
 @l0:	; check if opening paren is closed before end of line
 	lda (zp::line),y
-	jsr islineterminator
+	jsr islineterminator_or_separator
 	beq @no		; at the effective end of line and unbalanced
 	cmp #'('
 	bne :+
@@ -1473,7 +1491,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	; is not indirect or invalid (unbalanced) respectively
 	iny
 @l1:	lda (zp::line),y
-	jsr islineterminator
+	jsr islineterminator_or_separator
 	beq @yes
 
 	cmp #'('
@@ -1846,10 +1864,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; Exports the label following this directive
 ; e.g. `EXPORT LABEL`
 .proc export
-	;  TODO
-	lda zp::pass
-	cmp #$02
-	beq :+
+	jsr pass1
+	bne :+
 	RETURN_OK		; exports are done in pass 2
 
 :	; if producing an object file, add to its EXPORTs
@@ -1905,9 +1921,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 	sta __asm_segmentid		; set SEGMENT id
 
 	; if pass 2, create new block for debug info
-	lda zp::pass
-	cmp #$02
-	bne @done
+	jsr pass1
+	beq @done
 
 	; end current BLOCK of debug info (if one is open)
 	ldxy zp::virtualpc	; current address
@@ -2090,9 +2105,8 @@ __asm_include:
 	stxy dbgi::srcline
 	stxy __asm_linenum
 
-	lda zp::pass
-	cmp #$02
-	bne @doline		; only create new block in pass 2
+	jsr pass1
+	beq @doline		; only create new block in pass 2
 
 	; end current file's block and start a new one at the current address
 	lda pcset
@@ -2139,9 +2153,8 @@ __asm_include:
 	pla			; restore debug file ID
 	sta dbgi::file
 
-	lda zp::pass
-	cmp #$02
-	bne @done		; if not pass 2, don't mess with debug info
+	jsr pass1
+	beq @done		; if not pass 2, don't mess with debug info
 
 	; create new block in file we included from (if PC is set)
 	lda pcset
@@ -2321,9 +2334,8 @@ __asm_include:
 	lda #CTX_MACRO
 	jsr ctx::push	; push a new context
 
-	lda zp::pass
-	cmp #$02
-	bcs @done	; macro definition handled in pass 1
+	jsr pass1
+	bne @done	; macro definition handled in pass 1
 
 ; get the first parameter (the name)
 @getname:
@@ -2373,9 +2385,8 @@ __asm_include:
 	jsr ctx::end
 	bcs @ret
 
-	lda zp::pass
-	cmp #$02
-	bcs @done		; done, macros are defined in pass 1
+	jsr pass1
+	bne @done		; done, macros are defined in pass 1
 	lda zp::verify
 	bne @done		; and only when NOT verifying
 
@@ -2898,6 +2909,19 @@ __asm_include:
 .endproc
 
 ;*******************************************************************************
+; ISLINETERMINATOR OR SEPARATOR
+; Returns .Z flag set if the given character is a line terminator OR an
+; instruction separator (':')
+; IN:
+;   - .A: character to check
+.proc islineterminator_or_separator
+	cmp #':'
+	beq :+			; -> RTS
+
+	; fall through to islineterminator
+.endproc
+
+;*******************************************************************************
 ; ISLINETERMINATOR
 ; IN:
 ;  .A: the character to check
@@ -2921,7 +2945,7 @@ __asm_include:
 	cmp #$02	; only applicable if cc = %10
 	bne @no
 
-	lda opcode
+	lda opcode	; get aaa
 	cmp #$80	; aaa = 100 STX ($8)
 	beq @yes
 	cmp #$a0	; aaa = 101 LDX ($a)
@@ -2938,8 +2962,7 @@ __asm_include:
 ; Hanldes the .EQ directive
 ; Effective on 1st pass only
 .proc defineconst
-	lda zp::pass
-	cmp #$01
+	jsr pass1
 	beq :+
 	lda #ASM_DIRECTIVE
 	RETURN_OK
@@ -3057,10 +3080,9 @@ __asm_include:
 ; Updates the asmresult and virtualpc pointers by 1
 .proc incpc
 	ldx zp::verify
-	beq :+
-	rts
+	bne :+		; -> RTS
 
-:	incw zp::asmresult
+	incw zp::asmresult
 	incw zp::virtualpc
 
 	; fall through to update_top
@@ -3076,7 +3098,7 @@ __asm_include:
 	cmpw top
 	bcc :+
 	stxy top
-:	rts
+:	rts		; <- incpc
 .endproc
 
 ;*******************************************************************************
@@ -3345,6 +3367,16 @@ __asm_include:
 @found: ; found the string (label)
 	ldxy @line
 	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; PASS 1
+; OUT:
+;   - .Z: set if we the current pass number is 1
+.proc pass1
+	lda zp::pass
+	cmp #$01
+	rts
 .endproc
 
 ;*******************************************************************************

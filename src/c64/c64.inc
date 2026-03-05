@@ -12,7 +12,6 @@ C64_C64_INC = 1
 .import __screen_crowshi
 .import __screen_rowslo
 .import __screen_rowshi
-.import __c64_dbg
 
 .include "bsp.inc"
 .include "debug.inc"
@@ -22,8 +21,6 @@ C64_C64_INC = 1
 	rowshi = __screen_rowshi
 	crowslo = __screen_crowslo
 	crowshi = __screen_crowshi
-
-	dbg    = __c64_dbg
 .endscope
 
 .macro OSPROC fn

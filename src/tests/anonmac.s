@@ -1,7 +1,7 @@
 	.org $1200
 .mac m a, b
 	lda #a
-	beq :+
+	beq +
 	lda #b
 :
 .endmac
