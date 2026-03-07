@@ -730,8 +730,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 @label:	jsr is_label
 	bcs @getopws
 	jsr do_label
-	bcc @label_done
-	rts			; return error
+	bcs :-			; if error -> return
 
 @label_done:
 	jsr storedebuginfo	; store debug info for label
@@ -851,7 +850,6 @@ __asm_tokenize_pass1 = __asm_tokenize
 @unexpected_char:
 	RETURN_ERR ERR_UNEXPECTED_CHAR
 
-
 @index: ldy #$00
 	lda (zp::line),y
 	cmp #','
@@ -871,10 +869,9 @@ __asm_tokenize_pass1 = __asm_tokenize
 
 @getindexy:
 	cmp #'y'
-	beq :+
-	RETURN_ERR ERR_UNEXPECTED_CHAR
+	bne @unexpected_char2
 
-:	inc indexed	 ; inc once for X-indexed
+	inc indexed	 ; inc once for X-indexed
 	jsr is_ldx_stx	 ; check LDX y-indexed
 	bcc @finishline	 ; treat like ,X for encoding if LDX ,Y or STX ,Y
 	inc indexed	 ; if NOT LDX y-indexed, inc twice for Y-indexed
@@ -889,6 +886,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	; check for comment or garbage
 	jsr islineterminator_or_separator
 	beq @done
+@unexpected_char2:
 	RETURN_ERR ERR_UNEXPECTED_CHAR
 
 ;------------------------------------------------------------------------------
@@ -1330,7 +1328,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 @impl:	;lda #IMPLIED (0)
 @done:	RETURN_OK
 
-;------------------
+;-------------------
 @oversized:
 	jsr pass1
 	beq @done
@@ -1381,10 +1379,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 	sta @op
 	sta cc
 
-	ldx #<opcodes
-	ldy #>opcodes
-	stx @optab
-	sty @optab+1
+	ldxy #opcodes
+	stxy @optab
 
 @l0:	ldy #$02
 @l1:	lda (zp::line),y
