@@ -209,6 +209,7 @@ opcodes:
 .byte "ldx" ; 101 17
 .byte "dec" ; 110 18
 .byte "inc" ; 111 19
+
 opcode_branches:
 ; branch $10, $30, $50...
 .byte "bpl"
@@ -503,6 +504,8 @@ num_illegals = *-illegal_opcodes
 ;  - .A:  the bank that the line to assemble resides in
 ;  - .XY: the line to assemble
 ;  - .C:  set if an error occurred
+; OUT:
+;  - .C: set on error
 .export __asm_tokenize_pass2
 .proc __asm_tokenize_pass2
 	jsr __asm_tokenize
@@ -514,13 +517,12 @@ num_illegals = *-illegal_opcodes
 	cmp #ASM_ORG
 	bne @ok
 
-@org:	; if we assembled a .ORG in pass 2, create a new block at the new address
+@org:	; if we assembled a .ORG in pass 2, create a new block at the new addr
 	ldxy __asm_linenum
 	stxy dbgi::srcline
 	ldxy zp::virtualpc	; address of new block
 	jmp dbgi::newblock	; create a block
-	bcs @done
-@retok:	lda #$00
+@retok:	txa			; .A=0
 @ok:	clc
 @done:	rts
 .endproc
@@ -2156,10 +2158,8 @@ __asm_include:
 	ldxy zp::virtualpc
 	jsr dbgi::newblock	; start a new block in original file
 @done:
-	lda @err
-	lda #$00	; get err code
-	cmp #$01	; set carry if >= 1
-	rts
+	lda #$00
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -2238,7 +2238,7 @@ __asm_include:
 
 	; TODO: require expression to resolve in pass 1
 	stxy zp::virtualpc
-	clc			; ok
+	;clc			; ok
 @ret:	rts
 .endproc
 
