@@ -829,19 +829,21 @@ __asm_tokenize_pass1 = __asm_tokenize
 	lda indirect_hint	; is indirect flagged? (we saw a '(' earlier)?
 	beq @index		; if not, skip to absolute
 
-; handle indirect hint. May be x pre-indexed, indirect or indirect: ',X)' or ')'
+; Handle indirect hint. May be x pre-indexed, indirect or indirect:
+; The expression evaluation will eat the ')' for indirect/indirect-y
+; This means the only special case to look for is ",X)"
 ; if no indexing, or opcode is not JMP, not indirect
 @rparen:
 	; look for indexing or ",X"
 	lda (zp::line),y	; get first char
 	cmp #','		; is it a ','?
-	bne @rparen_noprex	; if not, only valid string is a plain ')'
+	bne @index		; if not, continue to check indexing
 
 	jsr line::nextch	; eat any WS and get next char
 	cmp #'x'		; is it an .X?
-	bne @unexpected_char
+	bne @getindexy		; try Y indexing
 
-	jsr line::nextch	; get next char after ",X"
+@xind:	jsr line::nextch	; get next char after ",X"
 	inc indexed		; inc once to flag X-indexed
 	cmp #')'
 	beq @finishline		; if ')', continue
@@ -849,14 +851,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 @unexpected_char:
 	RETURN_ERR ERR_UNEXPECTED_CHAR
 
-; look for a plain ')' (indirect addressing) or '),y'  (indirect y-indexed)
-@rparen_noprex:
-	jsr line::incptr
-	cmp #')'
-	bne @unexpected_char
 
-@index:
-	ldy #$00
+@index: ldy #$00
 	lda (zp::line),y
 	cmp #','
 	bne @getws2
