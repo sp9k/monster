@@ -39,7 +39,14 @@ ULTIMEM_ULTIMEM_INC = 1
 
 ;*******************************************************************************
 ; SELECT BANK
-.macro SELECT_BANK str
+.macro SELECT_BANK bank
+.if .xmatch ("SYMBOLS", bank)
+	lda #FINAL_BANK_SYMBOLS
+	jsr __ultimem_select_bank
+.elseif .xmatch("SYMBOL_NAMES", bank)
+	lda #FINAL_BANK_SYMBOL_NAMES
+	jsr __ultimem_select_bank
+.endif
 .endmacro
 
 ;*******************************************************************************

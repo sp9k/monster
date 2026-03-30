@@ -46,10 +46,10 @@ name     = $100
 ; these strings are modified depending on the address mode
 ; ESCAPE_BYTE replaces the ESCAPE_VALUE for zeropage symbols
 sym_line:
-.byte "$", ESCAPE_VALUE, " ", ESCAPE_STRING, " ", ESCAPE_GOTO, 22, ESCAPE_STRING
+.byte ESCAPE_VALUE_DEC, ESCAPE_GOTO, 5, "$", ESCAPE_VALUE, " ", ESCAPE_STRING, " ", ESCAPE_GOTO, 22, ESCAPE_STRING
 .byte " ", "l:", ESCAPE_VALUE_DEC, 0
 sym_line_no_file:
-.byte "$", ESCAPE_VALUE, " ", ESCAPE_STRING, 0
+.byte ESCAPE_VALUE_DEC, ESCAPE_GOTO, 5, "$", ESCAPE_VALUE, " ", ESCAPE_STRING, 0
 
 ;*******************************************************************************
 .RODATA
@@ -149,10 +149,16 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 @abs:	lda addr+1
 	pha
 	lda #ESCAPE_VALUE	; 2 bytes (absolute)
-:	sta sym_line+1
-	sta sym_line_no_file+1
+:	sta sym_line+4
+	sta sym_line_no_file+4
 
-@print: lda @row
+@print: ; push the label's id
+	lda lbl
+	pha
+	lda lbl+1
+	pha
+
+	lda @row
 	jsr text::print
 	rts
 .endproc

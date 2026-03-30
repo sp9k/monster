@@ -47,6 +47,7 @@ SLASH = SPECIAL_CHARS_START+2
 ;  zp::str2: the other string to compare
 ;  .A:       the max length to compare
 ; OUT:
+;  -A: 0 if strings are equal
 ;  .Z: set if the strings are equal
 .export __str_compare
 .proc __str_compare

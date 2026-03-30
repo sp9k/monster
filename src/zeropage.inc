@@ -46,9 +46,9 @@ gendebuginfo = $4f 	; flag to generate debug info
 label_value     = $50	; label function arguments
 label_mode      = $52	; label "mode" - zp (0) or abs (1)
 label_segmentid = $53	; SEGMENT ID (or $ff for absolute) when adding label
-labels          = $54	; label temp usage
+labels          = $54	; reserved for label usage
 
-ctx    = $60		; context util usage during assembly
+ctx    = $70		; context util usage during assembly
 macros = $7f		; macro related things during assembly
 
 ; * $90-9C are used by KERNAL I/O and should be avoided *

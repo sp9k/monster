@@ -64,6 +64,7 @@ FINAL_BANK_FAST    = $a0|$0c
 ; $b000-$b800 is used for anonymous labels (up to 1024)
 ; $b800-$c000 stores the linker code (code to create, remove, find, etc. labels)
 FINAL_BANK_SYMBOLS = $a0|$d	; symbols bank (label names and their addresses)
+FINAL_BANK_SYMBOL_NAMES = $a0|$d	; symbols names
 
 ;******************************************************************************
 ; LINKER ($0E)

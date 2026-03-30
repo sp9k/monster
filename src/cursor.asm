@@ -38,7 +38,7 @@ maxy: .byte 0
 .export __cur_off
 .proc __cur_off
 	lda __cur_status
-	beq :++
+	beq :++			; -> rts
 :	jmp __cur_toggle
 .endproc
 

@@ -71,6 +71,7 @@
 .include "macros.inc"
 .include "memory.inc"
 .include "object.inc"
+.include "ram.inc"
 .include "string.inc"
 .include "text.inc"
 .include "source.inc"
@@ -79,8 +80,6 @@
 .include "target.inc"
 .include "vmem.inc"
 .include "zeropage.inc"
-
-.include "ram.inc"
 
 ;*******************************************************************************
 MAX_IFS      = 4 ; max nesting depth for .if/.endif
@@ -1144,7 +1143,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	; pass 2: validation and symbol mapping (OBJ)
 	; make sure the label's address hasn't moved since pass 1
 	jsr lbl::find
-	bcs @ret
+	bcs @ret		; label not found at all -> return err
 	jsr lbl::getaddr
 	cmpw zp::label_value
 	bne @err		; mismatch -> return err
@@ -1748,7 +1747,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 
 @text:	jsr gettext
 	bcs @err
-	; store the extracted text
+
+	; store extracted text
 	tay
 	tax
 	beq @done
@@ -1766,6 +1766,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	jsr addpc
 
 @commaorws:
+	; process rest of line (more bytes or terminator)
 	ldy #$00
 	lda (zp::line),y
 	beq @done
@@ -2987,7 +2988,7 @@ __asm_include:
 
 @ok:	stxy zp::label_value
 
-	; restore label address
+	; restore label name address
 	pla
 	tay
 	pla
@@ -2999,10 +3000,11 @@ __asm_include:
 	sta __asm_segmentid	; temporarily set section to ABS
 
 	lda zp::label_value+1
-	beq :+			; if MSB is 0, use ZP mode
-	lda #$01
+	beq :+			; if MSB is 0, use ZP mode (0)
+	lda #$01		; ABS mode (1)
 
-:	jsr add_label
+:	sta zp::label_mode
+	jsr lbl::add
 	pla			; restore section ID
 	sta __asm_segmentid
 
