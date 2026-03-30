@@ -3,6 +3,7 @@ C64_C64_INC = 1
 
 .import select_bank_linker
 .import select_bank_symbols
+.import select_bank_symbol_names
 .import select_bank_debuginfo
 .import select_bank_debuginfo
 .import select_bank_copybuff
@@ -34,6 +35,8 @@ C64_C64_INC = 1
 .macro SELECT_BANK bank
 .if .xmatch ("SYMBOLS", bank)
 	jsr select_bank_symbols
+.elseif .xmatch ("SYMBOL_NAMES", bank)
+	jsr select_bank_symbol_names
 .elseif .xmatch("DEBUGINFO", bank)
 	jsr select_bank_debuginfo
 .elseif .xmatch("LINKER", bank)

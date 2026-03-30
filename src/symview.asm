@@ -316,6 +316,7 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 @exit:	jmp dbg::gotoaddr	; go to the line of the symbol definition
 
 @changesort:
+	; toggle sort order from alpha to addr or vise-versa
 	lda sortby
 	eor #$01
 	sta sortby
