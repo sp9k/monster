@@ -1082,6 +1082,28 @@ labelvars_size=*-labelvars
 .endproc
 
 ;*******************************************************************************
+; ADDRESS BY ID
+; Returns the address of the label of the given ID
+; Also returns the address mode.
+; IN:
+;  - .XY: the ID of the label to find the address/mode of
+; OUT:
+;  - .XY: the address of the label
+;  - .A:  the size (address mode) of the label (0=ZP, 1=ABS)
+;  - r2:  the ID of the label
+.proc address_by_id
+@lbl=r0
+@save=r2
+	stxy @save
+	jsr getaddr		; get address
+	ldy #LABEL_FLAGS
+	LOADB_Y label		; and address mode
+	and #$01		; mask MODE bit
+	ldxy @save
+	rts
+.endproc
+
+;*******************************************************************************
 ; SET NAME
 ; Writes the NAME for the label
 ; IN:
@@ -1137,28 +1159,6 @@ labelvars_size=*-labelvars
 
 @done:	; switch back to main SYMBOLS bank
 	SELECT_BANK "SYMBOLS"
-	rts
-.endproc
-
-;*******************************************************************************
-; ADDRESS BY ID
-; Returns the address of the label of the given ID
-; Also returns the address mode.
-; IN:
-;  - .XY: the ID of the label to find the address/mode of
-; OUT:
-;  - .XY: the address of the label
-;  - .A:  the size (address mode) of the label (0=ZP, 1=ABS)
-;  - r2:  the ID of the label
-.proc address_by_id
-@lbl=r0
-@save=r2
-	jsr getaddr		; get address
-	sty @save
-	ldy #LABEL_FLAGS
-	LOADB_Y label		; and address mode
-	and #$01		; mask MODE bit
-	ldy @save
 	rts
 .endproc
 
@@ -1490,9 +1490,11 @@ labelvars_size=*-labelvars
 ; IN:
 ;  - .XY: the ID of the label to get the address of
 ; OUT:
-;  - .XY: the address of the label
+;  - label: label data is loaded (via loadlabel)
+;  - .XY:   address of the label
 .proc getaddr
 	jsr loadlabel
+
 	ldy #LABEL_ADDR
 	LOADB_Y label
 	tax
