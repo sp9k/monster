@@ -151,6 +151,7 @@
 	sta r0+1
 	ldy #<__BSS_LOAD__
 	lda #$00
+	sta r0
 @zerobss:
 	sta (r0),y
 	iny

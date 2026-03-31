@@ -159,6 +159,7 @@ cart_start:
 	sta r0+1
 	ldy #<__BSS_LOAD__
 	lda #$00
+	sta r0
 @zerobss:
 	sta (r0),y
 	iny
@@ -297,12 +298,12 @@ cart_start:
 .endproc
 
 .ifdef CART
+.PUSHSEG
+.RODATA
 init_sig:
 	.byte 6,5,6,0	; magic value to detect reset for recovery
 init_sig_len=*-init_sig
 
-.PUSHSEG
-.RODATA
 recover_reset:
 	.byte " reset detected - restore state? (y/n)",0
 .POPSEG

@@ -1415,7 +1415,7 @@ __debug_remove_breakpoint:
 .POPSEG
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SHOWSTATE
 ; Shows the current debug state (registers and BRK line)
 .proc showstate
@@ -1553,7 +1553,7 @@ __debug_remove_breakpoint:
 	jmp edit::entermonitor
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE USER ZP
 ; Saves the state of the user's zeropage
 ; IN:

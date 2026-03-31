@@ -20,7 +20,6 @@
 .import is_internal_address
 .import write_step
 
-
 ;*******************************************************************************
 ; MAPPED ZP
 ; This is the physical address that the virutal zeropage and stack is mapped
