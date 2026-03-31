@@ -72,8 +72,6 @@ macros:          .res $1400
 @addr=zp::macros+4
 @params=r0
 @numparams=r2
-	SELECT_BANK "MACRO"
-
 	sta @numparams
 
 	lda nummacros
@@ -184,8 +182,6 @@ macros:          .res $1400
 @macro=zp::macros+$0e
 @numparams=zp::macros+$10
 @tmplabel=$140
-	SELECT_BANK "MACRO"
-
 	; get the address of the macro from its id
 	asl
 	tax
@@ -306,8 +302,6 @@ macros:          .res $1400
 @name=r4
 @cnt=r6
 @tmp=r7
-	SELECT_BANK "MACRO"
-
 	stxy @tofind
 	lda #<macro_addresses
 	sta @addr

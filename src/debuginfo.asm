@@ -48,11 +48,6 @@ SIZEOF_BLOCK_HEADER     = 14
 SIZEOF_BLOCK_HEADER_OBJ = 10	; .O header doesn't contain line prog start/stop
 
 ;*******************************************************************************
-.macro BANKJUMP proc
-	JUMP FINAL_BANK_DEBUG, proc
-.endmacro
-
-;*******************************************************************************
 ; Debug info pointers
 ; active line data, these represent the HEAD state of the line program
 ; state machine
@@ -104,8 +99,6 @@ debuginfo:
 .else
 .res $6000
 .endif
-
-.else
 .endif
 
 .segment "DEBUGINFO_CODE"
@@ -126,44 +119,24 @@ debuginfo:
 .export __debuginfo_set_seg_id
 .export __debuginfo_get_fileid
 
-;******************************************************************************
-.ifndef vic20
-	__debug_addr2line         = addr2line
-	__debug_end_block         = end_block
-	__debug_line2addr         = line2addr
-	__debuginfo_init          = init
-	__debuginfo_initonce      = initonce
-	__debug_get_filename      = get_filename
-	__debug_new_block         = new_block
-	__debug_set_file          = set_file
-	__debug_set_name          = set_name
-	__debug_store_line        = store_line
-	__debug_push_block        = push_block
-	__debug_pop_block         = pop_block
-	__debuginfo_get_fileid    = get_fileid
-	__debuginfo_set_seg_id    = set_seg_id
-.else
-
-.PUSHSEG
+.ifdef vic20
 .RODATA
-
-__debug_addr2line:        BANKJUMP addr2line
-__debug_line2addr:        BANKJUMP line2addr
-__debug_end_block:        BANKJUMP end_block
-__debuginfo_init:         BANKJUMP init
-__debuginfo_initonce:     BANKJUMP initonce
-__debug_get_filename:     BANKJUMP get_filename
-__debug_new_block:        BANKJUMP new_block
-__debug_set_file:         BANKJUMP set_file
-__debug_set_name:         BANKJUMP set_name
-__debug_store_line:       BANKJUMP store_line
-__debug_push_block:       BANKJUMP push_block
-__debug_pop_block:        BANKJUMP pop_block
-__debuginfo_get_fileid:   BANKJUMP get_fileid
-__debuginfo_set_seg_id:   BANKJUMP set_seg_id
-
-.POPSEG
 .endif
+
+__debug_addr2line:        JUMP FINAL_BANK_DEBUG, addr2line
+__debug_line2addr:        JUMP FINAL_BANK_DEBUG, line2addr
+__debug_end_block:        JUMP FINAL_BANK_DEBUG, end_block
+__debuginfo_init:         JUMP FINAL_BANK_DEBUG, init
+__debuginfo_initonce:     JUMP FINAL_BANK_DEBUG, initonce
+__debug_get_filename:     JUMP FINAL_BANK_DEBUG, get_filename
+__debug_new_block:        JUMP FINAL_BANK_DEBUG, new_block
+__debug_set_file:         JUMP FINAL_BANK_DEBUG, set_file
+__debug_set_name:         JUMP FINAL_BANK_DEBUG, set_name
+__debug_store_line:       JUMP FINAL_BANK_DEBUG, store_line
+__debug_push_block:       JUMP FINAL_BANK_DEBUG, push_block
+__debug_pop_block:        JUMP FINAL_BANK_DEBUG, pop_block
+__debuginfo_get_fileid:   JUMP FINAL_BANK_DEBUG, get_fileid
+__debuginfo_set_seg_id:   JUMP FINAL_BANK_DEBUG, set_seg_id
 
 .segment "DEBUGINFO_VARS"
 
@@ -299,7 +272,6 @@ blockaddresseshi: .res MAX_FILES
 ;   - .C: set if an error occurred
 .proc new_block
 @tmp=r0
-	SELECT_BANK "DEBUGINFO"
 	stxy addr		; init addr pointer
 
 	lda block_open		; is there a block already open?
@@ -393,8 +365,6 @@ blockaddresseshi: .res MAX_FILES
 ;   - .XY: the address to end the block at
 .proc end_block
 @numlines=debugtmp
-	SELECT_BANK "DEBUGINFO"
-
 	lda numblocks
 	beq @done	; no blocks exist, nothing to "end"
 
@@ -510,7 +480,6 @@ blockaddresseshi: .res MAX_FILES
 .endif
 	rts
 .endmacro
-	SELECT_BANK "DEBUGINFO"
 	stxy @line
 
 .ifdef ultimem
@@ -740,8 +709,6 @@ blockaddresseshi: .res MAX_FILES
 .proc addr2line
 @addr=r2
 @cnt=r4
-	SELECT_BANK "DEBUGINFO"
-
 	stxy @addr
 	lda #$00
 	sta @cnt
@@ -813,7 +780,6 @@ blockaddresseshi: .res MAX_FILES
 @cnt=r4
 @file=r5
 @closest=r7		; nearest line < the one we're looking for
-	SELECT_BANK "DEBUGINFO"
 	sta @file
 	stxy @line
 	lda #$00
@@ -890,7 +856,6 @@ blockaddresseshi: .res MAX_FILES
 @filename=zp::str2
 @buff=$120
 @cnt=debugtmp
-	SELECT_BANK "DEBUGINFO"
 	stxy @filename
 
 	; copy the filename to compare to a temp buffer

@@ -13,6 +13,18 @@
 .endproc
 
 ;*******************************************************************************
+; SELECT BANK SYMBOL NAMES
+; Sets the RAM bank to the symbol names one
+.export select_bank_symbol_names
+.proc select_bank_symbol_names
+	pha
+	lda #FINAL_BANK_SYMBOL_NAMES
+	sta reu::reuaddr+2
+	pla
+	rts
+.endproc
+
+;*******************************************************************************
 ; SELECT BANK SYMBOLS
 ; Sets the RAM bank to the debug info one
 .export select_bank_debuginfo

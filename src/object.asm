@@ -441,7 +441,6 @@ __obj_close_section = close_section
 @sz=r0
 @rel=r1
 @offset=r3
-	SELECT_BANK "LINKER"
 	sta @sz
 	sty @offset
 
@@ -531,8 +530,6 @@ __obj_close_section = close_section
 @idx=r0
 @symtab=r2
 @reltab=r4
-	SELECT_BANK "LINKER"
-
 	; walk the relocation tables to determine which symbols are referenced
 	; in relocations. only these will be emitted.
 	ldxy #reloc_tables
@@ -829,8 +826,6 @@ __obj_close_section = close_section
 @sz=r2
 @sec_idx=r4
 @seg_idx=r6
-	SELECT_BANK "LINKER"
-
 	lda #$00
 	sta @seg_idx
 	cmp numsections
@@ -988,8 +983,6 @@ __obj_close_section = close_section
 @rec=r7
 @sz=re
 @seg_base=zp::tmp10
-	SELECT_BANK "LINKER"
-
 	lda #$00
 	sta @seg_idx
 
@@ -1453,8 +1446,6 @@ __obj_close_section = close_section
 @symoff=rc
 @seg=re
 @namebuff=$100
-	SELECT_BANK "LINKER"
-
 	jsr load_info
 	bcc :+
 @ret:	rts

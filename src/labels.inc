@@ -1,5 +1,3 @@
-.import label_addresses
-
 .import __label_add
 .import __label_addanon
 .import __label_addrmode
@@ -35,13 +33,12 @@ SEG_ABS   = $ff	; symbol represents a constant (not tied to a segment)
 SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 
 .define MAX_LABEL_NAME_LEN 32
-.define MAX_LABELS         736
+.define MAX_LABELS         768
 .define MAX_ANON           650
 
 .scope lbl
 	add           = __label_add
 	addanon       = __label_addanon
-	addresses     = label_addresses
 	addrmode      = __label_addrmode
 	idbyaddrindex = __label_id_by_addr_index
 	addr          = __label_address

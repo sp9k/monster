@@ -16,6 +16,7 @@
 - [ ] Save/restore raster position while debugging
 
 ### TODO V1
+- [ ] replace label implementation with hash-map one
 - [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
 - [x] fix weird off-by-1 cursor issue (on some newlines???)
 - [x] allow formatting to be disabled
