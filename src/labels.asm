@@ -134,37 +134,6 @@ SEG_ABS = $ff
 .export __label_get_segment
 .export __label_set_addr
 
-.ifndef vic20
-
-;*******************************************************************************
-; Flat memory procedure mappings
-__label_clr              = clr
-__label_add		 = add
-__label_find             = find
-__label_by_addr          = by_addr
-__label_by_id            = by_id
-__label_dump             = dump
-__label_name_by_id       = name_by_id
-__label_isvalid          = is_valid
-__label_get_name         = get_name
-__label_load             = load
-__label_get_addr         = getaddr
-__label_get_segment      = get_segment
-__label_is_local         = is_local
-__label_set              = set
-__label_address          = address
-__label_address_by_id    = address_by_id
-__label_setscope         = set_scope
-__label_popscope         = pop_scope
-__label_addanon          = add_anon
-__label_get_fanon        = get_fanon
-__label_get_banon        = get_banon
-__label_index            = index
-__label_id_by_addr_index = id_by_addr_index
-__label_addrmode         = addrmode
-__label_set_addr         = setaddr
-
-.else
 ;*******************************************************************************
 ; Label JUMP table
 .macro LBLJUMP proc
@@ -198,8 +167,6 @@ __label_get_segment:      LBLJUMP get_segment
 __label_set_addr:         LBLJUMP setaddr
 __label_dump:             LBLJUMP dump
 __label_load:             LBLJUMP load
-
-.endif
 
 ;*******************************************************************************
 ; LABEL NAMES
@@ -427,7 +394,7 @@ labelvars_size=*-labelvars
 	ldx #>(NUM_BUCKETS*2)
 	ldy #$00
 	tya
-:	sta (@map),y
+:	STOREB_Y @map
 	dey
 	bne :-
 	inc @map+1
@@ -1922,15 +1889,19 @@ labelvars_size=*-labelvars
 ;   - r0: now points to next node in list
 ;   - .C: set if the list is already at the end
 .proc listnext
+@tmp=ra
 	ldy #LIST_NEXT		; offset to NEXT pointer
 
 	; check if we're already at end of the list, and return .C set if so
-	lda (list),y
-	tax			; get LSB of NEXT pointer
+	LOADB_Y list		; get LSB of NEXT pointer
+	sta @tmp
+	tax
 	iny
-	ora (list),y		; is MSB 0?
+	LOADB_Y list		; get MSB
+	ora @tmp		; is pointer value $0000?
 	beq @end		; if so, we're at the end of the list
-	lda (list),y
+
+	LOADB_Y list
 	stx list
 	sta list+1
 	RETURN_OK
@@ -2056,10 +2027,10 @@ labelvars_size=*-labelvars
 	RETURN_ERR ERR_LABEL_UNDEFINED
 
 @found:	ldy #LIST_LABEL
-	lda (list),y
+	LOADB_Y list
 	sta label
 	iny
-	lda (list),y
+	LOADB_Y list
 	sta label+1
 	RETURN_OK
 .endproc
