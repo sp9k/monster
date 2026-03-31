@@ -41,34 +41,24 @@ start:
 
 ;--------------------------------------
 ; zero the BSS segment
-; TODO: use REU
-	ldxy #__BSS_LOAD__
-	stxy r0
-
+	lda #>__BSS_LOAD__
+	sta r0+1
+	ldy #<__BSS_LOAD__
 	lda #$00
-	tay
+	sta r0
 @zerobss:
 	sta (r0),y
 	iny
-	bne @zerobss
+	bne :+
 	inc r0+1
+:	cpy #<(__BSS_LOAD__+__BSS_SIZE__-1)
+	bne @zerobss
 	ldx r0+1
 	cpx #>(__BSS_LOAD__+__BSS_SIZE__-1)
 	bne @zerobss
 
-	lda #$00
-	sta r0
-	sta zp::banksp
+	sta zp::banksp		; zero out bank stack pointer
 
-	ldy #<(__BSS_LOAD__+__BSS_SIZE__-1)
-	beq @zero_bss_done
-@zerobss_last_page:
-	sta (r0),y
-	dey
-	bne @zerobss_last_page
-	sta (r0),y		; last byte
-
-@zero_bss_done:
         jsr irq::on
 
 	lda #<start
