@@ -136,12 +136,13 @@ BASE=$2000
 ; bank3: $4000-$6000                         (BLK2)
 ; bank4: $6000-$8000                         (BLK3)
 ; bank5: $a000-$c000                         (BLK5)
+; bankx: $c000-$ffff                         (ROM)
 @translate:
 	cpy #>$0400
 	bcs :+
 
 @00:	; $00-$400 is stored in the prog00 buffer
-	add16 #(prog00-$00+BASE)
+	add16 #(BASE+(prog00 .mod $2000))
 	lda #SIMRAM_00_BANK
 	rts
 

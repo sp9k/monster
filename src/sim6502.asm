@@ -20,6 +20,17 @@
 .import is_internal_address
 .import write_step
 
+
+;*******************************************************************************
+; MAPPED ZP
+; This is the physical address that the virutal zeropage and stack is mapped
+; to when a step is performed
+.ifdef ultimem
+MAPPED_ZP = $a000 + (prog00 .mod $2000)
+.else
+MAPPED_ZP = prog00
+.endif
+
 ;*******************************************************************************
 ; SIMBSS
 ; This segment must not be clobbered by the simulator when stepping.
@@ -206,6 +217,7 @@ msave: .byte 0
 .ifdef ultimem
 	jsr ultim::reset_blk5
 .endif
+	; unable to complete STEP (e.g. JAM or BRK), return with .C set
 	rts
 
 @ok:	; check if opcode uses indexed/indrect addressing
@@ -247,6 +259,8 @@ msave: .byte 0
 	beq @memdone
 
 .if .defined(c64)
+;-------------------------------------------------------------------------------
+; C64
 .import STEP_MEMORY_VALUE
 .import STEP_EFFECTIVE_ADDR
 	ldxy __sim_effective_addr
@@ -259,7 +273,10 @@ msave: .byte 0
 	ldy #$00
 	lda (@backup),y
 	sta msave		; save debugger byte
+
 .elseif .defined(vic20)
+;-------------------------------------------------------------------------------
+; Vic-20
 	ldxy __sim_effective_addr
 	jsr is_internal_address
 	bne @memdone		; not internal, no need to swap address
@@ -276,6 +293,7 @@ msave: .byte 0
 	txa
 	sta (@backup),y		; store user byte
 .endif
+;-------------------------------------------------------------------------------
 
 @memdone:
 	; restore registers for instruction execution
@@ -294,7 +312,7 @@ msave: .byte 0
 	pha
 	jmp STEP_HANDLER_ADDR
 
-;---------------------------------------
+;-------------------------------------------------------------------------------
 ; GETNEXTPC
 ; Returns the next PC value given the current state of the simulator
 ; Also updates simulator flags based on that next instruction
@@ -349,17 +367,18 @@ msave: .byte 0
 	rts
 
 @nojam:	cmp #$20		; JSR?
-	bne :+
+	bne @chkjmp
+
 @jsr:	; fully simulate JSR
 	; "push" the return address-1 and then set the PC to the operand
 	ldy __sim_reg_sp
 	lda __sim_pc
 	clc
 	adc #$02
-	sta prog00+$100-1,y	; store LSB of return address
+	sta MAPPED_ZP+$100-1,y	; store LSB of return address
 	lda __sim_pc+1
 	adc #$00
-	sta prog00+$100,y	; store MSB of return address
+	sta MAPPED_ZP+$100,y	; store MSB of return address
 	decw __sim_reg_sp	; SP -= 2
 	decw __sim_reg_sp
 	lda @operand
@@ -368,8 +387,9 @@ msave: .byte 0
 	sta __sim_pc+1
 	jmp @step_handled
 
-:	cmp #$4c
-	bne :+
+@chkjmp:
+	cmp #$4c
+	bne @chkjmpind
 @jmp:	; fully simulate JMP
 	; set the PC to the operand
 	lda __sim_operand
@@ -378,8 +398,10 @@ msave: .byte 0
 	sta __sim_pc+1
 	jmp @step_handled
 
-:	cmp #$6c	; JMP (ind)?
-	bne :+
+@chkjmpind:
+	cmp #$6c	; JMP (ind)?
+	bne @chkrts
+
 @jmpind:
 	; fully simulate JMP (ind):
 	; load the value at the operand, and set the PC to it
@@ -392,18 +414,19 @@ msave: .byte 0
 	sta __sim_pc+1
 	jmp @step_handled
 
-:	cmp #$60
-	bne :+
+@chkrts:
+	cmp #$60
+	bne @chkrti
 
 @rts:   ; fully simulate RTS:
 	; pull the return address, add 1 to it, and set it as the new
 	; PC. Then add 2 to the stack pointer
 	ldy __sim_reg_sp
-	lda prog00+$100+1,y
+	lda MAPPED_ZP+$100+1,y
 	clc
 	adc #$01
 	sta __sim_pc
-	lda prog00+$100+2,y
+	lda MAPPED_ZP+$100+2,y
 	adc #$00
 	sta __sim_pc+1
 	; SP += 2
@@ -411,17 +434,18 @@ msave: .byte 0
 	inc __sim_reg_sp
 	jmp @step_handled
 
-:	cmp #$40
-	bne :+
+@chkrti:
+	cmp #$40
+	bne @chkcli
 
 @rti:	; fully simulate RTI:
 	; "pull" status then return address
 	ldy __sim_reg_sp
-	lda prog00+$100+1,y
+	lda MAPPED_ZP+$100+1,y
 	sta __sim_reg_p
-	lda prog00+$100+2,y
+	lda MAPPED_ZP+$100+2,y
 	sta __sim_pc
-	lda prog00+$100+3,y
+	lda MAPPED_ZP+$100+3,y
 	sta __sim_pc+1
 	lda __sim_reg_sp
 	clc
@@ -429,34 +453,38 @@ msave: .byte 0
 	sta __sim_reg_sp
 	jmp @step_handled
 
-:	; check if opcode is CLI/SEI
+@chkcli:
+	; check if opcode is CLI/SEI
 	; we allow these to set the virtual .I flag, but this flag is always
 	; SET during simulation to keep processor control
 	cmp #$58		; CLI
-	bne :+
-	lda __sim_reg_p
+	bne @chksei
+@cli:	lda __sim_reg_p
 	and #$04^$ff
 	sta __sim_reg_p
 	incw __sim_pc
 	jmp @step_handled
 
-:	cmp #$78		; SEI
-	bne :+
-	lda __sim_reg_p
+@chksei:
+	cmp #$78		; SEI
+	bne @chkbrk
+@sei:	lda __sim_reg_p
 	ora #$04
 	sta __sim_reg_p
 	incw __sim_pc
 	jmp @step_handled
 
-:	cmp #$00		; BRK?
-	bne :+
+@chkbrk:
+	cmp #$00		; BRK?
+	bne @chkbra
 
-	; BRK is never executed/simulated, we use this to return to the debugger
+@brk:	; BRK is never executed/simulated, we use this to return to the debugger
 	inc __sim_at_brk
 	;sec
 	rts
 
-:	; check if opcode is a relative branch
+@chkbra:
+	; check if opcode is a relative branch
 	and #$1f
 	cmp #$10
 	beq @branch
@@ -702,10 +730,10 @@ msave: .byte 0
 	; THEN load the address at this target
 	ldx __sim_reg_x
 	ldy @target
-	lda prog00,y
+	lda MAPPED_ZP,y
 	sta @target
 	iny
-	lda prog00,x
+	lda MAPPED_ZP,x
 	sta @target+1
 	jmp @get_ind
 
@@ -716,11 +744,12 @@ msave: .byte 0
 	bne @check_rel_y
 	; get the value of the ZP location in the *user* ZP
 	ldy @target
-	lda prog00,y
+	lda MAPPED_ZP,y
 	sta @target
 	iny
-	lda prog00,y
+	lda MAPPED_ZP,y
 	sta @target+1
+
 	; add the .Y register value to the address from the ZP
 	lda __sim_reg_y
 	clc

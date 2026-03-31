@@ -420,6 +420,9 @@ main:	jsr key::getch
 @filename=zp::editortmp
 @fileid=zp::editortmp
 @savename=mem::filename
+	lda #$01
+	sta zp::gendebuginfo	; enable debug info
+
 	; save the filename
 	stxy @filename
 	ldy #$00
@@ -480,6 +483,9 @@ main:	jsr key::getch
 :	jsr irq::off
 	jsr cancel		; close errlog (if open)
 
+	lda #$01
+	sta zp::gendebuginfo	; enable debug info
+
 	ldxy #strings::assembling
 	jsr print_info
 
@@ -530,11 +536,8 @@ main:	jsr key::getch
 	; need to manually close the last one
 	ldxy #$01
 	stxy asm::linenum
-
-	; set debug file id if debug info generation is enabled
-	lda zp::gendebuginfo
-	beq @cont
 	stxy dbgi::srcline
+
 	; get active filename (r0 = name)
 	jsr src::current_filename
 	bcc :+
