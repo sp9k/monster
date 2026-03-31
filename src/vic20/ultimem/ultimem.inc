@@ -46,6 +46,8 @@ ULTIMEM_ULTIMEM_INC = 1
 .elseif .xmatch("SYMBOL_NAMES", bank)
 	lda #FINAL_BANK_SYMBOL_NAMES
 	jsr __ultimem_select_bank
+.else
+	.error "invalid bank"
 .endif
 .endmacro
 

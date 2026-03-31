@@ -272,7 +272,6 @@ macros:          .res $1400
 	bne @done		; if yes, exit
 
 @ok:	; move to the next line
-	SELECT_BANK "MACRO"
 	ldy #$00
 :	incw @macro
 	LOADB_Y @macro
