@@ -1897,7 +1897,7 @@ labelvars_size=*-labelvars
 	tax
 	iny
 	LOADB_Y list		; get MSB
-	ora @tmp		; is pointer value $0000?
+	ora @tmp		; is NEXT pointer value $0000?
 	beq @end		; if so, we're at the end of the list
 
 	LOADB_Y list
@@ -1998,8 +1998,12 @@ labelvars_size=*-labelvars
 	iny
 	LOADB_Y list
 	sta @sym+1
+	ora @sym
+	beq @notfound	; if LABEL address is $0000, label doesn't exist in list
 
-	; first: does the HASH match? if not, don't bother comparing the NAME
+	RETURN_ERR ERR_LABEL_UNDEFINED
+
+:	; first: does the HASH match? if not, don't bother comparing the NAME
 	ldy #LABEL_HASH
 	LOADB_Y @sym
 	cmp hash
@@ -2020,8 +2024,9 @@ labelvars_size=*-labelvars
 	jsr cmp_name	; do labels match?
 	beq @found	; if so, we're done
 
-@next:	jsr listnext	; move list to next node
+@next:	jsr listnext	; move list to next node (if there is one)
 	bcc @l0
+
 @notfound:
 	RETURN_ERR ERR_LABEL_UNDEFINED
 
