@@ -2994,10 +2994,8 @@ __asm_include:
 	pla
 	tax
 
-	lda __asm_segmentid
-	pha			; save section ID
 	lda #SEG_ABS
-	sta __asm_segmentid	; temporarily set section to ABS
+	sta zp::label_segmentid
 
 	lda zp::label_value+1
 	beq :+			; if MSB is 0, use ZP mode (0)
@@ -3005,8 +3003,6 @@ __asm_include:
 
 :	sta zp::label_mode
 	jsr lbl::add
-	pla			; restore section ID
-	sta __asm_segmentid
 
 	lda #ASM_DIRECTIVE
 	RETURN_OK
