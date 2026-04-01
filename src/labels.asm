@@ -1059,14 +1059,13 @@ labelvars_size=*-labelvars
 ;  - .A:  the size (address mode) of the label (0=ZP, 1=ABS)
 ;  - r2:  the ID of the label
 .proc address_by_id
-@lbl=r0
-@save=r2
-	stxy @save
+@tmp=zp::labels
 	jsr getaddr		; get address
+	sty @tmp
 	ldy #LABEL_FLAGS
 	LOADB_Y label		; and address mode
 	and #$01		; mask MODE bit
-	ldxy @save
+	ldy @tmp
 	rts
 .endproc
 

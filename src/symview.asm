@@ -32,12 +32,12 @@ SORT_ADDR  = 1	; sort by label address
 
 ;*******************************************************************************
 ; ZEROPAGE/MEMORY LOCATIONS
-lbl      = r5		; the ID of the current line's label
-addr     = r9		; the address corresponding to the current line's label
-filename = zp::tmp10	; the filename for the current line
-line     = zp::tmp12	; the line number for the current line
-sortby   = zp::tmp14	; the sort order (ALPHA, ADDR)
-mode     = zp::tmp15	; mode (0=ZP, 1=ABS)
+lbl      = zp::editortmp	; ID of the current line's label
+addr     = zp::editortmp+2	; address corresponding to current line's label
+filename = zp::tmp10		; the filename for the current line
+line     = zp::tmp12		; the line number for the current line
+sortby   = zp::tmp14		; the sort order (ALPHA, ADDR)
+mode     = zp::tmp15		; mode (0=ZP, 1=ABS)
 tmp      = zp::tmp16
 name     = $100
 
