@@ -15,6 +15,11 @@ __kernal_chrin = $ffa5
 __kernal_chrout = $ffd2
 
 ;*******************************************************************************
+; CIOUT
+.export __kernal_ciout
+__kernal_ciout = $eee4
+
+;*******************************************************************************
 ; READST
 .export __kernal_readst
 __kernal_readst = $ffb7

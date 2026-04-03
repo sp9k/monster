@@ -15,6 +15,7 @@
 .include "guis.inc"
 .include "key.inc"
 .include "keycodes.inc"
+.include "log.inc"
 .include "macros.inc"
 .include "screen.inc"
 .include "source.inc"
@@ -64,42 +65,9 @@ numerrs: .byte 0
 ;--------------------------------------
 ; callback to get the item in .A
 @getline:
-@err=ra
-	sta @err
-	tax
-
-	cpx numerrs
-	bcc :+
-	rts
-:	lda errcodes,x
-	jsr err::get
-
-	; push error string
-	tya
-	pha
-	txa
-	pha
-
-	; push line #
-	ldx @err
-	lda errlineslo,x
-	pha
-	lda errlineshi,x
-	pha
-
-	; get the filename and push it
-	lda errfileids,x
-	jsr dbgi::get_filename
-	bcc :+
-	ldxy #strings::question_marks
-:	tya
-	pha
-	txa
-	pha
-
-	ldxy #strings::edit_line_err
-	jsr text::render
-	rts
+	cmp numerrs
+	bcc render_error
+	rts			; out of range
 
 ;--------------------------------------
 ; callback to handle keypress
@@ -170,12 +138,19 @@ numerrs: .byte 0
 	ldx #@num_fatal_errors-1
 @isfatal:
 	cmp @fatal_errors,x
-	beq @done		; fatal -> exit
+	beq @done		; fatal -> exit (with .C set)
 	dex
 	bpl @isfatal
 
 	clc			; not fatal
-@done:	rts
+@done:	php
+
+	; log the error to the log file too
+	;jsr render_error
+	;jsr log::out
+
+	plp
+	rts
 
 .PUSHSEG
 .RODATA
@@ -183,6 +158,49 @@ numerrs: .byte 0
 	.byte ERR_NO_ORIGIN
 @num_fatal_errors=*-@fatal_errors
 .POPSEG
+.endproc
+
+;******************************************************************************
+; RENDER ERROR
+; Renders the given error for display
+; IN:
+;   - .A: index of the error to get
+; OUT:
+;   - .XY: address to the rendered error message (file + line #)
+.proc render_error
+@err=ra
+	sta @err
+	tax
+
+	lda errcodes,x
+	jsr err::get
+
+	; push error string
+	tya
+	pha
+	txa
+	pha
+
+	; push line #
+	ldx @err
+	lda errlineslo,x
+	pha
+	lda errlineshi,x
+	pha
+
+	; get the filename and push it
+	lda errfileids,x
+	jsr dbgi::get_filename
+	bcc :+
+	ldxy #strings::question_marks
+:	tya
+	pha
+	txa
+	pha
+
+	ldxy #strings::edit_line_err
+	jsr text::render
+	rts
 .endproc
 
 ;******************************************************************************
@@ -250,7 +268,7 @@ numerrs: .byte 0
 
 	inc @matchfile		; try again but don't match file
 	ldx #$00
-	beq @l0
+	beq @l0			; branch always
 
 @done:	ldxy @min
 	lda @found		; clear .Z if found

@@ -67,6 +67,7 @@
 .include "labels.inc"
 .include "line.inc"
 .include "linker.inc"
+.include "log.inc"
 .include "macro.inc"
 .include "macros.inc"
 .include "memory.inc"
@@ -613,7 +614,6 @@ __asm_tokenize_pass1 = __asm_tokenize
 .proc assemble_with_ctx
 	jsr line::process_ws
 	beq noasm
-
 ; check if the line is a full line comment
 @chk_comment:
 	;lda (zp::line),y
@@ -2062,6 +2062,8 @@ __asm_include:
 @readfile:
 	stxy @fname
 
+	jsr log::out		; log the name of file being assembled
+
 	lda zp::verify
 	beq @inc
 	lda #ASM_DIRECTIVE	; format type
@@ -2195,7 +2197,7 @@ __asm_include:
 	bcs @done
 @set:	stxy origin
 
-	cpy #$00
+	tya			; .Y == 0?
 	beq :+
 	ldy #$01		; absolute
 :	sty __asm_segmode	; set segment mode

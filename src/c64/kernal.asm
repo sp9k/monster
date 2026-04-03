@@ -63,6 +63,14 @@
 .endproc
 
 ;*******************************************************************************
+; CIOUT
+.proc __kernal_ciout
+.proc __kernal_ciout
+	KERNAL_JUMP $eddd
+.endproc
+
+
+;*******************************************************************************
 ; READST
 .export __kernal_readst
 .proc __kernal_readst

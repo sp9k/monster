@@ -35,6 +35,7 @@
 .include "labels.inc"
 .include "linebuffer.inc"
 .include "linker.inc"
+.include "log.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "memview.inc"
@@ -348,6 +349,8 @@ main:	jsr key::getch
 	jsr dbgi::init
 	jsr obj::init
 	jsr errlog::clear
+
+	jsr init_log
 	jsr asm::reset
 
 	lda #$01
@@ -368,6 +371,7 @@ main:	jsr key::getch
 	bne @done
 
 	; do the second assembly pass
+	jsr log_pass2
 	lda #$02
 	jsr asm::startpass
 	ldxy @filename
@@ -472,6 +476,7 @@ main:	jsr key::getch
 ; OUT:
 ;   - .C: set if assembly failed
 .proc command_asmdbg
+	jsr init_log		; create a (new) log file
 	jsr prompt_saveall
 
 	; ensure that the buffer we are assembling has a name
@@ -497,6 +502,10 @@ main:	jsr key::getch
 	jsr text::savebuff
 	jsr src::pushp
 	jsr src::rewind
+
+	; log file we are assembling
+	jsr src::current_filename
+	jsr log::out
 
 ;--------------------------------------
 ; Pass 1
@@ -531,7 +540,13 @@ main:	jsr key::getch
 ; Pass 2
 ; now we have defined labels and enough debug info to generate both the
 ; program binary and the full debug info (if enabled)
-@pass2: ; set the initial file for debugging
+@pass2: jsr log_pass2
+
+	; log file we are assembling (again)
+	jsr src::current_filename
+	jsr log::out
+
+	; set the initial file for debugging
 	; sections are closed by the .SEG directive
 	; need to manually close the last one
 	ldxy #$01
@@ -584,6 +599,8 @@ main:	jsr key::getch
 ;   - .C: set on error
 .proc display_result
 	jsr irq::on
+
+	jsr log::close		; close the log file
 
 	jsr clrerror
 	lda #$01
@@ -705,9 +722,8 @@ main:	jsr key::getch
 @done:	pla			; restore original buffer
 	jsr src::setbuff	; restore buffer
 	jsr src::popgoto	; restore source pos
-@retok:
-	clc			; ok
-	rts
+
+@retok: RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -4838,7 +4854,7 @@ goto_buffer:
 ; Navigates the cursor to the next error from the error log
 .proc next_err
 	jsr errlog::next
-	beq :-			; -> RTS
+	beq :-			; -> RTS (no next error)
 	jmp gotoline
 .endproc
 
@@ -5411,6 +5427,27 @@ __edit_gotoline:
 .endproc
 
 .RODATA
+
+;******************************************************************************
+; INIT LOG
+; Opens a new log file and prints "pass 1"
+; filename
+; IN:
+;   - .XY: the filename to print
+.proc init_log
+@name=r0
+	jsr log::new
+	ldxy #strings::pass1
+	jmp log::out
+.endproc
+
+;*******************************************************************************
+; LOG PASS 2
+; Prints "PASS 2" to the log file
+.proc log_pass2
+	ldxy #strings::pass2
+	jmp log::out
+.endproc
 
 ;*******************************************************************************
 ; TOGGLE AUTOFORMAT

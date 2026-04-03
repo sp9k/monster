@@ -14,6 +14,7 @@
 .include "expr.inc"
 .include "file.inc"
 .include "irq.inc"
+.include "kernal.inc"
 .include "key.inc"
 .include "keycodes.inc"
 .include "layout.inc"
@@ -233,7 +234,7 @@ screen: .res LINESIZE*HEIGHT
 
 	; write a newline
 	lda #$0d
-	jmp $ffd2
+	jsr krn::chrout
 
 @screen:
 	lda line

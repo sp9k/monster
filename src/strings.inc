@@ -31,6 +31,8 @@
 .import __str_null
 .import __str_memory
 .import __str_memview_title
+.import __str_pass1
+.import __str_pass2
 .import __str_question_marks
 .import __str_run
 .import __str_saveall
@@ -79,6 +81,8 @@
 	nofile                  = __str_no_file
 	noname                  = __str_noname
 	null                    = __str_null
+	pass1                   = __str_pass1
+	pass2                   = __str_pass2
 	saving                  = __str_saving
 	saveall			= __str_saveall
 	symview_title           = __str_symview_title

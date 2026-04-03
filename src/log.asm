@@ -1,11 +1,14 @@
 ;******************************************************************************
-; ERRLOG.ASM
+; LOG.ASM
 ; This file contains the code for a general purpose logging.
 ; Log files are stored to disk
 ;******************************************************************************
 
 .include "file.inc"
+.include "kernal.inc"
 .include "macros.inc"
+.include "memory.inc"
+.include "text.inc"
 .include "zeropage.inc"
 
 ;******************************************************************************
@@ -22,6 +25,7 @@ file_id: .byte 0
 .proc __log_new
 	ldxy #@filename
 	jsr file::open_w
+	sta file_id
 	rts
 
 .PUSHSEG
@@ -33,10 +37,26 @@ file_id: .byte 0
 ;******************************************************************************
 ; OUT
 ; Writes the 0-terminated string to the open log file
+; IN:
+;   - .XY: the string to write
 .export __log_out
 .proc __log_out
-	; TODO:
-	rts
+@str=zp::util
+	stxy @str
+	ldx file_id
+	jsr krn::chkout
+
+	ldy #$00
+@l0:	lda (@str),y
+	beq @done
+	jsr krn::ciout
+	iny
+	cpy #40
+	bcc @l0
+
+@done:	; emit a newline
+	lda #$0d
+	jmp krn::ciout
 .endproc
 
 ;******************************************************************************

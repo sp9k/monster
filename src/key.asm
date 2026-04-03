@@ -24,6 +24,9 @@ CURSOR_LR_MASK      = 2
 	lda $c6		; get keyboard buffer length
 	beq @ret	; if buffer empty, return
 
+.ifdef vic20
+	jsr $e5cf
+.else
 	ldy $0277
 	ldx #$00
 :	lda $0277+1,x
@@ -33,6 +36,7 @@ CURSOR_LR_MASK      = 2
 	bne :-
 	dec $c6		; dec keyboard buffer index
 	tya		; get key
+.endif
 
 	ldx #@num_translate
 @transloop:

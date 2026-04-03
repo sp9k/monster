@@ -19,6 +19,7 @@
 .include "../kernal.inc"
 .include "../key.inc"
 .include "../labels.inc"
+.include "../log.inc"
 .include "../macros.inc"
 .include "../memory.inc"
 .include "../prefs.inc"
@@ -211,14 +212,14 @@ cart_start:
 .export enter
 .proc enter
 	lda #$00
-	sta zp::banksp
+	sta zp::banksp		; init bank stack pointer
+	sta $c6			; clear keyboard buffer
+	sta dbg::numbreakpoints	; clear breakpoints
+
 	lda #$4c
 	sta zp::bankjmpaddr	; write the JMP instruction
 
 	sei
-	lda #$00
-	sta $c6			; clear keyboard buffer
-	sta dbg::numbreakpoints	; clear breakpoints
 
 .ifdef CART
 @detect_reset:
@@ -230,8 +231,13 @@ cart_start:
 	bpl :-
 
 @recover:
+	; close log file (if there is one open)
+	jsr log::close
+
+	; do some basic init to allow displaying recovery message
 	jsr scr::init
         jsr irq::on
+
 	; signature intact, ask user if they wish to recover
 	ldxy #recover_reset
 	lda #10

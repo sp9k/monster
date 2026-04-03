@@ -378,26 +378,26 @@ labelvars_size=*-labelvars
 ; Removes all labels effectively resetting the label state
 .proc clr
 @map=r0
-	lda #$00
-	sta numlabels
-	sta numlabels+1
-	sta scopesp
-
-	ldx #labelvars_size
-:	sta labelvars-1,x
-	dex
-	bne :-
-
-	; clear the hash map
+	; clear the hash map (linked lists of LABEL nodes)
 	ldxy #label_buckets
 	stxy @map
-	ldx #>(NUM_BUCKETS*2)
+	ldx #>(NUM_BUCKETS*2)	; nubmer of pages to clear
+
 	ldy #$00
+	sty numlabels
+	sty numlabels+1
+	sty scopesp
 	tya
+
 :	STOREB_Y @map
 	dey
 	bne :-
 	inc @map+1
+	dex
+	bne :-
+
+	ldx #labelvars_size
+:	sta labelvars-1,x
 	dex
 	bne :-
 
@@ -1933,10 +1933,10 @@ labelvars_size=*-labelvars
 	; write the data for this new node (label pointer)
 	ldy #LIST_LABEL
 	lda label
-	STOREB_Y listtop
+	STOREB_Y list
 	iny
 	lda label+1
-	STOREB_Y listtop
+	STOREB_Y list
 
 	; set NEXT pointer to 0 (new end of list)
 	ldy #LIST_NEXT
@@ -2001,15 +2001,13 @@ labelvars_size=*-labelvars
 	ora @sym
 	beq @notfound	; if LABEL address is $0000, label doesn't exist in list
 
-	RETURN_ERR ERR_LABEL_UNDEFINED
-
-:	; first: does the HASH match? if not, don't bother comparing the NAME
+	; first: does the HASH match? if not, don't bother comparing the NAME
 	ldy #LABEL_HASH
-	LOADB_Y @sym
+	LOADB_Y @sym	; LSB of symbol's hash
 	cmp hash
 	bne @next
 	iny
-	LOADB_Y @sym
+	LOADB_Y @sym	; MSB of symbol's hash
 	cmp hash+1
 	bne @next
 

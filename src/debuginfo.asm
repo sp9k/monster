@@ -286,6 +286,7 @@ blockaddresseshi: .res MAX_FILES
 	lda freeptr
 	sta progstart
 	sta line
+	;clc
 	adc #$02
 	sta progstop
 
