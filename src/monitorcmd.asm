@@ -44,6 +44,19 @@ __mon_default_start_set: .byte 0
 .segment "CONSOLE"
 
 ;*******************************************************************************
+; RENDER STR
+; Calls the appropriate text render function. On the Vic-20 this is
+; "render_ind" because the render function crosses banks (meaning extra data
+; is pushed to the stack)
+.macro RENDER_STR
+.ifdef vic20
+	CALLMAIN text::render_ind
+.else
+	CALLMAIN text::render
+.endif
+.endmacro
+
+;*******************************************************************************
 ; DBGCMD RUN
 ; Handles the given debug command input. The given string is parsed and handled.
 ; This can be used to add/remove watches, breakpoints, etc.
@@ -705,7 +718,10 @@ __mon_default_start_set: .byte 0
 
 	ldxy #strings::debug_registers
 	jsr mon::puts
+
 	CALLMAIN ui::regs_contents
+
+	RENDER_STR
 	jsr mon::puts
 
 .ifdef hard8x8
@@ -749,8 +765,8 @@ __mon_default_start_set: .byte 0
 
 	; if invalid, just draw a literal byte value
 	jsr @drawbyte
-
 	jmp @next
+
 @ok:	jsr @drawline
 @next:	ldxy @addr
 	stxy default_start		; set current address is new default
@@ -769,6 +785,7 @@ __mon_default_start_set: .byte 0
 	lda mon::outfile
 	beq @db_with_addr
 	ldxy #@byte_msg_no_addr
+	RENDER_STR
 	jmp mon::puts
 
 @db_with_addr:
@@ -780,6 +797,7 @@ __mon_default_start_set: .byte 0
 
 	incw @addr
 	ldxy #@byte_msg
+	RENDER_STR
 	jmp mon::puts
 
 @drawline:
@@ -798,6 +816,7 @@ __mon_default_start_set: .byte 0
 	inc @addr+1
 
 :	ldxy #@buff
+	RENDER_STR
 	jmp mon::puts	; if address rendering is off, just print
 
 @with_addr:
@@ -822,6 +841,7 @@ __mon_default_start_set: .byte 0
 	inc @addr+1
 
 :	ldxy #@disasm_msg
+	RENDER_STR
 	jmp mon::puts
 .PUSHSEG
 .RODATA
@@ -1469,8 +1489,11 @@ __mon_default_start_set: .byte 0
 	bne :+
 	ldxy #@not_debugging_msg
 	jsr mon::puts
-	clc
-:	rts
+	clc		; flag NOT debugging
+	rts
+
+:	sec		; flag that we ARE debugging
+	rts
 .PUSHSEG
 .RODATA
 @not_debugging_msg: .byte "not debugging",0

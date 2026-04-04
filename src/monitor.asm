@@ -170,16 +170,7 @@ screen: .res LINESIZE*HEIGHT
 
 	dec line
 
-@print:	ldxy @msg
-
-	; render the message
-.ifdef vic20
-	CALLMAIN text::render_ind
-.else
-	CALLMAIN text::render
-.endif
-	stxy @msg
-
+@print:
 	lda #$00
 	sta @scr0+1
 
