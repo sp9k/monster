@@ -36,7 +36,6 @@
 
 NMI_HANDLER_ADDR = mem::spare+120
 
-
 ;*******************************************************************************
 HEIGHT = SCREEN_HEIGHT
 
@@ -73,6 +72,7 @@ __monitor_int: .byte 0	; if !0, behaved commands will stop running gracefully
 ; SCREEN
 ; This buffer stores the complete contents of the monitor.  It is used to
 ; restore the monitor to its last state when it is re-entered
+.export screen
 screen: .res LINESIZE*HEIGHT
 
 .CODE
@@ -170,8 +170,7 @@ screen: .res LINESIZE*HEIGHT
 
 	dec line
 
-@print:
-	lda #$00
+@print: lda #$00
 	sta @scr0+1
 
 	; copy the rendered text to the current line of the buffer
@@ -259,8 +258,10 @@ screen: .res LINESIZE*HEIGHT
 	stxy @scr
 	ldx #HEIGHT
 	ldy #$00
-@l0:	tya
+@l0:	tya		; .A=0
 	sta (@scr),y
+
+	; move to next line
 	lda @scr
 	clc
 	adc #LINESIZE
@@ -269,6 +270,7 @@ screen: .res LINESIZE*HEIGHT
 	inc @scr+1
 :	dex
 	bne @l0
+
 	stx zp::cury
 	stx line	; go back to first line
 	inx
@@ -299,15 +301,21 @@ screen: .res LINESIZE*HEIGHT
 	ldxy #screen
 	stxy @scr
 
-@l0:	ldy #LINESIZE-1
+@l0:	ldy #$00
 :	lda (@scr),y
 	sta @linebuff,y
-	dey
-	bpl :-
+	beq @linedone
+	iny
+	cpy #40
+	bne :-
 
+@linedone:
+	; redraw the line
 	lda @line
 	ldxy #@linebuff
 	CALLMAIN text::print
+
+	; move to next line
 	lda @scr
 	clc
 	adc #LINESIZE

@@ -591,6 +591,7 @@ __mon_default_start_set: .byte 0
 	pha
 
 	ldxy #@compare_msg
+	RENDER_STR
 	jmp mon::puts
 
 .PUSHSEG
@@ -717,6 +718,7 @@ __mon_default_start_set: .byte 0
 	bcc @done	; registers aren't meaningful to user if not debugging
 
 	ldxy #strings::debug_registers
+	RENDER_STR
 	jsr mon::puts
 
 	CALLMAIN ui::regs_contents
@@ -726,6 +728,7 @@ __mon_default_start_set: .byte 0
 
 .ifdef hard8x8
 	ldxy #strings::debug_registers2
+	RENDER_STR
 	jsr mon::puts
 
 	CALLMAIN ui::regs_contents
@@ -1488,6 +1491,7 @@ __mon_default_start_set: .byte 0
 	lda edit::debugging
 	bne :+
 	ldxy #@not_debugging_msg
+	RENDER_STR
 	jsr mon::puts
 	clc		; flag NOT debugging
 	rts
