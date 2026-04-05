@@ -673,15 +673,10 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bcs @macro	; not opcode -> check macro
 
 	; we found an opcode, store it and continue to operand, etc.
+	stx opcode	; save the opcode
 	lda #ASM_OPCODE
 	sta resulttype
-	stx opcode	; save the opcode
-
-	txa
-	ldy #$00
-	jsr writeb	; store the opcode
-	bcs @ret0	; return err
-	jmp @getopws	; continue if no error
+	bne @getopws	; branch always
 
 ; check if the line contains a macro
 @macro:	ldxy zp::line
@@ -896,7 +891,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	cmp #ASM_OPCODE
 	beq @chkaddrmode
 	; if not an instruction, we're done (nothing to write)
-	clc
+	clc		; ok
 @ret:	rts
 
 @chkaddrmode:
@@ -919,7 +914,6 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne @err
 	lda #$6c
 	sta opcode		; fix the opcode variable
-	jsr writeb
 	bcc @noerr
 	rts			; return err
 
@@ -931,12 +925,11 @@ __asm_tokenize_pass1 = __asm_tokenize
 :	cpx #ABS
 	bne @err 	; only ABS supported for JMP XXXX
 	lda #$4c
-	jsr writeb
-	bcc @noerr
-	rts		; return err
+	sta opcode
+	bne @noerr	; branch always
 
 @getbbb:
-; get bbb bits based upon the address mode and cc
+	; get bbb bits based upon the address mode and cc
 	lda cc
 	cmp #$03
 	beq :+
@@ -1004,12 +997,24 @@ __asm_tokenize_pass1 = __asm_tokenize
 	; write the byte directly (no relocation)
 	lda #$01
 	sta operandsz	; force operand size to 1 for branches
+	tay		; .Y = 1 (offset to operand)
 	txa		; .A = relative offset (operand)
-	ldy #$01	; offset to operand
 	jsr writeb	; write the offset (no relocation)
-	jmp @store_done
+
+	; write the opcode for the branch
+	lda opcode
+	dey		; .Y=0
+	jsr writeb
+	bcc @store_done
+	rts
 
 @noerr:
+; write the opcode
+	lda opcode
+	ldy #$00
+	jsr writeb
+	bcs @opdone
+
 ; now store the operand byte(s)
 @store_value:
 	lda operandsz
@@ -1060,9 +1065,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 ;------------------
 ; check that the BBB and CC combination we have is valid
 @validate_cc:
-@optmp=r0
-	ldy cc
-	bne :+
+	ldy cc		; are CC bits 0?
+	bne :+		; if so, skip
 	lda bbb00,x
 :	cpy #$01
 	bne :+
@@ -1071,15 +1075,16 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne :+
 	lda bbb10,x
 
-:	cmp #$ff
-	beq @err
+:	cmp #$ff	; check INVALID value ($ff)
+	beq @err	; if invalid, return error
+
+	; move bbb bits to their proper location (<< 2)
 	asl
 	asl
+
+	; construct opcode from (aa << 6) (bbb<<2) | (cc)
 	ora cc
-	ldy #$00
-	sta @optmp
-	jsr readb
-	ora @optmp
+	ora opcode
 
 	; finally, check for invalid instructions ("gaps" in the ISA)
 	ldx #num_illegals-1
@@ -1089,10 +1094,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bpl :-
 
 	; if instruction is valid, write out its opcode
-	sta opcode	; write the fixed opcode
-	jsr writeb
-	bcc @noerr
-	rts		; return err
+	sta opcode
+	jmp @noerr
 .endproc
 
 ;*******************************************************************************
@@ -3188,26 +3191,6 @@ __asm_include:
 	lda #$01		; 1=ABS
 	dey			; restore .Y
 	jmp write_reloc
-.endproc
-
-;*******************************************************************************
-; READB
-; Reads a byte from (zp::asmresult),y
-; IN:
-;  - .Y: the offset from (zp::asmresult) to read from vmem
-; OUT:
-;  - .A: contains the byte from (zp::asmresult),y
-.proc readb
-@savex=re
-@savey=rf
-	stx @savex
-	sty @savey
-	tya			; .A = offset to load
-	ldxy zp::asmresult
-	jsr vmem::load_off	; load the byte from VMEM
-	ldy @savey
-	ldx @savex
-	rts
 .endproc
 
 ;*******************************************************************************
