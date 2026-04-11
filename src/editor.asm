@@ -171,6 +171,8 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	; reset assembly state
 	jsr asm::reset
 
+	jsr file::init_drive
+	jsr file::closeall
 	jsr refresh
 
 	; fall through to __edit_run
@@ -476,7 +478,6 @@ main:	jsr key::getch
 ; OUT:
 ;   - .C: set if assembly failed
 .proc command_asmdbg
-	jsr init_log		; create a (new) log file
 	jsr prompt_saveall
 
 	; ensure that the buffer we are assembling has a name
@@ -487,6 +488,7 @@ main:	jsr key::getch
 
 :	jsr irq::off
 	jsr cancel		; close errlog (if open)
+	jsr init_log		; create a (new) log file
 
 	lda #$01
 	sta zp::gendebuginfo	; enable debug info
@@ -574,7 +576,7 @@ main:	jsr key::getch
 	jsr asm::tokenize_pass2
 	bcc @next		; no error, continue
 	jsr errlog::log		; if error, add it to errors log
-	bcc @next		; continue if we haven't reached error threshold
+	bcs @done		; if we've hit error threshold, exit
 
 @next:	jsr src::end		; check if we're at the end of the source
 	bne @pass2loop		; repeat if not
@@ -600,7 +602,7 @@ main:	jsr key::getch
 .proc display_result
 	jsr irq::on
 
-	jsr log::close		; close the log file
+	jsr log::close
 
 	jsr clrerror
 	lda #$01
@@ -3369,7 +3371,6 @@ goto_buffer:
 	php
 
 	jsr irq::on
-	jsr file::closeall	; close all files
 	plp
 	bcs @err
 	ldxy @file
@@ -3391,7 +3392,6 @@ goto_buffer:
 
 @err:	jsr irq::on
 	jsr report_drive_error
-	jsr file::closeall	; close all files
 	sec
 	rts
 .endproc
@@ -5437,7 +5437,9 @@ __edit_gotoline:
 .proc init_log
 @name=r0
 	jsr log::new
-	ldxy #strings::pass1
+	bcc :+
+@err:	rts
+:	ldxy #strings::pass1
 	jmp log::out
 .endproc
 
@@ -5463,9 +5465,7 @@ __edit_gotoline:
 ; DIRVIEW
 ; Enters the directory viewer
 .proc dirview
-	jsr krn::clall
-	jsr dir::view
-	jmp krn::clall
+	jmp dir::view
 .endproc
 
 ;*******************************************************************************

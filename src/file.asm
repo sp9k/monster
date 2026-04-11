@@ -427,21 +427,27 @@ ENDOSPROC
 ; IN:
 ;  - .XY: the filename to check if exists
 ; OUT:
+;  - .C: set on error
 ;  - .Z: set if the file exists; clear if it does
 .export __file_exists
 OSPROC __file_exists
 @file=r0
 	jsr __file_open_r
-	ldx #$01		; failed to open file
 	bcs @done
 	sta @file
 	tax
 	jsr krn::chkin		; CHKIN (file in .X now used as input)
-	jsr __file_readb
+	jsr __file_readb	; read one byte
 	jsr krn::readst		; call READST (read status byte)
-	pha
+	cmp #20
+	bcs :+
+	lda #$00		; ignore errors 0-19
+:	pha
+
+	; close the file we were testing
 	lda @file
 	jsr __file_close
+
 	pla
 	bne @done
 	RETURN_OK
@@ -476,6 +482,8 @@ ENDOSPROC
 ;*******************************************************************************
 ; INIT DRIVE
 ; Initializes the drive
+.export __file_init_drive
+__file_init_drive:
 OSPROC init_drive
 	ldxy #@i
 	lda #1
@@ -532,8 +540,10 @@ ENDOSPROC
 .export __file_geterr
 .proc __file_geterr
 	jsr io::readerr
-	cpx #$01
-	bcc @ret		; err < 1 -> no error
+	txa
+	cpx #20
+	bcc @ret		; err < 20 -> no error
+
 	cpx #73			; 73 means "power up OK" -> not an error
 	bne :+
 	RETURN_OK

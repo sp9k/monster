@@ -231,9 +231,6 @@ cart_start:
 	bpl :-
 
 @recover:
-	; close log file (if there is one open)
-	jsr log::close
-
 	; do some basic init to allow displaying recovery message
 	jsr scr::init
         jsr irq::on

@@ -86,7 +86,9 @@ id      = zp::labels+8	; ID field for active label
 flags   = zp::labels+$a	; FLAGS field for active symbol
 list    = zp::labels+$b	; address to linked list of nodes for currenet bucket
 listtop = zp::labels+$d	; address of free memory (next available list
-temp    = zp::labels+$f	; temporary scratchpad
+bucket  = zp::labels+$f
+
+temp    = zp::labels+$11	; temporary scratchpad
 
 ;*******************************************************************************
 ; CONSTANTS
@@ -184,12 +186,12 @@ labelnames: .res MAX_LABELS*MAX_LABEL_NAME_LEN
 label_buckets: .res NUM_BUCKETS*2
 
 ;*******************************************************************************
-; LABEL LISTS
+; LABEL NODES
 ; Nodes for the linked lists of each bucket.
 ; Each node contains a pointer to a LABEL (see labels) and a NEXT pointer to
 ; the next node in the list
-.export label_lists
-label_lists: .res MAX_LABELS*SIZEOF_LABEL_LIST_NODE
+.export label_nodes
+label_nodes: .res MAX_LABELS*SIZEOF_LABEL_LIST_NODE
 
 ;*******************************************************************************
 ; LABELS
@@ -381,7 +383,6 @@ labelvars_size=*-labelvars
 	; clear the hash map (linked lists of LABEL nodes)
 	ldxy #label_buckets
 	stxy @map
-	ldx #>(NUM_BUCKETS*2)	; nubmer of pages to clear
 
 	ldy #$00
 	sty numlabels
@@ -389,6 +390,7 @@ labelvars_size=*-labelvars
 	sty scopesp
 	tya
 
+	ldx #>(NUM_BUCKETS*2)	; number of pages to clear
 :	STOREB_Y @map
 	dey
 	bne :-
@@ -401,8 +403,8 @@ labelvars_size=*-labelvars
 	dex
 	bne :-
 
-	; init list free pointer to base of the list data
-	ldxy #label_lists
+	; init list free pointer to base of the node data array
+	ldxy #label_nodes
 	stxy listtop
 
 	rts
@@ -677,8 +679,8 @@ labelvars_size=*-labelvars
 	STOREB_Y label		; store LSB of label's id
 	iny
 	lda numlabels+1
-	STOREB_Y label		; store MSB of label's id
 	sta @id+1
+	STOREB_Y label		; store MSB of label's id
 
 	; 3. set NAME for the label (string) and NAME field (pointer to it)
 	ldxy @name
@@ -1441,11 +1443,12 @@ labelvars_size=*-labelvars
 	cpy #MAX_LABEL_LEN
 	bcc @l0
 
+	; terminate the (max length) buffer
+	lda #$00
+	sta (@dst),y
+
 	; switch back to main SYMBOLS bank
 	SELECT_BANK "SYMBOLS"
-
-	lda #$00
-	STOREB_Y @dst
 
 @done:	rts
 .endproc
@@ -1519,7 +1522,7 @@ labelvars_size=*-labelvars
 	ldx @xsave
 	plp
 @done:	rts
-@ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', ',', ':',$00
+@ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', ',', ':',0
 @numops = *-@ops
 .endproc
 
@@ -1761,9 +1764,8 @@ labelvars_size=*-labelvars
 ;   - label, flags, hash, addr, id, name: values for the requested label
 .proc loadlabel
 @tmp=temp
-	sty label+1
-
 	; get address of the label data to (*SIZEOF_LABEL)
+	sty label+1
 	stx @tmp
 	txa
 	asl			; *2
@@ -1776,6 +1778,7 @@ labelvars_size=*-labelvars
 	bcc :+
 	inc label+1
 	clc
+
 :	; add offset to labels data
 	adc #<labels
 	sta label
@@ -1864,17 +1867,27 @@ labelvars_size=*-labelvars
 ; OUT:
 ;  - list: the address of the list
 .proc getlist
-@tmp=r0
 	; get offset of bucket for the given hash
-	sty @tmp
-	txa			; get LSB of hash
-	asl			; *2
-	rol @tmp
+	tya
+	and #$07		; only use low 3 bits of MSB
+	sta bucket+1
+
+	; *2 to get word alignment
+	txa
+	asl
+	rol bucket+1
 	adc #<label_buckets
-	sta list
-	lda @tmp
-	and #$07		; only use 3 bits of MSB (based on NUM_BUCKETS)
+	sta bucket
+	lda bucket+1
 	adc #>label_buckets
+	sta bucket+1
+
+	; initialize list pointer to first element
+	ldy #$00
+	LOADB_Y bucket
+	sta list
+	iny
+	LOADB_Y bucket
 	sta list+1
 	rts
 .endproc
@@ -1900,6 +1913,7 @@ labelvars_size=*-labelvars
 	ora @tmp		; is NEXT pointer value $0000?
 	beq @end		; if so, we're at the end of the list
 
+	; update list pointer to next node
 	LOADB_Y list
 	stx list
 	sta list+1
@@ -1927,31 +1941,45 @@ labelvars_size=*-labelvars
 ;   - label: pointer to symbol data to append as node to the list
 .proc listappend
 @nodes = r2
-@cont:	; go to end of the list
+	; check if the list already exists
+	iszero list
+	bne @append_list
+
+	; empty list, initialize it by creating the HEAD node
+	ldy #$00
+	lda listtop
+	STOREB_Y bucket
+	iny
+	lda listtop+1
+	STOREB_Y bucket
+	jmp @set_node	; continue to write the LABEL and NEXT pointers for node
+
+@append_list:
+	; go to end of existing list and point TAIL to node we WILL add
 	jsr listend
 
+	ldy #LIST_NEXT
+	lda listtop
+	STOREB_Y list
+	iny
+	lda listtop+1
+	STOREB_Y list
+
+@set_node:
 	; write the data for this new node (label pointer)
 	ldy #LIST_LABEL
 	lda label
-	STOREB_Y list
+	STOREB_Y listtop
 	iny
 	lda label+1
-	STOREB_Y list
+	STOREB_Y listtop
 
-	; set NEXT pointer to 0 (new end of list)
+	; set NEXT pointer for new node to 0 (TAIL)
 	ldy #LIST_NEXT
 	lda #$00
 	STOREB_Y listtop
 	iny
 	STOREB_Y listtop
-
-	; point the previous TAIL to this new node
-	ldy #LIST_NEXT
-	lda listtop
-	STOREB_Y list
-	lda listtop+1
-	iny
-	STOREB_Y list
 
 	; move listtop to next available node
 	lda listtop
@@ -1979,16 +2007,20 @@ labelvars_size=*-labelvars
 @len   = r2
 @name  = zp::str0
 @other = zp::str2
+	; check if the list exists
+	iszero list
+	beq @notfound
+
 	stxy @name
 
 	; get the length to compare
 	ldy #$ff		; -1
 :	iny
+	bmi @notfound
 	lda (@name),y
 	jsr isseparator
 	beq @cont
 	bne :-
-	beq @notfound
 @cont:	sty @len
 
 @l0:	; get address of the label data for this node
@@ -2028,7 +2060,8 @@ labelvars_size=*-labelvars
 @notfound:
 	RETURN_ERR ERR_LABEL_UNDEFINED
 
-@found:	ldy #LIST_LABEL
+@found:	; set the label pointer to the matching label's data
+	ldy #LIST_LABEL
 	LOADB_Y list
 	sta label
 	iny

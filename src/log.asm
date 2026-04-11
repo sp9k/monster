@@ -21,13 +21,19 @@ file_id: .byte 0
 ; NEW
 ; Begins a new log by opening a log file (log) and, if necessary, deleting the
 ; existing one
+; OUT:
+;   - .C: set on error
+;   - .A: error code (on error)
 .export __log_new
 .proc __log_new
+	; delete the existing log file if there is one
+	ldxy #@filename
+	jsr file::scratch
+
 	ldxy #@filename
 	jsr file::open_w
 	sta file_id
 	rts
-
 .PUSHSEG
 .RODATA
 @filename: .byte "log",0

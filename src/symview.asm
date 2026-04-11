@@ -79,6 +79,7 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 
 	lda sortby
 	beq @sortalpha
+
 @sortaddr:
 	jsr lbl::idbyaddrindex	; lookup via sorted addresses
 
