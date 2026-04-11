@@ -39,7 +39,7 @@ DATA_ADDR = 3	; offset of line address in debug info
 ; Opcodes for extended instructions
 OP_SET_ADDR     = $01
 ; FREE          = $02
-; FREE
+; FREE          = $03
 OP_ADVANCE_LINE = $04
 OP_ADVANCE_ADDR = $05
 OP_SET_PC       = $06

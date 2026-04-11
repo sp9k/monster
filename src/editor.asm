@@ -603,6 +603,7 @@ main:	jsr key::getch
 	jsr irq::on
 
 	jsr log::close
+	jsr krn::clrchn
 
 	jsr clrerror
 	lda #$01

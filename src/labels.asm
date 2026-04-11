@@ -604,7 +604,6 @@ labelvars_size=*-labelvars
 ;  - .C:  set on error or clear if the label was successfully added
 .proc addlabel
 @addr   = temp
-@id     = r4
 @name   = r6
 @exists = r8
 @allow_overwrite=r9
@@ -620,7 +619,7 @@ labelvars_size=*-labelvars
 	sty @exists
 	ldxy @name
 	jsr find
-	stxy @id
+	stxy id
 	bcs @insert		; label doesn't exist -> continue to add it
 
 	; label exists, if we are in SET mode overwrite, else return with error
@@ -675,17 +674,17 @@ labelvars_size=*-labelvars
 	; 2. write the ID for the label (current number of labels)
 	ldy #LABEL_ID
 	lda numlabels
-	sta @id
+	sta id
 	STOREB_Y label		; store LSB of label's id
 	iny
 	lda numlabels+1
-	sta @id+1
+	sta id+1
 	STOREB_Y label		; store MSB of label's id
 
 	; 3. set NAME for the label (string) and NAME field (pointer to it)
 	ldxy @name
 	stxy r0			; r0  = label name to set
-	ldxy @id		; .XY = ID of label to (re)name
+	ldxy id		; .XY = ID of label to (re)name
 	jsr set_name		; set name pointer + string
 
 	; 4. write all ADDR related fields (FLAGS, ADDR)
