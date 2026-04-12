@@ -2,7 +2,7 @@
 ; LABELS.ASM
 ; This file defines procedures for creating and retrieving labels.
 ;
-; -----------------------------------------------------------------------------
+; ------------------------------------------------------------------------------
 ; LABELS OVERVIEW
 ; Labels map a text string to an address in memory.  They can be looked up
 ; by address or name.  They are stored in a sorted list to enable efficient
@@ -16,7 +16,7 @@
 ;               labels by address/name, and general BSS
 ; SYMBOL NAMES: just the names of the symbols
 ;
-; -----------------------------------------------------------------------------
+; ------------------------------------------------------------------------------
 ; ANONYMOUS LABELS OVERVIEW
 ; Anonymous labels are simpler than named ones.  They are stored as a
 ; sorted list of addresses.  Because they are so compact, it is preferable
@@ -1048,7 +1048,6 @@ labelvars_size=*-labelvars
 ;  - .XY: the address of the label
 ;  - .C:  is set if no label was found, clear if it was
 ;  - .A:  the size (address mode) of the label
-;  - r2:  the ID of the label
 .proc address
 	jsr find		; get the id in YX
 	bcs :-			; -> rts
@@ -1065,15 +1064,11 @@ labelvars_size=*-labelvars
 ; OUT:
 ;  - .XY: the address of the label
 ;  - .A:  the size (address mode) of the label (0=ZP, 1=ABS)
-;  - r2:  the ID of the label
 .proc address_by_id
 @tmp=zp::labels
 	jsr getaddr		; get address
-	sty @tmp
-	ldy #LABEL_FLAGS
-	LOADB_Y label		; and address mode
+	lda flags
 	and #$01		; mask MODE bit
-	ldy @tmp
 	rts
 .endproc
 
