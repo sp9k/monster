@@ -233,7 +233,9 @@ macros:          .res $1400
 	sta zp::label_value
 	lda @params+1,x
 	sta zp::label_value+1
-
+	beq :+
+	lda #$01		; ABS
+:	sta zp::label_mode	; set the address mode for this label
 	inc @cnt
 
 	; set the parameter to its value

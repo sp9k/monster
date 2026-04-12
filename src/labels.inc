@@ -20,7 +20,6 @@
 .import __label_address
 .import __label_num
 .import __label_numanon
-.import __label_name_by_id
 .import __label_popscope
 .import __label_set
 .import __label_set_addr
@@ -57,7 +56,6 @@ SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 	index         = __label_index
 	islocal       = __label_is_local
 	isvalid       = __label_isvalid
-	name_by_id    = __label_name_by_id
 	num           = __label_num
 	numanon       = __label_numanon
 	popscope      = __label_popscope

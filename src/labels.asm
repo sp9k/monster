@@ -84,7 +84,7 @@ hash    = zp::labels+4	; precomputed hash value (2 bytes)
 addr    = zp::labels+6	; ADDR field for active label
 id      = zp::labels+8	; ID field for active label
 flags   = zp::labels+$a	; FLAGS field for active symbol
-list    = zp::labels+$b	; address to linked list of nodes for currenet bucket
+list    = zp::labels+$b	; address to linked list of nodes for current bucket
 listtop = zp::labels+$d	; address of free memory (next available list
 bucket  = zp::labels+$f
 
@@ -116,7 +116,6 @@ SEG_ABS = $ff
 .export __label_by_addr
 .export __label_by_id
 .export __label_dump
-.export __label_name_by_id
 .export __label_isvalid
 .export __label_get_name
 .export __label_get_addr
@@ -149,7 +148,6 @@ __label_add:              LBLJUMP add
 __label_find:             LBLJUMP find
 __label_by_addr:          LBLJUMP by_addr
 __label_by_id:            LBLJUMP by_id
-__label_name_by_id:       LBLJUMP name_by_id
 __label_isvalid:          LBLJUMP is_valid
 __label_get_name:         LBLJUMP get_name
 __label_get_addr:         LBLJUMP getaddr
@@ -438,12 +436,11 @@ labelvars_size=*-labelvars
 	ldxy @label
 	jsr prepend_scope
 	bcs @done		; return err
-
 	stxy @label
 
-@cont:	ldx numlabels
+@cont:	lda numlabels
 	bne @find
-	ldy numlabels+1
+	lda numlabels+1
 	bne @find
 	RETURN_ERR ERR_LABEL_UNDEFINED ; no labels exist
 
@@ -531,6 +528,7 @@ labelvars_size=*-labelvars
 	rol
 	sta @index+1
 	lda @index
+	;clc
 	adc #<label_addresses_sorted
 	sta @index
 	lda @index+1
@@ -553,6 +551,7 @@ labelvars_size=*-labelvars
 	rol
 	sta @index+1
 	lda @index
+	;clc
 	adc #<label_addresses_sorted_ids
 	sta @index
 	lda @index+1
@@ -691,7 +690,7 @@ labelvars_size=*-labelvars
 	; 3. set NAME for the label (string) and NAME field (pointer to it)
 	ldxy @name
 	stxy r0			; r0  = label name to set
-	ldxy id		; .XY = ID of label to (re)name
+	ldxy id			; .XY = ID of label to (re)name
 	jsr set_name		; set name pointer + string
 
 	; 4. write all ADDR related fields (FLAGS, ADDR)
@@ -1335,36 +1334,6 @@ labelvars_size=*-labelvars
 .endproc
 
 ;*******************************************************************************
-; NAME BY ID
-; Returns the address name of the label ID requested
-; IN:
-;  - .XY: the id of the label to get the address of
-; OUT:
-;  - .XA: the address of the name for the given label id
-.proc name_by_id
-@addr = temp
-	sty @addr
-	txa
-	asl		; *2
-	rol @addr
-	asl		; *4
-	rol @addr
-	asl		; *8
-	rol @addr
-	asl		; *16
-	rol @addr
-	asl		; *32
-	rol @addr
-
-	adc #<labelnames
-	tax
-	lda @addr
-	;clc
-	adc #>labelnames
-	rts
-.endproc
-
-;*******************************************************************************
 ; ISVALID
 ; checks if the label name given is a valid label name
 ; IN:
@@ -1390,6 +1359,7 @@ labelvars_size=*-labelvars
 	cmp #'Z'+1
 	bcs @err
 
+	; TODO:
 	;jsr getopcode	; opcodes are not valid labels
 	;bcs @cont
 	;sec
@@ -1765,8 +1735,9 @@ labelvars_size=*-labelvars
 .proc loadlabel
 @tmp=temp
 	; get address of the label data to (*SIZEOF_LABEL)
-	sty label+1
-	stx @tmp
+	stxy @tmp
+	stxy label
+
 	txa
 	asl			; *2
 	rol label+1
@@ -1774,12 +1745,18 @@ labelvars_size=*-labelvars
 	rol label+1
 	asl			; *8
 	rol label+1
+	;clc
 	adc @tmp		; *9
+	sta label
 	bcc :+
 	inc label+1
 	clc
+:	lda label+1
+	adc @tmp+1
+	sta label+1
 
-:	; add offset to labels data
+	; add offset to labels data
+	lda label
 	adc #<labels
 	sta label
 	lda label+1

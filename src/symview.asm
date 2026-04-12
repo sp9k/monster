@@ -64,19 +64,15 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 ; IN:
 ;   - .XY: the item index
 ; OUT:
-;   - lbl:      the ID of the label at a given index
-;   - addr:     the address of the label at the requested index
-;   - name:     the name of the symbol
-;   - filename: the name of the file containing the symbol (if any)
-;   - line:     the line number that contains the symbol
-;   - .XY:      the ID of the label at the given index (determined by sortby)
+;   - lbl:      ID of the label at a given index
+;   - addr:     address of the label at the requested index
+;   - name:     pointer to name of the symbol
+;   - filename: pointer to name of the file containing the symbol (if any)
+;   - line:     line number that contains the symbol
+;   - .XY:      ID of the label at the given index (determined by sortby)
+;   - $100:     buffer containing symbol name
 .proc get_item
-	; destination buffer for getname
-	lda #<$100
-	sta r0
-	lda #>$100
-	sta r0+1
-
+@namebuff=$100
 	lda sortby
 	beq @sortalpha
 
@@ -85,6 +81,12 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 
 @sortalpha:
 	stxy lbl		; store the ID for the label
+
+	; destination buffer for getname
+	lda #<$100
+	sta r0
+	lda #>$100
+	sta r0+1
 	jsr lbl::getname	; read the symbol name into buffer ($100)
 	ldxy lbl
 	jsr lbl::addr_and_mode	; get the symbol address
