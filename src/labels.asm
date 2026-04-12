@@ -288,13 +288,20 @@ labelvars_size=*-labelvars
 ; This affects local labels, which will be namespaced by prepending the scope.
 ; IN:
 ;  - .XY: the address of the scope string to set as the current scope
+; OUT:
+;   - .C: set on error
 .proc set_scope
 @scope  = temp
 @scopes = temp+2
 	; scopesp += SCOPE_LEN
 	lda scopesp
-	clc
-	adc #SCOPE_LEN
+	cmp #(MAX_SCOPES-1)*SCOPE_LEN
+	bcc :+
+	;sec
+	lda #ERR_STACK_OVERFLOW
+	rts
+
+:	adc #SCOPE_LEN
 	sta scopesp
 
 	; get @scope-scopesp so that @scope+scopesp points to the start of the
@@ -319,11 +326,11 @@ labelvars_size=*-labelvars
 	iny
 	dex
 	bne :-
-	rts			; maxed out scope len; don't terminate
+	RETURN_OK		; maxed out scope len; don't terminate
 
 @done:  lda #$00
 	STOREB_Y @scopes	; terminate
-	rts
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -1080,7 +1087,7 @@ labelvars_size=*-labelvars
 @name=r0
 @addr=r2
 	; get address of the label (id * MAX_LABEL_NAME_LEN)
-	stxy @addr
+	sty @addr+1
 
 	txa
 	asl		; *2
@@ -1105,8 +1112,7 @@ labelvars_size=*-labelvars
 	STOREB_Y label	; write pointer LSB
 	iny
 	lda @addr+1
-	bne :+
-:	STOREB_Y label	; write pointer MSB
+	STOREB_Y label	; write pointer MSB
 
 	; switch to SYMBOL NAMES bank
 	SELECT_BANK "SYMBOL_NAMES"

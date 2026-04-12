@@ -1129,9 +1129,10 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne @cont
 
 	; label is global
-	jsr lbl::popscope	; end the current scope
+	jsr lbl::popscope	; end the current scope (if any)
 	ldxy zp::line
 	jsr lbl::setscope	; set the non-local label as the new scope
+	bcs @ret
 
 @cont:	lda zp::verify
 	bne @ok			; if verifying, don't add/check label
@@ -2270,6 +2271,7 @@ __asm_include:
 	dey			; 0
 	ldx #@buff
 	jsr lbl::setscope	; set scope to a binary (unrenderable) prefix
+	bcs @err
 
 :	lda #CTX_REPEAT
 	jsr ctx::push	; push a new context
@@ -2313,7 +2315,7 @@ __asm_include:
 
 @done:	clc			; ok
 @ret:	lda #ASM_DIRECTIVE
-	rts
+@err:	rts
 .endproc
 
 ;*******************************************************************************

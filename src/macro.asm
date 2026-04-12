@@ -190,14 +190,30 @@ macros:          .res $1400
 	lda macro_addresses+1,x
 	sta @macro+1
 
-	; read past the macro name
+	; read macro name for use as the new temporary scope
 	ldy #$00
 	sty @err	; init err to none
-:	incw @macro
+	dey		; pre-decrement ($ff)
+:	iny
 	LOADB_Y @macro
+	sta @tmplabel,y
 	bne :-
 
-	; define the macro params
+	; move @macro pointer past the name of macro
+	tya
+	clc
+	adc @macro
+	sta @macro
+	bcc :+
+	inc @macro+1
+
+:	; set the label scope to the name of the macro
+	ldxy #@tmplabel
+	CALLMAIN lbl::setscope
+	bcc :+
+	rts		; return err
+
+:	; define the macro params
 	incw @macro
 	LOADB_Y @macro	; get the number of parameters
 	sta @numparams
@@ -281,7 +297,8 @@ macros:          .res $1400
 	LOADB_Y @macro		; at the end of the macro? (two 0's)
 	bne @asm		; no, continue
 
-@done:	lsr @err		; set .C if error occurred
+@done:	CALLMAIN lbl::popscope	; pop the scope for this macro
+	lsr @err		; set .C if error occurred
 	lda @errcode
 	rts
 .endproc

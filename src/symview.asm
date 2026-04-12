@@ -287,6 +287,7 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 	sbc @row
 	bcs :+
 	dec @scroll+1
+	sec
 :	sbc #HEIGHT-1
 	sta @scroll
 	bcs :+
