@@ -177,35 +177,6 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 .endproc
 
 ;*******************************************************************************
-; RVSLINE
-; Reverses 1 row of characters (8 pixels high) at the given row character row
-; IN:
-;  - .A: the text row to reverse (pixel number / 8)
-.export __screen_rvsline
-.proc __screen_rvsline
-@dst=r0
-	jsr __screen_char_addr
-	stxy @dst
-
-	ldx #20
-@l0:	ldy #$07
-@l1: 	lda (@dst),y
-	eor #$ff
-	sta (@dst),y
-	dey
-	bpl @l1
-	lda @dst
-	clc
-	adc #$c0
-	sta @dst
-	bcc :+
-	inc @dst+1
-:	dex
-	bne @l0
-@done:	rts
-.endproc
-
-;*******************************************************************************
 ; RVSLINE PART
 ; Reverses the given number of character (8 pixels high) in the given row
 ; IN:

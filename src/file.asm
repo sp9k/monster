@@ -70,6 +70,14 @@ __file_save_address_end = rd
 .export __file_load_address_end
 __file_load_address_end = rd
 
+.BSS
+;*******************************************************************************
+secondaryaddr:	.byte 0	; secondary address to use on file open
+
+.export __file_eof
+__file_eof:	.byte 0	; if !0, EOF; only valid after call to readb or getline
+
+.CODE
 ;*******************************************************************************
 ; LOADBINV
 ; loads the given file into the given virtual memory address
@@ -595,9 +603,16 @@ ENDOSPROC
 	RETURN_OK
 .endproc
 
-.BSS
 ;*******************************************************************************
-secondaryaddr:	.byte 0	; secondary address to use on file open
-
-.export __file_eof
-__file_eof:	.byte 0	; if !0, EOF; only valid after call to readb or getline
+; WRITE BANNER
+; Outputs a "banner" to the currently open file
+.export __file_write_banner
+.proc __file_write_banner
+	ldx #20
+	lda #'-'
+:	jsr krn::ciout
+	dex
+	bne :-
+	lda #$0d
+	jmp krn::ciout
+.endproc

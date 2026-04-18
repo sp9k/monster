@@ -5459,8 +5459,9 @@ __edit_gotoline:
 
 ;*******************************************************************************
 ; LOG PASS 2
-; Prints "PASS 2" to the log file
+; Prints a banner to separate pass 1 logs and then "PASS 2" to the log file
 .proc log_pass2
+	jsr file::write_banner
 	ldxy #strings::pass2
 	jmp log::out
 .endproc
@@ -5524,6 +5525,7 @@ rw_commands:
 	.byte $53		; S (substitute line)
 ; commands below this work will work while in "readonly" mode (debugger)
 num_rw_commands=*-rw_commands
+
 ro_commands:
 	.byte K_DIR		; - (show directory)
 	.byte K_SWAP_WINS	; C= + w (swap windows)

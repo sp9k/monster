@@ -2,7 +2,6 @@
 VIC20_RAM_INC = 1
 
 .import __ram_call
-.import __ram_jump
 
 .include "../zeropage.inc"
 

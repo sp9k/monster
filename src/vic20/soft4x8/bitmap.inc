@@ -14,7 +14,6 @@ BITMAP_WIDTH  = 160
 .import __screen_clrline
 .import __screen_columnslo
 .import __screen_columnshi
-.import __screen_rvsline
 .import __screen_rvsline_part
 
 .scope bm
@@ -26,7 +25,6 @@ BITMAP_WIDTH  = 160
 	clrpart      = __screen_clr_part
 	columnslo    = __screen_columnslo
 	columnshi    = __screen_columnshi
-	rvsline      = __screen_rvsline
 	rvsline_part = __screen_rvsline_part
 .endscope
 .endif

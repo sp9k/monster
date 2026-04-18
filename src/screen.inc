@@ -1,7 +1,6 @@
 .ifndef SCREEN_INC
 SCREEN_INC = 1
 
-.import __screen_rvsline
 .import __screen_rvsline_part
 .import __screen_clr
 .import __screen_clrcolor
@@ -17,7 +16,6 @@ SCREEN_INC = 1
 .import __scr_restore
 
 .scope scr
-	rvsline      = __screen_rvsline
 	rvsline_part = __screen_rvsline_part
 	clr          = __screen_clr
 	clrcolor     = __screen_clrcolor

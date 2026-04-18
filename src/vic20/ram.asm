@@ -69,37 +69,3 @@ bank = zp::banktmp
 	plp
 	rts
 .endproc
-
-.segment "BANKCODE2"
-
-;*******************************************************************************
-; JUMP
-; Inline procedure to jump to a routine in another bank
-; Performs a JSR to the target address at the given bank. When the routine is
-; done, returns to the caller's bank.
-; IN:
-;  - *+3: the bank of the procedure to call
-;  - *+4: the procedure address
-.export __ram_jump
-.proc __ram_jump
-@a = zp::banktmp+1
-@x = zp::banktmp+2
-	stx @x
-	sta @a
-
-	jsr inline::setup
-	jsr exp::push_bank	; save current bank
-	jsr inline::getarg_b	; get bank byte
-	sta bank
-
-	jsr inline::getarg_w	; get procedure address
-	stx zp::bankjmpvec
-	sta zp::bankjmpvec+1
-
-	jsr inline::setup_done
-
-	; eat the 1st return address
-	pla
-	pla
-	jmp exec		; execute the vectored procedure
-.endproc

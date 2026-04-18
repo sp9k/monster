@@ -23,6 +23,7 @@
 .import __file_scratch
 .import __file_write
 .import __file_writeb
+.import __file_write_banner
 
 .scope file
 	close            = __file_close
@@ -47,4 +48,5 @@
 	savebin          = __file_save_bin
 	savesrc          = __file_save_src
 	scratch          = __file_scratch
+	write_banner     = __file_write_banner
 .endscope
