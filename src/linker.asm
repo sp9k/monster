@@ -95,67 +95,6 @@ numsymbols:  .byte 0
 .segment "LINKER_BSS"
 
 ;*******************************************************************************
-; SYMBOL NAMES
-; This table contains the name for each symbol used in the object file
-symbol_names:
-.ifdef vic20
-	.res MAX_SYMBOLS*MAX_SYMBOL_NAME_LEN
-.else
-.endif
-
-;*******************************************************************************
-; SYMBOL INFO
-; This table contains corresponding flags for each symbol.
-; It defines the type of symbol in the object file.
-;  - ABS RELATIVE: an exported symbol with an relative (from SEGMENT) value
-;    e.g. ```
-;         .export LABEL
-;         LABEL:
-;         ````
-;  - ABS EXPORT: an exported symbol with an absolute value
-;    e.g. ```
-;         .export LABEL
-;         LABEL=$100
-;         ````
-;  - IMPORT: a symbol that is used in the object file but defined in another
-;    e.g. ```
-;         .IMPORT LABEL
-;         jsr LABEL
-;         ```
-symbol_info:
-.ifdef vic20
-	.res MAX_SYMBOLS
-.else
-.endif
-
-;*******************************************************************************
-; SYMBOL SEGMENT IDS
-; This table contains the index of each SYMBOL to its SEGMENT in the SEGMENTS
-; table.
-symbol_segment_ids:
-.ifdef vic20
-	.res MAX_SYMBOLS
-.else
-.endif
-
-;*******************************************************************************
-; SYMBOL OFFSETS
-; This table contains the relative offsets for each symbol from their
-; designated SEGMENTs (identified in the SEGMENT IDs table).
-symbol_offsetslo:
-.ifdef vic20
-	.res MAX_SYMBOLS
-.else
-.endif
-
-symbol_offsetshi:
-.ifdef vic20
-	.res MAX_SYMBOLS
-.else
-
-.endif
-
-;*******************************************************************************
 ; SECTIONS
 ; The memory section contains up to MAX_SECTIONS of memory blocks.  Each
 ; defines the start and end addresses of the section plus a byte of flag
