@@ -215,6 +215,7 @@ macros:          .res $1400
 
 :	; define the macro params
 	incw @macro
+	ldy #$00
 	LOADB_Y @macro	; get the number of parameters
 	sta @numparams
 	incw @macro	; move to the first parameter name

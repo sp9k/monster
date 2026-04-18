@@ -602,9 +602,6 @@ main:	jsr key::getch
 .proc display_result
 	jsr irq::on
 
-	jsr log::close
-	jsr krn::clrchn
-
 	jsr clrerror
 	lda #$01
 	sta zp::verify		; re-enable verify
@@ -614,6 +611,8 @@ main:	jsr key::getch
 
 @err:	lda height
 	jsr errlog::activate
+
+	jsr close_log
 	sec			; assembly failed
 	rts
 
@@ -644,8 +643,13 @@ main:	jsr key::getch
 
 @success:
 	ldxy #@success_msg
-@print: lda #STATUS_ROW
+@print:
+	jsr text::render
+	lda #STATUS_ROW
 	jsr text::print
+
+	ldxy #mem::linebuffer2
+	jsr log::out
 
 	ldx #STATUS_ROW
 	lda #COLOR_SUCCESS
@@ -654,8 +658,9 @@ main:	jsr key::getch
 	ldx #STATUS_ROW
 	jsr draw::hiline
 	jsr lbl::index		; index labels for debugging, etc.
-	RETURN_OK
 
+	jsr close_log
+	RETURN_OK
 .PUSHSEG
 .RODATA
 @success_msg: .byte "done. from $", $fe, "-$", $fe, " ($", $fe, " bytes)", 0
@@ -5442,6 +5447,14 @@ __edit_gotoline:
 @err:	rts
 :	ldxy #strings::pass1
 	jmp log::out
+.endproc
+
+;******************************************************************************
+; CLOSE LOG
+; Closes the log file
+.proc close_log
+	jsr log::close
+	jmp krn::clrchn
 .endproc
 
 ;*******************************************************************************

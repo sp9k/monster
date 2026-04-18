@@ -390,30 +390,30 @@ bbb00:  .byte $ff ; implied/accumulator
 	.byte $ff ; (abs)
 
 illegal_opcodes:
-.byte %10001001 ; STA #imm
+	.byte %10001001 ; STA #imm
 
-.byte %00000010 ; ASL #imm
-.byte %00100010 ; ROL #imm
-.byte %01000010 ; LSR #imm
-.byte %01100010 ; ROR #imm
-.byte %10000010 ; STX #imm
-.byte %11000010 ; DEC #imm
-.byte %11100010 ; INC #imm
-.byte %10001010 ; STX A
-.byte %10101010 ; LDX A
-.byte %11001010 ; DEC A
-.byte %11101010 ; INC A
-.byte %10011110 ; STX ABS,X
+	.byte %00000010 ; ASL #imm
+	.byte %00100010 ; ROL #imm
+	.byte %01000010 ; LSR #imm
+	.byte %01100010 ; ROR #imm
+	.byte %10000010 ; STX #imm
+	.byte %11000010 ; DEC #imm
+	.byte %11100010 ; INC #imm
+	.byte %10001010 ; STX A
+	.byte %10101010 ; LDX A
+	.byte %11001010 ; DEC A
+	.byte %11101010 ; INC A
+	.byte %10011110 ; STX ABS,X
 
-.byte %00100000 ; BIT #imm
-.byte %00110100 ; BIT zp,x
-.byte %00111100 ; BIT abs,x
-.byte %10000000 ; STY #imm
-.byte %10011100	; STY abs,x
-.byte %11010100 ; CPY zp,x
-.byte %11011100 ; CPY abs,x
-.byte %11110100 ; CPX zp,x
-.byte %11111100 ; CPX abs,x
+	.byte %00100000 ; BIT #imm
+	.byte %00110100 ; BIT zp,x
+	.byte %00111100 ; BIT abs,x
+	.byte %10000000 ; STY #imm
+	.byte %10011100	; STY abs,x
+	.byte %11010100 ; CPY zp,x
+	.byte %11011100 ; CPY abs,x
+	.byte %11110100 ; CPX zp,x
+	.byte %11111100 ; CPX abs,x
 num_illegals = *-illegal_opcodes
 
 .CODE
