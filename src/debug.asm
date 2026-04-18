@@ -649,10 +649,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 	bpl @trace		; continue trace until depth is negative
 	clc			; ok
 
-@done:	php
-	jsr irq::on
-	plp
-:	rts			; <- __debug_trace
+@done:	jmp reenable_irq
 .endproc
 
 ;******************************************************************************
@@ -666,11 +663,10 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
 	; run one step (get over breakpoint if there is one)
 	jsr __debug_step
-	bcs :-			; -> RTS
+	bcc :+
+	rts
 
-	; install the breakpoints
-	jsr install_breakpoints
-
+:	jsr install_breakpoints
 	jsr print_tracing
 
 @trace: ; step until a watch/breakpoint triggers or the user interrupts the
@@ -686,7 +682,8 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 	lda sim::at_brk		; check if at a BRKpoint
 	beq @trace		; if not, continue tracing
 
-@done:  jmp uninstall_breakpoints
+@done:  jsr uninstall_breakpoints
+	jmp reenable_irq
 .endproc
 
 ;******************************************************************************
@@ -827,10 +824,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 	cmp #$20		; did we run a JSR?
 	bne @done		; if not, we're done
 	jsr __debug_step_out	; if we did enter a subroutine, STEP OUT
-@done:	php
-	jsr irq::on
-	plp
-	rts
+@done:	jmp reenable_irq
 .endproc
 
 ;******************************************************************************
@@ -843,9 +837,18 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
 	jsr __debug_step
 
+	; fall through to reenable_irq
+.endproc
+
+;******************************************************************************
+; REENABLE IRQ
+; Reenables the IRQ
+; Flags are preserved (except .I, which is cleared)
+.proc reenable_irq
 	php
 	jsr irq::on
 	plp
+	cli
 	rts
 .endproc
 

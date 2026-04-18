@@ -161,13 +161,14 @@ BASE=$2000
 	rts
 
 :	cpy #>$8000
-	bcc @expansion		; $2000-$8000 -> BLK1/2/3
+	bcc @expansion		; $2000-$7fff -> BLK1/2/3
 	cpy #>$9000
-	bcc @rom		; $8000-$9000 -> ROM
+	bcc @rom		; $8000-$8fff -> ROM
 
 	cpy #>$9800
 	bcs :+
-@9000:	add16 #prog9000-$9000
+@9000:	add16 #prog9000-$9000	; $9000-$9800 -> I/O
+	lda #VMEM_IO_BANK
 	rts
 
 :	cpy #$a0
