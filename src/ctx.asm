@@ -418,7 +418,8 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	lda (@line),y
 	beq @ok		; don't store empty lines
 
-@write: lda (@line),y
+@write: ldy #$00
+	lda (@line),y
 	beq @done
 	cmp #$0d
 	beq @done

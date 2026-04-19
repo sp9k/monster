@@ -914,8 +914,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne @err
 	lda #$6c
 	sta opcode		; fix the opcode variable
-	bcc @noerr
-	rts			; return err
+	bne @noerr		; branch always
 
 @jmpabs:
 	cpx #ZEROPAGE
@@ -1669,9 +1668,11 @@ __asm_tokenize_pass1 = __asm_tokenize
 	sec
 	sbc @tmp
 	sta __asm_linenum
+	sta dbgi::srcline
 	lda __asm_linenum+1
 	sbc #$00
 	sta __asm_linenum+1
+	sta dbgi::srcline+1
 
 	jmp ctx::rewind
 .endproc

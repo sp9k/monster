@@ -49,16 +49,6 @@ SYM_ABS_EXPORT_WORD = 6
 SECTION_FILL = $01	; flag to pad section's unused bytes with 0
 
 ;*******************************************************************************
-; SEGMENT flags
-SEGMENT_RO     = $01	; RO (readonly) writes to segment will be error
-SEGMENT_DEFINE = $02
-
-;*******************************************************************************
-; INSTRUCTION OPCODES
-I_SET_SEG   = 1
-I_EMIT_BYTE = 2
-
-;*******************************************************************************
 ; ZEROPAGE variables
 ; OBJPTR is the cursor in the object code (where we are reading in the current
 ; object file)
@@ -244,28 +234,6 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	bne @l0
 
 	rts
-.endproc
-
-;*******************************************************************************
-; LINK DEBUG
-; Links the given object files into a .D (debug) file of the given name
-; IN:
-;  .XY:   the output filename of the .D (debug) file
-;  r0:    the number of .O files
-;  r1/r2: address of array of .O filenames (as 0-terminated strings)
-.export __link_debug
-.proc __link_debug
-.endproc
-
-;*******************************************************************************
-; LINK PRG
-; Links the given object files into a .PRG file of the given name
-; IN:
-;  .XY:   the output filename of the .PRG (PRG) file
-;  r0:    the number of .O files
-;  r1/r2: the array of .O filenames (as 0-terminated strings)
-.export __link_prg
-.proc __link_prg
 .endproc
 
 ;*******************************************************************************

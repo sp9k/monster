@@ -69,6 +69,12 @@ symbol_index_map: .res MAX_LABELS*2
 symbol_addresses: .res MAX_IMPORTS+MAX_EXPORTS
 
 ;*******************************************************************************
+; SEG IDX, SEG CNT
+; Variables used during object file loading
+seg_idx: .byte 0
+seg_cnt: .byte 0
+
+;*******************************************************************************
 ; RELOC TABLES
 ; This buffer contains the relocation tables for the object file
 ; sections_relocstartlo/hi contain the start address for each SECTION's
@@ -1527,7 +1533,7 @@ __obj_close_section = close_section
 ; of each table we will need to walk
 @load_segments:
 	lda #$00
-	sta @seg_idx
+	sta seg_idx
 	cmp numsegments
 	bne @load_segment
 	jmp @done			; if no SEGMENTS, we're done
@@ -1539,7 +1545,7 @@ __obj_close_section = close_section
 	; TODO: make sure SEGMENT's address mode for SEGMENT matches linker's
 
 	; read the table sizes for this SEGMENT
-	ldy @seg_idx
+	ldy seg_idx
 	jsr readb			; get code size LSB
 	bcs @eof
 
@@ -1558,14 +1564,14 @@ __obj_close_section = close_section
 	sta segments_relocsizehi,y	; get relocation table size MSB
 
 	; get the address to write the object code to
-	ldx @seg_idx
+	ldx seg_idx
 	inx			; get in base 1
 	txa
 	jsr get_segment_base
 	stxy @seg
 
 	lda numsegments
-	sta @segcnt
+	sta seg_cnt
 
 @objcode:
 	; finally, load the object code for the segment to vmem
@@ -1588,17 +1594,14 @@ __obj_close_section = close_section
 	lda #$01				; apply relocation
 	CALL FINAL_BANK_DEBUG, dbgi::load	; load debug info
 
-	inc @seg_idx
-	dec @segcnt				; decrement segment counter
+	inc seg_idx
+	dec seg_cnt				; decrement segment counter
 	beq @done
 
 	jmp @load_segment			; repeat for all segments
 
 @done:	clc
 @eof:	rts
-
-@seg_idx: .byte 0
-@segcnt:  .byte 0
 .endproc
 
 ;******************************************************************************

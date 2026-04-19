@@ -454,9 +454,10 @@ main:	jsr key::getch
 	php			; save error (.C)
 	jsr irq::off
 	plp			; restore error (.C)
-	bcs @done		; don't write result if assembly failed
+	bcs @done		; if assembly failed, just quit
+
 	jsr file::open_w	; open the output filename
-	bcs @done
+	bcs @err
 	sta @fileid
 	tax
 	jsr krn::chkout		; CHKOUT, file in .X is output
@@ -465,8 +466,17 @@ main:	jsr key::getch
 	jsr print_info
 
 	CALL FINAL_BANK_LINKER, obj::dump
+	php
+	pha
 	lda @fileid
 	jsr file::close
+	pla
+	plp
+	bcc @done
+
+@err:	; print the error
+	jsr report_typein_error
+	jsr key::getch
 
 @done:	dec asm::mode		; switch back to DIRECT assembly mode
 	jmp irq::on
@@ -612,7 +622,7 @@ main:	jsr key::getch
 @err:	lda height
 	jsr errlog::activate
 
-	jsr close_log
+	jsr log::close
 	sec			; assembly failed
 	rts
 
@@ -659,7 +669,7 @@ main:	jsr key::getch
 	jsr draw::hiline
 	jsr lbl::index		; index labels for debugging, etc.
 
-	jsr close_log
+	jsr log::close
 	RETURN_OK
 .PUSHSEG
 .RODATA
@@ -5447,14 +5457,6 @@ __edit_gotoline:
 @err:	rts
 :	ldxy #strings::pass1
 	jmp log::out
-.endproc
-
-;******************************************************************************
-; CLOSE LOG
-; Closes the log file
-.proc close_log
-	jsr log::close
-	jmp krn::clrchn
 .endproc
 
 ;*******************************************************************************
