@@ -1595,8 +1595,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 	iszero zp::ctx+repctx::iter_end
 	beq @done
 
-	; rewind context to first line and debug-info to that line too
-	jsr rewind_ctx_dbg
+	; rewind context to its first line
+	jsr ctx::rewind
 
 	; load the parameter (iterator name)
 	ldxy #@itername
@@ -1604,7 +1604,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 
 ;--------------------------------------
 ; define a label with the value of the iteration
-@l0:	jsr rewind_ctx_dbg
+@l0:	jsr ctx::rewind
 
 	; iteration 0: add a symbol for the iterator
 	;              this will error if the symbol is already defined
@@ -1653,28 +1653,6 @@ __asm_tokenize_pass1 = __asm_tokenize
 	jsr lbl::popscope	; all contexts popped, pop the scope
 	clc
 :	rts
-.endproc
-
-;*******************************************************************************
-; REWIND CTX DBG
-; Rewinds the context and debug source line by the number of lines that are
-; rewound.
-.proc rewind_ctx_dbg
-@tmp=r0
-	; before rewinding, move debug line back to line we're repeating
-	lda ctx::numlines	; get # of lines we're rewinding
-	sta @tmp
-	lda __asm_linenum
-	sec
-	sbc @tmp
-	sta __asm_linenum
-	sta dbgi::srcline
-	lda __asm_linenum+1
-	sbc #$00
-	sta __asm_linenum+1
-	sta dbgi::srcline+1
-
-	jmp ctx::rewind
 .endproc
 
 ;*******************************************************************************

@@ -6,6 +6,7 @@
 ; directives when their corresponding .ENDMAC or .ENDREP directive is found.
 ;*******************************************************************************
 
+.include "asm.inc"
 .include "config.inc"
 .include "errors.inc"
 .include "macros.inc"
@@ -206,8 +207,8 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 ; Rewinds the context so that the cursor points to the beginning of its line
 ; data
 .proc rewind
-	jsr getdataaddr	; get base address of context lines
-	stxy cur	; reset cursor to it
+	jsr get_data_addr	; get base address of context lines
+	stxy cur		; reset cursor to it
 
 	; init param buffer to end of ctx buffer (grows downward)
 	txa
@@ -270,16 +271,29 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 ; GETLINE
 ; Returns a line from the active context.
 ; OUT:
-;  - .XY: the address of the line returned
-;  - .A: the # of bytes read (0 if EOF)
-;  - .C: set on error
+;  - .XY:            the address of the line returned
+;  - .A:             the # of bytes read (0 if EOF)
+;  - .C:             set on error
 ;  - mem::ctxbuffer: the line read from the context
+;  - asm::linenum:   line number that the line corresponds to
 .proc getline
 @out=mem::ctxbuffer
 	; read until a newline or EOF
 	ldy #$00
 	LOADB_Y cur
+	bne @readlinenum
+	iny
+	LOADB_Y cur
 	beq @ok		; if line is empty -> we're done
+	dey
+
+@readlinenum:
+	LOADB_Y cur
+	sta asm::linenum
+	incw cur
+	LOADB_Y cur
+	sta asm::linenum+1
+	incw cur
 
 @read:	LOADB_Y cur
 	sta @out,y
@@ -289,9 +303,8 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	bcc @read
 	RETURN_ERR ERR_LINE_TOO_LONG
 
-@done:	iny
-	tya
-	clc
+@done:	tya
+	sec		; +1
 	adc cur
 	sta cur
 	bcc :+
@@ -364,7 +377,7 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 @src=r0
 @dst=r2
 @prev=r4
-	jsr getdataaddr
+	jsr get_data_addr
 	stxy @src
 	ldxy #mem::spare
 	stxy @dst
@@ -390,7 +403,7 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 ; returns the address of the data for the active context.
 ; OUT:
 ;  - .XY: the address of the data for the current context
-.proc getdataaddr
+.proc get_data_addr
 	lda ctx
 	clc
 	adc #SIZEOF_CTX_HEADER
@@ -406,7 +419,8 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 ; Writes the given line to parent of the current context's line buffer
 ; Comments are ignored to save space in the context buffer.
 ; IN:
-;  - .XY: the line to write to the active context
+;  - .XY:           line data to write to the active context
+;  - asm::linenum:  line number that the line maps to
 ; OUT:
 ;  - .XY: the address of the active context.
 ;  - .C:  set on error
@@ -417,6 +431,15 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	ldy #$00
 	lda (@line),y
 	beq @ok		; don't store empty lines
+
+@writelinenum:
+	; write the line number that the line corresponds to
+	lda asm::linenum
+	STOREB_Y parent
+	incw parent
+	lda asm::linenum+1
+	STOREB_Y parent
+	incw parent
 
 @write: ldy #$00
 	lda (@line),y
@@ -443,6 +466,9 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 @done:	lda #$00
 	STOREB_Y parent	; terminate this line in the buffer
 	incw parent
+	STOREB_Y parent
+	iny
+	STOREB_Y parent
 
 @ok:	inc numlines
 	RETURN_OK
@@ -453,7 +479,8 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 ; Writes the given line to the context at its current position
 ; Comments are ignored to save space in the context buffer.
 ; IN:
-;  - .XY: the line to write to the active context
+;  - .XY: line data to write to the active context
+;  - asm::linenum:  line number that the line maps to
 ; OUT:
 ;  - .XY: the address of the active context.
 ;  - .C:  set on error
@@ -463,6 +490,15 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	ldy #$00
 	lda (@line),y
 	beq @ok		; don't store empty lines
+
+@writelinenum:
+	; write the line number that the line corresponds to
+	lda asm::linenum
+	STOREB_Y cur
+	incw cur
+	lda asm::linenum+1
+	STOREB_Y cur
+	incw cur
 
 @write: lda (@line),y
 	beq @done
@@ -494,6 +530,9 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 @done:	lda #$00
 	STOREB_Y cur	; terminate this line in the buffer
 	incw cur
+	STOREB_Y cur
+	iny
+	STOREB_Y cur
 
 @ok:	inc numlines
 	RETURN_OK
