@@ -1839,6 +1839,9 @@ main:	jsr key::getch
 	rts
 @left:  JUMP FINAL_BANK_VSCREEN, scr::shr
 @right: JUMP FINAL_BANK_VSCREEN, scr::shl
+.else
+	; not implemented
+	rts
 .endif
 .endproc
 

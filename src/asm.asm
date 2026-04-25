@@ -2044,7 +2044,7 @@ __asm_include:
 @err=savereg
 @readfile:
 	stxy @fname
-	jsr log::out		; log the name of file being assembled
+	;jsr log::out		; log the name of file being assembled
 
 	lda zp::verify
 	beq @inc
