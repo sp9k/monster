@@ -200,11 +200,7 @@ ENDOSPROC
 ; OUT:
 ;  - .C: set on error, clear on success
 OSPROC dosave
-	ldx isbin
-	bne @save
-	jsr src::rewind	; if saving source, go back to the start of it
-
-@save:  jsr krn::readst       ; READST (read status byte)
+@save:  jsr krn::readst	; READST (read status byte)
 	bne @error	; error
 
 @chout: jsr getb
@@ -289,19 +285,19 @@ ENDOSPROC
 ;   - .C: set on error
 .export __file_scratch
 OSPROC __file_scratch
-	stx r0
-	sty r0+1
-
+	stxy r0
 	jsr init_drive
 
 	ldx #<@s_colon
 	ldy #>@s_colon
-	jsr str::cat	; s@:<filename>
-	lda #15		; SA (command channel)
+	jsr str::cat		; s@:<filename>
+	lda #15			; SA (command channel)
 	jsr __file_open
 	bcs @err
 
-@close: jmp __file_geterr
+@close: lda #$0f		; command channel
+	jsr __file_close
+	jmp __file_geterr
 
 @err:   jsr @close
 	RETURN_ERR ERR_IO_ERROR
@@ -468,13 +464,9 @@ ENDOSPROC
 ; Closes the file with the given handle.
 ; IN:
 ;  - .A: the file handle to close
-;  - .Z: clear on error
 .export __file_close
 OSPROC __file_close
-	pha
-	jsr krn::close		; CLOSE
-	pla
-	jmp krn::readst		; READST
+	jmp krn::close		; CLOSE
 ENDOSPROC
 
 ;*******************************************************************************
@@ -496,17 +488,18 @@ OSPROC init_drive
 	ldxy #@i
 	lda #1
 	jsr krn::setnam	; SETNAM
+
 	lda #15
 	ldx zp::device
-	ldy #15
+	tay
 	jsr krn::setlfs	; SETLFS
 	jsr krn::open	; OPEN
 	lda #15
-	jmp krn::close	; CLOSE
-
+	jsr krn::close	; CLOSE
+	jmp krn::clrchn
 .PUSHSEG
 .RODATA
-@i:	.byte "I"
+@i:	.byte $49	; 'I'
 .POPSEG
 ENDOSPROC
 

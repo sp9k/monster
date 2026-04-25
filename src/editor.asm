@@ -172,7 +172,6 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	jsr asm::reset
 
 	jsr file::init_drive
-	jsr file::closeall
 	jsr refresh
 
 	; fall through to __edit_run
@@ -352,7 +351,7 @@ main:	jsr key::getch
 	jsr obj::init
 	jsr errlog::clear
 
-	jsr init_log
+	;jsr init_log
 	jsr asm::reset
 
 	lda #$01
@@ -373,7 +372,7 @@ main:	jsr key::getch
 	bne @done
 
 	; do the second assembly pass
-	jsr log_pass2
+	;jsr log_pass2
 	lda #$02
 	jsr asm::startpass
 	ldxy @filename
@@ -392,14 +391,19 @@ main:	jsr key::getch
 .proc command_link
 @file=r8
 @linkbuffer=mem::spare
-;@objlist=mem::spare
 	CALL FINAL_BANK_LINKER, link::init
 
 	jsr irq::off
 
-	; display linking...
+	; display "linking..."
 	ldxy #strings::linking
 	jsr print_info
+
+	; create a new log and write "linking..." to it
+	jsr file::init_drive
+	jsr log::new
+	ldxy #strings::linking
+	jsr log::out
 
 	; parse the LINK file to setup the linking context
 	ldxy #strings::link
@@ -407,15 +411,16 @@ main:	jsr key::getch
 	bcs @done				; error
 
 	; get all object files on disk
-	lda #$4f			; 'O'
+	lda #$4f				; 'O'
 	ldxy #link::objfiles
 	jsr dir::get_by_type
+	bcs @done
 
+	; link all object files that were found
 	CALL FINAL_BANK_LINKER, link::link
 
-	; display the success/failure
-
-@done:	jmp irq::on
+@done:	jsr log::close
+	jmp irq::on
 .endproc
 
 ;*******************************************************************************
@@ -432,12 +437,12 @@ main:	jsr key::getch
 	; save the filename
 	stxy @filename
 	ldy #$00
-:	lda (@filename),y
+@l0:	lda (@filename),y
 	sta @savename,y
 	beq :+
 	iny
 	cpy #16		; max filename len in CBM DOS
-	bne :-
+	bne @l0
 
 :	; assemble obj file to the vmem address $0000
 	ldx #$00
@@ -446,37 +451,32 @@ main:	jsr key::getch
 
 	inx			; .X=1
 	stx asm::mode		; assemble to object
-	jsr command_asmdbg
-
-	; restore filename
-	ldxy #@savename
-
-	php			; save error (.C)
 	jsr irq::off
-	plp			; restore error (.C)
-	bcs @done		; if assembly failed, just quit
 
-	jsr file::open_w	; open the output filename
+	ldxy #strings::dumping
+	jsr print_info
+
+	jsr file::init_drive
+
+	; OPEN
+	ldxy #@savename		; restore filename
+	jsr file::open_w	; OPEN the output filename
 	bcs @err
 	sta @fileid
 	tax
 	jsr krn::chkout		; CHKOUT, file in .X is output
 
-	ldxy #strings::dumping
-	jsr print_info
-
-	CALL FINAL_BANK_LINKER, obj::dump
-	php
-	pha
-	lda @fileid
-	jsr file::close
-	pla
-	plp
-	bcc @done
+	; SAVE
+	CALL FINAL_BANK_LINKER, obj::dump	; dump the object code
+	bcc @ok
 
 @err:	; print the error
 	jsr report_typein_error
 	jsr key::getch
+
+@ok:	; CLOSE
+	lda @fileid
+	jsr file::close
 
 @done:	dec asm::mode		; switch back to DIRECT assembly mode
 	jmp irq::on
@@ -498,7 +498,7 @@ main:	jsr key::getch
 
 :	jsr irq::off
 	jsr cancel		; close errlog (if open)
-	jsr init_log		; create a (new) log file
+	;jsr init_log		; create a (new) log file
 
 	lda #$01
 	sta zp::gendebuginfo	; enable debug info
@@ -517,7 +517,7 @@ main:	jsr key::getch
 
 	; log file we are assembling
 	jsr src::current_filename
-	jsr log::out
+	;jsr log::out
 
 ;--------------------------------------
 ; Pass 1
@@ -552,11 +552,11 @@ main:	jsr key::getch
 ; Pass 2
 ; now we have defined labels and enough debug info to generate both the
 ; program binary and the full debug info (if enabled)
-@pass2: jsr log_pass2
+@pass2: ;jsr log_pass2
 
 	; log file we are assembling (again)
 	jsr src::current_filename
-	jsr log::out
+	;jsr log::out
 
 	; set the initial file for debugging
 	; sections are closed by the .SEG directive
@@ -622,7 +622,7 @@ main:	jsr key::getch
 @err:	lda height
 	jsr errlog::activate
 
-	jsr log::close
+	;jsr log::close
 	sec			; assembly failed
 	rts
 
@@ -669,7 +669,7 @@ main:	jsr key::getch
 	jsr draw::hiline
 	jsr lbl::index		; index labels for debugging, etc.
 
-	jsr log::close
+	;jsr log::close
 	RETURN_OK
 .PUSHSEG
 .RODATA
@@ -3284,24 +3284,31 @@ goto_buffer:
 @open:	ldxy @file
 	jsr command_rename	; first, rename the buffer to our filename
 	ldxy @file
-	jsr file::open_w	; open file for writing
+	jsr file::open_w	; OPEN file for writing
 	bcs @err
 	sta @file
-	jsr src::pushp		; save current source pos
-	lda @file
-	jsr file::savesrc	; save the buffer
-	jsr src::popgoto	; restore source pos
-	lda @file
-	jsr file::close		; close the file
-	cmp #$00
-	bne @err
 
-	jsr text::clrinfo	; erase SAVING message
-	jsr src::setflags	; clear flags on the source buffer and return
+	jsr src::pushp		; save current source pos in source buffer
+	jsr src::rewind		; go back to the start of source buffer
+
+	lda @file
+	jsr file::savesrc	; SAVE the buffer
+	jsr src::popgoto	; restore source pos in buffer
+
+	lda @file
+	jsr file::close		; CLOSE file
+	jsr krn::clrchn
+
+@ok:	;jsr text::clrinfo	; erase SAVING message
+	;lda #$00
+	;jsr src::setflags	; clear flags on the source buffer and return
 	jmp irq::on
 
-@err:	jsr irq::on
-	jmp report_drive_error
+@err:	pha
+	jsr irq::on
+	pla
+	jsr report_drive_error
+	jmp key::getch
 .endproc
 
 ;******************************************************************************

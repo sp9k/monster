@@ -24,7 +24,7 @@
 	sta @ch
 	jsr krn::setnam	; SETNAM
 
-	lda #$0f	; file number 15
+	lda #$0f	; file number 15 (error channel)
 	ldx zp::device
 	tay		; secondary address 15 (error channel)
 	jsr krn::setlfs	; SETLFS

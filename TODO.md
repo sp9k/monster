@@ -16,14 +16,14 @@
 - [ ] Save/restore raster position while debugging
 
 ### TODO V1
+- [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
 - [ ] get disk access working from BASIC
-- [x] fix indirect jmp assembly
 - [ ] fix linking/object code generation for C64
 - [ ] fix linking/object code generation for Ultimem
+- [x] fix indirect jmp assembly
 - [x] fix debug-info line mapping for .REP
 - [x] fix nested .REP (again)
 - [x] replace label implementation with hash-map one
-- [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
 - [x] fix weird off-by-1 cursor issue (on some newlines???)
 - [x] allow formatting to be disabled
 - [x] don't format if afterwards line will be too long

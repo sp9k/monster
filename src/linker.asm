@@ -12,6 +12,7 @@
 .include "kernal.inc"
 .include "labels.inc"
 .include "line.inc"
+.include "log.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "object.inc"
@@ -921,8 +922,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	sec		; no segments defined; return error
 @ret:	rts
 
-@init:
-	; initialize state:
+@init:  ; initialize state:
 	; labels (global symbol table)
 	; debug info (global debug info)
 	CALLMAIN lbl::clr
@@ -954,23 +954,28 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; in each object file
 
 	; load the next .O (object) file in the object list
+	ldxy #strings::pass1
+	CALLMAIN log::out
+
+	; log the filename being assembled
+	ldxy @objfile
+	CALLMAIN log::out
+
 	ldxy @objfile
 	stxy obj::filename
 	CALLMAIN file::open_r_prg
-	pha					; save file handle
+	pha				; save file handle
 	tax
-	jsr krn::chkin				; CHKIN
+	jsr krn::chkin			; CHKIN
 
 	jsr obj::load_headers	; get section sizes and add global labels
 	pla			; restore file handle
 	php			; save .C (error)
 
-	; close the object file
-	CALLMAIN file::close
-	jsr krn::clrchn				; CLRCHN
-	plp					; restore load_headers error
+	CALLMAIN file::close	; close the object file
+	plp			; restore load_headers error
 	bcc :+
-	rts
+	rts			; return err
 
 :	; store the current base addresses for each SEGMENT for the object file
 	lda activeobj
@@ -1005,8 +1010,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	ldxy @segname			; address of segment name
 	jsr get_segment_by_name		; get its ID
 	bcc :+
-	;bcs @done			; error
-	rts
+	rts				; error
+
 :	tax				; .X=segment index (global context)
 	ldy @i				; .Y=segment index (object file)
 
@@ -1062,6 +1067,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; RETURN_ERR ERR_SECTION_TOO_SMALL
 
 @start_pass2:
+	ldxy #strings::pass2
+	CALLMAIN log::out
+
 	; reset obj pointer to start of object list
 	ldxy #__link_objfiles
 	stxy @objfile
@@ -1070,6 +1078,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 @objects:
 	; iterate over each object file and link it
+	ldxy @objfile
+	CALLMAIN log::out
+
 	ldxy @objfile
 	jsr link_object		; link the object file
 	bcs @done		; if .C set, return with error
