@@ -41,6 +41,7 @@
 @ext=r5
 @file=r6
 @resultptr=r7
+@cnt=r9
 @buff=$100
 	sta @ext
 	stxy @resultptr
@@ -50,6 +51,8 @@
 	sta @file
 
 	jsr read_disk_name
+	lda #$00
+	sta @cnt
 
 @l0:	; read a filename
 	ldxy #@buff
@@ -88,6 +91,9 @@
 	sta (@resultptr),y	; terminate list
 	lda @file
 	jsr file::close
+
+@ok:	lda @cnt
+	ldxy @resultptr
 @ret:	rts
 .endproc
 
@@ -203,7 +209,8 @@
 	lda @cnt
 	cmp #SCREEN_HEIGHT-2
 	bcc :+
-	sbc #SCREEN_HEIGHT-1
+	;sec
+	sbc #SCREEN_HEIGHT-2
 	tax
 :	stx @scrollmax
 
@@ -358,10 +365,11 @@
 
 	inc @i
 	lda @i
-	cmp #SCREEN_HEIGHT-1
+	cmp #SCREEN_HEIGHT
 	bcs @refresh_done
 	adc @scroll
 	cmp @cnt
+	beq :-
 	bcc :-
 
 @refresh_done:
