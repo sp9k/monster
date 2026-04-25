@@ -4,6 +4,8 @@
 ; The "context" is a special buffer used by the .MAC and .REP directives to
 ; store lines of data, which is required to complete the assembly of these
 ; directives when their corresponding .ENDMAC or .ENDREP directive is found.
+; Each line of text is preceded by a line number, which is used to map the line
+; to its address when debug information is generated.
 ;*******************************************************************************
 
 .include "asm.inc"

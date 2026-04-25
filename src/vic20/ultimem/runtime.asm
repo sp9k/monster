@@ -475,6 +475,8 @@ nmi_handler:
 	pha
 
 brk_handler:
+	lda #$3f
+	sta $9ff1		; make I/O space RW again
 	lda #FINAL_BANK_MAIN	; start of BRK handler
 	SELECT_BANK_A		; switch to DEBUGGER bank
 	lda #$00
@@ -504,8 +506,6 @@ step_handler:
 	; set RAM123 and IO2/3 to RAM (r/w)
 	lda #VMEM_RAM123_BANK
 	sta $9ff4
-
-	; TODO: write protect IO region
 
 	; set BLK 1,2,3, and 5 to RAM (r/w)
 	lda #$ff
@@ -568,6 +568,8 @@ go_pre_run:
 	tay
 	pla
 	tax
+	lda #$2b
+	sta $9ff1		; make IO 2/3 read only
 	pla			; restore .A
 	plp			; restore status
 

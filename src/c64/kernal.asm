@@ -64,7 +64,7 @@
 
 ;*******************************************************************************
 ; CIOUT
-.proc __kernal_ciout
+.export __kernal_ciout
 .proc __kernal_ciout
 	KERNAL_JUMP $eddd
 .endproc

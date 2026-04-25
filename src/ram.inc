@@ -13,14 +13,20 @@ RAM_INC = 1
 
 .import __ram_call
 .import __ram_copy
-.import __ram_dst
 .import __ram_memcpy
 .import __ram_copy_line
 .import __ram_store_byte
 .import __ram_bank_store_rel
 .import __ram_load_byte
 .import __ram_load_byte_off
+
+.ifdef c64
+.importzp __ram_src
+.importzp __ram_dst
+.else
 .import __ram_src
+.import __ram_dst
+.endif
 
 .scope ram
 	call      = __ram_call

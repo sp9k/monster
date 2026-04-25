@@ -2053,9 +2053,9 @@ labelvars_size=*-labelvars
 ; A 2-byte header (number of symbols) is stored first
 ; NOTE: anonymous symbols and symbol metadata (mode, etc.) is not dumped
 .proc dump
-@sym  = r0
-@cnt  = r2
-@addr = r4
+@symname = r0
+@symdata = r2
+@cnt     = r4
 	; write the number of symbols
 	lda numlabels
 	sta @cnt
@@ -2068,27 +2068,25 @@ labelvars_size=*-labelvars
 
 	jsr setup_for_load_or_dump
 
-	; write each symbol
-@l0:	ldy #$00
+@l0:	; write symbol data for this label
+	ldy #$00
+	SELECT_BANK "SYMBOLS"
+:	LOADB_Y @symdata
+	jsr krn::chrout
+	iny
+	cpy #SIZEOF_LABEL
+	bcc :-
 
 	; write the symbol name
-@l1:	LOADB_Y @sym
+	ldy #$00
+	SELECT_BANK "SYMBOL_NAMES"
+:	LOADB_Y @symname
 	jsr krn::chrout
 	iny
 	cmp #$00
-	bne @l1
+	bne :-
 
-	; write the address
-	ldy #$00
-	LOADB_Y @addr
-	jsr krn::chrout
-	incw @addr
-	LOADB_Y @addr
-	jsr krn::chrout
-	incw @addr
-
-	jsr next_sym
-
+	; decrement count and repeat until all labels are dumped
 	lda @cnt
 	bne :+
 	dec @cnt+1
@@ -2104,9 +2102,9 @@ labelvars_size=*-labelvars
 ; LOAD
 ; Loads the symbol table from the open file.
 .proc load
-@sym  = r0
-@cnt  = r2
-@addr = r4
+@symname = r0
+@symdata = r2
+@cnt     = r4
 	; load the number of symbols
 	jsr krn::chrin
 	sta numlabels
@@ -2122,22 +2120,20 @@ labelvars_size=*-labelvars
 
 @l0:	; load each symbol
 	ldy #$00
+	SELECT_BANK "SYMBOLS"
+:	jsr krn::chrin
+	STOREB_Y @symdata
+	iny
+	cpy #SIZEOF_LABEL
+	bcc :-
 
-@l1:	; load the name
-	jsr krn::chrin
-	STOREB_Y @sym
+	; load the name of the symbol
+	SELECT_BANK "SYMBOL_NAMES"
+:	jsr krn::chrin
+	STOREB_Y @symname
 	iny
 	cmp #$00
-	bne @l1
-
-	; load the address
-	jsr krn::chrin
-	tax
-	jsr krn::chrin
-	tay
-	STOREW @addr
-	incw @addr
-	incw @addr
+	bne :-
 
 	jsr next_sym
 
@@ -2153,29 +2149,37 @@ labelvars_size=*-labelvars
 
 ;*******************************************************************************
 ; NEXT SYM
-; Advances the "@sym" pointer to the next symbol (label)
+; Advances the @symname pointer to the next symbol name (label) and
+; the @symdata pointer to the next symbol data record
 ; OUT:
 ;   r0: increased by MAX_LABEL_NAME_LEN
 .proc next_sym
-@sym = r0
-	lda @sym
+@symname = r0
+@symdata = r2
+	lda @symname
 	clc
 	adc #MAX_LABEL_NAME_LEN
-	sta @sym
+	sta @symname
 	bcc :+
-	inc @sym+1
+	inc @symname+1
+	clc
+:	lda @symdata
+	adc #SIZEOF_LABEL
+	sta @symdata
+	bcc :+
+	inc @symdata+1
 :	rts
 .endproc
 
 ;*******************************************************************************
 ; SETUP FOR LOAD OR DUMP
 .proc setup_for_load_or_dump
-@sym  = r0
-@addr = r4
+@symname = r0
+@symdata = r2
+	ldxy #labelnames
+	stxy @symname
 	ldxy #labels
-	stxy @sym
-	ldxy #label_addresses_sorted
-	stxy @addr
+	stxy @symdata
 	rts
 .endproc
 
