@@ -32,8 +32,6 @@ SEG_ABS   = $ff	; symbol represents a constant (not tied to a segment)
 SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 
 .define MAX_LABEL_NAME_LEN 32
-.define MAX_LABELS         768
-.define MAX_ANON           650
 
 .scope lbl
 	add           = __label_add

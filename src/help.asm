@@ -1,7 +1,9 @@
 .include "asm.inc"
+.include "debuginfo.inc"
 .include "draw.inc"
 .include "key.inc"
 .include "labels.inc"
+.include "limits.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "ram.inc"
@@ -14,9 +16,13 @@ START_ROW = 0
 .if .defined(c64)
 .define DEBUGGER_START "$cf00"
 .define DEBUGGER_STOP  "$cfff"
+.define DEBUGINFO_LOAD $0000	; from __DEBUGINFO_LOAD__
+.define DEBUGINFO_SIZE "$ffff"	; from __DEBUGINFO_SIZE__
 .elseif .defined(vic20)
 .define DEBUGGER_START "$9800"
 .define DEBUGGER_STOP  "$9fff"
+.define DEBUGINFO_LOAD $2000	; from __DEBUGINFO_LOAD__
+.define DEBUGINFO_SIZE "$2000"	; from __DEBUGINFO_SIZE__
 .endif
 
 .CODE
@@ -47,6 +53,7 @@ START_ROW = 0
 	jsr print
 	jmp @debugger
 
+;------------------------------------------------------------------------------
 @prog:
 ; print the memory area used by the user's assembled program
 	; push the top address
@@ -65,12 +72,14 @@ START_ROW = 0
 	lda #START_ROW
 	jsr print
 
+;------------------------------------------------------------------------------
 ; print the memory area used by the debugger
 @debugger:
 	ldxy #@debugger_msg
 	lda #START_ROW+1
 	jsr print
 
+;------------------------------------------------------------------------------
 ; print the number of labels used and how many are available
 @labels:
 	; push the number of labels used
@@ -83,6 +92,7 @@ START_ROW = 0
 	lda #START_ROW+2
 	jsr print
 
+;------------------------------------------------------------------------------
 ; print the number of anonymous labels used and how many are available
 @anon_labels:
 	; push the number of anonymous labels used
@@ -90,16 +100,40 @@ START_ROW = 0
 	pha
 	lda lbl::numanon+1
 	pha
-
 	ldxy #@alabels_msg
 	lda #START_ROW+3
 	jsr print
 
+;------------------------------------------------------------------------------
+; print the number of files used in the assembly unit
+@files:
+	lda dbgi::numfiles
+	pha
+	lda #$00
+	pha
+	ldxy #@files_msg
 	lda #START_ROW+4
-	CALLMAIN scr::clrline
+	jsr print
 
+;------------------------------------------------------------------------------
+; print the size of the debug information and total available space for it
+@dbgi:	lda dbgi::top
+	sec
+	sbc #<DEBUGINFO_LOAD
+	pha
+	lda dbgi::top+1
+	sbc #>DEBUGINFO_LOAD
+	pha
+	ldxy #@dbginfo_msg
+	lda #START_ROW+5
+	jsr print
+
+;------------------------------------------------------------------------------
+; draw a separator after all the info that was printed
+	lda #START_ROW+6
+	CALLMAIN scr::clrline
 	lda #COLOR_RVS
-	ldx #START_ROW+4
+	ldx #START_ROW+6
 	CALLMAIN draw::hline
 
 	CALLMAIN key::waitch
@@ -114,6 +148,9 @@ START_ROW = 0
 @debugger_msg: .byte "debugger    ", DEBUGGER_START, "-", DEBUGGER_STOP, 0
 @labels_msg:   .byte "labels      ", ESCAPE_VALUE_DEC, "/", .string(MAX_LABELS), 0
 @alabels_msg:  .byte "anon labels ", ESCAPE_VALUE_DEC, "/", .string(MAX_ANON), 0
+@files_msg:    .byte "files       ", ESCAPE_VALUE_DEC, "/", .string(MAX_FILES), 0
+@dbginfo_msg:  .byte "debug info  $", ESCAPE_VALUE, "/", DEBUGINFO_SIZE, 0
+
 .POPSEG
 .endproc
 

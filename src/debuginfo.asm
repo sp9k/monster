@@ -15,10 +15,10 @@
 .include "ram.inc"
 .include "target.inc"
 .include "zeropage.inc"
+.include "limits.inc"
 .macpack longbranch
 
 ; Debug info constants
-MAX_FILES  = 64		; max files debug info may be generated for
 MAX_BLOCKS = 256
 
 MAX_FILENAME_LEN = 16
@@ -82,6 +82,10 @@ __debug_src_line = srcline	; the line # stored by dbg::storeline
 __debug_numfiles:
 numfiles:   .byte 0
 
+.export __debuginfo_top
+__debuginfo_top:
+freeptr:    .word 0	; pointer to next available address in debuginfo
+
 .segment "DEBUGINFO"
 
 ;*******************************************************************************
@@ -144,7 +148,6 @@ __debuginfo_set_seg_id:   JUMP FINAL_BANK_DEBUG, set_seg_id
 numblocks:  .byte 0	; number of blocks that we have debug info for
 block_open: .byte 0	; if !0, we are creating a block, when this is set
 			; creating a new block will first close the open one
-freeptr:    .word 0	; pointer to next available address in debuginfo
 blocksp:    .byte 0	; stack pointer for block stack
 
 ; file table (stored as table of 0-terminated filenames)

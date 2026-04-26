@@ -10,6 +10,7 @@
 .include "file.inc"
 .include "kernal.inc"
 .include "labels.inc"
+.include "limits.inc"
 .include "linker.inc"
 .include "macros.inc"
 .include "ram.inc"

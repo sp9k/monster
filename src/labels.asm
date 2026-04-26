@@ -70,6 +70,7 @@ LIST_NEXT   = 2
 .include "config.inc"
 .include "errors.inc"
 .include "kernal.inc"
+.include "limits.inc"
 .include "ram.inc"
 .include "macros.inc"
 .include "target.inc"
@@ -92,8 +93,6 @@ temp    = zp::labels+$11	; temporary scratchpad
 
 ;*******************************************************************************
 ; CONSTANTS
-MAX_ANON   = 1776	; max number of anonymous labels
-MAX_LABELS = 728	; max number of named labels
 SCOPE_LEN  = 8		; max len of namespace (scope)
 
 ; NOTE: BE CAREFUL CHANGING THIS
