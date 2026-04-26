@@ -1,15 +1,18 @@
 .include "asm.inc"
+.include "debug.inc"
 .include "debuginfo.inc"
 .include "draw.inc"
 .include "key.inc"
 .include "labels.inc"
 .include "limits.inc"
+.include "macro.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "ram.inc"
 .include "screen.inc"
 .include "target.inc"
 .include "text.inc"
+.include "watches.inc"
 
 START_ROW = 0
 
@@ -18,11 +21,15 @@ START_ROW = 0
 .define DEBUGGER_STOP  "$cfff"
 .define DEBUGINFO_LOAD $0000	; from __DEBUGINFO_LOAD__
 .define DEBUGINFO_SIZE "$ffff"	; from __DEBUGINFO_SIZE__
+.define MACROS_START   $0000	; from __MACROBSS_LOAD__
+.define MACROS_STOP    "$6000"	; from __MACROBSS_SIZE__
 .elseif .defined(vic20)
 .define DEBUGGER_START "$9800"
 .define DEBUGGER_STOP  "$9fff"
 .define DEBUGINFO_LOAD $2000	; from __DEBUGINFO_LOAD__
 .define DEBUGINFO_SIZE "$2000"	; from __DEBUGINFO_SIZE__
+.define MACROS_START   $2100	; from __MACROBSS_LOAD__
+.define MACROS_STOP    "$5f00"	; from __MACROBSS_SIZE__
 .endif
 
 .CODE
@@ -105,6 +112,31 @@ START_ROW = 0
 	jsr print
 
 ;------------------------------------------------------------------------------
+; print number of macros used
+@macros:
+	lda mac::num
+	pha
+	lda #$00
+	pha
+	ldxy #@macros_msg
+	lda #START_ROW+4
+	jsr print
+
+;------------------------------------------------------------------------------
+; print macro usage (amout of memory)
+@macusage:
+	lda mac::top
+	sec
+	sbc #<MACROS_START
+	pha
+	lda mac::top+1
+	sbc #>MACROS_START
+	pha
+	ldxy #@macro_usage
+	lda #START_ROW+5
+	jsr print
+
+;------------------------------------------------------------------------------
 ; print the number of files used in the assembly unit
 @files:
 	lda dbgi::numfiles
@@ -112,7 +144,7 @@ START_ROW = 0
 	lda #$00
 	pha
 	ldxy #@files_msg
-	lda #START_ROW+4
+	lda #START_ROW+6
 	jsr print
 
 ;------------------------------------------------------------------------------
@@ -125,15 +157,37 @@ START_ROW = 0
 	sbc #>DEBUGINFO_LOAD
 	pha
 	ldxy #@dbginfo_msg
-	lda #START_ROW+5
+	lda #START_ROW+7
+	jsr print
+
+;------------------------------------------------------------------------------
+; print the number of breakpoints and maximum available
+@brkpts:
+	lda dbg::numbreakpoints
+	pha
+	lda #$00
+	pha
+	ldxy #@breakpoints_msg
+	lda #START_ROW+8
+	jsr print
+
+;------------------------------------------------------------------------------
+; print the number of watchpoints and maximum available
+@watches:
+	lda watch::num
+	pha
+	lda #$00
+	pha
+	ldxy #@watchpoints_msg
+	lda #START_ROW+9
 	jsr print
 
 ;------------------------------------------------------------------------------
 ; draw a separator after all the info that was printed
-	lda #START_ROW+6
+	lda #START_ROW+10
 	CALLMAIN scr::clrline
 	lda #COLOR_RVS
-	ldx #START_ROW+6
+	ldx #START_ROW+10
 	CALLMAIN draw::hline
 
 	CALLMAIN key::waitch
@@ -143,14 +197,27 @@ START_ROW = 0
 
 .PUSHSEG
 .RODATA
-@noasm:        .byte "program     no assembly",0
-@program_msg:  .byte "program     $", ESCAPE_VALUE, "-$", ESCAPE_VALUE, 0
-@debugger_msg: .byte "debugger    ", DEBUGGER_START, "-", DEBUGGER_STOP, 0
-@labels_msg:   .byte "labels      ", ESCAPE_VALUE_DEC, "/", .string(MAX_LABELS), 0
-@alabels_msg:  .byte "anon labels ", ESCAPE_VALUE_DEC, "/", .string(MAX_ANON), 0
-@files_msg:    .byte "files       ", ESCAPE_VALUE_DEC, "/", .string(MAX_FILES), 0
-@dbginfo_msg:  .byte "debug info  $", ESCAPE_VALUE, "/", DEBUGINFO_SIZE, 0
-
+@noasm:           .byte "program     no assembly",0
+@program_msg:     .byte "program     "
+                  .byte ESCAPE_VALUE, "-$", ESCAPE_VALUE, 0
+@debugger_msg:    .byte "debugger    "
+                  .byte DEBUGGER_START, "-", DEBUGGER_STOP, 0
+@labels_msg:      .byte "labels      "
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_LABELS), 0
+@alabels_msg:     .byte "anon labels "
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_ANON), 0
+@macros_msg:      .byte "macros      "
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_MACROS), 0
+@macro_usage:     .byte "macro usage "
+                  .byte ESCAPE_VALUE, "/", MACROS_STOP, 0
+@files_msg:       .byte "files       "
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_FILES), 0
+@dbginfo_msg:     .byte "debug info  "
+                  .byte ESCAPE_VALUE, "/", DEBUGINFO_SIZE, 0
+@breakpoints_msg: .byte "breakpoints "
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_BREAKPOINTS), 0
+@watchpoints_msg: .byte "watches     "
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_BREAKPOINTS), 0
 .POPSEG
 .endproc
 

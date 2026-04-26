@@ -21,6 +21,7 @@
 .include "key.inc"
 .include "keycodes.inc"
 .include "layout.inc"
+.include "limits.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "memview.inc"
@@ -52,8 +53,6 @@
 .import PROGRAM_STACK_START	; initial stack offset for user program.
 
 ;*******************************************************************************
-MAX_BREAKPOINTS = 16	; max number of breakpoints that may be set
-
 AUX_NONE = 0		; flag for no viewer enabled
 AUX_MEM  = 1		; enables the memory viewer in the debug view
 AUX_GUI  = 2		; enables viewers that use the standard GUI list menu

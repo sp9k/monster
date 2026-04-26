@@ -31,6 +31,7 @@
 .include "../source.inc"
 .include "../text.inc"
 .include "../vmem.inc"
+.include "../watches.inc"
 .include "../zeropage.inc"
 
 .include "fastcopy.inc"
@@ -215,6 +216,7 @@ cart_start:
 	sta zp::banksp		; init bank stack pointer
 	sta $c6			; clear keyboard buffer
 	sta dbg::numbreakpoints	; clear breakpoints
+	sta watch::num		; clear watches
 
 	lda #$4c
 	sta zp::bankjmpaddr	; write the JMP instruction

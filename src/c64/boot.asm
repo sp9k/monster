@@ -18,6 +18,7 @@
 .include "../screen.inc"
 .include "../source.inc"
 .include "../vmem.inc"
+.include "../watches.inc"
 .include "../zeropage.inc"
 
 .import __BSS_LOAD__
@@ -103,6 +104,7 @@ start:
 
 	lda #$00
 	sta dbg::numbreakpoints	; clear breakpoints
+	sta watch::num		; clear watches
 
 	; clear row colors
 	lda #DEFAULT_900F

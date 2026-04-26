@@ -40,10 +40,12 @@ MAX_WATCHPOINTS = 8	; max number of watchpoints that may be set
 .importzp scroll
 .importzp select
 
+;*******************************************************************************
+.segment "SHAREBSS"
+__watches_num:  .byte 0		    ; number of active watches
+
 .BSS
 ;*******************************************************************************
-
-__watches_num:  .byte 0		    ; number of active watches
 
 NUM_WATCH_TABLES=7
 watch_data:

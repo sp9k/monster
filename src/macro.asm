@@ -2,6 +2,7 @@
 .include "config.inc"
 .include "errors.inc"
 .include "labels.inc"
+.include "limits.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "ram.inc"
@@ -9,25 +10,29 @@
 .include "target.inc"
 .include "zeropage.inc"
 
-;*******************************************************************************
-; CONSTANTS
-MAX_MACROS = 128
-
 .export macro_addresses
 .export macros
+
+.import __MACROBSS_LOAD__
+
+;*******************************************************************************
+.segment "SHAREBSS"
+.export __mac_num
+__mac_num:
+nummacros: .byte 0
+
+.export __mac_top
+__mac_top: .word 0
 
 ;*******************************************************************************
 ; VARS
 .segment "MACRO_VARS"
-
-;*******************************************************************************
-nummacros:       .byte 0
 macro_addresses: .res MAX_MACROS * 2
 
 ;*******************************************************************************
 ; BSS
 .segment "MACROBSS"
-macros:          .res $1400
+macros: .res $6000 - (MAX_MACROS*2)
 
 ;*******************************************************************************
 ; MACRO FORMAT:
@@ -53,7 +58,7 @@ macros:          .res $1400
 
 	; init address for first macro that will be created
 	ldxy #macros
-	stxy macro_addresses
+	stxy __mac_top
 	rts
 .endproc
 
@@ -80,24 +85,20 @@ macros:          .res $1400
 	RETURN_ERR ERR_TOO_MANY_MACROS
 
 :	stxy @src
+
+	; write pointer for the macro to address we will write it to
 	lda nummacros
 	asl
-	adc #<macro_addresses
-	sta @addr
-	lda #>macro_addresses
-	adc #$00
-	sta @addr+1
-
-	; get the address to write the macro to
-	ldy #$00
-	lda (@addr),y
+	tax
+	lda __mac_top
 	sta @dst
-	iny
-	lda (@addr),y
+	sta macro_addresses,x
+	lda __mac_top+1
 	sta @dst+1
+	sta macro_addresses+1,x
 
 	; copy the name of the macro (parameter 0)
-	dey
+	ldy #$00
 @copyname:
 	lda (@params),y
 	STOREB_Y @dst
@@ -148,23 +149,8 @@ macros:          .res $1400
 	incw @dst
 	STOREB_Y @dst
 
-	; done copying use the end address as the start address for the next macro
 	inc nummacros
-	lda nummacros
-	asl
-	adc #<macro_addresses
-	sta @addr
-	lda #>macro_addresses
-	adc #$00
-	sta @addr+1
-	ldy #$00
-	lda @dst
-	sta (@addr),y
-	iny
-	lda @dst+1
-	sta (@addr),y
-	;clc
-	rts
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
