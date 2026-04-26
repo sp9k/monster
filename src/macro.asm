@@ -1,13 +1,19 @@
 .include "asm.inc"
 .include "config.inc"
+.include "draw.inc"
 .include "errors.inc"
+.include "key.inc"
+.include "keycodes.inc"
 .include "labels.inc"
+.include "layout.inc"
 .include "limits.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "ram.inc"
+.include "screen.inc"
 .include "string.inc"
 .include "target.inc"
+.include "text.inc"
 .include "zeropage.inc"
 
 .export macro_addresses
@@ -148,6 +154,11 @@ macros: .res $6000 - (MAX_MACROS*2)
 	STOREB_Y @dst
 	incw @dst
 	STOREB_Y @dst
+	incw @dst
+	lda @dst
+	sta __mac_top
+	lda @dst+1
+	sta __mac_top+1
 
 	inc nummacros
 	RETURN_OK
@@ -357,4 +368,265 @@ macros: .res $6000 - (MAX_MACROS*2)
 @found: ldy #$00
 	lda @cnt
 	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; VIEW
+; Enters the macro viewer, which displays a list of all macros that have
+; been loaded
+.export __mac_view
+.proc __mac_view
+@name=r8
+@row=ra
+@select=rb
+@cnt=rc			; number of files extracted from listing
+@scrollmax=rd		; maximum amount to allow scrolling
+@scroll=re
+@i=rf
+@dirbuff=mem::spare+40		; 0-40 will be corrupted by text routines
+@namebuff=mem::spareend-40	; buffer for the file name
+	; reset/save the screen
+	CALLMAIN scr::save
+
+	lda #$00
+	sta @select
+	sta @scroll
+
+	lda __mac_num
+	beq @exit
+	sta @cnt
+	cmp #SCREEN_HEIGHT
+	bcc :+
+	lda #SCREEN_HEIGHT-1
+:	sta @row
+
+	jsr @refresh		; draw the initial state
+
+;--------------------------------------
+; init viewer
+	; max a user can scroll is (# of macros - SCREEN_HEIGHT-1)
+	ldx #$00
+	lda @cnt
+	cmp #SCREEN_HEIGHT-1
+	bcc :+
+	;sec
+	sbc #SCREEN_HEIGHT-1
+	tax
+:	stx @scrollmax
+
+	; highlight the first item
+	jsr highlight_selection
+
+;--------------------------------------
+; main viewer loop
+@key:	CALLMAIN key::waitch
+	cmp #K_QUIT
+	bne @checkdown
+
+@exit:  JUMPMAIN scr::restore
+
+; check the arrow keys (used to select a macro)
+@checkdown:
+	jsr isdown
+	bne @checkup
+
+@rowdown:
+	jsr unhighlight_selection
+	inc @select
+	lda @select
+	cmp @row
+	bcc @hiselection
+	dec @select
+
+@scrolldown:
+	lda @scroll
+	cmp @scrollmax
+	bcs @hiselection
+
+	inc @scroll
+
+	; scroll up and redraw the bottom line
+	ldx #$01
+	lda #SCREEN_HEIGHT-1-1
+	CALLMAIN text::scrollup
+
+	lda @scroll
+	clc
+	adc @select
+	jsr @getname
+	lda #SCREEN_HEIGHT-1-1			; bottom row
+	CALLMAIN text::print
+	jmp @hiselection
+
+@checkup:
+	jsr isup
+	bne @checkret
+
+@rowup:
+	jsr unhighlight_selection
+	dec @select
+	bpl @hiselection
+	inc @select		; lowest valid select value is 0
+	lda @scroll
+	beq @hiselection	; if nothing to scroll, continue
+
+	; scroll down and redraw the bottom line
+	lda #1
+	ldx #SCREEN_HEIGHT-1-1
+	CALLMAIN text::scrolldown
+
+	dec @scroll
+	lda @scroll
+	clc
+	adc @select
+	jsr @getname
+	lda #1			; top row
+	CALLMAIN text::print
+
+@hiselection:
+	jsr highlight_selection
+@nextkey:
+	jmp @key
+
+; check the RETURN key (to open a file)
+@checkret:
+	cmp #$0d		; select file and load
+	beq @loadselection
+
+; if 'G', go to bottom of directory list
+@checkgototop:
+	cmp #$67		; 'g'
+	bne @checkbottom
+	CALLMAIN key::waitch
+	cmp #$67		; gg?
+	bne @nextkey
+
+	jsr unhighlight_selection
+
+	ldx #$00
+	stx @select
+	stx @scroll
+	beq @redraw		; branch always
+
+; if 'G', go to bottom of directory list
+@checkbottom:
+	cmp #$47		; 'G'
+	bne @nextkey
+
+	jsr unhighlight_selection
+
+	; set scroll to scrollmax
+	lda @scrollmax
+	sta @scroll
+
+	; set selection (row) to min(SCREEN_HEIGHT-2, @cnt)
+	ldx @cnt
+	cpx #SCREEN_HEIGHT-2
+	bcc :+
+	ldx #SCREEN_HEIGHT-2
+:	dex
+	stx @select
+@redraw:
+	jsr @refresh
+	jmp @hiselection
+
+; user selected a macro (RETURN), display it
+@loadselection:
+
+	; TODO: display the contents of the macro
+	rts
+
+;--------------------------------------
+; refresh (redraw) all visible rows
+@refresh:
+	lda #$00
+	sta @i
+
+:	lda @i
+	clc
+	adc @scroll
+	jsr @getname
+	lda @i
+	CALLMAIN text::print	; print the name of the macro
+
+	inc @i
+	lda @i
+	cmp #SCREEN_HEIGHT
+	bcs @refresh_done
+	adc @scroll
+	cmp @cnt
+	bcc :-
+
+@refresh_done:
+	rts
+
+;--------------------------------------
+; loads @namebuff with the macro at the given index (ID)
+@getname:
+	asl
+	tax
+	lda macro_addresses,x
+	sta @name
+	lda macro_addresses+1,x
+	sta @name+1
+
+	; copy the name of the macro to a temp buffer
+	ldy #$00
+:	LOADB_Y @name
+	sta @namebuff,y
+	iny
+	cmp #$00
+	bne :-
+	ldxy #@namebuff
+	rts
+.endproc
+
+;*******************************************************************************
+; UNHIGHLIGHT SELECTION
+; Unhighlights the selection (in rb)
+; IN:
+;   - rb: the row to highlight
+.proc unhighlight_selection
+@select=rb
+	ldx @select
+	JUMPMAIN draw::resetline	; deselect the current selection
+.endproc
+
+;*******************************************************************************
+; HIGHLIGHT SELECTION
+; Highlights the selection (in rb)
+; IN:
+;   - rb: the row to highlight
+.proc highlight_selection
+@select=rb
+	ldx @select
+	JUMPMAIN draw::hiline	; select the current selection
+.endproc
+
+;*******************************************************************************
+; ISUP
+; Checks if the given key is UP or 'k'
+; IN:
+;  - .A: the key value
+; OUT:
+;  - .Z: set if the given key is UP or 'k'
+.proc isup
+	cmp #$6b	; 'k'
+	beq :+
+	cmp #K_UP
+:	rts
+.endproc
+
+;*******************************************************************************
+; ISDOWN
+; Checks if the given key is DOWN or 'j'
+; IN:
+;  - .A: the key value
+; OUT:
+;  - .Z: set if the given key is DOWN or 'j'
+.proc isdown
+	cmp #$6a	; 'j'
+	beq :+
+	cmp #K_DOWN
+:	rts
 .endproc

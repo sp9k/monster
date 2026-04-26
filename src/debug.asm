@@ -1820,7 +1820,6 @@ command_vectorshi: .hibytes command_vectors
 ; when handled by the debugger
 disabled_commands:
 	.byte K_CLOSE_BUFF
-	.byte K_ASM
 	.byte K_ASM_DEBUG
 	.byte K_REFRESH
 	.byte $76		; v (enter visual)

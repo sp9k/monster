@@ -4,6 +4,7 @@
 .import __mac_get
 .import __mac_num
 .import __mac_top
+.import __mac_view
 
 .scope mac
 	add  = __mac_add
@@ -12,4 +13,5 @@
 	init = __mac_init
 	num  = __mac_num
 	top  = __mac_top
+	view = __mac_view
 .endscope

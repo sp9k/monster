@@ -681,8 +681,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; check if the line contains a macro
 @macro:	ldxy zp::line
 	CALL FINAL_BANK_MACROS, mac::get
-
 	bcs @chklabels		; if not macro, skip
+
 	pha			; save macro id
 	jsr line::process_word	; read past macro name
 	pla			; restore macro id

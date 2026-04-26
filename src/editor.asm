@@ -36,6 +36,7 @@
 .include "linebuffer.inc"
 .include "linker.inc"
 .include "log.inc"
+.include "macro.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "memview.inc"
@@ -320,6 +321,7 @@ main:	jsr key::getch
 :	jsr src::anydirty
 	beq :+			; if no dirty buffers, continue
 	jsr prompt_saveall	; ask user if they want to save buffers
+	bcs @ret
 
 :	jsr enter_command
 	inc debugging
@@ -489,8 +491,10 @@ main:	jsr key::getch
 ;   - .C: set if assembly failed
 .proc command_asmdbg
 	jsr prompt_saveall
+	bcc :+
+	rts
 
-	; ensure that the buffer we are assembling has a name
+:	; ensure that the buffer we are assembling has a name
 	jsr __edit_current_file
 	bcc :+
 	lda #ERR_UNNAMED_BUFFER
@@ -683,7 +687,7 @@ main:	jsr key::getch
 ; Asks the user if they would like to save all modified buffers and does so
 ; if they confirm
 ; OUT:
-;   - .C: set on error
+;   - .C: set if command should be aborted
 .proc prompt_saveall
 	jsr src::anydirty
 	beq @done		; no dirty buffers
@@ -693,10 +697,15 @@ main:	jsr key::getch
 	lda #STATUS_ROW
 	jsr text::print
 @getch:	jsr key::waitch
-	cmp #$79		; 'y'?
+	cmp #K_QUIT
+	bne :+			; exit? (abort)
+	rts			; return with .C set
+
+:	cmp #$79		; 'y'?
 	beq command_saveall	; save all dirty buffers
 	cmp #$6e		; 'n'?
 	bne @getch
+
 @done:	RETURN_OK
 .endproc
 
@@ -2294,6 +2303,13 @@ main:	jsr key::getch
 .endproc
 
 ;******************************************************************************
+; VIEW MACROS
+; Enters the macro viewer
+.proc view_macros
+	JUMP FINAL_BANK_MACROS, mac::view
+.endproc
+
+;******************************************************************************
 ; HANDLE_UNIVERSAL_KEYS
 ; Handles keys that behave the same regardless of which mode the editor is in
 ; IN:
@@ -2332,6 +2348,7 @@ main:	jsr key::getch
 	.byte K_SHOW_BUFFERS	; show buffers
 	.byte K_REFRESH		; refresh
 	.byte K_LIST_SYMBOLS	; list symbols
+	.byte K_VIEW_MACROS	; open macro viewer
 	.byte K_LINK            ; link program
 	.byte K_CLOSE_BUFF	; close buffer
 	.byte K_NEW_BUFF	; new buffer
@@ -2361,7 +2378,7 @@ main:	jsr key::getch
 .define specialvecs ccleft, ccright, ccup, ccdown, \
 	home, \
 	command_asmdbg, show_buffers, refresh, \
-	symview::enter, command_link, \
+	symview::enter, view_macros, command_link, \
 	close_buffer, new_buffer, set_breakpoint, jumpback, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
 	next_buffer, prev_buffer, udgedit, fmt_and_enter_command, go_basic, \
