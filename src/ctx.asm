@@ -378,23 +378,26 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 .proc getdata
 @src=r0
 @dst=r2
-@prev=r4
 	jsr get_data_addr
 	stxy @src
 	ldxy #mem::spare
 	stxy @dst
 
 	ldy #$00
-	sty @prev
-@l0:	lda (@src),y
+@l0:	; read line number (or terminating 00)
+	lda (@src),y
+	incw @src
+	ora (@src),y
+	beq @done	; if 0,0 this is the end of the data
+	incw @src
+
+@l1:	lda (@src),y
 	sta (@dst),y
-	tax
-	ora @prev	; check if we encountered 2 consecutive 0's
-	beq @done	; if yes, we're at the end
-	stx @prev	; save character we just read as previous
 	incw @src
 	incw @dst
-	bne @l0		; branch always
+	cmp #$00
+	bne @l1		; repeat for whole line
+	beq @l0		; if end of this line, get next one
 
 @done:	ldxy #mem::spare
 	rts
@@ -467,6 +470,8 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 
 @done:	lda #$00
 	STOREB_Y parent	; terminate this line in the buffer
+
+	; write the termiating 0,0 for the buffer
 	incw parent
 	STOREB_Y parent
 	iny
@@ -531,6 +536,8 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 
 @done:	lda #$00
 	STOREB_Y cur	; terminate this line in the buffer
+
+	; write the termiating 0,0 for the buffer
 	incw cur
 	STOREB_Y cur
 	iny

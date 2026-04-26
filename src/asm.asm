@@ -2311,6 +2311,7 @@ __asm_include:
 .proc macro
 	lda #CTX_MACRO
 	jsr ctx::push	; push a new context
+	bcs @ret	; if error -> return
 
 	jsr pass1
 	bne @done	; macro definition handled in pass 1
