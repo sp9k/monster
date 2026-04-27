@@ -12,6 +12,7 @@
 .include "ram.inc"
 .include "screen.inc"
 .include "string.inc"
+.include "strings.inc"
 .include "target.inc"
 .include "text.inc"
 .include "zeropage.inc"
@@ -49,8 +50,8 @@ macros: .res $6000 - (MAX_MACROS*2)
 ;    |       1       | number of parameters      |
 ;    |      0-16     | parameter 0 name          |
 ;    |      ...      | parameter n name          |
-;    |     0-255     | macro definition          |
-;    |       1       | terminating 0             |
+;    |      ...      | macro definition          |
+;    |       2       | terminating 0,0           |
 
 .segment "MACROCODE"
 
@@ -153,13 +154,10 @@ macros: .res $6000 - (MAX_MACROS*2)
 	tay
 	STOREB_Y @dst
 	incw @dst
-	STOREB_Y @dst
-	incw @dst
 	lda @dst
 	sta __mac_top
 	lda @dst+1
 	sta __mac_top+1
-
 	inc nummacros
 	RETURN_OK
 .endproc
@@ -374,6 +372,8 @@ macros: .res $6000 - (MAX_MACROS*2)
 ; VIEW
 ; Enters the macro viewer, which displays a list of all macros that have
 ; been loaded
+MODE_MAIN = 0
+MODE_DEF  = 1
 .export __mac_view
 .proc __mac_view
 @name=r8
@@ -383,14 +383,20 @@ macros: .res $6000 - (MAX_MACROS*2)
 @scrollmax=rd		; maximum amount to allow scrolling
 @scroll=re
 @i=rf
+@mode=zp::tmp10
 @dirbuff=mem::spare+40		; 0-40 will be corrupted by text routines
 @namebuff=mem::spareend-40	; buffer for the file name
+@lineptrslo=@namebuff-(128*2)	; room for 128 lines
+@lineptrshi=@namebuff-(128)	; room for 128 lines
+
 	; reset/save the screen
 	CALLMAIN scr::save
+	CALLMAIN scr::clr
 
-	lda #$00
-	sta @select
-	sta @scroll
+	; start in MAIN mode
+	ldx #$00
+	stx @mode
+	CALLMAIN draw::hiline	; highlight top row
 
 	lda __mac_num
 	beq @exit
@@ -400,10 +406,24 @@ macros: .res $6000 - (MAX_MACROS*2)
 	lda #SCREEN_HEIGHT-1
 :	sta @row
 
-	jsr @refresh		; draw the initial state
-
 ;--------------------------------------
 ; init viewer
+@init:	lda @mode
+	bne :+
+
+	; reset MAIN mode
+	lda __mac_num
+	sta @cnt
+
+	lda #$00
+	ldxy #strings::macros
+	CALLMAIN text::print
+
+:	lda #$00
+	sta @select
+	sta @scroll
+	jsr @refresh		; draw the initial state
+
 	; max a user can scroll is (# of macros - SCREEN_HEIGHT-1)
 	ldx #$00
 	lda @cnt
@@ -422,6 +442,12 @@ macros: .res $6000 - (MAX_MACROS*2)
 @key:	CALLMAIN key::waitch
 	cmp #K_QUIT
 	bne @checkdown
+	lda @mode			; are we in MAIN mode
+	beq @exit			; if so, return to editor
+
+	jsr unhighlight_selection
+	dec @mode			; go back to MAIN mode
+	bpl @init			; branch always
 
 @exit:  JUMPMAIN scr::restore
 
@@ -453,7 +479,7 @@ macros: .res $6000 - (MAX_MACROS*2)
 	lda @scroll
 	clc
 	adc @select
-	jsr @getname
+	jsr @getline
 	lda #SCREEN_HEIGHT-1-1			; bottom row
 	CALLMAIN text::print
 	jmp @hiselection
@@ -479,7 +505,7 @@ macros: .res $6000 - (MAX_MACROS*2)
 	lda @scroll
 	clc
 	adc @select
-	jsr @getname
+	jsr @getline
 	lda #1			; top row
 	CALLMAIN text::print
 
@@ -488,10 +514,13 @@ macros: .res $6000 - (MAX_MACROS*2)
 @nextkey:
 	jmp @key
 
-; check the RETURN key (to open a file)
+; check the RETURN key (to display macro definition)
 @checkret:
-	cmp #$0d		; select file and load
-	beq @loadselection
+	cmp #K_RETURN
+	bne @checkgototop
+	lda @mode
+	beq @showdef
+	jmp @init		; if already in DEF mode, ignore
 
 ; if 'G', go to bottom of directory list
 @checkgototop:
@@ -531,10 +560,12 @@ macros: .res $6000 - (MAX_MACROS*2)
 	jmp @hiselection
 
 ; user selected a macro (RETURN), display it
-@loadselection:
-
-	; TODO: display the contents of the macro
-	rts
+@showdef:
+	lda @select
+	clc
+	adc @scroll
+	jsr @show_macro_def	; show the macro definition
+	jmp @init		; re-enter main loop
 
 ;--------------------------------------
 ; refresh (redraw) all visible rows
@@ -542,12 +573,15 @@ macros: .res $6000 - (MAX_MACROS*2)
 	lda #$00
 	sta @i
 
-:	lda @i
+:	; print the macro name or line of the macro def (mode dependent)
+	lda @i
 	clc
 	adc @scroll
-	jsr @getname
+	jsr @getline
 	lda @i
-	CALLMAIN text::print	; print the name of the macro
+	clc
+	adc #$01
+	CALLMAIN text::print
 
 	inc @i
 	lda @i
@@ -561,7 +595,22 @@ macros: .res $6000 - (MAX_MACROS*2)
 	rts
 
 ;--------------------------------------
-; loads @namebuff with the macro at the given index (ID)
+; loads @namebuff with either:
+;   1. macro name at the given index (ID) - if in macros view
+;   2. given line of macro definition  - if in macro definition view
+@getline:
+	ldx @mode
+	cpx #MODE_DEF
+	bne @getname
+
+@getdef:
+	tax
+	lda @lineptrslo,x
+	sta @name
+	lda @lineptrshi,x
+	sta @name+1
+	jmp @copy
+
 @getname:
 	asl
 	tax
@@ -570,7 +619,7 @@ macros: .res $6000 - (MAX_MACROS*2)
 	lda macro_addresses+1,x
 	sta @name+1
 
-	; copy the name of the macro to a temp buffer
+@copy:	; copy the name of the macro to a temp buffer
 	ldy #$00
 :	LOADB_Y @name
 	sta @namebuff,y
@@ -578,6 +627,108 @@ macros: .res $6000 - (MAX_MACROS*2)
 	cmp #$00
 	bne :-
 	ldxy #@namebuff
+	rts
+
+;--------------------------------------
+; open a fullscreen view of the macro's definition
+@show_macro_def:
+@macro=r0
+@numparams=r2
+@tmp=r3
+	; get the address of the macro from its id
+	asl
+	tax
+	lda macro_addresses,x
+	sta @macro
+	lda macro_addresses+1,x
+	sta @macro+1
+
+	; read macro name for use as the new temporary scope
+	ldy #$ff		; pre-decrement ($ff)
+:	iny
+	LOADB_Y @macro
+	sta @namebuff,y
+	bne :-
+	lda #' '
+	sta @namebuff,y
+	lda #$00
+	sta @namebuff+1,y
+
+	; move @macro pointer past the name of macro
+	tya
+	tax
+	clc
+	adc @macro
+	sta @macro
+	bcc :+
+	inc @macro+1
+
+:	; append macro params to the macro name buffer
+	incw @macro
+	ldy #$00
+	LOADB_Y @macro		; get the number of parameters
+	sta @numparams
+	incw @macro		; move to the first parameter name
+	cmp #$00
+	beq @getlines		; if no args, skip
+	ldy #$ff		; -1
+
+@copyargs:
+	iny
+	inx
+	LOADB_Y @macro
+	sta @namebuff,x
+	beq @next
+	cmp #$0d
+	bne @copyargs
+@next:	tya
+	clc
+	adc @macro
+	sta @macro
+	bcc :+
+	inc @macro+1
+
+:	ldy #$00
+	lda #' '
+	sta @namebuff,x
+	dec @numparams
+	bne @copyargs
+
+	lda #$00
+	sta @namebuff,x
+
+@getlines:
+	ldx #$00
+	ldy #$00
+	incw @macro
+
+@line:	LOADB_Y @macro		; are we at the end of the definition?
+	beq @end		; if so, we're done
+
+	lda @macro
+	sta @lineptrslo,x
+	lda @macro+1
+	sta @lineptrshi,x
+
+:	; move to the next line
+	incw @macro
+	LOADB_Y @macro
+	bne :-
+	incw @macro
+	inx
+	bne @line		; branch always
+@end:	stx @cnt
+
+	; clear the screen, set the current mode to DEF, and return
+	CALLMAIN scr::clr
+	lda #MODE_DEF
+	sta @mode
+
+	; draw the macro name and its arguments
+	jsr unhighlight_selection
+	ldxy #@namebuff
+	lda #$00
+	CALLMAIN text::print
 	rts
 .endproc
 
@@ -589,6 +740,7 @@ macros: .res $6000 - (MAX_MACROS*2)
 .proc unhighlight_selection
 @select=rb
 	ldx @select
+	inx
 	JUMPMAIN draw::resetline	; deselect the current selection
 .endproc
 
@@ -600,6 +752,7 @@ macros: .res $6000 - (MAX_MACROS*2)
 .proc highlight_selection
 @select=rb
 	ldx @select
+	inx
 	JUMPMAIN draw::hiline	; select the current selection
 .endproc
 

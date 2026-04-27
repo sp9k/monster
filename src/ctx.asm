@@ -399,7 +399,9 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	bne @l1		; repeat for whole line
 	beq @l0		; if end of this line, get next one
 
-@done:	ldxy #mem::spare
+@done:	lda #$00
+	sta (@dst),y
+	ldxy #mem::spare
 	rts
 .endproc
 

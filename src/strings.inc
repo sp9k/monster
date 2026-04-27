@@ -29,6 +29,7 @@
 .import __str_noname
 .import __str_no_file
 .import __str_null
+.import __str_macros
 .import __str_memory
 .import __str_memview_title
 .import __str_pass1
@@ -77,6 +78,7 @@
 	link                    = __str_link
 	linking                 = __str_linking
 	loading                 = __str_loading
+	macros                  = __str_macros
 	memview_title           = __str_memview_title
 	nofile                  = __str_no_file
 	noname                  = __str_noname
