@@ -393,8 +393,8 @@ MODE_DEF  = 1
 @mode=zp::tmp10
 @dirbuff=mem::spare+40		; 0-40 will be corrupted by text routines
 @namebuff=mem::spareend-40	; buffer for the file name
-@lineptrslo=@namebuff-(128*2)	; room for 128 lines
-@lineptrshi=@namebuff-(128)	; room for 128 lines
+@lineptrslo=@namebuff-(256*2)	; room for 128 lines
+@lineptrshi=@namebuff-(256)	; room for 128 lines
 
 	; reset/save the screen
 	CALLMAIN scr::save
@@ -480,14 +480,14 @@ MODE_DEF  = 1
 
 	; scroll up and redraw the bottom line
 	ldx #$01
-	lda #SCREEN_HEIGHT-1-1
+	lda #SCREEN_HEIGHT-1
 	CALLMAIN text::scrollup
 
 	lda @scroll
 	clc
 	adc @select
 	jsr @getline
-	lda #SCREEN_HEIGHT-1-1			; bottom row
+	lda #SCREEN_HEIGHT-1			; bottom row
 	CALLMAIN text::print
 	jmp @hiselection
 
@@ -505,7 +505,7 @@ MODE_DEF  = 1
 
 	; scroll down and redraw the bottom line
 	lda #1
-	ldx #SCREEN_HEIGHT-1-1
+	ldx #SCREEN_HEIGHT-1
 	CALLMAIN text::scrolldown
 
 	dec @scroll
@@ -555,11 +555,11 @@ MODE_DEF  = 1
 	lda @scrollmax
 	sta @scroll
 
-	; set selection (row) to min(SCREEN_HEIGHT-2, @cnt)
+	; set selection (row) to min(SCREEN_HEIGHT-1, @cnt)
 	ldx @cnt
-	cpx #SCREEN_HEIGHT-2
+	cpx #SCREEN_HEIGHT-1
 	bcc :+
-	ldx #SCREEN_HEIGHT-2
+	ldx #SCREEN_HEIGHT-1
 :	dex
 	stx @select
 @redraw:
@@ -592,7 +592,7 @@ MODE_DEF  = 1
 
 	inc @i
 	lda @i
-	cmp #SCREEN_HEIGHT
+	cmp #SCREEN_HEIGHT-1
 	bcs @refresh_done
 	adc @scroll
 	cmp @cnt
