@@ -2375,16 +2375,9 @@ __asm_include:
 	ldxy #$100
 	jsr ctx::getparams
 
-	; get the context data (the macro definition)
-	pha
-	jsr ctx::getdata
-	lda #<$100
-	sta r0
-	lda #>$100
-	sta r0+1
-	pla
-
 	; create the macro
+	ldxy #$100
+	stxy r0
 	CALL FINAL_BANK_MACROS, mac::add
 
 @done:	; done with this context, disable it

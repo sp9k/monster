@@ -1,5 +1,6 @@
 .include "asm.inc"
 .include "config.inc"
+.include "ctx.inc"
 .include "draw.inc"
 .include "errors.inc"
 .include "key.inc"
@@ -79,9 +80,9 @@ macros: .res $6000 - (MAX_MACROS*2)
 ;  - r0: pointer to parameters as a sequence of 0-terminated strings
 .export __mac_add
 .proc __mac_add
-@src=zp::macros
-@dst=zp::macros+2
-@addr=zp::macros+4
+@src=zp::tmp10
+@dst=zp::tmp12
+@addr=zp::tmp14
 @params=r0
 @numparams=r2
 	sta @numparams
@@ -91,9 +92,7 @@ macros: .res $6000 - (MAX_MACROS*2)
 	bcc :+
 	RETURN_ERR ERR_TOO_MANY_MACROS
 
-:	stxy @src
-
-	; write pointer for the macro to address we will write it to
+:	; write pointer for the macro to address we will write it to
 	lda nummacros
 	asl
 	tax
@@ -137,23 +136,31 @@ macros: .res $6000 - (MAX_MACROS*2)
 
 ; copy the macro definition byte-by-byte til we get to terminating 0,0
 @paramsdone:
-	ldx #$00		; previous character value
-@l0:	ldy #$00
-	lda (@src),y		; read a character
-	bne :+			; if not zero-> continue to store it
-	cpx #$00		; was previous char also 0?
-	beq @done		; if so, we're done
-:	STOREB_Y @dst		; store character for the macro
-	tax			; save previous char read to check EOF state
+@l0:	CALLMAIN ctx::getline	; read a line of the macro definition
+	stxy @src
+
+	ldy #$00
+	lda (@src),y
+	beq @done		; if line is empty, we've read all of them
+
+@l1:	lda (@src),y
+	STOREB_Y @dst		; store character for the macro
 	incw @src
 	incw @dst
-	bne @l0			; branch always
+	cmp #$00
+	beq @l0
 
-@done:  ; 0-terminate the macro definition
+	cmp #$00
+	bne @l1			; branch always
+	beq @l0
+
+@done:  ; 0,0 terminate the macro definition
 	lda #$00
 	tay
 	STOREB_Y @dst
 	incw @dst
+	STOREB_Y @dst
+
 	lda @dst
 	sta __mac_top
 	lda @dst+1

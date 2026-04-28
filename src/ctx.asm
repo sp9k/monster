@@ -36,14 +36,10 @@
 
 ;*******************************************************************************
 ; CONSTANTS
-CONTEXT_SIZE = $200	; size of buffer per context
-PARAM_LENGTH = 16	; size of param (stored after the context data)
-MAX_PARAMS   = 4	; max params for a context
-.ifdef ultimem
-MAX_CONTEXTS = 8	; max nesting depth for contexts
-.else
-MAX_CONTEXTS = 3	; max nesting depth for contexts
-.endif
+CONTEXT_SIZE      = $1000	; size of buffer per context
+PARAM_LENGTH      = 16		; size of param (stored after the context data)
+MAX_PARAMS        = 4		; max params for a context
+MAX_CONTEXTS      = 4		; max nesting depth for contexts
 SIZEOF_CTX_HEADER = 13
 
 ;*******************************************************************************
@@ -282,6 +278,7 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 @out=mem::ctxbuffer
 	; read until a newline or EOF
 	ldy #$00
+	sty @out	; init buffer to empty
 	LOADB_Y cur
 	bne @readlinenum
 	iny
