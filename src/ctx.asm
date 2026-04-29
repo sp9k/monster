@@ -197,7 +197,14 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	sta numlines
 	sta mem::ctxbuffer
 
-	; fall through to __ctx_rewind to initialize cur pointer
+	jsr rewind
+	; initialize buffer to 0,0 (end of buffer)
+	lda #$00
+	tay
+	STOREB_Y cur
+	iny
+	STOREB_Y cur
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************

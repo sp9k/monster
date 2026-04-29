@@ -2310,7 +2310,7 @@ __asm_include:
 ;   add8 10, 20
 .proc macro
 	lda zp::verify
-	bne @ok		; if verifying, just return OK
+	bne @done	; if verifying, just return OK
 
 	lda #CTX_MACRO
 	jsr ctx::push	; push a new context
@@ -2353,7 +2353,7 @@ __asm_include:
 :	jsr line::incptr
 	bne @getparams
 @done:	lda #ASM_DIRECTIVE
-@ok:	clc
+	clc
 @ret:	rts
 .endproc
 
@@ -2387,8 +2387,8 @@ __asm_include:
 
 @done:	; done with this context, disable it
 	jsr ctx::pop		; cleanup; pop the context
-	lda #ASM_DIRECTIVE
-@ok:	clc
+@ok:	lda #ASM_DIRECTIVE
+	clc
 @ret:	rts
 .endproc
 
@@ -3088,7 +3088,6 @@ __asm_include:
 @savex=re
 @savey=rf
 	sta zp::bankval
-
 	lda zp::verify
 	bne @ok			; if just verifying, don't write
 
