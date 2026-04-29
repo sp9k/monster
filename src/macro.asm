@@ -407,11 +407,6 @@ MODE_DEF  = 1
 
 	lda __mac_num
 	beq @exit
-	sta @cnt
-	cmp #SCREEN_HEIGHT
-	bcc :+
-	lda #SCREEN_HEIGHT-1
-:	sta @row
 
 ;--------------------------------------
 ; init viewer
@@ -440,6 +435,12 @@ MODE_DEF  = 1
 	sbc #SCREEN_HEIGHT-1
 	tax
 :	stx @scrollmax
+
+	lda @cnt
+	cmp #SCREEN_HEIGHT
+	bcc :+
+	lda #SCREEN_HEIGHT-1
+:	sta @row
 
 	; highlight the first item
 	jsr highlight_selection
@@ -707,8 +708,6 @@ MODE_DEF  = 1
 @getlines:
 	ldx #$00
 	ldy #$00
-	incw @macro
-
 @line:	LOADB_Y @macro		; are we at the end of the definition?
 	beq @end		; if so, we're done
 
