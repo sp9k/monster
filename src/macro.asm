@@ -420,7 +420,10 @@ MODE_DEF  = 1
 
 ;--------------------------------------
 ; init viewer
-@init:	lda @mode
+@init:	lda #$00
+	sta @select
+	sta @scroll
+	lda @mode
 	bne :+
 
 	; reset MAIN mode
@@ -431,10 +434,9 @@ MODE_DEF  = 1
 	ldxy #strings::macros
 	CALLMAIN text::print
 
-:	lda #$00
-	sta @select
-	sta @scroll
-	jsr @refresh		; draw the initial state
+	jsr highlight_selection
+
+:	jsr @refresh		; draw the initial state
 
 	; max a user can scroll is (# of macros - SCREEN_HEIGHT-1)
 	ldx #$00
@@ -452,9 +454,6 @@ MODE_DEF  = 1
 	lda #SCREEN_HEIGHT-1
 :	sta @row
 
-	; highlight the first item
-	jsr highlight_selection
-
 ;--------------------------------------
 ; main viewer loop
 @key:	CALLMAIN key::waitch
@@ -463,7 +462,7 @@ MODE_DEF  = 1
 	lda @mode			; are we in MAIN mode
 	beq @exit			; if so, return to editor
 
-	jsr unhighlight_selection
+	CALLMAIN scr::clr
 	dec @mode			; go back to MAIN mode
 	bpl @init			; branch always
 
@@ -473,6 +472,9 @@ MODE_DEF  = 1
 @checkdown:
 	jsr isdown
 	bne @checkup
+
+	lda @mode
+	bne @scrolldown			; if in definition viewer, just scroll
 
 @rowdown:
 	jsr unhighlight_selection
@@ -496,7 +498,7 @@ MODE_DEF  = 1
 
 	lda @scroll
 	clc
-	adc @select
+	adc #SCREEN_HEIGHT-2
 	jsr @getline
 	lda #SCREEN_HEIGHT-1			; bottom row
 	CALLMAIN text::print
@@ -506,29 +508,35 @@ MODE_DEF  = 1
 	jsr isup
 	bne @checkret
 
+	lda @mode
+	bne @scrollup			; if in definition viewer, just scroll
+
 @rowup:
 	jsr unhighlight_selection
 	dec @select
 	bpl @hiselection
 	inc @select		; lowest valid select value is 0
+
+@scrollup:
 	lda @scroll
 	beq @hiselection	; if nothing to scroll, continue
 
-	; scroll down and redraw the bottom line
+	; scroll down and redraw the new top line
 	lda #1
 	ldx #SCREEN_HEIGHT-1
 	CALLMAIN text::scrolldown
 
 	dec @scroll
 	lda @scroll
-	clc
-	adc @select
 	jsr @getline
 	lda #1			; top row
 	CALLMAIN text::print
 
 @hiselection:
+	lda @mode
+	bne @nextkey		; don't highlight if we're viewing the macro def
 	jsr highlight_selection
+
 @nextkey:
 	jmp @key
 
