@@ -2309,6 +2309,9 @@ __asm_include:
 ;   will define a macro that can be used like:
 ;   add8 10, 20
 .proc macro
+	lda zp::verify
+	bne @ok		; if verifying, just return OK
+
 	lda #CTX_MACRO
 	jsr ctx::push	; push a new context
 	bcs @ret	; if error -> return
@@ -2350,7 +2353,7 @@ __asm_include:
 :	jsr line::incptr
 	bne @getparams
 @done:	lda #ASM_DIRECTIVE
-	clc			; ok
+@ok:	clc
 @ret:	rts
 .endproc
 
@@ -2359,6 +2362,10 @@ __asm_include:
 ; This is the handler for the .endmac directive
 ; It uses the active context to finish creating a macro from that context.
 .proc create_macro
+	; if verifying, just return OK
+	lda zp::verify
+	bne @ok
+
 	; close the macro context
 	lda #CTX_MACRO
 	jsr ctx::end
@@ -2366,8 +2373,6 @@ __asm_include:
 
 	jsr pass1
 	bne @done		; done, macros are defined in pass 1
-	lda zp::verify
-	bne @done		; and only when NOT verifying
 
 	jsr ctx::rewind
 
@@ -2383,7 +2388,7 @@ __asm_include:
 @done:	; done with this context, disable it
 	jsr ctx::pop		; cleanup; pop the context
 	lda #ASM_DIRECTIVE
-	clc			; ok
+@ok:	clc
 @ret:	rts
 .endproc
 

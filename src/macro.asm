@@ -184,6 +184,7 @@ macros: .res $6000 - (MAX_MACROS*2)
 @macro=zp::macros+$0e
 @numparams=zp::macros+$10
 @tmplabel=$140
+@tmp=r0
 	; get the address of the macro from its id
 	asl
 	tax
@@ -265,8 +266,17 @@ macros: .res $6000 - (MAX_MACROS*2)
 	bcc @setparams		; repeat for all params
 
 @paramsdone:
-	; assemble the macro line by line
-@asm:	; get macro address and
+	; check if the macro is empty (begins with 2 0's)
+	ldy #$00
+	LOADB_Y @macro
+	sta @tmp
+	iny
+	LOADB_Y @macro
+	ora @tmp
+	beq @done
+
+@asm:	; assemble the macro line by line
+	; get macro address and
 	; save state that may be clobbered if we assemble another macro
 	lda @macro
 	pha
