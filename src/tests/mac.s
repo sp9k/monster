@@ -1,4 +1,7 @@
 .org $7700
+.mac base
+.endmac
+
 .mac ldxy val
 	ldx #<val
 	ldy #>val

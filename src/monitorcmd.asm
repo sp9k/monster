@@ -867,6 +867,7 @@ __mon_default_start_set: .byte 0
 ; precedence)
 .proc assemble
 @addr=zp::debuggertmp
+@err=r0
 	; get the address to assemble at
 	jsr eval
 	bcs @ret		; return if address is invalid expression
@@ -880,46 +881,56 @@ __mon_default_start_set: .byte 0
 
 @getfile:
 	; check if a filename was provided e.g.: >A $1000 "hello.asm"
-	jsr util::parse_enquoted_string
+	CALLMAIN util::parse_enquoted_string
 	bcs @getop		; if failed to parse, try parsing opcode
 
 @assemble_file:
 	; TODO:
 
-@getop:	lda #FINAL_BANK_MAIN
+@getop:	lda zp::verify
+	pha
+	lda #$00
+	sta zp::verify
+
+	lda #FINAL_BANK_MAIN
 	ldxy zp::line
 	CALLMAIN asm::tokenize	; assemble the instruction
+	sta @err
+	pla
+	sta zp::verify
 	bcc @nexti
 
-@err:	CALLMAIN err::get
+	; error
+	lda @err
+	CALLMAIN err::get
 	jsr mon::puts				; print the error
 	clc
 @ret:	rts
 
 @nexti:	; prepopulate input buffer with ".A <next address> "
-	lda #$61
-	sta mem::linebuffer
-	lda #' '
+	lda #$61			; 'a'
 	sta mem::linebuffer+1
-	lda #'$'
+	lda #' '
 	sta mem::linebuffer+2
+	lda #'$'
+	sta mem::linebuffer+3
 	lda zp::asmresult+1
 	jsr hextostr
-	sty mem::linebuffer+3
-	stx mem::linebuffer+4
+	sty mem::linebuffer+4
+	stx mem::linebuffer+5
 	lda zp::asmresult
 	jsr hextostr
-	sty mem::linebuffer+5
-	stx mem::linebuffer+6
+	sty mem::linebuffer+6
+	stx mem::linebuffer+7
 	lda #' '
-	sta mem::linebuffer+7
-	lda #$00
 	sta mem::linebuffer+8
+	lda #$00
+	sta mem::linebuffer+9
 
 	lda mon::line
 	sta zp::cury
 
-	ldx #$08
+	ldx #$09
 	stx zp::curx
 	ldy #$00
 	CALLMAIN cur::setmin
@@ -928,8 +939,9 @@ __mon_default_start_set: .byte 0
 	CALLMAIN edit::gets
 	ldxy #mem::linebuffer
 	jsr __monitor_puts
-	ldxy #mem::linebuffer
-	jmp __dbgcmd_run
+	ldxy #mem::linebuffer+3
+	stxy zp::line
+	jmp assemble
 .endproc
 
 ;*******************************************************************************
