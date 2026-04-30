@@ -867,6 +867,7 @@ __mon_default_start_set: .byte 0
 ; precedence)
 .proc assemble
 @addr=zp::debuggertmp
+@line=zp::debuggertmp+2
 @err=r0
 	; get the address to assemble at
 	jsr eval
@@ -889,13 +890,27 @@ __mon_default_start_set: .byte 0
 
 @getop:	lda zp::verify
 	pha
+	lda zp::gendebuginfo
+	pha
 	lda #$00
 	sta zp::verify
+	sta zp::gendebuginfo
 
+	lda #$01
+	sta zp::pass
 	lda #FINAL_BANK_MAIN
 	ldxy zp::line
-	CALLMAIN asm::tokenize	; assemble the instruction
-	sta @err
+	stxy @line
+@pass1:	CALLMAIN asm::tokenize	; assemble the instruction
+	bcs :+
+@pass2:	ldxy @addr
+	CALLMAIN asm::setpc
+	inc zp::pass
+	ldxy @line
+	CALLMAIN asm::tokenize	; assemble the instruction (again)
+:	sta @err
+	pla
+	sta zp::gendebuginfo
 	pla
 	sta zp::verify
 	bcc @nexti
