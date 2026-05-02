@@ -244,30 +244,30 @@ STATUS_COL=0		; start column for status line
 	and #OP_REG_A
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+2
-	stx COLMEM_ADDR+(20*$b)+3
+:	stx COLMEM_ADDR+(21*$b)+3
+	stx COLMEM_ADDR+(21*$b)+4
 
 	ldx #TEXT_COLOR
 	lda sim::affected
 	and #OP_REG_X
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+4
+:	stx COLMEM_ADDR+(21*$b)+5
 
 	ldx #TEXT_COLOR
 	lda sim::affected
 	and #OP_REG_Y
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+5
-	stx COLMEM_ADDR+(20*$b)+6
+:	stx COLMEM_ADDR+(21*$b)+6
+	stx COLMEM_ADDR+(21*$b)+7
 
 	ldx #TEXT_COLOR
 	lda sim::affected
 	and #OP_STACK
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+7
+:	stx COLMEM_ADDR+(21*$b)+8
 
 	; if memory was WRITTEN to, highlight it as well
 	ldx #TEXT_COLOR
@@ -275,8 +275,8 @@ STATUS_COL=0		; start column for status line
 	and #OP_STORE
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+13
-	stx COLMEM_ADDR+(20*$b)+14
+:	stx COLMEM_ADDR+(22*$b)+13
+	stx COLMEM_ADDR+(22*$b)+14
 
 @colordone:
 ; if memory was loaded or stored, show the effective address

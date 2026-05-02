@@ -2592,6 +2592,8 @@ __edit_refresh:
 	cpx height
 	inx
 	bcs @done
+	lda #$00
+	sta mem::breakpoint_rows,x	; clear breakpoint render flags
 	stx zp::cury
 	jsr draw::resetline
 	lda zp::cury
@@ -4543,7 +4545,7 @@ goto_buffer:
 	jsr brkpt::getbyline
 	ldy #$00
 	bcs @nobrk
-	ldy #$1
+	iny
 @nobrk: pla
 	pha
 	tax
@@ -5399,6 +5401,7 @@ __edit_gotoline:
 	sta highlight_status		; and flag highlight as on
 
 	; fall through to toggle_highlight
+	jmp toggle_highlight
 .endproc
 
 .RODATA
