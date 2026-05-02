@@ -89,6 +89,18 @@ cart_start:
 	sta $9002
 	sta $9003
 
+	; clear row colors
+	lda #DEFAULT_900F
+	ldx #24-1
+:	lda #DEFAULT_900F
+	sta mem::rowcolors,x
+	lda #COLOR_NORMAL
+	sta mem::rowcolors_idx,x
+	lda #$00
+	sta mem::breakpoint_rows,x
+	dex
+	bpl :-
+
 .ifdef ultimem
 	jmp ultim::init
 .endif
@@ -198,6 +210,8 @@ cart_start:
 	sta mem::rowcolors,x
 	lda #COLOR_NORMAL
 	sta mem::rowcolors_idx,x
+	lda #$00
+	sta mem::breakpoint_rows,x
 	dex
 	bpl :-
 

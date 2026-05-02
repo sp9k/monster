@@ -17,6 +17,7 @@
 .import __linesave
 
 .import __mem_coloron
+.import __mem_breakpoint_rows
 .import __mem_rowcolors
 .import __mem_rowcolors_idx
 .import __mem_rowcolors_save
@@ -24,6 +25,7 @@
 
 .scope mem
 	asmbuffer       = __mem_asmbuffer
+	breakpoint_rows = __mem_breakpoint_rows
 	ctxbuffer       = __mem_ctxbuffer
         spare           = __mem_spare
 	spareend	= __mem_spareend

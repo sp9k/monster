@@ -52,10 +52,15 @@ __mem_rowcolors: .res SCREEN_HEIGHT
 ;.assert >(*) = >(__mem_rowcolors), error, "mem::rowcolors must not cross page boundary (used in stable IRQ)"
 
 .export __mem_rowcolors_idx
-__mem_rowcolors_idx: .res 24
+__mem_rowcolors_idx: .res SCREEN_HEIGHT
 
 .export __mem_rowcolors_save
-__mem_rowcolors_save: .res 24
+__mem_rowcolors_save: .res SCREEN_HEIGHT
+
+;*******************************************************************************
+; if !0, a breakpoint will be drawn for the corresponding row
+.export __mem_breakpoint_rows
+__mem_breakpoint_rows: .res SCREEN_HEIGHT
 
 .export __mem_filename
 __mem_filename: .res 16	; buffer for output file

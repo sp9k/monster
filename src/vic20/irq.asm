@@ -32,6 +32,18 @@ TIMER_VALUE     = LINES * CYCLES_PER_LINE - 2
 CYCLES_PER_ROW  = 8 * (CYCLES_PER_LINE - 2) - 25
 
 ;*******************************************************************************
+; There is only room for 1 custom char in the memory map.
+; We will redefine it at runtime between: empty (all 0's) and a breakpoint
+; character, like this:
+;   **
+;  ****
+;  ****
+;   **
+NUM_COLS    = 20
+SCREEN_ROWS = 24
+DYNAMIC_CHAR_ADDR = $10f0+3
+
+;*******************************************************************************
 .segment "SHAREBSS"
 rowcnt:    .byte 0
 savebank:  .byte 0
@@ -135,6 +147,21 @@ savebank2: .byte 0
 
 @cont:	sta rowcnt		; rowcnt = 0
 
+	; clear the character area for the breakpoint
+	lda #$55
+	sta $10f0
+	sta $10f1
+	sta $10f2
+	sta $10f3
+	sta $10f4
+	sta $10f5
+	sta $10f6
+	sta $10f7
+	sta $10f8
+	sta $10f9
+	sta $10fa
+	sta $10fb
+
 	; save $f5-$f6
         lda $f5
 	pha
@@ -190,17 +217,85 @@ savebank2: .byte 0
 	ldxy #CYCLES_PER_ROW-52-10
 	stxy $9128
 
+	; set the color for the next row
 	ldx rowcnt
 	lda mem::coloron
-	beq :+
+	beq @handle_brkpts
 	lda mem::rowcolors,x
 	sta $900f
 
-	cpx #SCREEN_HEIGHT-1
-	inc rowcnt
+	cpx #SCREEN_HEIGHT-2
+	bcs @brkpts_done
+
+@handle_brkpts:
+	;----------------------------------------------------------------------
+	; copy either the empty character (no breakpoint)
+	; or the breakpoint character data if there is one
+	ldy #$03
+	lda mem::breakpoint_rows,x
+	beq @empty
+@breakpoint:
+	lda @breakpoint_char,y
+	sta DYNAMIC_CHAR_ADDR,y
+	lda @breakpoint_char+4,y
+	sta DYNAMIC_CHAR_ADDR+8,y
+	dey
+	bpl @breakpoint
+	bmi :+
+@empty:
+	lda @empty_char,y
+	sta DYNAMIC_CHAR_ADDR,y
+	lda @empty_char+4,y
+	sta DYNAMIC_CHAR_ADDR+8,y
+	dey
+	bpl @empty
+
+@brkpts_done:
+	cpx #SCREEN_HEIGHT-2
+	bne :+
+
+;------------------------------------------------------------------------------
+; before the last row is drawn, we need to restore the screen codes for the
+; bitmap (characters: $10f0-$10fa) - 60 cycles total
+@restore_screen:
+	lda #$7b
+	sta $10f0
+	lda #$87
+	sta $10f1
+	lda #$93
+	sta $10f2
+	lda #$9f
+	sta $10f3
+	lda #$ab
+	sta $10f4
+	lda #$b7
+	sta $10f5
+	lda #$c3
+	sta $10f6
+	lda #$cf
+	sta $10f7
+	lda #$db
+	sta $10f8
+	lda #$e7
+	sta $10f9
+	lda #$f3
+	sta $10fa
+	lda #$ff
+	sta $10fb
+
+	lda #$55
+	sta $10fc
+	sta $10fd
+	sta $10fe
+	sta $10ff
+
+:	cpx #SCREEN_HEIGHT-1
+	bne :+
+
+:	inc rowcnt
 	bcc @ret
 
-:	; reinstall main IRQ handler
+@main: ; reinstall main IRQ handler
 	lda #$00
 	sta rowcnt
 	ldxy #sys_update
@@ -208,10 +303,16 @@ savebank2: .byte 0
 	lda #$00|$20		; disable T2 interrupts
 	sta $912e
 @ret:	rts
+
+; NOTE: thes are only 4 pixel rows each. the top and bottom rows of each char
+;       are assumed to never be changed
+@breakpoint_char:	.byte $7d,$7d,$7d,$7d
+			.byte $7d,$7d,$7d,$7d
+@empty_char:		.byte $55,$55,$55,$55
+			.byte $55,$55,$55,$55
 .endproc
 
 .CODE
-
 
 ;*******************************************************************************
 ; IRQ OFF

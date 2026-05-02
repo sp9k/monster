@@ -50,6 +50,5 @@ DEBUG_REG_CHANGED_COLOR = 2				; color for register that was changed during STEP
 ; BEEP SETTINGS
 BEEP_TONE           = $dd
 BEEP_ERR_TONE       = $a4
-BEEP_VOL            = $0c
+BEEP_VOL            = $04
 SHORT_BEEP_DURATION = 10
-LONG_BEEP_DURATION  = 30

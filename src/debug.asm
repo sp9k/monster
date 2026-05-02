@@ -830,8 +830,6 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 ; STEP
 ; Runs the step command
 .proc step
-	jsr irq::off
-
 	TRACE_OFF
 
 	jsr __debug_step
@@ -902,11 +900,19 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
 ;---------------------------------------
 ; perform the step
-@step:	pla			; get instruction size
+@step:
+.ifdef vic20
+	; wait for the raster to cross the screen to avoid artifacts
+	sei
+	inc $900f
+.endif
+
+	pla			; get instruction size
 	ldxy sim::pc		; and address of instruction to-be-executed
 
 	jsr sim::step		; execute the STEP
 	bcc @countcycles	; if ok, continue
+	dec $900f
 
 	; display the error explaining why we couldn't STEP
 	jsr safety_check

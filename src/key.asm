@@ -26,6 +26,13 @@ CURSOR_LR_MASK      = 2
 
 .ifdef vic20
 	jsr $e5cf
+	ldx $028b	; get repeat timer
+	cpx #$04	; check if repeat was just reinitialized (to 4)
+	bne :+
+	; KERNAL resets repeat count to 4, lower it for faster repeat
+	ldx #$02
+	stx $028b
+:
 .else
 	ldy $0277
 	ldx #$00

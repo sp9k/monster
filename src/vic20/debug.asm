@@ -28,6 +28,8 @@ stop_tracing     = STOP_TRACING_NMI+4	; sizeof(inc stop_tracing)+sizeof(rti)
 ; the debugged program's next instruction.
 TRACE_STACK_DEPTH = $200-PROGRAM_STACK_START
 
+.CODE
+
 ;*******************************************************************************
 ; INSTALL TRACE NMI
 ; Installs an NMI that increments stop_tracing when the RESTORE

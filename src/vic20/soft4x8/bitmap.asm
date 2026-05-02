@@ -27,6 +27,7 @@ BITMAP_ADDR = $1100
 COLMEM_ADDR = $9400
 
 SCREEN_ADDR = $1000
+PHYS_COLS   = 21	; number of PHYSICAL columns (breakpoints use one)
 NUM_COLS    = 20	; number of 8-pixel columns
 NUM_ROWS    = 11	; number of 16-pixel rows
 
@@ -37,26 +38,55 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 .CODE
 ;*******************************************************************************
 ; INIT
-; MINIGRAFIK VIC/memory initialization
-; code by Mike
+; Initializes the screen layout
 .export __screen_init
 .proc __screen_init
+@dst=r0
+@col=r2
+	ldy #$00
+	sty @dst
+	ldx #$10		; $10 is also our initial value for bitmap char
+	stx @dst+1
+	stx @col
+
+@l0:	; column 0 is always character $0f
+	lda #$0f
+	sta (@dst),y
+	iny
+
+	; set up one row of the bitmap
+	lda @col
+	ldx #PHYS_COLS-1
+@l1:	sta (@dst),y
 	clc
-	lda #$10
-	tay
-@0:	sta $0ff0,y
 	adc #$0c
-	bcc @1
-	sbc #$ef
-@1:	iny
-	bne @0
+	iny
+	dex
+	bne @l1
+
+	inc @col
+	cpy #PHYS_COLS*SCREEN_ROWS-1
+	bcc @l0
+
+	; configure VIC registers
 	ldy #$05
-@2:     clc
+@l2:	clc
 	lda $ede4,y
 	adc inittab,y
 	sta $9000,y
 	dey
-	bpl @2
+	bpl @l2
+
+	; set aux color
+	lda #$02<<4
+	sta $900e
+
+	; clear the aux character
+	ldx #$10
+	lda #$55
+:	sta $10f0-1,x
+	dex
+	bne :-
 
 	lda prefs::normal_color
 	sta $900f
@@ -92,9 +122,17 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 ;  - .A: the color to fill the screen with
 .export __screen_clrcolor
 .proc __screen_clrcolor
-	ldy #$00
-	lda prefs::text_color
-@l0:    sta COLMEM_ADDR,y
+	ldy #PHYS_COLS*SCREEN_ROWS
+	ldx #PHYS_COLS
+@l0:    lda prefs::text_color
+	sta COLMEM_ADDR-1,y
+	ora #$80
+	dex
+	bne :+
+	; column 0, use multicolor mode
+	ora #$08
+	ldx #PHYS_COLS
+:	sta COLMEM_ADDR-1,y
         dey
         bne @l0
         rts
@@ -375,7 +413,12 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 __screen_columnslo: .lobytes cols
 __screen_columnshi: .hibytes cols
 
-inittab: .byte $02,$fe,$fe,$eb,$00,$0c
+inittab:	.byte $00	; +$0c (PAL) +$05 (NTSC) $9000
+		.byte $fe	; +$26 (PAL) +$19 (NTSC) $9001
+		.byte $ff	; +$16                   $9002
+		.byte $eb	; +$2e                   $9003
+		.byte $00	; +$00                   $9004
+		.byte $0c	; +$c0                   $9005
 
 .segment "VSCREEN"
 

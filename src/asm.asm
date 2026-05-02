@@ -288,6 +288,7 @@ directives:
 	.byte "export",0
 	.byte "seg",0
 	.byte "segzp",0
+	.byte "align",0
 directives_len=*-directives
 
 ;*******************************************************************************
@@ -295,7 +296,7 @@ directives_len=*-directives
 .define directive_vectors definebyte, defineconst, defineword, includefile, \
 defineorg, define_psuedo_org, repeat, macro, do_if, do_else, do_endif, \
 do_ifdef, create_macro, handle_repeat, incbinfile, import, export, \
-directive_seg, directive_segzp
+directive_seg, directive_segzp, directive_align
 .linecont -
 
 directive_vectorslo: .lobytes directive_vectors
@@ -2390,6 +2391,31 @@ __asm_include:
 @ok:	lda #ASM_DIRECTIVE
 	clc
 @ret:	rts
+.endproc
+
+;*******************************************************************************
+; DIRECTIVE ALIGN
+; Handler for the "align" directive. Pads the next n bytes until the PC is
+; "aligned" to a multiple of the operand.  A second operand may be provided
+; to set the pad value.  If not provided, 0 is used.
+; EXAMPLE:
+;   .align $100, $ff
+.proc directive_align
+@align   = r0
+@fillval = r1
+.if 0
+	lda zp::verify
+	bne @ok		; if verifying, just return OK
+
+	; get the first parameter (align address)
+	jsr line::process_ws
+	jsr expr::eval
+	stxy @align
+
+	; get difference between PC and next aligned value
+@ok:	clc
+	rts
+.endif
 .endproc
 
 ;*******************************************************************************

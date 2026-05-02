@@ -271,18 +271,9 @@ main:	jsr key::getch
 	jsr scr::save
 	pushcur
 	jsr __edit_enter_monitor
-	jsr __edit_exit_monitor
+	inc mem::coloron		; restore per-row color
 	popcur
 	jmp scr::restore
-.endproc
-
-;*******************************************************************************
-; EXIT CONSOLE
-; Returns from the console
-.export __edit_exit_monitor
-.proc __edit_exit_monitor
-	inc mem::coloron
-	rts
 .endproc
 
 ;*******************************************************************************
@@ -2081,35 +2072,6 @@ main:	jsr key::getch
 .endproc
 
 ;*******************************************************************************
-.proc last_line
-@l0:	jsr ccdown
-	bcs @done
-	lda zp::cury
-	cmp height
-	bcc @l0
-@done:	jmp home
-.endproc
-
-;*******************************************************************************
-.proc home_line
-	jsr src::start	; at start of file?
-	beq @done	; if so, we're done
-
-@l0:	lda zp::cury	; top row?
-	beq @done
-	jsr ccup	; move UP until cursor is at top row
-	bcc @l0
-@done:	jmp home
-.endproc
-
-;*******************************************************************************
-.proc goto_end
-	jsr add_jump_point
-	ldxy #$ffff
-	jmp gotoline
-.endproc
-
-;*******************************************************************************
 ; GOTO_START
 ; Accepts another key and, if it is 'g', moves to the start of the buffer.
 .proc goto_start
@@ -2390,6 +2352,29 @@ main:	jsr key::getch
 .POPSEG
 .endproc
 
+;*******************************************************************************
+.proc last_line
+@l0:	jsr ccdown
+	bcs @done
+	lda zp::cury
+	cmp height
+	bcc @l0
+@done:	jmp home
+.endproc
+
+;*******************************************************************************
+.proc home_line
+	jsr src::start	; at start of file?
+	beq home	; if so, we're done
+
+@l0:	lda zp::cury	; top row?
+	beq home
+	jsr ccup	; move UP until cursor is at top row
+	bcc @l0
+
+	; fall through to home
+.endproc
+
 ;******************************************************************************
 ; HOME
 ; Moves the cursor to start of the current line
@@ -2495,6 +2480,28 @@ main:	jsr key::getch
 	jsr src::name		; rename buffer to empty name
 
 	jmp home_refresh
+.endproc
+
+;*******************************************************************************
+; RESIZE
+; Resizes the editor to the given number of rows. The cursor is moved to be
+; within the new size if it would be out of bounds.
+; IN:
+;  - .A: the new size of the editor in rows.
+.export __edit_resize
+.proc __edit_resize
+	cmp height	; is the new height bigger or smaller?
+	sta height
+	beq @done	; same size
+	bcs refresh	; new size is bigger, redraw screen
+
+@smaller:
+@l0:	lda zp::cury
+	cmp height
+	bcc @done	; cursor is in new height's range
+	jsr ccup
+	bcc @l0		; loop until cursor is on screen
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2605,30 +2612,6 @@ __edit_refresh:
 .endproc
 
 ;*******************************************************************************
-; RESIZE
-; Resizes the editor to the given number of rows. The cursor is moved to be
-; within the new size if it would be out of bounds.
-; IN:
-;  - .A: the new size of the editor in rows.
-.export __edit_resize
-.proc __edit_resize
-	cmp height	; is the new height bigger or smaller?
-	sta height
-	beq @done	; same size
-	bcs @bigger	; new size is bigger, redraw screen
-
-@smaller:
-@l0:	lda zp::cury
-	cmp height
-	bcc @done	; cursor is in new height's range
-	jsr ccup
-	bcc @l0		; loop until cursor is on screen
-@done:	rts
-@bigger:
-	jmp refresh
-.endproc
-
-;*******************************************************************************
 ; PRINT CURRENT LINE
 ; Prints the contents of the linebuffer at the cursor's current y-coordinate
 .proc print_current_line
@@ -2692,7 +2675,7 @@ __edit_set_breakpoint:
 
 	; if we can't get the address, but we are not debugging, that's
 	; fine, but we will need to reassemble before it takes affect
-	bcs @on
+	bcs @done
 
 	stxy @addr
 	jsr __edit_current_file	; get the debug file ID and line #
@@ -2704,9 +2687,8 @@ __edit_set_breakpoint:
 	pla
 	jsr dbg::brksetaddr
 
-@on:	lda #COLOR_BRKON
-@done:	ldx zp::cury
-	jsr draw::hline
+@done:	lda zp::cury
+	jsr draw_src_line	; redraw current line
 	jmp gui::refresh
 .endproc
 
@@ -3196,7 +3178,7 @@ goto_buffer:
 
 @done:	lda @file
 	jsr file::close
-	jmp irq::on
+:	jmp irq::on			; <- command_saveprg
 .endproc
 
 ;******************************************************************************
@@ -3211,10 +3193,9 @@ goto_buffer:
 @file=r4
 	jsr irq::off
 	jsr file::open_w	; open the output filename
-	bcc :+
-	jmp irq::on		; failed to open file
+	bcs :-			; failed to open file
 
-:	sta @file
+	sta @file
 
 	; write the .PRG header
 	tax
@@ -4097,14 +4078,7 @@ goto_buffer:
 	cmp #MODE_VISUAL_LINE
 	beq @ret	; do nothing on RIGHT if in VISUAL_LINE mode
 
-	cmp #MODE_INSERT
-	beq @ins
-
-@rep:	jsr src::right_rep
-	bcc @ok
-	rts		; can't move right
-
-@ins:	jsr src::right
+	jsr src_right
 	bcs @done	; can't move right
 
 @ok:	; turn off the old cursor if we're unhighlighting
@@ -4567,22 +4541,16 @@ goto_buffer:
 	; if there's a breakpoint on this line, draw it
 	jsr __edit_current_file
 	jsr brkpt::getbyline
+	ldy #$00
 	bcs @nobrk
-
-	and #BREAKPOINT_ENABLED
-	bne :+
-	ldy #COLOR_BRKOFF
-	skw
-:	ldy #COLOR_BRKON
-	skw
-@nobrk: ldy #COLOR_NORMAL
-	pla
+	ldy #$1
+@nobrk: pla
 	pha
 	tax
 	tya
-	jsr draw::hline
+	sta mem::breakpoint_rows,x
 
-	pla		; restore the row
+	pla			; restore the row
 	jmp text::drawline
 .endproc
 
@@ -4893,12 +4861,22 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; GOTO END
+; Goes to the the last line in the buffer
+.proc goto_end
+	jsr add_jump_point
+	ldxy #$ffff
+	bne gotoline		; branch always
+.endproc
+
+;*******************************************************************************
 ; NEXT_ERR
 ; Navigates the cursor to the next error from the error log
 .proc next_err
 	jsr errlog::next
 	beq :-			; -> RTS (no next error)
-	jmp gotoline
+
+	; fall through to gotoline
 .endproc
 
 ;*******************************************************************************
@@ -5451,6 +5429,8 @@ __edit_gotoline:
 	jmp text::print
 .endproc
 
+.RODATA
+
 ;*******************************************************************************
 ; CURRENT FILE ID
 ; Returns the debug file ID of the active source buffer as well as the current
@@ -5468,8 +5448,6 @@ __edit_gotoline:
 	jmp src::currline
 :	rts
 .endproc
-
-.RODATA
 
 ;******************************************************************************
 ; INIT LOG
@@ -5503,13 +5481,6 @@ __edit_gotoline:
 	eor fmt::enable
 	sta fmt::enable
 	rts
-.endproc
-
-;******************************************************************************
-; DIRVIEW
-; Enters the directory viewer
-.proc dirview
-	jmp dir::view
 .endproc
 
 ;*******************************************************************************
@@ -5596,7 +5567,7 @@ numcommands=*-commands
 	paste_below, paste_above, delete_char, \
 	open_line_above, open_line_below, join_line, comment_out, \
 	enter_visual, enter_visual_line, command_yank, sub_char, sub_line, \
-	dirview, gui::reenter, ccleft, ccright, ccup, ccdown, endofword, \
+	dir::view, gui::reenter, ccleft, ccright, ccup, ccdown, endofword, \
 	beginword, word_advance, home_col, last_line, \
 	home_line, ccdel, ccright, goto_end, goto_start, find_next, find_prev, \
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \

@@ -15,7 +15,7 @@ beep_tmr: .byte 0
 ;   - .C: set
 .export __beep_short
 .proc __beep_short
-	lda #LONG_BEEP_DURATION
+	lda #SHORT_BEEP_DURATION
 	sta beep_tmr
 
 	lda #BEEP_VOL
