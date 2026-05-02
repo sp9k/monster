@@ -112,6 +112,8 @@ COLOR_SELECT  = 6
 	sta mem::rowcolors,x	; start+.A+.X
 	lda mem::rowcolors_idx,y
 	sta mem::rowcolors_idx,x
+	lda mem::breakpoint_rows,y
+	sta mem::breakpoint_rows,x
 	inx
 	iny
 	cpx @last
@@ -120,6 +122,8 @@ COLOR_SELECT  = 6
 	sta mem::rowcolors,x	; clear last row
 	lda #COLOR_NORMAL
 	sta mem::rowcolors_idx,x
+	lda #$00
+	sta mem::breakpoint_rows,x
 @done:	rts
 .endproc
 
@@ -166,10 +170,14 @@ COLOR_SELECT  = 6
 	sta mem::rowcolors,y	; (last_row + amount)
 	lda mem::rowcolors_idx,x
 	sta mem::rowcolors_idx,y
+	lda mem::breakpoint_rows,x
+	sta mem::breakpoint_rows,y
 
 :	; reset the line we just scrolled
 	lda prefs::normal_color
 	sta mem::rowcolors,x
+	lda #$00
+	sta mem::breakpoint_rows,x
 	lda #COLOR_NORMAL
 	sta mem::rowcolors_idx,x
 

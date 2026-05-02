@@ -5401,6 +5401,8 @@ __edit_gotoline:
 	; fall through to toggle_highlight
 .endproc
 
+.RODATA
+
 ;*******************************************************************************
 ; TOGGLE_HIGHLIGHT
 ; Unhighlights the highlighted row if it's already highlighted or highlights
@@ -5428,8 +5430,6 @@ __edit_gotoline:
 	lda status_row
 	jmp text::print
 .endproc
-
-.RODATA
 
 ;*******************************************************************************
 ; CURRENT FILE ID
