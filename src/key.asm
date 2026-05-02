@@ -30,7 +30,7 @@ CURSOR_LR_MASK      = 2
 	cpx #$04	; check if repeat was just reinitialized (to 4)
 	bne :+
 	; KERNAL resets repeat count to 4, lower it for faster repeat
-	ldx #$02
+	ldx #$01
 	stx $028b
 :
 .else

@@ -8,6 +8,8 @@
 .include "../memory.inc"
 .include "../util.inc"
 
+.macpack longbranch
+
 ;*******************************************************************************
 ; CONSTANTS
 
@@ -20,7 +22,7 @@ LINES           = 261
 CYCLES_PER_LINE = 65
 
 .ifdef soft4x8
-IRQ_START_LINE = $0f
+IRQ_START_LINE = $0e
 .else
 IRQ_START_LINE = $11
 .endif
@@ -41,7 +43,8 @@ CYCLES_PER_ROW  = 8 * (CYCLES_PER_LINE - 2) - 25
 ;   **
 NUM_COLS    = 20
 SCREEN_ROWS = 24
-DYNAMIC_CHAR_ADDR = $10f0+3
+DYNAMIC_CHAR_ADDR     = $10f0
+DYNAMIC_CHAR_ADDR_BOT = $1000
 
 ;*******************************************************************************
 .segment "SHAREBSS"
@@ -129,6 +132,51 @@ savebank2: .byte 0
 	lda #$a5
 	nop
 
+
+	; clear the character area for the breakpoint
+	lda #$55
+	sta $10f0
+	sta $10f1
+	sta $10f2
+	sta $10f3
+	sta $10f4
+	sta $10f5
+	sta $10f6
+	sta $10f7
+	sta $10f8
+	sta $10f9
+	sta $10fa
+	sta $10fb
+	sta $10fc
+	sta $10fd
+	sta $10fe
+	sta $10ff
+
+	; restore screen row 0 (repurposed for breakpoint rendering at bottom of
+	; display)
+	lda #$0f
+	sta $1000
+	lda #$10
+	sta $1001
+	lda #$1c
+	sta $1002
+	lda #$28
+	sta $1003
+	lda #$34
+	sta $1004
+	lda #$40
+	sta $1005
+	lda #$4c
+	sta $1006
+	lda #$58
+	sta $1007
+	lda #$64
+	sta $1008
+	lda #$70
+	sta $1009
+	lda #$7c
+	sta $100a
+
 	; set up sub-interrupt that executes every character row to draw
 	; breakpoints on any line that has one
 	; we only do this when at least one row has color to save cycles in the
@@ -147,20 +195,16 @@ savebank2: .byte 0
 
 @cont:	sta rowcnt		; rowcnt = 0
 
-	; clear the character area for the breakpoint
-	lda #$55
-	sta $10f0
-	sta $10f1
-	sta $10f2
-	sta $10f3
-	sta $10f4
-	sta $10f5
-	sta $10f6
-	sta $10f7
-	sta $10f8
-	sta $10f9
-	sta $10fa
-	sta $10fb
+	lda #$88
+	sta $100b
+	lda #$94
+	sta $100c
+	lda #$a0
+	sta $100d
+	lda #$ac
+	sta $100e
+	lda #$b8
+	sta $100f
 
 	; save $f5-$f6
         lda $f5
@@ -219,41 +263,63 @@ savebank2: .byte 0
 
 	; set the color for the next row
 	ldx rowcnt
-	lda mem::coloron
-	beq @handle_brkpts
 	lda mem::rowcolors,x
 	sta $900f
 
-	cpx #SCREEN_HEIGHT-2
-	bcs @brkpts_done
+	cpx #$04
+	bne @handle_brkpts
+
+	;----------------------------------------------------------------------
+	; clear character 0
+	; we will use this for breakpoints on row 11 (the last screen row)
+	lda #$55
+	sta DYNAMIC_CHAR_ADDR_BOT+$00
+	sta DYNAMIC_CHAR_ADDR_BOT+$01
+	sta DYNAMIC_CHAR_ADDR_BOT+$02
+	sta DYNAMIC_CHAR_ADDR_BOT+$03
+	sta DYNAMIC_CHAR_ADDR_BOT+$04
+	sta DYNAMIC_CHAR_ADDR_BOT+$05
+	sta DYNAMIC_CHAR_ADDR_BOT+$06
+	sta DYNAMIC_CHAR_ADDR_BOT+$07
+	sta DYNAMIC_CHAR_ADDR_BOT+$08
+	sta DYNAMIC_CHAR_ADDR_BOT+$09
+	sta DYNAMIC_CHAR_ADDR_BOT+$0a
+	sta DYNAMIC_CHAR_ADDR_BOT+$0b
+	sta DYNAMIC_CHAR_ADDR_BOT+$0c
+	sta DYNAMIC_CHAR_ADDR_BOT+$0d
+	sta DYNAMIC_CHAR_ADDR_BOT+$0e
+	sta DYNAMIC_CHAR_ADDR_BOT+$0f
 
 @handle_brkpts:
+	ldy #$03
+	cpx #SCREEN_HEIGHT-2
+	bcs @botrows
+
 	;----------------------------------------------------------------------
 	; copy either the empty character (no breakpoint)
 	; or the breakpoint character data if there is one
-	ldy #$03
 	lda mem::breakpoint_rows,x
 	beq @empty
 @breakpoint:
 	lda @breakpoint_char,y
-	sta DYNAMIC_CHAR_ADDR,y
+	sta DYNAMIC_CHAR_ADDR+$02,y
 	lda @breakpoint_char+4,y
-	sta DYNAMIC_CHAR_ADDR+8,y
+	sta DYNAMIC_CHAR_ADDR+$02+8,y
 	dey
 	bpl @breakpoint
-	bmi :+
+	jmi @nextrow			; branch always
 @empty:
 	lda @empty_char,y
-	sta DYNAMIC_CHAR_ADDR,y
+	sta DYNAMIC_CHAR_ADDR+$02,y
 	lda @empty_char+4,y
-	sta DYNAMIC_CHAR_ADDR+8,y
+	sta DYNAMIC_CHAR_ADDR+$02+8,y
 	dey
 	bpl @empty
+	bmi @nextrow			; branch always
 
-@brkpts_done:
+@botrows:
 	cpx #SCREEN_HEIGHT-2
 	bne :+
-
 ;------------------------------------------------------------------------------
 ; before the last row is drawn, we need to restore the screen codes for the
 ; bitmap (characters: $10f0-$10fa) - 60 cycles total
@@ -283,16 +349,32 @@ savebank2: .byte 0
 	lda #$ff
 	sta $10fb
 
+:	lda mem::breakpoint_rows,x
+	beq @empty_last
+@breakpoint_last:
+	lda @breakpoint_char,y
+	sta DYNAMIC_CHAR_ADDR_BOT+$02,y
+	lda @breakpoint_char+4,y
+	sta DYNAMIC_CHAR_ADDR_BOT+$02+8,y
+	dey
+	bpl @breakpoint_last
+	bmi @nextrow				; branch always
+@empty_last:
+	lda @empty_char,y
+	sta DYNAMIC_CHAR_ADDR_BOT+$02,y
+	lda @empty_char+4,y
+	sta DYNAMIC_CHAR_ADDR_BOT+$02+8,y
+	dey
+	bpl @empty_last
+
 	lda #$55
-	sta $10fc
 	sta $10fd
 	sta $10fe
 	sta $10ff
 
-:	cpx #SCREEN_HEIGHT-1
-	bne :+
-
-:	inc rowcnt
+@nextrow:
+	cpx #SCREEN_HEIGHT-1
+	inc rowcnt
 	bcc @ret
 
 @main: ; reinstall main IRQ handler
@@ -304,7 +386,7 @@ savebank2: .byte 0
 	sta $912e
 @ret:	rts
 
-; NOTE: thes are only 4 pixel rows each. the top and bottom rows of each char
+; NOTE: there are only 4 pixel rows each. the top and bottom rows of each char
 ;       are assumed to never be changed
 @breakpoint_char:	.byte $7d,$7d,$7d,$7d
 			.byte $7d,$7d,$7d,$7d

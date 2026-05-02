@@ -49,7 +49,9 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 	stx @dst+1
 	stx @col
 
-@l0:	; column 0 is always character $0f
+@l0:	; column 0 is character $0f for first 10 rows
+	; on last row, it switches to $00, which will be dynamically modified
+	; and also used for breakpoint rendering
 	lda #$0f
 	sta (@dst),y
 	iny
@@ -67,6 +69,10 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 	inc @col
 	cpy #PHYS_COLS*SCREEN_ROWS-1
 	bcc @l0
+
+	; set leftmost column of last row to char 0
+	lda #$00
+	sta $10e7
 
 	; configure VIC registers
 	ldy #$05
