@@ -79,6 +79,9 @@ __str_loading: .byte "loading...",0
 .export __str_saving
 __str_saving: .byte "saving...",0
 
+.export __str_aborted
+__str_aborted: .byte "aborted",0
+
 .export __str_assembling
 __str_assembling: .byte "assembling...",0
 

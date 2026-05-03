@@ -507,6 +507,8 @@ main:	jsr key::getch
 	ldxy #strings::assembling
 	jsr print_info
 
+	jsr run::install_sigint	; reset SIGINT flag
+
 	jsr dbgi::init
 	jsr obj::init
 	jsr errlog::clear
@@ -529,6 +531,9 @@ main:	jsr key::getch
 	jsr asm::startpass
 
 @pass1loop:
+	lda __edit_sigint
+	bne @done
+
 	jsr src::currline
 	stxy asm::linenum
 	jsr src::readline
@@ -579,6 +584,9 @@ main:	jsr key::getch
 	jsr asm::startpass
 
 @pass2loop:
+	lda __edit_sigint
+	bne @done
+
 	jsr src::currline
 	stxy asm::linenum
 @asm:	jsr src::readline
@@ -591,6 +599,7 @@ main:	jsr key::getch
 
 @next:	jsr src::end		; check if we're at the end of the source
 	bne @pass2loop		; repeat if not
+	beq @done		; branch always (done)
 
 @done:	ldxy zp::asmresult
 	jsr dbgi::endblock	; end the final debug info block
@@ -611,7 +620,7 @@ main:	jsr key::getch
 ; OUT:
 ;   - .C: set on error
 .proc display_result
-	jsr irq::on
+:	jsr irq::on
 
 	jsr clrerror
 	lda #$01
@@ -628,7 +637,14 @@ main:	jsr key::getch
 	rts
 
 @printresult:
-	; get the size of the assembled program and print it
+	lda __edit_sigint	; was assembly aborted? (SIGINT)
+	beq :+
+	ldxy #strings::aborted
+	jsr print_info
+	lda #COLOR_FAILURE
+	jmp @waitch
+
+:	; get the size of the assembled program and print it
 	ldxy #@success0
 	lda asm::pcset		; did this program assemble > 0 bytes?
 	beq @print 		; if not, print a simple "done"
@@ -656,14 +672,14 @@ main:	jsr key::getch
 	ldxy #@success_msg
 @print:
 	jsr text::render
-	lda #STATUS_ROW
-	jsr text::print
+	jsr print_info
 
 	ldxy #mem::linebuffer2
 	jsr log::out
 
-	ldx #STATUS_ROW
 	lda #COLOR_SUCCESS
+@waitch:
+	ldx #STATUS_ROW
 	jsr draw::hline
 	jsr key::waitch		; wait for key
 	ldx #STATUS_ROW
@@ -5331,6 +5347,8 @@ __edit_gotoline:
 	rts
 .endproc
 
+.RODATA
+
 ;*******************************************************************************
 ; ADVANCE TAB
 ; Advances the cursor to the next tab stop
@@ -5350,8 +5368,6 @@ __edit_gotoline:
 	lda zp::cury
 	jmp text::drawline
 .endproc
-
-.RODATA
 
 ;*******************************************************************************
 ; IS READONLY

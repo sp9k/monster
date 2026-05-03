@@ -85,6 +85,9 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 	; destination buffer for getname
 	lda #<$100
 	sta r0
+	sta filename		; default filename to nothing
+	sta filename+1
+
 	lda #>$100
 	sta r0+1
 	jsr lbl::getname	; read the symbol name into buffer ($100)
@@ -92,11 +95,6 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 	jsr lbl::addr_and_mode	; get the symbol address
 	stxy addr
 	sta mode
-
-	; default filename to nothing
-	lda #$00
-	sta filename
-	sta filename+1
 
 	jsr dbgi::addr2line	; get file and line #
 	bcs @done		; if no mapping, skip

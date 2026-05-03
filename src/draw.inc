@@ -15,6 +15,7 @@ COLOR_BRKON   = 3
 COLOR_BRKOFF  = 4
 COLOR_SUCCESS = 5
 COLOR_SELECT  = 6
+COLOR_FAILURE = 3
 
 .scope draw
 	hline          = __draw_hline
