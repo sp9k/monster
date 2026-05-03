@@ -195,7 +195,7 @@ BASE=$2000
 	lsr
 	lsr
 	clc
-	adc #VMEM_BLK1_BANK
+	adc #VMEM_BLK1_BANK-1
 	pha			; save bank
 	tya
 	and #$1f		; get lower 5 bits of MSB (offset from bank)

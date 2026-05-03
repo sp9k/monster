@@ -57,7 +57,7 @@ __ultimem_bank: .byte 0
 ;   - .A: the bank to activate
 .export __ultimem_select_bank
 .proc __ultimem_select_bank
-	cmp #NUM_BANKS		; 2 (2)
+	cmp #NUM_BANKS+1	; 2 (2)
 	bcc :+			; 3 (5)
 
 	; if id is above last virutal bank index, treat as raw bank value
@@ -97,8 +97,9 @@ __ultimem_bank: .byte 0
 
 ;*******************************************************************************
 ;VIRTUAL BANK CONFIG MAP
-blk1: .byte $01, $02, $05, $05, $08, $0b, $0e, $11, $14, $17, $1a, $1d, $21, $10, $21
-blk2: .byte $02, $03, $06, $06, $09, $0c, $0f, $12, $15, $18, $1b, $1e, $25, $11, $22
-blk3: .byte $03, $04, $07, $07, $0a, $0d, $10, $13, $16, $19, $1c, $1f, $20, $12, $23
-blk5: .byte $04, $05, $06, $06, $07, $08, $09, $0a, $0b, $0b, $0c, $0d, $0e, $13, $24
+blk1: .byte $01, $02, $05, $05, $08, $0b, $0e, $11, $14, $17, $1a, $1d, $21, $10, $24
+blk2: .byte $02, $03, $06, $06, $09, $0c, $0f, $12, $15, $18, $1b, $1e, $22, $11, $25
+blk3: .byte $03, $04, $07, $07, $0a, $0d, $10, $13, $16, $19, $1c, $1f, $23, $12, $26
+blk5: .byte $04, $05, $06, $06, $07, $08, $09, $0a, $0b, $0b, $0c, $0d, $0e, $13, $27
 cfg:  .byte $55, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $55, $ff
+

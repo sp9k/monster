@@ -97,8 +97,8 @@ segments = {
 	),
 	"VSYS": Bank(
 		blk1 = Ram(33),	# $0000-$2000    (virtual internal)
-		blk2 = Ram(37), # $8000-$a000    (virutal I/O)
-		blk3 = Ram(32), # backup for debugger RAM
+		blk2 = Ram(34), # $8000-$a000    (virutal I/O)
+		blk3 = Ram(35), # backup for debugger RAM
 		blk5 = Rom(14),
 	),
 	"FTXT": Bank(
@@ -109,10 +109,10 @@ segments = {
 	),
 	# bank 31-34 stores user's program
 	"USER": Bank(
-		blk1 = Ram(33),
-		blk2 = Ram(34),
-		blk3 = Ram(35),
-		blk5 = Ram(36),
+		blk1 = Ram(36),
+		blk2 = Ram(37),
+		blk3 = Ram(38),
+		blk5 = Ram(39),
 	),
 }
 

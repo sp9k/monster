@@ -294,8 +294,9 @@ savebank2: .byte 0
 	bmi @nextrow			; branch always
 
 @botrows:
-:	lda mem::breakpoint_rows,x
+	lda mem::breakpoint_rows,x
 	beq @empty_last
+
 @breakpoint_last:
 	lda @breakpoint_char,y
 	sta DYNAMIC_CHAR_ADDR_BOT+$02,y
@@ -311,7 +312,6 @@ savebank2: .byte 0
 	sta DYNAMIC_CHAR_ADDR_BOT+$02+8,y
 	dey
 	bpl @empty_last
-
 
 @nextrow:
 	cpx #SCREEN_HEIGHT-3

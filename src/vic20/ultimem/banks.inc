@@ -29,14 +29,14 @@ FINAL_BANK_USER          = $0f
 NUM_BANKS                = $0f
 
 ERRORS_BANK        = 15	; BLOB0
-SIMDBG_BANK        = 32
-SIMRAM_00_BANK     = 33	; $0000-$0400
-VMEM_IO_BANK       = 33	; $0000-$0400 and $9000-$9800 ($1400 bytes)
+SIMDBG_BANK        = 35	; from "VSYS"
+SIMRAM_00_BANK     = 33	; from "VSYS" $0000-$0400
+VMEM_IO_BANK       = 33	; from "VSYS" $0000-$0400 and $9000-$9800 ($1400 bytes)
 VMEM_RAM123_BANK   = 34 ; $0400-$1000 & $1000-$2000 ($1c00 bytes)
-VMEM_BLK1_BANK     = 35 ; $2000-$4000 ($2000 bytes)
-VMEM_BLK2_BANK     = 36 ; $4000-$6000 ($2000 bytes)
-VMEM_BLK3_BANK     = 37	; $6000-$8000 ($2000 bytes)
-VMEM_BLK5_BANK     = 38	; $a000-$c000 ($2000 bytes)
+VMEM_BLK1_BANK     = 36 ; $2000-$4000 ($2000 bytes)
+VMEM_BLK2_BANK     = 37 ; $4000-$6000 ($2000 bytes)
+VMEM_BLK3_BANK     = 38	; $6000-$8000 ($2000 bytes)
+VMEM_BLK5_BANK     = 39	; $a000-$c000 ($2000 bytes)
 
 FINAL_BANK_SOURCE0 = 40
 .endif
