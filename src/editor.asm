@@ -2679,14 +2679,8 @@ __edit_set_breakpoint:
 	; fine, but we will need to reassemble before it takes affect
 	bcs @done
 
-	stxy @addr
+	stxy r0			; r0 = address to map to
 	jsr __edit_current_file	; get the debug file ID and line #
-	pha
-	lda @addr
-	sta r0
-	lda @addr+1
-	sta r0+1
-	pla
 	jsr dbg::brksetaddr
 
 @done:	lda zp::cury

@@ -15,6 +15,7 @@
 .include "errors.inc"
 .include "file.inc"
 .include "flags.inc"
+.include "format.inc"
 .include "gui.inc"
 .include "labels.inc"
 .include "irq.inc"
@@ -198,6 +199,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 	stx watch::num		; clear watches
 	stx breakpoints_active	; flag that breakpoints are not installed
 	stx __debug_interface	; set interface to GUI
+	stx fmt::enable
 
 	dex			; .X = $ff
 	txs			; initialize stack to $1ff
@@ -698,9 +700,9 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
 	; 'N' or QUIT: return back to debugger, 'Y': exit debugger
 	cmp #$4e		; N
-	beq @done
+	beq @abort
 	cmp #K_QUIT
-	beq @done		; don't quit
+	beq @abort		; don't quit
 	cmp #$59		; Y
 	bne :-
 
@@ -711,8 +713,8 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
 	jsr scr::clrcolor
 
-	jmp edit::init
-@done:	rts
+	jmp edit::init		; re-init the editor
+@abort:	rts
 .endproc
 
 ;******************************************************************************
@@ -1052,32 +1054,42 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
 ;*******************************************************************************
 ; SETBRKATLINE
-; Sets a breakpoint at the given line.  During assembly the address will be
-; populated.
+; Sets a breakpoint at the given line.  If there's already a breakpoint there
+; or there are not enough remaining breakpoints free, does nothing.
 ; IN:
 ;  - .XY: the line number to set the breakpoint at
 ;  - .A:  the file ID to set the breakpoint in
 ; OUT:
+;  - .C: set if there are too many breakpoints to add a new one
 ;  - .A: the ID of the breakpoint that was added
 .export __debug_setbrkatline
 .proc __debug_setbrkatline
+@line=r0
 	pha				; save file ID
+	stxy @line
+
+	; does the breakpoint already exist?
+	jsr brkpt::getbyline		; get breakpoint # in .X
+	bcc @done			; there's already a breakpoint here
 
 	; store the line #
-	txa
 	ldx __debug_numbreakpoints
-	sta __debug_breakpoint_lineslo,x
-	tya
-	sta __debug_breakpoint_lineshi,x
-
 	pla				; restore file ID
+	cpx #MAX_BREAKPOINTS
+	bcs @done			; too many breakpoints
+
 	sta __debug_breakpoint_fileids,x
+	lda @line
+	sta __debug_breakpoint_lineslo,x
+	lda @line+1
+	sta __debug_breakpoint_lineshi,x
 	lda #BREAKPOINT_ENABLED
 	sta breakpoint_flags,x
 
 	lda __debug_numbreakpoints
 	inc __debug_numbreakpoints
-	rts
+	clc
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1108,7 +1120,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
 ;*******************************************************************************
 ; BRKSETADDR
-; Sets the address for the given (existing) breakpoint.
+; Replaces the address for the given (existing) breakpoint.
 ; If no matching breakpoint is found, does nothing
 ; IN:
 ;   - .XY: the line # of the breakpoint to set the address for
@@ -1121,6 +1133,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 @addr=r0
 	jsr brkpt::getbyline	; get breakpoint # in .X
 	bcs @done		; no match
+
 @found:	; store address
 	lda @addr
 	sta breakpointslo,x

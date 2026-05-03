@@ -266,30 +266,6 @@ savebank2: .byte 0
 	lda mem::rowcolors,x
 	sta $900f
 
-	cpx #$04
-	bne @handle_brkpts
-
-	;----------------------------------------------------------------------
-	; clear character 0
-	; we will use this for breakpoints on row 11 (the last screen row)
-	lda #$55
-	sta DYNAMIC_CHAR_ADDR_BOT+$00
-	sta DYNAMIC_CHAR_ADDR_BOT+$01
-	sta DYNAMIC_CHAR_ADDR_BOT+$02
-	sta DYNAMIC_CHAR_ADDR_BOT+$03
-	sta DYNAMIC_CHAR_ADDR_BOT+$04
-	sta DYNAMIC_CHAR_ADDR_BOT+$05
-	sta DYNAMIC_CHAR_ADDR_BOT+$06
-	sta DYNAMIC_CHAR_ADDR_BOT+$07
-	sta DYNAMIC_CHAR_ADDR_BOT+$08
-	sta DYNAMIC_CHAR_ADDR_BOT+$09
-	sta DYNAMIC_CHAR_ADDR_BOT+$0a
-	sta DYNAMIC_CHAR_ADDR_BOT+$0b
-	sta DYNAMIC_CHAR_ADDR_BOT+$0c
-	sta DYNAMIC_CHAR_ADDR_BOT+$0d
-	sta DYNAMIC_CHAR_ADDR_BOT+$0e
-	sta DYNAMIC_CHAR_ADDR_BOT+$0f
-
 @handle_brkpts:
 	ldy #$03
 	cpx #SCREEN_HEIGHT-2
@@ -318,8 +294,34 @@ savebank2: .byte 0
 	bmi @nextrow			; branch always
 
 @botrows:
-	cpx #SCREEN_HEIGHT-2
+:	lda mem::breakpoint_rows,x
+	beq @empty_last
+@breakpoint_last:
+	lda @breakpoint_char,y
+	sta DYNAMIC_CHAR_ADDR_BOT+$02,y
+	lda @breakpoint_char+4,y
+	sta DYNAMIC_CHAR_ADDR_BOT+$02+8,y
+	dey
+	bpl @breakpoint_last
+	bmi @nextrow			; branch always
+@empty_last:
+	lda @empty_char,y
+	sta DYNAMIC_CHAR_ADDR_BOT+$02,y
+	lda @empty_char+4,y
+	sta DYNAMIC_CHAR_ADDR_BOT+$02+8,y
+	dey
+	bpl @empty_last
+
+
+@nextrow:
+	cpx #SCREEN_HEIGHT-3
 	bne :+
+
+@dly:	dex
+	bne @dly
+
+	; wait til we've drawn all of the $10f0 chars and then restore the
+	; values for $10f0
 ;------------------------------------------------------------------------------
 ; before the last row is drawn, we need to restore the screen codes for the
 ; bitmap (characters: $10f0-$10fa) - 60 cycles total
@@ -349,31 +351,31 @@ savebank2: .byte 0
 	lda #$ff
 	sta $10fb
 
-:	lda mem::breakpoint_rows,x
-	beq @empty_last
-@breakpoint_last:
-	lda @breakpoint_char,y
-	sta DYNAMIC_CHAR_ADDR_BOT+$02,y
-	lda @breakpoint_char+4,y
-	sta DYNAMIC_CHAR_ADDR_BOT+$02+8,y
-	dey
-	bpl @breakpoint_last
-	bmi @nextrow				; branch always
-@empty_last:
-	lda @empty_char,y
-	sta DYNAMIC_CHAR_ADDR_BOT+$02,y
-	lda @empty_char+4,y
-	sta DYNAMIC_CHAR_ADDR_BOT+$02+8,y
-	dey
-	bpl @empty_last
+:	cpx #$04
+	bne :+
 
+	;----------------------------------------------------------------------
+	; on row 4: clear character 0
+	; we will use this for breakpoints on row 11 (the last screen row)
 	lda #$55
-	sta $10fd
-	sta $10fe
-	sta $10ff
+	sta DYNAMIC_CHAR_ADDR_BOT+$00
+	sta DYNAMIC_CHAR_ADDR_BOT+$01
+	sta DYNAMIC_CHAR_ADDR_BOT+$02
+	sta DYNAMIC_CHAR_ADDR_BOT+$03
+	sta DYNAMIC_CHAR_ADDR_BOT+$04
+	sta DYNAMIC_CHAR_ADDR_BOT+$05
+	sta DYNAMIC_CHAR_ADDR_BOT+$06
+	sta DYNAMIC_CHAR_ADDR_BOT+$07
+	sta DYNAMIC_CHAR_ADDR_BOT+$08
+	sta DYNAMIC_CHAR_ADDR_BOT+$09
+	sta DYNAMIC_CHAR_ADDR_BOT+$0a
+	sta DYNAMIC_CHAR_ADDR_BOT+$0b
+	sta DYNAMIC_CHAR_ADDR_BOT+$0c
+	sta DYNAMIC_CHAR_ADDR_BOT+$0d
+	sta DYNAMIC_CHAR_ADDR_BOT+$0e
+	sta DYNAMIC_CHAR_ADDR_BOT+$0f
 
-@nextrow:
-	cpx #SCREEN_HEIGHT-1
+:	cpx #SCREEN_HEIGHT-1
 	inc rowcnt
 	bcc @ret
 
