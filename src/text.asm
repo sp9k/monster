@@ -177,6 +177,9 @@ tempbuff: .res LINESIZE
 @backspace:
 	ldx zp::curx
 	beq @err	; cannot delete (cursor is at left side of screen)
+	dex
+	cpx cur::minx
+	bcc @err	; minx >= curx, cursor is limited
 
 	; get the new x position
 	lda mem::linebuffer-1,y

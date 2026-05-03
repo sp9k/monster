@@ -390,8 +390,10 @@ savebank2: .byte 0
 
 ; NOTE: there are only 4 pixel rows each. the top and bottom rows of each char
 ;       are assumed to never be changed
-@breakpoint_char:	.byte $7d,$7d,$7d,$7d
-			.byte $7d,$7d,$7d,$7d
+@breakpoint_char:	.byte $fd,$fd,$fd,$fd
+			.byte $fd,$fd,$fd,$fd
+@breakpoint_off_char:	.byte $fd,$dd,$dd,$fd
+			.byte $fd,$dd,$dd,$fd
 @empty_char:		.byte $55,$55,$55,$55
 			.byte $55,$55,$55,$55
 .endproc
