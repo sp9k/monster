@@ -89,13 +89,19 @@ mode = zp::editor_mode	; editor mode (COMMAND, INSERT)
 .export __edit_height
 __edit_height = height
 
+;*******************************************************************************
 .segment "SHAREBSS"
+
 .export __edit_debugging
 __edit_debugging:
 debugging: .byte 0	; if !0, debugger is active
 
-.BSS
+.export __edit_sigint
+__edit_sigint: .byte 0		; cancel flag for long running commands
+
 ;*******************************************************************************
+.BSS
+
 readonly:  .byte 0	; if !0 no edits are allowed to be made via the editor
 
 ; jump list lines and current index
@@ -4643,6 +4649,10 @@ goto_buffer:
 	lda #$01	; flag search FORWARD
 	sta @forward
 
+	jsr irq::off	; free up CPU for seeking
+
+	jsr run::install_sigint	; reset SIGINT flag
+
 	stxy @string
 	jsr str::len
 	sta @len
@@ -4706,6 +4716,10 @@ goto_buffer:
 
 ; see if the text we're looking for is in the buffer
 @seekloop:
+	; check if we should abort the search (user triggered SIGINT)
+	lda __edit_sigint
+	bne @abort
+
 	jsr str::comparez
 	beq @found
 
@@ -4749,7 +4763,8 @@ goto_buffer:
 
 @notfound:
 	jsr beep::short
-	jmp src::popgoto
+@abort:	jsr src::popgoto
+	jmp @done
 
 @found:	jsr src::currline	; get the line we're moving to
 	stxy @target
@@ -4853,7 +4868,7 @@ goto_buffer:
 	dec @cnt
 	bne :-
 :				; from next_err
-@done:	rts
+@done:	jmp irq::on
 .endproc
 
 ;*******************************************************************************
@@ -5336,6 +5351,8 @@ __edit_gotoline:
 	jmp text::drawline
 .endproc
 
+.RODATA
+
 ;*******************************************************************************
 ; IS READONLY
 ; Returns .Z set if the buffer should not allow edits (true if readonly has
@@ -5395,10 +5412,7 @@ __edit_gotoline:
 	sta highlight_status		; and flag highlight as on
 
 	; fall through to toggle_highlight
-	jmp toggle_highlight
 .endproc
-
-.RODATA
 
 ;*******************************************************************************
 ; TOGGLE_HIGHLIGHT

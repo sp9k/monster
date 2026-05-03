@@ -2,6 +2,7 @@
 .include "prefs.inc"
 .include "settings.inc"
 .include "../beep.inc"
+.include "../edit.inc"
 .include "../key.inc"
 .include "../layout.inc"
 .include "../macros.inc"
@@ -53,6 +54,17 @@ savebank:  .byte 0
 savebank2: .byte 0
 
 .segment "IRQ"
+
+;*******************************************************************************
+; NMI HANDLER
+; Increments the SIGINT flag, which some code may check to determine if it
+; should halt execution
+.export __nmi_sigint
+.proc __nmi_sigint
+	inc edit::sigint
+	rti
+.endproc
+
 ;*******************************************************************************
 ; SYS_UPDATE
 ; This is the main IRQ for this program. It handles updating the beeper.
@@ -104,6 +116,16 @@ savebank2: .byte 0
 .ifndef ultimem
 .CODE
 .endif
+
+;*******************************************************************************
+; NMI SIGINT
+; Increments the SIGINT flag, which some code may check to determine if it
+; should halt execution
+.export __nmi_default
+.proc __nmi_default
+	inc edit::sigint
+	rti
+.endproc
 
 ;*******************************************************************************
 ; STABLE_HANDLER

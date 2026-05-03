@@ -6,6 +6,7 @@
 
 .include "../expansion.inc"
 .include "../fastcopy.inc"
+.include "../nmi.inc"
 .include "../prefs.inc"
 .include "../settings.inc"
 .include "../vaddrs.inc"
@@ -52,6 +53,23 @@ save_sp: .byte 0
 ret:     .word 0
 
 .CODE
+
+;*******************************************************************************
+; INSTALL SIGINT
+; Installs an NMI to cancel a long running command (such as FIND) by pressing
+; the RESTORE key.
+.export __run_install_sigint
+.proc __run_install_sigint
+	lda #$7f
+	sta $911d		; disable/ack RESTORE key interrupts
+	ldxy #nmi::default
+	stxy $318
+	lda #$00
+	sta edit::sigint	; reset INT flag
+	lda #$82
+	sta $911e		; enable RESTORE key interrupts
+	rts
+.endproc
 
 ;******************************************************************************
 ; CLR

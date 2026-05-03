@@ -17,6 +17,7 @@
 .import __edit_run
 .import __edit_set_breakpoint
 .import __edit_sethighlight
+.import __edit_sigint
 .import __edit_src2screen
 
 .scope edit
@@ -38,6 +39,7 @@
 	run            = __edit_run
 	setbreakpoint  = __edit_set_breakpoint
 	sethighlight   = __edit_sethighlight
+	sigint         = __edit_sigint
 	src2screen     = __edit_src2screen
 .endscope
 
