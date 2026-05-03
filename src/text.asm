@@ -174,13 +174,9 @@ tempbuff: .res LINESIZE
 
 :	cmp #$14
 	bne @printing
-
 @backspace:
 	ldx zp::curx
-	beq @err_silent	; cannot delete (cursor is at left side of screen)
-	dex
-	cpx cur::minx
-	bcc @err	; minx >= curx, cursor is limited
+	beq @err	; cannot delete (cursor is at left side of screen)
 
 	; get the new x position
 	lda mem::linebuffer-1,y
@@ -207,9 +203,7 @@ tempbuff: .res LINESIZE
 @bs_done:
 	RETURN_OK	; "put" was successful
 
-@err:	jmp beep::short
-@err_silent:
-	sec		; couldn't perform action
+@err:	sec		; couldn't perform action
 	rts
 
 @printing:
@@ -219,7 +213,7 @@ tempbuff: .res LINESIZE
 	bcs @err		; cursor is limited
 
 	lda __text_insertmode
-	beq @fastput	; if REPLACE, no need to shift, do fast put
+	beq @fastputi		; if REPLACE, no need to shift, do fast put
 
 @slowput:
 @shift_right:
@@ -238,7 +232,8 @@ tempbuff: .res LINESIZE
 	bcs @shr		; if more to shift, repeat
 
 @fastputi:
-	;lda #$00
+	ldx @len
+	lda #$00
 	sta mem::linebuffer+1,x	; keep the line 0-terminated
 
 @fastput:

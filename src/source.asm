@@ -733,12 +733,12 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	jsr __src_end
 	beq @skip
 
-	jsr __src_mark_dirty
 	jsr __src_after_cursor
 	cmp #$0d
 	bne :+
 	jsr on_line_deleted
 :	incw poststartzp
+	jsr __src_mark_dirty
 	clc
 	rts
 @skip:	sec
@@ -911,13 +911,14 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .export __src_replace
 .proc __src_replace
 	pha
+	jsr __src_after_cursor
+	cmp #$0d
+	beq :+
 	jsr __src_delete
-	pla
-	bcs @ret
+:	pla
 	jsr __src_insert
-	jsr __src_left
 	clc
-@ret:	rts
+	rts
 .endproc
 
 ;*******************************************************************************
