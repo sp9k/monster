@@ -145,10 +145,9 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 ; Initializes the editor state
 .export __edit_init
 .proc __edit_init
-	sei
+	jsr scr::blank
 	ldx #$ff
 	txs
-	cli
 
 	inx			; ldx #$00
 	stx debugging
@@ -178,6 +177,8 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	jsr asm::reset
 
 	jsr file::init_drive
+	jsr scr::unblank
+
 	jsr refresh
 
 	; fall through to __edit_run
@@ -2055,15 +2056,16 @@ main:	jsr key::getch
 .endproc
 
 ;*******************************************************************************
+; COMMENT BANNER
+; Draws LINESIZE ';'s at the current cursor position
 .proc comment_banner
-@cnt=zp::editortmp+2
 	jsr text::bufferon
-	lda #LINESIZE
-	sta @cnt
+	ldx #LINESIZE
 :	lda #';'
 	jsr insert
-	dec @cnt
+	dex
 	bne :-
+
 	jsr draw_active_line
 	jmp text::bufferoff
 .endproc
@@ -2486,9 +2488,11 @@ main:	jsr key::getch
 	ldx zp::curx
 	ldy zp::cury
 	jsr src::new
-	ldxy #strings::null
-	jsr src::name		; rename buffer to empty name
+	bcc @ok
+	jmp beep::short		; too many open buffers
 
+@ok:	ldxy #strings::null
+	jsr src::name		; rename buffer to empty name
 	jmp home_refresh
 .endproc
 
@@ -2505,6 +2509,7 @@ main:	jsr key::getch
 	beq @done	; same size
 	bcs refresh	; new size is bigger, redraw screen
 
+; new screen size is smaller, adjust cursor as needed so that it is in range
 @smaller:
 @l0:	lda zp::cury
 	cmp height
@@ -2757,9 +2762,11 @@ __edit_set_breakpoint:
 	lsr		; check if result was 1 (new udg created)
 	bcc @update	; if not, must be 2 (udg updated)
 
+; new UDG was created, open a new line and write out its data
 @new:	jsr open_line_below_noindent
 	jmp @write
 
+; UDG was updated, rewrite the line with its new data
 @update:
 	jsr home
 	jsr delete_to_end
@@ -2770,11 +2777,9 @@ __edit_set_breakpoint:
 
 	; write ".db "
 	ldx #4
-	stx @cnt
-:	ldx @cnt
-	lda @db_text-1,x
+:	lda @db_text-1,x
 	jsr insert
-	dec @cnt
+	dex
 	bne :-
 
 	; convert the binary to hex and write the UDG
@@ -2784,22 +2789,19 @@ __edit_set_breakpoint:
 @l0:	lda #'$'
 	jsr insert
 
-	ldx @cnt
 	lda @udg,x
 	jsr util::hextostr
-	stx @save
 	tya
 	jsr insert
 	lda @save
 	jsr insert
 
-	lda @cnt
-	cmp #$07
+	cpx #$07
 	beq @done
 	lda #','
 	jsr insert
-	inc @cnt
-	bpl @l0
+	inx
+	bpl @l0		; branch always
 
 @done:	jsr text::bufferoff
 	jmp draw_active_line
@@ -3683,15 +3685,26 @@ goto_buffer:
 
 ;******************************************************************************
 ; INSERT
-; Adds a character at the cursor position.
+; Adds a character at the cursor position.  Depending on the insertion mode,
+; either REPLACEs or INSERTs the character. The source buffer and text buffer
+; are both affected.
+; IN:
+;   - .A: the character to insert into the text buffer
+; PRESERVED:
+;   - .X
 .proc insert
+@xsave=zp::editortmp
+	stx @xsave
 	cmp #$14		; handle DEL
 	bne :+
-	jmp ccdel
+	jsr ccdel
+	jmp @done
+
 :	cmp #$0d
 	bne :+
 	jsr clrerror		; clear error so we can report on THIS line
-	jmp linedone		; handle RETURN
+	jsr linedone		; handle RETURN
+	jmp @done
 
 :	jsr key::isprinting
 	bcs @done		; non-printing
@@ -3701,13 +3714,17 @@ goto_buffer:
 @replace:
 	jsr src::replace
 	bcs @done		; nothing to replace
-	jmp text::putch
+	jsr text::putch
+	jmp @done
+
 @put:	pha
 	jsr text::putch
 	pla
 	bcs @done
-	jmp src::insert
-@done:	rts
+	jsr src::insert
+
+@done:	ldx @xsave
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -3720,8 +3737,12 @@ goto_buffer:
 @ch=ra
 	; are we already on the first line of the buffer?
 	jsr src::currline
-	cmpw #1
+	tya			; is MSB of line 0?
+	bne :+			; if not, not on line 1
+	dex			; is .X 1?
 	bne :+			; not first line -> continue
+
+	; already on first line, return
 	;sec
 	rts			; return, can't move up
 
@@ -5452,17 +5473,17 @@ __edit_gotoline:
 .endproc
 
 ;*******************************************************************************
+; UNBLANK
+; Restores the default screen
+unblank = scr::unblank
+
+;*******************************************************************************
 ; PRINT_INFO
 ; Updates the status line with the given info message and refreshses the status
 .proc print_info
 	lda status_row
 	jmp text::print
 .endproc
-
-;*******************************************************************************
-; UNBLANK
-; Restores the default screen
-unblank = scr::unblank
 
 ;*******************************************************************************
 ; CURRENT FILE ID
