@@ -341,6 +341,7 @@ screen: .res LINESIZE*HEIGHT
 ; Activates the monitor without clearing the screen
 .export __monitor_reenter
 .proc __monitor_reenter
+@err=r0
 	; initialize QUIT and INT signal states
 	lda #$00
 	sta __monitor_quit
@@ -376,8 +377,6 @@ screen: .res LINESIZE*HEIGHT
 	ldx #$01
 	ldy #$00
 	CALLMAIN cur::setmin
-
-	CALLMAIN irq::on
 
 	ldxy #__monitor_getch
 	CALLMAIN edit::gets
@@ -428,20 +427,19 @@ screen: .res LINESIZE*HEIGHT
 @run:	; run the command
 	ldxy #CMD_BUFF
 	jsr moncmd::run
-	php
+	ror @err		; save error bit
 	pha
 
 	; close the output file (if not screen)
 	lda __monitor_outfile
 	beq :+
 	CALLMAIN file::close
-	CALLMAIN irq::on
+	jsr unblank
 
 :	pla
-	plp
+	rol @err		; restore error bit
 	bcc @ok			; if it succeeded, continue
-
-@err:	CALLMAIN err::get
+	CALLMAIN err::get
 	jsr __monitor_puts
 
 @ok:	lda __monitor_quit	; was QUIT signal sent?
@@ -497,10 +495,10 @@ screen: .res LINESIZE*HEIGHT
 	pha
 
 	; disable IRQ for file IO
-	CALLMAIN irq::off
+	jsr blank
 
 	; found the start of the filename
-	; open the output fil$100e
+	; open the output file
 	pla
 	clc
 	adc #<(mem::linebuffer+1)
@@ -522,6 +520,22 @@ screen: .res LINESIZE*HEIGHT
 	; display error
 	ldxy #strings::nofile
 	jmp __monitor_puts
+.endproc
+
+;*******************************************************************************
+; BLANK
+; Blanks the screen for I/O or other operations that require interrupts to be
+; off
+.proc blank
+	JUMPMAIN scr::blank
+.endproc
+
+;*******************************************************************************
+; UNBLANK
+; Blanks the screen for I/O or other operations that require interrupts to be
+; off
+.proc unblank
+	JUMPMAIN scr::unblank
 .endproc
 
 ;*******************************************************************************

@@ -27,7 +27,6 @@
 .include "guis.inc"
 .include "help.inc"
 .include "io.inc"
-.include "irq.inc"
 .include "kernal.inc"
 .include "key.inc"
 .include "keycodes.inc"
@@ -266,7 +265,6 @@ main:	jsr key::getch
 ; Activates the monitor
 .export __edit_enter_monitor
 .proc __edit_enter_monitor
-	jsr draw::coloroff
 	JUMP FINAL_BANK_MONITOR, mon::enter
 .endproc
 
@@ -343,7 +341,7 @@ main:	jsr key::getch
 	stxy @filename
 
 	ldxy #strings::assembling
-	jsr print_info
+	jsr blank
 
 	jsr cancel		; close errlog (if open)
 	jsr dbgi::init
@@ -356,8 +354,6 @@ main:	jsr key::getch
 	lda #$01
 	sta zp::gendebuginfo	; enable debug info
 	jsr asm::startpass
-
-	jsr irq::off
 
 	; do the first pass of assembly
 	ldxy @filename
@@ -392,11 +388,9 @@ main:	jsr key::getch
 @linkbuffer=mem::spare
 	CALL FINAL_BANK_LINKER, link::init
 
-	jsr irq::off
-
 	; display "linking..."
 	ldxy #strings::linking
-	jsr print_info
+	jsr blank
 
 	; create a new log and write "linking..." to it
 	jsr file::init_drive
@@ -419,7 +413,7 @@ main:	jsr key::getch
 	CALL FINAL_BANK_LINKER, link::link
 
 @done:	jsr log::close
-	jmp irq::on
+	jmp unblank
 .endproc
 
 ;*******************************************************************************
@@ -450,10 +444,9 @@ main:	jsr key::getch
 
 	inx			; .X=1
 	stx asm::mode		; assemble to object
-	jsr irq::off
 
 	ldxy #strings::dumping
-	jsr print_info
+	jsr blank
 
 	jsr file::init_drive
 
@@ -478,7 +471,7 @@ main:	jsr key::getch
 	jsr file::close
 
 @done:	dec asm::mode		; switch back to DIRECT assembly mode
-	jmp irq::on
+	jmp unblank
 .endproc
 
 ;*******************************************************************************
@@ -497,15 +490,14 @@ main:	jsr key::getch
 	lda #ERR_UNNAMED_BUFFER
 	jmp report_typein_error
 
-:	jsr irq::off
-	jsr cancel		; close errlog (if open)
+:	jsr cancel		; close errlog (if open)
 	;jsr init_log		; create a (new) log file
 
 	lda #$01
 	sta zp::gendebuginfo	; enable debug info
 
 	ldxy #strings::assembling
-	jsr print_info
+	jsr blank
 
 	jsr run::install_sigint	; reset SIGINT flag
 
@@ -620,7 +612,7 @@ main:	jsr key::getch
 ; OUT:
 ;   - .C: set on error
 .proc display_result
-:	jsr irq::on
+	jsr unblank
 
 	jsr clrerror
 	lda #$01
@@ -670,12 +662,9 @@ main:	jsr key::getch
 
 @success:
 	ldxy #@success_msg
-@print:
-	jsr text::render
-	jsr print_info
 
-	ldxy #mem::linebuffer2
-	jsr log::out
+@print: jsr text::render
+	jsr print_info
 
 	lda #COLOR_SUCCESS
 @waitch:
@@ -1199,7 +1188,7 @@ main:	jsr key::getch
 	sta cur::mode
 	lda #'r'
 	sta text::statusmode
-	rts
+:	rts			; <- replace_char
 .endproc
 
 ;*******************************************************************************
@@ -1207,24 +1196,9 @@ main:	jsr key::getch
 .proc replace_char
 	jsr key::waitch		; get the character to replace with
 	jsr key::isprinting
-	bcs @done		; do nothing if not printable
-	pha
-	jsr src::replace
-	bcc :+
-	; failed to replace char
-	pla			; clean stack
-	rts
-
-:	jsr text::char_index
-	pla
-	sta mem::linebuffer,y	; replace character in linebuffer
-
-	; if a TAB / something differently sized than the char we replaced
-	; was inserted, update cursor appropriately
-	tya
-	jsr gotoindex
-	jsr draw_active_line
-@done:	rts
+	bcs :-			; do nothing if not printable
+	jsr insert
+	jmp ccleft
 .endproc
 
 ;*******************************************************************************
@@ -1233,7 +1207,7 @@ main:	jsr key::getch
 ; INSERT mode
 .proc insert_start
 	jsr enter_insert
-
+	jsr insert
 	; fall through to home_col
 .endproc
 
@@ -1358,6 +1332,21 @@ main:	jsr key::getch
 	jsr util::isalphanum
 	bcc @l0
 @done:	rts
+.endproc
+
+
+;******************************************************************************
+; NEWL
+; Inserts a newline at the current cursor position
+; The indentation flag is ignored (line will not be indented)
+.proc newl
+	jsr is_readonly
+	beq begin_next_line	; if in readonly mode, just go down
+
+@insert:
+	lda #$0d
+	jsr src::insert
+	jmp scroll_line
 .endproc
 
 ;*******************************************************************************
@@ -1496,9 +1485,8 @@ main:	jsr key::getch
 	jsr src::after_cursor
 	jsr util::isalphanum
 	ldx @endonalpha
-	bne :+			; if we don't want to end on alphanum, skip
+	bne @done		; if we don't want to end on alphanum, skip
 	bcs @l0			; if alphanum, continue
-:	bcc @l0
 
 @done:  jsr buff::reverse
 	jmp redraw_to_end_of_line
@@ -3081,13 +3069,16 @@ goto_buffer:
 .proc command_loaddbg
 @file=zp::editortmp
 @addr=zp::editortmp+1
-	jsr irq::off
-
 	stxy @file
+
+	ldxy #strings::loading
+	jsr blank
+
+	ldxy @file
 	jsr file::exists
 	bcc @open
 
-@err:	jsr irq::on
+@err:	jsr unblank
 	jmp report_drive_error
 
 @open:	ldxy @file
@@ -3136,7 +3127,7 @@ goto_buffer:
 @done:	lda @file
 	jsr file::close
 
-@ret:	jmp irq::on
+@ret:	jmp unblank
 .endproc
 
 ;******************************************************************************
@@ -3149,11 +3140,16 @@ goto_buffer:
 .proc command_savedbg
 @file=zp::editortmp
 @addr=zp::editortmp+2
-	jsr irq::off
+	stxy @file
+
+	ldxy #strings::saving
+	jsr blank
+
+	ldxy @file
 	jsr file::open_w	; open the output filename
 	bcc :+
 
-@err:	jsr irq::on
+@err:	jsr unblank
 	jmp report_drive_error
 
 :	sta @file
@@ -3196,7 +3192,7 @@ goto_buffer:
 
 @done:	lda @file
 	jsr file::close
-:	jmp irq::on			; <- command_saveprg
+:	jmp unblank			; <- command_saveprg
 .endproc
 
 ;******************************************************************************
@@ -3209,7 +3205,10 @@ goto_buffer:
 ;  - .XY: the argument to the command (filename)
 .proc command_saveprg
 @file=r4
-	jsr irq::off
+	stxy @file
+	ldxy #strings::saving
+	jsr blank
+	ldxy @file
 	jsr file::open_w	; open the output filename
 	bcs :-			; failed to open file
 
@@ -3235,10 +3234,14 @@ goto_buffer:
 ;  - .XY: the argument to the command (filename)
 .proc command_savebin
 @file=r4
-	jsr irq::off
+	stxy @file
+	ldxy #strings::saving
+	jsr blank
+
+	ldxy @file
 	jsr file::open_w	; open the output filename
 	bcc :+
-	jmp irq::on		; failed to open file
+	jmp unblank		; failed to open file
 :	sta @file
 	; fall through
 .endproc
@@ -3258,7 +3261,7 @@ goto_buffer:
 	jsr file::savebin	; write the binary to file
 	lda @file
 	jsr file::close
-@done:	jmp irq::on
+@done:	jmp unblank
 .endproc
 
 ;******************************************************************************
@@ -3275,7 +3278,7 @@ goto_buffer:
 	stxy @file
 
 	ldxy #strings::saving
-	jsr print_info
+	jsr blank
 
 	ldxy @file
 	jsr str::len		; get the length of the file to save
@@ -3291,7 +3294,6 @@ goto_buffer:
 
 :	stxy @file
 @rename:
-	jsr irq::off
 	lda overwrite
 	beq @open		; if overwrite flag isn't set, continue
 @scratch:
@@ -3321,10 +3323,10 @@ goto_buffer:
 @ok:	;jsr text::clrinfo	; erase SAVING message
 	;lda #$00
 	;jsr src::setflags	; clear flags on the source buffer and return
-	jmp irq::on
+	jmp unblank
 
 @err:	pha
-	jsr irq::on
+	jsr unblank
 	pla
 	jsr report_drive_error
 	jmp key::getch
@@ -3338,18 +3340,15 @@ goto_buffer:
 ;  - .XY: the filename of the file to delete
 .proc command_scratch
 @file=r8
-	stxy @file
-	jsr irq::off
+	ldxy #strings::deleting
+	jsr blank
 
 	jsr file::exists
 	bcs @err
 
-	ldxy #strings::deleting
-	jsr print_info
-
 	ldxy @file
 	jsr file::scratch
-@err:	jsr irq::on
+@err:	jsr unblank
 	jmp report_drive_error
 .endproc
 
@@ -3390,15 +3389,13 @@ goto_buffer:
 
 @notfound:
 ; buffer doesn't exist in any RAM bank, load from disk
-	jsr irq::off
+	; display loading...
+	ldxy #strings::loading
+	jsr blank
 
 	ldxy @file
 	jsr file::exists
 	bcs @err
-
-	; display loading...
-	ldxy #strings::loading
-	jsr print_info
 
 	; load the file
 	ldxy @file
@@ -3410,11 +3407,9 @@ goto_buffer:
 	pha
 	jsr file::loadsrc	; load to SOURCE buff
 	pla
-	php
-
-	jsr irq::on
-	plp
 	bcs @err
+
+	jsr unblank
 	ldxy @file
 	jsr src::name		; name the buffer
 
@@ -3432,26 +3427,50 @@ goto_buffer:
 	jsr cancel
 @ok:	RETURN_OK
 
-@err:	jsr irq::on
+@err:	jsr unblank
 	jsr report_drive_error
 	sec
 	rts
 .endproc
 
-;******************************************************************************
-; NEWL
-; Inserts a newline at the current cursor position
-; The indentation flag is ignored (line will not be indented)
-.proc newl
-	jsr is_readonly
-	bne @insert
-	; if in readonly mode, just go down
-	jmp begin_next_line
 
-@insert:
-	lda #$0d
-	jsr src::insert
-	jmp scroll_line
+;******************************************************************************
+; FMT LINE
+; Attempts to compile the line entered in (mem::linebuffer)
+; If successful, formats the source according to the type of the assembled line
+; (instruction, label, etc.) and creates a line/address mapping.
+; OUT:
+;   - .A: indent hint; 1=next line should be indented, 0=not
+;   - .C: set if the line was not formatted (assembly failed)
+.proc fmt_line
+	lda fmt::enable
+	bne :+
+	RETURN_OK
+
+:	; tokenize (1st pass) to check if the line is valid
+	ldxy #mem::linebuffer
+	lda #FINAL_BANK_MAIN
+	jsr asm::tokenize
+	tax
+	php			; save assembly status (.C flag)
+	bcs @done		; failed to assemble, skip formatting
+
+; format the line based on the line's contents (in .A from tokenize)
+@fmt:	lda autoindent
+	beq @done		; if indent disabled, skip
+
+	lda #$00		; init flag to NO indentation
+	cpx #ASM_COMMENT	; if this is a comment, don't format
+	beq @done
+	txa
+	jsr fmt::line
+	lda #$01		; default to indent ON
+
+@done:	pha			; save indent hint
+	jsr print_current_line
+	pla			; restore indent hint
+	plp			; restore formatting/assembly success flag
+	rts
 .endproc
 
 ;******************************************************************************
@@ -3505,46 +3524,8 @@ goto_buffer:
 	pla
 	jsr scroll_line
 	lda @indent
-	jmp start_next_line
-.endproc
 
-;******************************************************************************
-; FMT LINE
-; Attempts to compile the line entered in (mem::linebuffer)
-; If successful, formats the source according to the type of the assembled line
-; (instruction, label, etc.) and creates a line/address mapping.
-; OUT:
-;   - .A: indent hint; 1=next line should be indented, 0=not
-;   - .C: set if the line was not formatted (assembly failed)
-.proc fmt_line
-	lda fmt::enable
-	bne :+
-	RETURN_OK
-
-:	; tokenize (1st pass) to check if the line is valid
-	ldxy #mem::linebuffer
-	lda #FINAL_BANK_MAIN
-	jsr asm::tokenize
-	tax
-	php			; save assembly status (.C flag)
-	bcs @done		; failed to assemble, skip formatting
-
-; format the line based on the line's contents (in .A from tokenize)
-@fmt:	lda autoindent
-	beq @done		; if indent disabled, skip
-
-	lda #$00		; init flag to NO indentation
-	cpx #ASM_COMMENT	; if this is a comment, don't format
-	beq @done
-	txa
-	jsr fmt::line
-	lda #$01		; default to indent ON
-
-@done:	pha			; save indent hint
-	jsr print_current_line
-	pla			; restore indent hint
-	plp			; restore formatting/assembly success flag
-	rts
+	; fall through to start_next_line
 .endproc
 
 ;******************************************************************************
@@ -4554,48 +4535,22 @@ goto_buffer:
 ; IN:
 ;  - .A: the row to draw the text at
 .proc draw_src_line
-	pha		; save the row
+	pha			; save the row
 
 	; if there's a breakpoint on this line, draw it
 	jsr __edit_current_file
 	jsr brkpt::getbyline
 	ldy #$00
 	bcs @nobrk
-	iny
-@nobrk: pla
-	pha
+	adc #$01		; 1 = inactive, 2 = active
+	tay
+
+@nobrk: pla			; restore the row
 	tax
 	tya
 	sta mem::breakpoint_rows,x
-
-	pla			; restore the row
+	txa			; restore the row
 	jmp text::drawline
-.endproc
-
-;******************************************************************************
-; COMMAND_FIND
-; Gets a string from the user and searches (forward) for it in the source file
-.proc command_find
-@str=r0
-	ldxy #@prompt_find
-	jsr readinput
-
-	; copy (.XY) to the find buffer
-	stxy @str
-	ldy #$00
-:	lda (@str),y
-	sta mem::findbuff,y
-	beq @cont
-	iny
-	bne :-
-
-@cont:	ldxy #mem::findbuff
-	jmp __edit_find
-
-.PUSHSEG
-.RODATA
-@prompt_find: .byte "find",0
-.POPSEG
 .endproc
 
 ;******************************************************************************
@@ -4616,6 +4571,33 @@ goto_buffer:
 	bcc :+
 	dec zp::device
 :	rts
+.endproc
+
+;******************************************************************************
+; COMMAND_FIND
+; Gets a string from the user and searches (forward) for it in the source file
+.proc command_find
+@str=r0
+	ldxy #@prompt_find
+	jsr readinput
+
+	; copy (.XY) to the find buffer
+	stxy @str
+	ldy #$00
+:	lda (@str),y
+	sta mem::findbuff,y
+	beq @cont
+	iny
+	bne :-
+
+@cont:	ldx #<mem::findbuff
+	ldy #>mem::findbuff
+	bne __edit_find		; branch always
+
+.PUSHSEG
+.RODATA
+@prompt_find: .byte "find",0
+.POPSEG
 .endproc
 
 ;*******************************************************************************
@@ -4665,7 +4647,8 @@ goto_buffer:
 	lda #$01	; flag search FORWARD
 	sta @forward
 
-	jsr irq::off	; free up CPU for seeking
+	ldxy #strings::null
+	jsr blank	; free up CPU for seeking
 
 	jsr run::install_sigint	; reset SIGINT flag
 
@@ -4883,8 +4866,7 @@ goto_buffer:
 :	jsr src::next
 	dec @cnt
 	bne :-
-:				; from next_err
-@done:	jmp irq::on
+@done:	jmp unblank
 .endproc
 
 ;*******************************************************************************
@@ -4901,9 +4883,8 @@ goto_buffer:
 ; Navigates the cursor to the next error from the error log
 .proc next_err
 	jsr errlog::next
-	beq :-			; -> RTS (no next error)
-
-	; fall through to gotoline
+	bne __edit_gotoline
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -5278,6 +5259,17 @@ __edit_gotoline:
 	rts
 .endproc
 
+.RODATA
+
+;*******************************************************************************
+; DIR VIEW
+; Opens the directory viewer
+.proc dirview
+	jsr scr::save
+	jsr scr::blank
+	jmp dir::view
+.endproc
+
 ;*******************************************************************************
 ; ADD JUMP POINT
 ; Adds a jump point at the current source position
@@ -5346,8 +5338,6 @@ __edit_gotoline:
 	stx zp::curx
 	rts
 .endproc
-
-.RODATA
 
 ;*******************************************************************************
 ; ADVANCE TAB
@@ -5451,12 +5441,28 @@ __edit_gotoline:
 .endproc
 
 ;*******************************************************************************
+; BLANK
+; Blanks the screen and displays a message about what is happening during
+; the blanking
+; IN:
+;   - .XY: string to display while screen is blanked
+.proc blank
+	jsr print_info
+	jmp scr::blank
+.endproc
+
+;*******************************************************************************
 ; PRINT_INFO
 ; Updates the status line with the given info message and refreshses the status
 .proc print_info
 	lda status_row
 	jmp text::print
 .endproc
+
+;*******************************************************************************
+; UNBLANK
+; Restores the default screen
+unblank = scr::unblank
 
 ;*******************************************************************************
 ; CURRENT FILE ID
@@ -5594,7 +5600,7 @@ numcommands=*-commands
 	paste_below, paste_above, delete_char, \
 	open_line_above, open_line_below, join_line, comment_out, \
 	enter_visual, enter_visual_line, command_yank, sub_char, sub_line, \
-	dir::view, gui::reenter, ccleft, ccright, ccup, ccdown, endofword, \
+	dirview, gui::reenter, ccleft, ccright, ccup, ccdown, endofword, \
 	beginword, word_advance, home_col, last_line, \
 	home_line, ccdel, ccright, goto_end, goto_start, find_next, find_prev, \
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \

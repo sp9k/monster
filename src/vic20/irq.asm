@@ -2,6 +2,7 @@
 .include "prefs.inc"
 .include "settings.inc"
 .include "../beep.inc"
+.include "../breakpoints.inc"
 .include "../edit.inc"
 .include "../key.inc"
 .include "../layout.inc"
@@ -154,7 +155,6 @@ savebank2: .byte 0
 	lda #$a5
 	nop
 
-
 	; clear the character area for the breakpoint
 	lda #$55
 	sta $10f0
@@ -298,14 +298,27 @@ savebank2: .byte 0
 	; or the breakpoint character data if there is one
 	lda mem::breakpoint_rows,x
 	beq @empty
-@breakpoint:
+	cmp #BREAKPOINT_ENABLED+1
+	bne @breakpoint_inactive
+
+@breakpoint_active:
 	lda @breakpoint_char,y
 	sta DYNAMIC_CHAR_ADDR+$02,y
 	lda @breakpoint_char+4,y
 	sta DYNAMIC_CHAR_ADDR+$02+8,y
 	dey
-	bpl @breakpoint
+	bpl @breakpoint_active
 	jmi @nextrow			; branch always
+
+@breakpoint_inactive:
+	lda @breakpoint_off_char,y
+	sta DYNAMIC_CHAR_ADDR+$02,y
+	lda @breakpoint_off_char+4,y
+	sta DYNAMIC_CHAR_ADDR+$02+8,y
+	dey
+	bpl @breakpoint_inactive
+	jmi @nextrow			; branch always
+
 @empty:
 	lda @empty_char,y
 	sta DYNAMIC_CHAR_ADDR+$02,y
@@ -410,12 +423,14 @@ savebank2: .byte 0
 	sta $912e
 @ret:	rts
 
+;-------------------------------------------------------------------------------
+; BREAKPOINT CHARACTER SET
 ; NOTE: there are only 4 pixel rows each. the top and bottom rows of each char
 ;       are assumed to never be changed
-@breakpoint_char:	.byte $fd,$fd,$fd,$fd
-			.byte $fd,$fd,$fd,$fd
-@breakpoint_off_char:	.byte $fd,$dd,$dd,$fd
-			.byte $fd,$dd,$dd,$fd
+@breakpoint_char:	.byte $75,$fd,$fd,$75
+			.byte $75,$fd,$fd,$75
+@breakpoint_off_char:	.byte $75,$cd,$cd,$75
+			.byte $75,$cd,$cd,$75
 @empty_char:		.byte $55,$55,$55,$55
 			.byte $55,$55,$55,$55
 .endproc
@@ -435,6 +450,7 @@ savebank2: .byte 0
 .proc __irq_off
 	sei
 
+	; install dummy handler for when KERNAL enables IRQ's
 	; bit $9124; pla; tay; pla; tax; pla; rti
 	lda #<$eb15
 	sta $0314
@@ -575,6 +591,10 @@ savebank2: .byte 0
 	; enable T2 interrupts
 	lda #$80|$40
 	sta $912e
+
+	lda #$00
+	cmp $9004
+	bne *-3
 
 	cli
 	rts

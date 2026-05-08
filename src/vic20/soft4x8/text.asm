@@ -422,10 +422,9 @@ charaddrhi:
 @numrows=zp::text+4
 	stx @numrows
 	cmp @numrows
-	bcs :+
-	rts
+	bcc @done
 
-:	sec
+	;sec
 	sbc @numrows
 	asl
 	asl
@@ -470,7 +469,7 @@ charaddrhi:
 	sta @dst+1
 	cmp #$20
 	bne @l0
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************

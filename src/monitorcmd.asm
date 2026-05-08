@@ -17,11 +17,11 @@
 .include "flags.inc"
 .include "labels.inc"
 .include "line.inc"
-.include "irq.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "memview.inc"
 .include "runtime.inc"
+.include "screen.inc"
 .include "sim6502.inc"
 .include "string.inc"
 .include "strings.inc"
@@ -1205,7 +1205,7 @@ __mon_default_start_set: .byte 0
 	ldxy @stopaddr
 	stxy file::save_address_end
 
-	CALLMAIN irq::off
+	CALLMAIN scr::blank
 
 	; open the output file for writing
 	ldxy zp::line
@@ -1226,7 +1226,7 @@ __mon_default_start_set: .byte 0
 	RETURN_OK
 
 @err:	pha					; save error code
-	CALLMAIN irq::on
+	CALLMAIN scr::unblank
 	pla
 	sec
 @done:	rts

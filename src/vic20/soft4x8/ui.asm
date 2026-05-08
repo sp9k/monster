@@ -536,7 +536,7 @@ STATUS_COL=0		; start column for status line
 ; Returns a line containing 8 bytes of the contents of the given address
 ; along with a text rendering of those 8 bytes.
 ; IN:
-;   - .XY: the address to get the memory rendering of
+;   - ra: the address to get the memory rendering of
 ; OUT:
 ;   - mem::spare: the rendered memory data
 ;   - .XY:        the rendered memory data
@@ -545,8 +545,6 @@ BYTES_TO_DISPLAY=8
 .proc __ui_memline
 @src=ra
 @col=rc
-	stxy @src
-
 	; initialize line to empty (all spaces)
 	lda #' '
 	ldx #40-1
@@ -583,7 +581,7 @@ BYTES_TO_DISPLAY=8
 	bcc :+
 	cmp #$80
 	bcc @cont
-:	lda #'.'	; use '.' for undisplayable chars
+:	lda #'.'		; use '.' for undisplayable chars
 
 @cont:	ldx @col
 	sta mem::spare+31,x	; write the character representation
@@ -604,7 +602,6 @@ BYTES_TO_DISPLAY=8
 	cpx #BYTES_TO_DISPLAY	; have we drawn all columns?
 	bcc @l1			; repeat until we have
 
-	ldx #<mem::spare
-	ldy #>mem::spare
+	ldxy #mem::spare
 	rts
 .endproc

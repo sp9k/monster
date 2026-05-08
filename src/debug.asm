@@ -179,6 +179,10 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 .endif
 
 ;******************************************************************************
+unblank = scr::unblank
+blank   = scr::blank
+
+;******************************************************************************
 ; START
 ; Begins debugging at the given address
 ; Execution will continue until a BRK instruction occurs at which point the
@@ -444,7 +448,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
 	; save program state and swap the debugger state in
 	jsr __debug_swap_out
-        jsr irq::on		; reinstall the main IRQ
+        jsr unblank		; reinstall the main IRQ
 
 	lda breakpoints_active
 	beq return_to_debugger
@@ -624,7 +628,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 ;   - .C: set if we should stop tracing (e.g. if a watch was activated)
 .export __debug_step_out
 .proc __debug_step_out
-	jsr irq::off
+	jsr blank
 
 	lda #$00
 	sta step_out_depth
@@ -633,7 +637,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 	jsr print_tracing
 @trace: lda stop_tracing
 	bne @done
-	jsr __debug_step	; run one STEP
+	jsr step		; run one STEP
 	bcs @done		; stop tracing if STEP OUT says we should
 
 	TRACE_ON		; enable tracing to catch user interrupt
@@ -659,11 +663,11 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 ; or user interrupt)
 .export __debug_trace
 .proc __debug_trace
-	jsr irq::off
+	jsr blank
 	jsr bsp::install_tracer
 
 	; run one step (get over breakpoint if there is one)
-	jsr __debug_step
+	jsr step
 	bcc :+
 	rts
 
@@ -675,7 +679,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 	lda stop_tracing	; check if user interrupted trace
 	bne @done
 
-	jsr __debug_step	; run the next STEP
+	jsr step	; run the next STEP
 	bcs @done
 
 	TRACE_ON		; reinstall user interrupt
@@ -735,8 +739,6 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 	jsr edit::resize
 
 	pushcur
-	lda #(DEBUG_INFO_START_ROW)
-	jsr scr::clrpart
 	jsr showstate		; restore the state
 
 	lda #AUX_MEM
@@ -777,22 +779,37 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 ; returns with the debugger's memory swapped back in
 .export __debug_swap_user_mem
 .proc __debug_swap_user_mem
-	; disable coloring in the IRQ
-	jsr draw::coloroff
+	jsr blank
+
+.if .defined(vic20)
+	; configure screen to 0x0 chars to hide artifacts during screen swap
+	lda #$00
+	sta $9002
+	sta $9003
+.endif
 
 	; bring in the visible state from the user program
 	jsr bsp::save_debug_visual
 	jsr bsp::restore_prog_visual
 
 	; wait for a key to swap the state back
-	jsr key::waitch
-
-	; reenable coloring
-	inc mem::coloron
+.if .defined(vic20)
+:	jsr $eb1e
+	lda $c6
+	beq :-
+	lda #$00
+	sta $c6		; clear keyboard buffer
+.elseif .defined(c64)
+:	jsr $ea87
+	lda $c6
+	beq :-
+	lda #$00
+	sta $c6		; clear keyboard buffer
+.endif
 
 	; restore debugger state
 	jsr bsp::restore_debug_visual
-	jmp irq::on
+	jmp unblank
 .endproc
 
 ;******************************************************************************
@@ -816,10 +833,10 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 ; at the line after the subroutine (after the subroutine has run)
 .export __debug_step_over
 .proc __debug_step_over
-	jsr irq::off
+	jsr blank
 	jsr bsp::install_tracer
 
-	jsr __debug_step	; run one STEP
+	jsr step	; run one STEP
 	bcs @done		; stop tracing if STEP errored
 	lda sim::op		; get opcode we just ran
 	cmp #$20		; did we run a JSR?
@@ -831,10 +848,12 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 ;******************************************************************************
 ; STEP
 ; Runs the step command
-.proc step
+.export __debug_step
+.proc  __debug_step
 	TRACE_OFF
+	jsr blank
 
-	jsr __debug_step
+	jsr step
 
 	; fall through to reenable_irq
 .endproc
@@ -845,7 +864,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 ; Flags are preserved (except .I, which is cleared)
 .proc reenable_irq
 	php
-	jsr irq::on
+	jsr unblank
 	plp
 	cli
 	rts
@@ -858,8 +877,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 ; the current instruction and RUNning.
 ; OUT:
 ;   - .C: set if we should stop tracing (e.g. if a watch was activated)
-.export __debug_step
-.proc __debug_step
+.proc step
 @cnt=r0
 	lda #$00
 	sta sim::illegal
@@ -1006,7 +1024,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 @gui:	lda #REGISTERS_LINE-1
 	jsr text::print
 	jsr scr::clrcolor
-	jsr irq::on
+	jsr unblank
 	jsr key::waitch		; wait for keypress
 	sec
 	rts
@@ -1820,7 +1838,7 @@ commands:
 num_commands=*-commands
 
 .linecont +
-.define command_vectors quit, edit_source, step, __debug_step_over, \
+.define command_vectors quit, edit_source, __debug_step, __debug_step_over, \
 	__debug_go, jump, __debug_step_out, __debug_trace, edit_source, \
 	edit_mem, edit_breakpoints, __debug_edit_watches, \
 	__debug_swap_user_mem, reset_stopwatch, edit_state, \

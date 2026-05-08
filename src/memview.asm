@@ -436,8 +436,9 @@ memaddr: .word 0
 
 @l0:	ldxy @src
 	jsr ui::memline
+
 	lda @row
-	jsr text::print	; draw the row of rendered bytes
+	jsr text::print		; draw the row of rendered bytes
 	ldx @row
 	jsr draw::resetline
 	inc @row

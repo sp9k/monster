@@ -24,6 +24,8 @@
 .include "util.inc"
 .include "zeropage.inc"
 
+HEIGHT = SCREEN_HEIGHT-2
+
 .CODE
 
 ;*******************************************************************************
@@ -94,7 +96,8 @@
 
 @ok:	lda @cnt
 	ldxy @resultptr
-@ret:	rts
+@ret:
+	rts			; <- from __dir_view
 .endproc
 
 ;*******************************************************************************
@@ -117,15 +120,13 @@
 @namebuff=mem::spareend-40	; buffer for the file name
 @fptrslo=@namebuff-(128*2)	; room for 128 files
 @fptrshi=@namebuff-(128)	; room for 128 files
-	jsr irq::off
 	jsr open_dir
 	bcc :+
-@err:	jmp irq::on
-
+	jsr scr::unblank
+	jmp scr::restore
 :	sta @file
 
 	; reset the screen so that we can print the file names normally
-	jsr scr::save
 
 	ldxy #@dirbuff+5
 	stxy @line
@@ -141,8 +142,11 @@
 	jsr draw::hiline
 
 	; and the bottom (status) row
-	ldx #SCREEN_HEIGHT-1
+	ldx #HEIGHT-1
 	jsr draw::hiline
+	lda #HEIGHT-1
+	ldy #$03
+	jsr draw::rvs_line
 
 ;--------------------------------------
 ; parse the name of the disk
@@ -185,7 +189,7 @@
 
 :	; print the line (if visible)
 	lda @row
-	cmp #SCREEN_HEIGHT-1
+	cmp #HEIGHT-1
 	bcs :+			; if line isn't visible, don't draw
 	jsr text::print
 	inc @row
@@ -200,17 +204,17 @@
 ; init viewer
 @cont:	lda @file
 	jsr file::close
-	jsr irq::on
+	jsr scr::unblank
 
 	dec @row
 
 	; max a user can scroll is (# of files - SCREEN_HEIGHT-1)
 	ldx #$00
 	lda @cnt
-	cmp #SCREEN_HEIGHT-2
+	cmp #HEIGHT-2
 	bcc :+
 	;sec
-	sbc #SCREEN_HEIGHT-2
+	sbc #HEIGHT-2
 	tax
 :	stx @scrollmax
 
@@ -245,7 +249,7 @@
 
 	; scroll up and redraw the bottom line
 	ldx #$01
-	lda #SCREEN_HEIGHT-1-1
+	lda #HEIGHT-1-1
 	jsr text::scrollup
 
 	lda @scroll
@@ -255,7 +259,7 @@
 	ldy @fptrshi,x
 	lda @fptrslo,x
 	tax
-	lda #SCREEN_HEIGHT-1-1			; bottom row
+	lda #HEIGHT-1-1			; bottom row
 	jsr text::print
 	jmp @hiselection
 
@@ -273,7 +277,7 @@
 
 	; scroll down and redraw the bottom line
 	lda #1
-	ldx #SCREEN_HEIGHT-1-1
+	ldx #HEIGHT-1-1
 	jsr text::scrolldown
 
 	dec @scroll
@@ -325,9 +329,9 @@
 
 	; set selection (row) to min(SCREEN_HEIGHT-2, @cnt)
 	ldx @cnt
-	cpx #SCREEN_HEIGHT-2
+	cpx #HEIGHT-2
 	bcc :+
-	ldx #SCREEN_HEIGHT-2
+	ldx #HEIGHT-2
 :	dex
 	stx @select
 @redraw:
@@ -365,7 +369,7 @@
 
 	inc @i
 	lda @i
-	cmp #SCREEN_HEIGHT
+	cmp #HEIGHT
 	bcs @refresh_done
 	adc @scroll
 	cmp @cnt

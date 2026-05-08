@@ -94,11 +94,9 @@ BREAKPOINT_ENABLED = 1
 	pla
 	bcs :+
 
-	beq @off
-@on:	lda #COLOR_BRKON
-	skw
-@off:	lda #COLOR_BRKOFF
-	jsr draw::hline
+	; 1 = inactive (BREAKPOINT_INACTIVE), 2 = active (BREAKPOINT_ACTIVE)
+	adc #$01
+	sta mem::breakpoint_rows,x
 :	rts
 .endproc
 

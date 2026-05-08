@@ -7,6 +7,7 @@
 .import __draw_coloroff
 .import __draw_scrollcolorsd1
 .import __draw_refresh_colors
+.import __draw_rvs_line
 
 COLOR_TEXT    = 0
 COLOR_NORMAL  = 1
@@ -21,6 +22,7 @@ COLOR_FAILURE = 3
 	hline          = __draw_hline
 	hiline         = __draw_hiline
 	resetline      = __draw_resetline
+	rvs_line       = __draw_rvs_line
 	rvs_underline  = __draw_rvs_underline
 	scrollcolorsu  = __draw_scrollcolorsu
 	scrollcolorsd  = __draw_scrollcolorsd

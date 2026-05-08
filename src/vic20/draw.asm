@@ -23,7 +23,7 @@ COLOR_SELECT  = 6
 .export __draw_hiline
 .proc __draw_hiline
 	lda #COLOR_RVS
-	jmp __draw_hline
+	bne __draw_hline	; branch always
 .endproc
 
 ;******************************************************************************

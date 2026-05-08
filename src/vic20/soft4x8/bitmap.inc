@@ -10,7 +10,6 @@ BITMAP_WIDTH  = 160
 .import __screen_char_addr
 .import __screen_clr
 .import __screen_clrcolor
-.import __screen_clr_part
 .import __screen_clrline
 .import __screen_columnslo
 .import __screen_columnshi
@@ -22,7 +21,6 @@ BITMAP_WIDTH  = 160
 	clr          = __screen_clr
 	clrcolor     = __screen_clrcolor
 	clrline      = __screen_clrline
-	clrpart      = __screen_clr_part
 	columnslo    = __screen_columnslo
 	columnshi    = __screen_columnshi
 	rvsline_part = __screen_rvsline_part

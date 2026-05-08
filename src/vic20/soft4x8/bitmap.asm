@@ -12,6 +12,7 @@
 .include "../prefs.inc"
 .include "../fastcopy.inc"
 .include "../../draw.inc"
+.include "../../irq.inc"
 .include "../../macros.inc"
 .include "../../memory.inc"
 .include "../../ram.inc"
@@ -35,7 +36,37 @@ SCREEN_ROWS = 12	; number of physical rows per column
 
 VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 
+;*******************************************************************************
+.BSS
+blank_backup: .res 16
+
 .CODE
+
+;*******************************************************************************
+; SAVE
+; Saves the bitmap to the backup buffer. It may then be restored with a call
+; to scr::restore
+.export __screen_save
+.proc __screen_save
+	CALL FINAL_BANK_VSCREEN, save
+
+	; save colors
+	ldx #SCREEN_ROWS*2-1
+:	lda mem::rowcolors_idx,x
+	sta mem::rowcolors_save,x
+
+	lda prefs::normal_color
+	sta mem::rowcolors,x
+
+	lda #COLOR_NORMAL
+	sta mem::rowcolors_idx,x
+
+	dex
+	bpl :-
+
+	; fall through to __screen_init
+.endproc
+
 ;*******************************************************************************
 ; INIT
 ; Initializes the screen layout
@@ -100,16 +131,123 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 .endproc
 
 ;*******************************************************************************
+; UNBLANK
+; Ends a "blank"; call when sensitive IRQ disabled work has finished
+.export __screen_unblank
+.proc __screen_unblank
+	jsr irq::on
+
+	lda #$0f
+	jsr set_col0
+	lda #$00		; .X=0
+	sta $10e7		; reset $10e7
+
+	; restore the final character from the backup (the last half is simply
+	; cleared because we clobber if with the blank message)
+	ldx #15
+:	lda #$55
+	sta $10f0,x
+	lda blank_backup,x
+	sta $1ff0,x
+	dex
+	bpl :-
+
+	; reset the final character on the screen to the text color
+	lda prefs::text_color
+	sta COLMEM_ADDR+(PHYS_COLS*SCREEN_ROWS)-1
+
+	rts
+.endproc
+
+;*******************************************************************************
+; BLANK
+; Simplifies the screen to avoid artifacts when the IRQ is disabled
+; IN:
+;   - .XY: a message to display while the screen is "blanked"
+.export __screen_blank
+.proc __screen_blank
+	lda #$82
+:	cmp $9004
+	bne :-
+
+	jsr irq::off
+
+	; restore screen row 0
+	lda #$0f
+	sta $1000
+	lda #$10
+	ldx #$00
+	clc
+:	sta $1001,x
+	adc #$0c
+	inx
+	cpx #NUM_COLS
+	bcc :-
+
+	lda #$7b
+	ldx #$00
+:	sta $10f0,x
+	inx
+	adc #$0c
+	bcc :-
+
+	; turn the final character on the screen to white to hide the pattern
+	; we need to make.
+	lda #$81
+	sta COLMEM_ADDR+(PHYS_COLS*SCREEN_ROWS)-1
+
+	; set the final character to the pattern $55,$55,$55,...
+	ldx #15
+:	lda $1ff0,x
+	sta blank_backup,x
+	lda #$55
+	sta $1ff0,x
+	dex
+	bpl :-
+
+	; set the leftmost column to the final character ($ff)
+	lda #$ff
+
+	; fall through to set_col0
+.endproc
+
+;*******************************************************************************
+; SET COL 0
+; Sets the physical screen column 0 so that all characters are the given
+; value
+.proc set_col0
+@scr=r0
+@val=r2
+	sta @val
+	lda #>SCREEN_ADDR
+	sta @scr+1
+	ldy #$00
+	sty @scr
+
+	ldx #SCREEN_ROWS
+@l0:	lda @val
+	sta (@scr),y
+	tya
+	clc
+	adc #PHYS_COLS
+	tay
+	dex
+	bne @l0
+@done:	rts
+.endproc
+
+;*******************************************************************************
 ; CLR
 ; Clears the screen
 .export __screen_clr
 .proc __screen_clr
 @bm=r0
-	ldxy #$1100
-	stxy @bm
-
+	lda #$11
+	sta @bm+1
 	lda #$00
 	tay
+	sta @bm
+
 :	sta (@bm),y
 	iny
 	bne :-
@@ -141,53 +279,6 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 :	sta COLMEM_ADDR-1,y
         dey
         bne @l0
-        rts
-.endproc
-
-;*******************************************************************************
-; CLR_PART
-; Clears all rows below the given offset in every column of the bitmap
-; IN:
-;  - .A: the character row to start clearing at
-.export __screen_clr_part
-.proc __screen_clr_part
-@screen=r0
-@offset=r2
-	asl
-	asl
-	asl
-	sta @offset
-	clc
-	adc #<BITMAP_ADDR
-	sta @screen
-	lda #>BITMAP_ADDR
-	sta @screen+1
-
-	; get # of pixels to clear (192 - offset)
-	lda #192
-	sec
-	sbc @offset
-	sta @offset
-
-	ldx #20			; number of columns
-
-@l0:	ldy @offset
-	dey
-	lda #$00
-;clear the character memory (bitmap)
-@l1:    sta (r0),y
-        dey
-        bne @l1
-
-	lda @screen
-	clc
-	adc #$c0
-	sta @screen
-	bcc :+
-	inc @screen+1
-:	dex
-	bne @l0
-
         rts
 .endproc
 
@@ -344,31 +435,6 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 .endproc
 
 ;*******************************************************************************
-; SAVE
-; Saves the bitmap to the backup buffer. It may then be restored with a call
-; to scr::restore
-.export __screen_save
-.proc __screen_save
-	CALL FINAL_BANK_VSCREEN, save
-
-	; save colors
-	ldx #SCREEN_ROWS*2-1
-:	lda mem::rowcolors_idx,x
-	sta mem::rowcolors_save,x
-
-	lda prefs::normal_color
-	sta mem::rowcolors,x
-
-	lda #COLOR_NORMAL
-	sta mem::rowcolors_idx,x
-
-	dex
-	bpl :-
-
-	jmp __screen_init
-.endproc
-
-;*******************************************************************************
 ; RESTORE
 ; Restores the bitmap from the backup buffer.
 ; You should call bm::save first with the buffer you want to restore
@@ -426,6 +492,8 @@ inittab:	.byte $00	; +$0c (PAL) +$05 (NTSC) $9000
 		.byte $00	; +$00                   $9004
 		.byte $0c	; +$c0                   $9005
 
+inittab_blank:	.byte $02,$fe,$fe,$eb,$00,$0c
+
 .segment "VSCREEN"
 
 ;*******************************************************************************
@@ -437,11 +505,13 @@ inittab:	.byte $00	; +$0c (PAL) +$05 (NTSC) $9000
 @bm=r2
 	ldxy #backbuff
 	stxy @buff
-	ldxy #$1100
-	stxy @bm
+
+	lda #>BITMAP_ADDR
+	sta @bm+1
+	ldy #$00
+	sty @bm
 
 	; save bitmap to back-buffer
-	ldy #$00
 :	lda (@bm),y
 	sta (@buff),y
 	iny
