@@ -711,10 +711,13 @@ blockaddresseshi: .res MAX_FILES
 ;  - .XY: line number of the address
 ;  - .C:  set on error
 .proc addr2line
-@addr=r2
-@cnt=r4
+@addr         = r2
+@cnt          = r4
+@match_found  = r5
+@matched_line = r6
 	stxy @addr
 	lda #$00
+	sta @match_found
 	sta @cnt
 
 @l0:	; load the next block to search for the address in
@@ -758,16 +761,33 @@ blockaddresseshi: .res MAX_FILES
 	cmp @addr+1
 	bne @nextline
 
-@found:	ldxy srcline	; return the line that the program ended on
-	lda file	; and file
-	RETURN_OK
+@found:	lda #$01
+	sta @match_found	; flag that we found a matching line
+	ldxy srcline
+	stxy @matched_line	; save latest line that matches the target
+	jmp @advance		; continue until the line no longer matches
 
 @nextline:
+	lda @match_found	; did a previous line match?
+	bne @return_found	; if so, return it
+
+@advance:
 	jsr advance
 	bcc @findline
+
+	; ran out of lines to advance, check if we had a match
+	lda @match_found	; did a previous line match?
+	bne @return_found	; if so, return it
+
+@notfound:
 	lda #ERR_LINE_NOT_FOUND
 	;sec
 @done:	rts
+
+@return_found:
+	lda file		; and file
+	ldxy @matched_line
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
