@@ -139,8 +139,6 @@
 	iny
 	cpy #LINESIZE
 	bne :-
-
-	dey
 @done:	beq return_to_x			; branch always (restore bank)
 .endproc
 
