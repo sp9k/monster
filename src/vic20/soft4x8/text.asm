@@ -149,7 +149,7 @@
         rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GET_CHAR_ADDR
 ; Retuns the address of the character in .A
 ; IN:
@@ -409,68 +409,6 @@ charaddrhi:
 
 
 .CODE
-;*******************************************************************************
-; SCROLLUP
-; Scrolls all lines from .X to .A up
-; IN:
-;  - .X: the top line that characters are scrolled to
-;  - .A: the bottom line that is scrolled
-.proc __text_scrollup
-.export __text_scrollup
-@src=zp::text
-@dst=zp::text+2
-@numrows=zp::text+4
-	stx @numrows
-	cmp @numrows
-	bcc @done
-
-	;sec
-	sbc @numrows
-	asl
-	asl
-	asl
-	sta @numrows
-
-	txa
-	asl
-	asl
-	asl
-	sta @dst
-	adc #$08
-	sta @src
-
-	lda #>BITMAP_ADDR
-	sta @dst+1
-	sta @src+1
-
-@l0:	ldy #$00
-@l1:	lda (@src),y
-	sta (@dst),y
-	iny
-	cpy @numrows
-	bne @l1
-
-@updatesrc:
-	lda @src
-	clc
-	adc #$c0
-	sta @src
-	bcc @updatedst
-	inc @src+1
-
-@updatedst:
-	lda @dst
-	clc
-	adc #$c0
-	sta @dst
-
-	lda @dst+1
-	adc #$00
-	sta @dst+1
-	cmp #$20
-	bne @l0
-@done:	rts
-.endproc
 
 ;*******************************************************************************
 ; SCROLLDOWN
@@ -478,12 +416,12 @@ charaddrhi:
 ; IN:
 ;  - .A: the first column to scroll down
 ;  - .X: the last column to scroll down to
-.export __text_scrolldown
-.proc __text_scrolldown
+;.export __text_scrolldown
+;.proc __text_scrolldown
 	ldy #$01
 
 	; fallthrough
-.endproc
+;.endproc
 
 ;*******************************************************************************
 ; SCROLLDOWNN

@@ -107,12 +107,23 @@ segments = {
 		blk3 = Rom(18),
 		blk5 = Rom(19),
 	),
-	# bank 31-34 stores user's program
 	"USER": Bank(
 		blk1 = Ram(36),
 		blk2 = Ram(37),
 		blk3 = Ram(38),
 		blk5 = Ram(39),
+	),
+	"FASTSCROLL_UP": Bank(
+		blk1 = Rom(20),
+		blk2 = Rom(21),
+		blk3 = Rom(22),
+		blk5 = Rom(23),
+	),
+	"FASTSCROLL_DOWN": Bank(
+		blk1 = Rom(24),
+		blk2 = Rom(25),
+		blk3 = Rom(26),
+		blk5 = Rom(27),
 	),
 }
 
