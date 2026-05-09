@@ -11,7 +11,7 @@
 ;  - .X: the index to start shifting down
 ;  - .Y: the last index to shift
 ; OUT:
-;  - .Z: clear
+;  - .Z: set (unless start > stop)
 .export __linebuffer_shl
 .proc __linebuffer_shl
 @stop=r0

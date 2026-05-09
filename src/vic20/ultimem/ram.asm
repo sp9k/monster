@@ -135,11 +135,13 @@
 	sta (zp::bankaddr1),y
 	beq return_to_x
 	cmp #$0d
-	beq @done
+	beq return_to_x
 	iny
 	cpy #LINESIZE
 	bne :-
-@done:	beq return_to_x	; branch always (restore bank)
+
+	dey
+@done:	beq return_to_x			; branch always (restore bank)
 .endproc
 
 .CODE

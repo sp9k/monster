@@ -19,57 +19,11 @@
 
 .BSS
 
+;******************************************************************************
 .export __fmt_enable
 __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 
 .CODE
-
-;******************************************************************************
-; LABEL
-; Formats linebuffer as a label.
-.proc label
-	; read past the label
-@l0:	jsr src::right_rep
-	bcs @done			; nothing on the line after the label
-	; TODO: check invalid label characters
-
-	jsr util::is_whitespace
-	bne @l0
-
-	; delete all whitespace until the opcode/macro/etc.
-@l1:	jsr src::after_cursor
-	bcs @done		; no chars left -> done
-	cmp #$0d
-	beq @done		; newline -> done
-	jsr util::is_whitespace
-	bne indent		; non-whitespace -> separate with tab
-	jsr src::delete		; delete whitespaced
-	bcc @l1
-@done:	jmp refresh
-.endproc
-
-;******************************************************************************
-; INDENT
-; Insert one indent at current source position, then refresh the
-; line buffer and move to the end of it
-.proc indent
-	lda #$09
-	jsr src::insert
-
-@refresh:
-	jsr refresh
-
-	; check the size of the line now that it has a TAB
-	jsr text::rendered_line_len
-	bcc :+				; ok
-
-	; line would be oversized with a TAB, use a space instead
-	jsr src::backspace	; delete the TAB
-	lda #' '
-	jsr src::insert		; insert a space
-	jmp @refresh		; and refresh the line again
-:	rts
-.endproc
 
 ;******************************************************************************
 ; LINE
@@ -101,7 +55,7 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 	jsr text::index2cursor
 	stx zp::curx
 
-	pla
+	pla			; restore character index
 	sta @cnt
 	beq @done
 :	jsr src::right_rep
@@ -110,7 +64,7 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 	bne :-
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @fmt:	; remove spaces from start of line
 	jsr src::home
 
@@ -123,27 +77,67 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 
 	jsr src::delete
 	ldx #$00
-	ldy #39
+	ldy #LINESIZE-1
 	jsr linebuff::shl
 	beq @removespaces	; branch always
 
 @left_aligned:
 	lda @linecontent 	; get the type of line we're formatting
-	and #ASM_LABEL		; if formatting includes label, do __fmt_label
-
-@label: beq @notlabel
-	jmp label
+	and #ASM_LABEL		; if formatting includes label
+	bne label		; -> format it as one
 
 @notlabel:
-	; if comment/directive/NONE don't indent
+	; if COMMENT, DIRECTIVE, or NONE -> don't indent
 	lda @linecontent
-	beq @done			; ASM_NONE
 	and #ASM_COMMENT|ASM_DIRECTIVE
-	bne @done
+	beq indent			; anything else -> indent
 
-@ident: jmp indent		; anything else- indent
+:				; <- indent
+@done:  rts			; line is COMMENT, DIRECTIVE, NONE, we're done
+.endproc
 
-@done:  rts
+;******************************************************************************
+; INDENT
+; Insert one indent at current source position, then refresh the
+; line buffer and move to the end of it
+.proc indent
+	lda #$09
+	jsr src::insert		; insert a TAB at start of line
+
+	jsr refresh
+
+	; check the size of the line now that it has a TAB
+	jsr text::rendered_line_len
+	bcc :-				; ok
+
+	; line would be oversized with a TAB, undo the addition of it
+	jsr src::backspace	; delete the TAB
+	jmp refresh		; and refresh the line again
+.endproc
+
+;******************************************************************************
+; LABEL
+; Formats linebuffer as a label.
+.proc label
+	; read past the label
+@l0:	jsr src::right_rep
+	bcs @done			; nothing on the line after the label
+	; TODO: check invalid label characters
+
+	jsr util::is_whitespace
+	bne @l0
+
+	; delete all whitespace until the opcode/macro/etc.
+@l1:	jsr src::after_cursor
+	bcs @done		; no chars left -> done
+	cmp #$0d
+	beq @done		; newline -> done
+	jsr util::is_whitespace
+	bne indent		; non-whitespace -> separate with tab
+	jsr src::delete		; delete whitespaced
+	bcc @l1
+
+@done:	; fall through to refresh
 .endproc
 
 ;******************************************************************************

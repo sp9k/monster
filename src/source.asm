@@ -1082,11 +1082,10 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ; copy line
 ; returns the text at the current cursor position and stores it to the given
 ; target location
-; in:
-;  - .xy: the destination to copy to
-;  - r1:  the destination to copy to
-; out:
-;  - (.xy): a line of text from the cursor position
+; IN:
+;  - .XY: destination to copy to
+; OUT:
+;  - (.XY): a line of text from the cursor position
 .proc copy_line
 @src=zp::bankaddr0
 @target=zp::bankaddr1
@@ -1099,8 +1098,10 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	ldxy end
 	sub16 poststartzp	; bytes to copy
 	txa
-	pha
 	tay			; .Y = bytes to copy
+	beq @done		; if no bytes to copy, return
+	pha
+
 	dey
 	lda __src_bank
 .ifdef ultimem
@@ -1109,15 +1110,15 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .else
 	jsr ram::copyline	; may copy garbage
 .endif
-
 	pla			; restore end of line index
 	tay
-	jmp @done
+	bne @done		; branch always
 
 :	lda __src_bank
 	jsr ram::copyline
 
-@done:	lda #$00
+@done:	; terminate the buffer
+	lda #$00
 	sta (@target),y
 	RETURN_OK
 .endproc
