@@ -96,6 +96,7 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 	stxy addr
 	sta mode
 
+	; TODO: use line/file directly stored on label struct
 	jsr dbgi::addr2line	; get file and line #
 	bcs @done		; if no mapping, skip
 				; (this will filter out constants)
@@ -169,10 +170,9 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 ; Enters the symbol viewer.
 .export __symview_enter
 .proc __symview_enter
-@tmp=r5
-@scroll=r7
-@row=rb
-@selection=tmp
+@scroll    = r8
+@row       = tmp
+@selection = tmp+1
 	jsr scr::save
 	lda #$00
 	sta sortby
@@ -231,18 +231,25 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 	pha
 	ldx @selection
 	jsr draw::resetline
-	pla
+	pla			; restore key
 
-	jsr key::isdown
+	cmp #$85		; F1 (change sort order)
+	bne :+
+@changesort:
+	; toggle sort order from alpha to addr or vise-versa
+	lda sortby
+	eor #$01
+	sta sortby
+	bpl @start		; branch always
+
+:	jsr key::isdown
 	beq @down
 	jsr key::isup
 	beq @up
 	cmp #K_RETURN		; RETURN
 	beq @select
-	cmp #$85		; F1 (change sort order)
-	beq @changesort
 	cmp #K_QUIT		; <-
-	bne @menu
+	bne @menu		; unrecognized key
 	jmp scr::restore
 
 @down:	inc @selection
@@ -316,11 +323,4 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 	jsr get_item
 	ldxy addr
 @exit:	jmp dbg::gotoaddr	; go to the line of the symbol definition
-
-@changesort:
-	; toggle sort order from alpha to addr or vise-versa
-	lda sortby
-	eor #$01
-	sta sortby
-	jmp @start
 .endproc

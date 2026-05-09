@@ -41,6 +41,13 @@
 ;   symbol id                         (2 bytes)
 ; 7 NAME
 ;   address of symbol's name          (2 bytes)
+;
+; TODO:
+; the following fields are aspirational
+; 9 FILE
+;   id of file containing label       (1 byte)
+; 10 LINE
+;   line number of label definition   (2 bytes)
 ;*******************************************************************************
 
 ;*******************************************************************************
@@ -254,8 +261,7 @@ anon_addrs: .res MAX_ANON*2
 .segment "SHAREBSS"
 labelvars:
 .export __label_num
-__label_num:
-numlabels: .word 0		; total number of labels
+__label_num: .word 0		; total number of labels
 
 .export __label_numanon
 __label_numanon:
@@ -388,13 +394,8 @@ labelvars_size=*-labelvars
 	ldxy #label_buckets
 	stxy @map
 
-	ldy #$00
-	sty numlabels
-	sty numlabels+1
-	sty scopesp
-	tya
-
 	ldx #>(NUM_BUCKETS*2)	; number of pages to clear
+	lda #$00
 :	STOREB_Y @map
 	dey
 	bne :-
@@ -437,9 +438,9 @@ labelvars_size=*-labelvars
 	bcs @done		; return err
 	stxy @label
 
-@cont:	lda numlabels
+@cont:	lda __label_num
 	bne @find
-	lda numlabels+1
+	lda __label_num+1
 	bne @find
 	RETURN_ERR ERR_LABEL_UNDEFINED ; no labels exist
 
@@ -643,7 +644,7 @@ labelvars_size=*-labelvars
 ;------------------------------------------------------------------------------
 @insert:
 	; check if there's room for another label
-	ldxy numlabels
+	ldxy __label_num
 	cmpw #MAX_LABELS
 	bcc :+
 	;sec
@@ -662,7 +663,7 @@ labelvars_size=*-labelvars
 
 ;------------------------------------------------------------------------------
 @cont:	; load the pointers for the label we are creating
-	ldxy numlabels
+	ldxy __label_num
 	jsr loadlabel
 
 	; write the symbol's data to the label structure
@@ -678,11 +679,11 @@ labelvars_size=*-labelvars
 
 	; 2. write the ID for the label (current number of labels)
 	ldy #LABEL_ID
-	lda numlabels
+	lda __label_num
 	sta id
 	STOREB_Y label		; store LSB of label's id
 	iny
-	lda numlabels+1
+	lda __label_num+1
 	sta id+1
 	STOREB_Y label		; store MSB of label's id
 
@@ -700,7 +701,7 @@ labelvars_size=*-labelvars
 	jsr getlist		; load relevant list from the label's hash
 	jsr listappend		; append node to that list
 
-	incw numlabels		; success, increment symbol count
+	incw __label_num		; success, increment symbol count
 
 ;------------------------------------------------------------------------------
 @done:	RETURN_OK
@@ -1192,15 +1193,15 @@ labelvars_size=*-labelvars
 @top  = zp::tmp12
 	stxy @addr
 
-	lda numlabels
+	lda __label_num
 	asl
 	sta @ub
-	lda numlabels+1
+	lda __label_num+1
 	rol
 	sta @ub+1
 
 	; @lb = label_addresses_sorted
-	; @ub = label_addresses_sorted + (numlabels*2)
+	; @ub = label_addresses_sorted + (__label_num*2)
 	lda #<label_addresses_sorted
 	sta @lb
 	adc @ub
@@ -1285,7 +1286,7 @@ labelvars_size=*-labelvars
 @err:	ldxy @ub	; get the lower bound of where our search ended
 	stxy @m		; and set our result variable to it (ub < lb here)
 	jsr @ok		; get the closest label
-	cmpw numlabels	; was the result a valid label?
+	cmpw __label_num	; was the result a valid label?
 	bcc :+		; if so, continue to return
 
 	; if label wasn't valid, get the highest label by address
@@ -1539,17 +1540,17 @@ labelvars_size=*-labelvars
 @idi = zp::tmp10
 @idj = zp::tmp12
 @sp  = zp::tmp14
-	lda numlabels
-	ora numlabels+1
+	lda __label_num
+	ora __label_num+1
 	bne @setup
 	rts			; nothing to index
 
-@setup:	; @num = 2*(numlabels-1)
-	lda numlabels
+@setup:	; @num = 2*(__label_num-1)
+	lda __label_num
 	sec
 	sbc #$01
 	sta @num
-	lda numlabels+1
+	lda __label_num+1
 	sbc #$00
 	sta @num+1
 	asl @num
@@ -2056,10 +2057,10 @@ labelvars_size=*-labelvars
 @symdata = r2
 @cnt     = r4
 	; write the number of symbols
-	lda numlabels
+	lda __label_num
 	sta @cnt
 	jsr krn::chrout
-	lda numlabels+1
+	lda __label_num+1
 	sta @cnt+1
 	jsr krn::chrout
 	ora @cnt
@@ -2106,10 +2107,10 @@ labelvars_size=*-labelvars
 @cnt     = r4
 	; load the number of symbols
 	jsr krn::chrin
-	sta numlabels
+	sta __label_num
 	sta @cnt
 	jsr krn::chrin
-	sta numlabels+1
+	sta __label_num+1
 	sta @cnt+1
 
 	ora @cnt

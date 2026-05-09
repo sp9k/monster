@@ -263,7 +263,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	lda numsrcs
 	sta activesrc
 	inc numsrcs
-	pha
+	tay
 
 	; set name to 0 (unnamed)
 	asl
@@ -275,10 +275,8 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	sta names,x
 
 	; mark the buffer as clean
-	pla
-	tax
 	lda #$00
-	sta flags,x
+	sta flags,y
 
 	jsr find_bank
 	sta bank
