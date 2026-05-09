@@ -2276,14 +2276,14 @@ main:	jsr key::getch
 	jmp newl		; and insert a newline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; VIEW MACROS
 ; Enters the macro viewer
 .proc view_macros
 	JUMP FINAL_BANK_MACROS, mac::view
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; HANDLE_UNIVERSAL_KEYS
 ; Handles keys that behave the same regardless of which mode the editor is in
 ; IN:
@@ -2309,6 +2309,7 @@ main:	jsr key::getch
 	sec		; key was handled
 	rts
 
+;-------------------------------------------------------------------------------
 .PUSHSEG
 .RODATA
 @specialkeys:
@@ -2341,7 +2342,7 @@ main:	jsr key::getch
 	.byte K_NEXT_BUFF	; C= + > next buffer
 	.byte K_PREV_BUFF	; C= + < previous buffer
 	.byte K_UDG_EDIT	; C= + U activate udg editor
-	.byte K_QUIT		; <- (return to COMMAND mode)
+	.byte K_QUIT		; RUN/STOP (return to COMMAND mode)
 	.byte K_GO_BASIC	; F1 (enter BASIC)
 
 	.byte K_NEXT_PAL
@@ -3447,32 +3448,33 @@ goto_buffer:
 .proc fmt_line
 	lda fmt::enable
 	bne :+
-	RETURN_OK
+	RETURN_OK		; formatting disabled, return
 
 :	; tokenize (1st pass) to check if the line is valid
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
 	jsr asm::tokenize
-	tax
-	php			; save assembly status (.C flag)
-	bcs @done		; failed to assemble, skip formatting
+	bcs @ret		; failed to assemble, skip formatting
 
 ; format the line based on the line's contents (in .A from tokenize)
-@fmt:	lda autoindent
+@fmt:	ldx autoindent
 	beq @done		; if indent disabled, skip
 
-	lda #$00		; init flag to NO indentation
-	cpx #ASM_COMMENT	; if this is a comment, don't format
-	beq @done
-	txa
 	jsr fmt::line
-	lda #$01		; default to indent ON
+	ldx #$01		; indent on
+	lda mem::linebuffer
+	cmp #';'		; comment?
+	bne @done
+	dex			; indent off
 
-@done:	pha			; save indent hint
+@done:	txa
+	pha			; save indent hint
+
 	jsr print_current_line
+
 	pla			; restore indent hint
-	plp			; restore formatting/assembly success flag
-	rts
+	clc
+@ret:	rts
 .endproc
 
 ;******************************************************************************

@@ -814,17 +814,21 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .proc __src_right_rep
 	jsr __src_before_end
 	beq @endofline
+
 	jsr __src_end		; should be impossible in REPLACE
 	beq @endofline
 
 	jsr __src_after_cursor	; if we're at end of line, don't move
 	cmp #$0d
 	beq @endofline
+
 	jsr __src_next
-	jsr __src_after_cursor	;if moving would put us at end of line, stay
+	jsr __src_after_cursor	;if moving would put us at end of buffer, stay
 	bcs @back
+
 	cmp #$0d
 	bne @done
+
 @back:	jsr __src_prev
 @endofline:
 	sec
@@ -1094,7 +1098,10 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	stxy @src		; source
 
 	jsr __src_on_last_line	; on last line already?
-	bne :+
+	bne @normal
+
+; last line, copy rest of chars in the buffer
+@lastline:
 	ldxy end
 	sub16 poststartzp	; bytes to copy
 	txa
@@ -1114,7 +1121,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	tay
 	bne @done		; branch always
 
-:	lda __src_bank
+; normal line, copy until next newline
+@normal:
+	lda __src_bank
 	jsr ram::copyline
 
 @done:	; terminate the buffer

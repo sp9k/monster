@@ -96,6 +96,7 @@ data: .res BUFFER_SIZE
 
 @ok:	; gap is closed, create a new one
 	; copy data[poststart] to data[poststart + GAPSIZE]
+	; TODO: is there an off by 1 issue here?
 	ldxy cursorzp
 	stxy ram::src
 
@@ -109,6 +110,7 @@ data: .res BUFFER_SIZE
 	sub16 poststartzp
 
 	lda __src_bank
+	sta ram::src+2
 	sta ram::dst+2
 	jsr ram::copy
 

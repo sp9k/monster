@@ -75,7 +75,7 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 	jsr util::is_whitespace
 	bne @left_aligned
 
-	jsr src::delete
+	jsr src::delete		; delete whitespace character
 	ldx #$00
 	ldy #LINESIZE-1
 	jsr linebuff::shl
@@ -111,8 +111,7 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 	bcc :-				; ok
 
 	; line would be oversized with a TAB, undo the addition of it
-	jsr src::backspace	; delete the TAB
-	jmp refresh		; and refresh the line again
+	jmp src::backspace	; delete the TAB
 .endproc
 
 ;******************************************************************************
