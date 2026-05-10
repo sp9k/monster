@@ -3501,12 +3501,14 @@ goto_buffer:
 	pha
 
 	lda #$00
+	sta @indent	; init indent to OFF
 	jsr text::putch
 
 	lda zp::curx
 	beq @fmt_done	; @ column 0, skip tokenization and go to the next line
 	jsr src::up
 	jsr fmt_line
+	sta @indent	; set indent from fmt::line's hint
 	php
 	jsr src::down
 	plp
@@ -3523,7 +3525,6 @@ goto_buffer:
 
 @ok:
 @fmt_done:
-	sta @indent
 	pla			; clean stack
 	pla
 	jsr scroll_line
@@ -3538,7 +3539,7 @@ goto_buffer:
 ; IN:
 ;   - .A: indent hint; 1=next line should be indented, 0=not
 .proc start_next_line
-@indent=ra		; indent boolean (!0 = indent)
+@indent=ra			; indent boolean (!0 = indent)
 	sta @indent		; set indent flag
 
 	; redraw the cleared status line
@@ -3546,7 +3547,7 @@ goto_buffer:
 
 	; indent the new line
 	lda @indent
-	beq @indentdone		; skip indent if curx == 0
+	beq @indentdone		; skip indent if flag is disabled
 	lda format
 	beq @indentdone
 

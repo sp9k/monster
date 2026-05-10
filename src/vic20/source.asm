@@ -78,7 +78,8 @@ data: .res BUFFER_SIZE
 	cmp #$80
 	jcs @done	; not displayable
 
-:	pha
+:	pha		; save char to insert
+
 	jsr __src_mark_dirty
 	jsr gaplen
 	cmpw #0		; is gap closed?
@@ -96,7 +97,6 @@ data: .res BUFFER_SIZE
 
 @ok:	; gap is closed, create a new one
 	; copy data[poststart] to data[poststart + GAPSIZE]
-	; TODO: is there an off by 1 issue here?
 	ldxy cursorzp
 	stxy ram::src
 
