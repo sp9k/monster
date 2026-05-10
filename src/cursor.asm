@@ -39,7 +39,10 @@ maxy: .byte 0
 .proc __cur_off
 	lda __cur_status
 	beq :++			; -> rts
-:	jmp __cur_toggle
+
+:	lda #CUR_BLINK_SPEED
+	sta zp::curtmr		; reset toggle timer
+	jmp __cur_toggle
 .endproc
 
 ;*******************************************************************************
@@ -50,8 +53,7 @@ maxy: .byte 0
 	lda __cur_mode
 	bne :-			; always turn ON in SELECT mode
 	lda __cur_status
-	bne :+
-	jmp __cur_toggle
+	beq :-
 :	rts
 .endproc
 

@@ -121,7 +121,6 @@ tempbuff: .res LINESIZE
 	bne @done			; if not NORMAL (SELECT), don't blink
 	dec zp::curtmr
 	bne @done
-
 	jsr cur::toggle
 	lda #CUR_BLINK_SPEED
 	sta zp::curtmr

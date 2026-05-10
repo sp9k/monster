@@ -46,7 +46,8 @@
 
 ;*******************************************************************************
 ; CALC ENTRYPOINT
-; Calculate where to jump into the procedure. Each row is 966 bytes
+; Calculate where to jump into the procedure. Each row of the unrolled loop
+; is 966 bytes: sizeof(LDA $xxxx STA $xxxx) * 20 * 8.
 ; The scroll happens from the bottom up, so for each row from the bottom we do
 ; NOT want to scroll, we jump forward 966 bytes. For example, if we want to
 ; scroll until row 18, we need to jump 966*(ROWS-18) bytes into the routine.
@@ -142,8 +143,13 @@ scrollup:
 
 ;-------------------------------------------------------------------------------
 @speedcode:
+; scroll down all rows of characters
 .repeat ROWS, row
+
+; scroll down 1 row of characters
 .repeat 20, col
+
+; scroll down 1 character row
 .repeat 8, chrow
 	lda BITMAP_ADDR + col*HEIGHT + (row*8)+chrow + 8
 	sta BITMAP_ADDR + col*HEIGHT + (row*8)+chrow
@@ -193,10 +199,10 @@ scrollup:
 ; scroll up each row of characters
 .repeat ROWS, row
 
-; scroll up each column in the row (6*8*20 bytes) (960 bytes)
+; scroll up one of characters
 .repeat 20, col
 
-; scroll up 1 character row (6*8*20 bytes) (960 bytes)
+; scroll up 1 character row
 .repeat 8, chrow
 	lda BITMAP_ADDR + col*HEIGHT + ((ROWS-1)*8)-(row*8) + chrow
 	sta BITMAP_ADDR + col*HEIGHT + ((ROWS-1)*8)-(row*8) + chrow + 8
