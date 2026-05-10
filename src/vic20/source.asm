@@ -78,7 +78,8 @@ data: .res BUFFER_SIZE
 	cmp #$80
 	jcs @done	; not displayable
 
-:	pha
+:	pha		; save char to insert
+
 	jsr __src_mark_dirty
 	jsr gaplen
 	cmpw #0		; is gap closed?
@@ -109,6 +110,7 @@ data: .res BUFFER_SIZE
 	sub16 poststartzp
 
 	lda __src_bank
+	sta ram::src+2
 	sta ram::dst+2
 	jsr ram::copy
 
@@ -350,11 +352,11 @@ data: .res BUFFER_SIZE
 	stx $9ff8	; BLK1 = base of source bank
 	clc
 	inx
-	stx $9ffa	; BL2 = BLK1+1
+	stx $9ffa	; BLK2 = source base bank + 1
 	inx
-	stx $9ffc	; BLK3 = BLK1+2
+	stx $9ffc	; BLK3 = source base bank + 2
 	ldx #$3f
-	stx $9ff2
+	stx $9ff2	; RAM in BLK 1/2/3
 	rts
 .endproc
 
@@ -389,7 +391,7 @@ data: .res BUFFER_SIZE
 	jsr activate_source
 	cpy #LINESIZE
 	bcc :+
-	ldy #LINESIZE
+	ldy #LINESIZE-1
 :	COPY_Y @src, @target
 	jmp deactivate_source
 .endproc

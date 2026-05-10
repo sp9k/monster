@@ -150,10 +150,10 @@ tempbuff: .res LINESIZE
 .proc __text_putch
 @curi=zp::text+3
 @len=zp::text+4
-@ch=zp::text+5
 @len2=zp::text+6
 @savecurx=zp::text+7
 @savecury=zp::text+8
+@ch=zp::text+$a
 	sta @ch
 	jsr __text_linelen
 	stx @len
@@ -278,9 +278,8 @@ tempbuff: .res LINESIZE
 @redrawline:
 	lda zp::cury
 	jsr __text_drawline	; re-render whole line
-	RETURN_OK
-
-@done:	RETURN_OK		; "put" was successful
+@done:	lda @ch
+	RETURN_OK		; "put" was successful
 .endproc
 
 ;*******************************************************************************

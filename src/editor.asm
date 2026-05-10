@@ -111,7 +111,6 @@ jumpptr:  .byte 0
 visual_start_line:	.word 0	; the line # a selection began at
 visual_start_x:		.byte 0	; the x-position a selection began at
 selection_type:    	.byte 0 ; the type of selection (VISUAL_LINE or VISUAL)
-format:            	.byte 0	; if 0, formatting is not applied on line-end
 
 overwrite: .byte 0	; for SAVE commands, if !0, overwrite existing file
 
@@ -156,8 +155,6 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	inx			; ldx #$01
 	stx zp::verify		; don't assemble code (just check syntax)
 	stx fmt::enable		; enable formatting
-
-	stx format		; enable formatting
 	stx autoindent		; enable auto-indent
 
 	jsr edit		; initialize size/mode/etc.
@@ -2276,14 +2273,14 @@ main:	jsr key::getch
 	jmp newl		; and insert a newline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; VIEW MACROS
 ; Enters the macro viewer
 .proc view_macros
 	JUMP FINAL_BANK_MACROS, mac::view
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; HANDLE_UNIVERSAL_KEYS
 ; Handles keys that behave the same regardless of which mode the editor is in
 ; IN:
@@ -2309,6 +2306,7 @@ main:	jsr key::getch
 	sec		; key was handled
 	rts
 
+;-------------------------------------------------------------------------------
 .PUSHSEG
 .RODATA
 @specialkeys:
@@ -2341,7 +2339,7 @@ main:	jsr key::getch
 	.byte K_NEXT_BUFF	; C= + > next buffer
 	.byte K_PREV_BUFF	; C= + < previous buffer
 	.byte K_UDG_EDIT	; C= + U activate udg editor
-	.byte K_QUIT		; <- (return to COMMAND mode)
+	.byte K_QUIT		; RUN/STOP (return to COMMAND mode)
 	.byte K_GO_BASIC	; F1 (enter BASIC)
 
 	.byte K_NEXT_PAL
@@ -3442,37 +3440,41 @@ goto_buffer:
 ; If successful, formats the source according to the type of the assembled line
 ; (instruction, label, etc.) and creates a line/address mapping.
 ; OUT:
-;   - .A: indent hint; 1=next line should be indented, 0=not
+;   - .A: indent hint. next line should be:
+;         0 = not altered
+;         1 = indented
+;         2 = start with a ';'
 ;   - .C: set if the line was not formatted (assembly failed)
 .proc fmt_line
 	lda fmt::enable
 	bne :+
-	RETURN_OK
+	RETURN_OK		; formatting disabled, return
 
 :	; tokenize (1st pass) to check if the line is valid
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
 	jsr asm::tokenize
-	tax
-	php			; save assembly status (.C flag)
-	bcs @done		; failed to assemble, skip formatting
+	bcs @ret		; failed to assemble, skip formatting
 
 ; format the line based on the line's contents (in .A from tokenize)
-@fmt:	lda autoindent
+@fmt:	ldx autoindent
 	beq @done		; if indent disabled, skip
 
-	lda #$00		; init flag to NO indentation
-	cpx #ASM_COMMENT	; if this is a comment, don't format
-	beq @done
-	txa
 	jsr fmt::line
-	lda #$01		; default to indent ON
+	ldx #$01		; indent on
+	lda mem::linebuffer
+	cmp #';'		; comment?
+	bne @done
+	inx			; 2 (hint for ';')
 
-@done:	pha			; save indent hint
+@done:	txa
+	pha			; save indent hint
+
 	jsr print_current_line
+
 	pla			; restore indent hint
-	plp			; restore formatting/assembly success flag
-	rts
+	clc
+@ret:	rts
 .endproc
 
 ;******************************************************************************
@@ -3499,12 +3501,14 @@ goto_buffer:
 	pha
 
 	lda #$00
+	sta @indent	; init indent to OFF
 	jsr text::putch
 
 	lda zp::curx
 	beq @fmt_done	; @ column 0, skip tokenization and go to the next line
 	jsr src::up
 	jsr fmt_line
+	sta @indent	; set indent from fmt::line's hint
 	php
 	jsr src::down
 	plp
@@ -3521,7 +3525,6 @@ goto_buffer:
 
 @ok:
 @fmt_done:
-	sta @indent
 	pla			; clean stack
 	pla
 	jsr scroll_line
@@ -3536,33 +3539,30 @@ goto_buffer:
 ; IN:
 ;   - .A: indent hint; 1=next line should be indented, 0=not
 .proc start_next_line
-@indent=ra		; indent boolean (!0 = indent)
-	sta @indent		; set indent flag
+	pha			; set indent flag
 
 	; redraw the cleared status line
 	jsr text::update
 
 	; indent the new line
-	lda @indent
-	beq @indentdone		; skip indent if curx == 0
-	lda format
-	beq @indentdone
+	pla
+	beq @indentdone		; skip indent if flag is disabled
+	cmp #$02		; 2=start line with comment
+	bne @start_with_tab
 
-	; make sure indent won't overflow line
-	jsr text::rendered_line_len
-	txa
-	clc
-	adc #TAB_WIDTH		; full width tab
-	cmp #LINESIZE
-	bcs @indentdone		; can't indent, line would overflow
+@start_with_comment:
+	lda #';'
+	bne @putch
 
+@start_with_tab:
 	jsr src::after_cursor
 	cmp #$09
 	beq @indentdone		; already indented, skip
 	lda #$09		; TAB
+
+@putch: jsr text::putch
+	bcs @indentdone
 	jsr src::insert
-	lda #$09		; TAB
-	jsr text::putch
 
 @indentdone:
 	jmp print_current_line
