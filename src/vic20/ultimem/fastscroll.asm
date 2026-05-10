@@ -167,7 +167,14 @@ scrollup:
 .proc scrolldownn
 @stop  = zp::text
 @start = zp::text+1
-	; get number of rows to scroll (stop - start)
+	cpy #$01
+	beq :+
+
+	; if scrolling by more than 1 character, we need to fallback to
+	; loop-based scrolling
+	jmp scrolldownn_slow
+
+:	; get number of rows to scroll (stop - start)
 	sta @start
 	stx @stop
 	lda @stop
@@ -202,4 +209,87 @@ scrollup:
 .endrep
 @done:
 	rts
+.endproc
+
+;*******************************************************************************
+; SCROLLDOWNN SLOW
+; Scrolls all rows in the given range down by the given number of rows
+; We can't do the unrolled loop based approach for arbitrary number of
+; characters, so this is a fallback for the case where .Y != 1
+; IN:
+;  - .A: the first row to scroll down
+;  - .X: the last row to scroll down
+;  - .Y: the number of characters to scroll each row by
+.proc scrolldownn_slow
+@rowstart = zp::text
+@rows     = zp::text+1
+@src      = zp::text+2
+@dst      = zp::text+4
+@offset   = r0
+	sta @rowstart
+	sty @offset
+	dec @offset
+
+	cpx @rowstart
+	beq @done	; if first and last rows are equal, no scroll
+
+	; calculate number of pixel rows: (last_row - first_row - offset) * 8
+	txa
+	sec
+	sbc @rowstart
+	sbc @offset
+	beq @done	; if all rows are off screen, no scroll
+	bmi @done
+	asl
+	asl
+	asl
+	sta @rows
+	dec @rows	; -1 because we will do the last row separately
+
+	; get pixel offset (char_offset * 8)
+	tya
+	asl
+	asl
+	asl
+	sta @offset
+
+	; get pixel source (first_row * 8)
+	; and dest (first_row * 8 + pixel_offset)
+	lda @rowstart
+	asl
+	asl
+	asl
+	sta @src
+	adc @offset
+	sta @dst
+
+	lda #>BITMAP_ADDR
+	sta @src+1
+	sta @dst+1
+
+@l0:	ldy @rows
+@l1:	lda (@src),y
+	sta (@dst),y
+	dey
+	bne @l1
+	lda (@src),y	; do last row
+	sta (@dst),y
+
+	lda @src
+	clc
+	adc #$c0
+	sta @src
+	bcc :+
+	inc @src+1
+
+:	lda @dst
+	clc
+	adc #$c0
+	sta @dst
+	lda @dst+1
+	adc #$00
+	sta @dst+1
+	cmp #$20
+	bne @l0
+@done:	rts
 .endproc
