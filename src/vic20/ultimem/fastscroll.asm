@@ -7,8 +7,8 @@
 
 .define BITMAP_ADDR $1100
 .define HEIGHT      192
-.define ROWS        22
-.define SCROLL_ROWS 22*8
+.define ROWS        23
+.define SCROLL_ROWS 23*8
 
 .CODE
 
@@ -151,7 +151,7 @@ scrollup:
 .endrep
 	; check if we're done (6 bytes)
 	dey
-	bpl :+
+	bne :+
 	jmp @done
 :
 .endrep
@@ -181,9 +181,10 @@ scrollup:
 	sec
 	sbc @start
 	tay
-	iny
 
-	lda @start
+	lda #ROWS
+	sec
+	sbc @stop
 	calc_entrypoint @speedcode
 	jmp (zp::text)			; execute the scroll
 
@@ -197,13 +198,13 @@ scrollup:
 
 ; scroll up 1 character row (6*8*20 bytes) (960 bytes)
 .repeat 8, chrow
-	lda BITMAP_ADDR + col*HEIGHT + ((ROWS-1)*8) - (row*8)+chrow
-	sta BITMAP_ADDR + col*HEIGHT + ((ROWS-1)*8) - (row*8)+chrow + 8
+	lda BITMAP_ADDR + col*HEIGHT + ((ROWS-1)*8)-(row*8) + chrow
+	sta BITMAP_ADDR + col*HEIGHT + ((ROWS-1)*8)-(row*8) + chrow + 8
 .endrep
 .endrep
 	; check if we're done (6 bytes)
 	dey
-	bpl :+
+	bne :+
 	jmp @done
 :
 .endrep
