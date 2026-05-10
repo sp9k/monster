@@ -140,6 +140,7 @@ scrollup:
 
 	lda @start
 	calc_entrypoint @speedcode
+	jmp (zp::text)
 
 ;-------------------------------------------------------------------------------
 @speedcode:

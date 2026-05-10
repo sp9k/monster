@@ -1205,7 +1205,7 @@ main:	jsr key::getch
 ; INSERT mode
 .proc insert_start
 	jsr enter_insert
-	jsr insert
+
 	; fall through to home_col
 .endproc
 
