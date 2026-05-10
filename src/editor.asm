@@ -111,7 +111,6 @@ jumpptr:  .byte 0
 visual_start_line:	.word 0	; the line # a selection began at
 visual_start_x:		.byte 0	; the x-position a selection began at
 selection_type:    	.byte 0 ; the type of selection (VISUAL_LINE or VISUAL)
-format:            	.byte 0	; if 0, formatting is not applied on line-end
 
 overwrite: .byte 0	; for SAVE commands, if !0, overwrite existing file
 
@@ -156,8 +155,6 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	inx			; ldx #$01
 	stx zp::verify		; don't assemble code (just check syntax)
 	stx fmt::enable		; enable formatting
-
-	stx format		; enable formatting
 	stx autoindent		; enable auto-indent
 
 	jsr edit		; initialize size/mode/etc.
@@ -3443,7 +3440,10 @@ goto_buffer:
 ; If successful, formats the source according to the type of the assembled line
 ; (instruction, label, etc.) and creates a line/address mapping.
 ; OUT:
-;   - .A: indent hint; 1=next line should be indented, 0=not
+;   - .A: indent hint. next line should be:
+;         0 = not altered
+;         1 = indented
+;         2 = start with a ';'
 ;   - .C: set if the line was not formatted (assembly failed)
 .proc fmt_line
 	lda fmt::enable
@@ -3465,7 +3465,7 @@ goto_buffer:
 	lda mem::linebuffer
 	cmp #';'		; comment?
 	bne @done
-	dex			; indent off
+	inx			; 2 (hint for ';')
 
 @done:	txa
 	pha			; save indent hint
@@ -3539,33 +3539,30 @@ goto_buffer:
 ; IN:
 ;   - .A: indent hint; 1=next line should be indented, 0=not
 .proc start_next_line
-@indent=ra			; indent boolean (!0 = indent)
-	sta @indent		; set indent flag
+	pha			; set indent flag
 
 	; redraw the cleared status line
 	jsr text::update
 
 	; indent the new line
-	lda @indent
+	pla
 	beq @indentdone		; skip indent if flag is disabled
-	lda format
-	beq @indentdone
+	cmp #$02		; 2=start line with comment
+	bne @start_with_tab
 
-	; make sure indent won't overflow line
-	jsr text::rendered_line_len
-	txa
-	clc
-	adc #TAB_WIDTH		; full width tab
-	cmp #LINESIZE
-	bcs @indentdone		; can't indent, line would overflow
+@start_with_comment:
+	lda #';'
+	bne @putch
 
+@start_with_tab:
 	jsr src::after_cursor
 	cmp #$09
 	beq @indentdone		; already indented, skip
 	lda #$09		; TAB
+
+@putch: jsr text::putch
+	bcs @indentdone
 	jsr src::insert
-	lda #$09		; TAB
-	jsr text::putch
 
 @indentdone:
 	jmp print_current_line
