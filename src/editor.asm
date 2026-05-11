@@ -4952,6 +4952,8 @@ __edit_gotoline:
 	bne @long
 
 @maybeshort:
+	; if cury + (target-src) < height, the target is on the current
+	; screen
 	lda zp::cury
 	clc
 	adc @diff
@@ -4996,7 +4998,15 @@ __edit_gotoline:
 	; (target +/- (EDITOR_HEIGHT - cury))
 	jsr src::home
 
+	; is the target just one row down?
+	lda @diff+1
+	bne :+
 	lda @diff
+	cmp #$01
+	bne :+
+	jmp ccdown		; target is just down a row
+
+:	lda @diff
 	sec
 	sbc height
 	tax
