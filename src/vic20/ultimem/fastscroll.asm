@@ -14,13 +14,27 @@
 
 ;*******************************************************************************
 ; SCROLLUP
-; Scrolls all lines from .X to .A up
+; Scrolls all lines from .X to .A up by 1 character
 ; IN:
 ;  - .X: the top line that characters are scrolled to
 ;  - .A: the bottom line that is scrolled
 .export __text_scrollup
 .proc __text_scrollup
-	JUMP FINAL_BANK_FASTSCROLL_UP, scrollup
+	ldy #$01
+
+	; fall through to __text_scrollupn
+.endproc
+
+;*******************************************************************************
+; SCROLLUP
+; Scrolls all lines from .X to .A up by .Y characters
+; IN:
+;  - .X: the top line that characters are scrolled to
+;  - .A: the bottom line that is scrolled
+;  - .Y: the number of rows to scroll by
+.export __text_scrollupn
+.proc __text_scrollupn
+	JUMP FINAL_BANK_FASTSCROLL_UP, scrollupn
 .endproc
 
 ;*******************************************************************************
@@ -38,7 +52,11 @@
 
 ;*******************************************************************************
 ; SCROLLDOWNN
-; Scrolls the whole screen down 1 character
+; Scrolls the whole screen down by the given # of characters
+; IN:
+;  - .A: the first column to scroll down
+;  - .X: the last column to scroll down to
+;  - .Y: the number of rows to scroll by
 .export __text_scrolldownn
 .proc __text_scrolldownn
 	JUMP FINAL_BANK_FASTSCROLL_DOWN, scrolldownn
@@ -123,11 +141,14 @@
 ; IN:
 ;  - .X: the row to start scorlling at
 ;  - .A: the bottom line to scroll
-.export scrollup
-scrollup:
+.proc scrollupn
 @start = zp::text
 @stop  = zp::text+1
-	stx @start
+	cpy #$01
+	beq :+
+	jmp scrollup_slow
+
+:	stx @start
 	sta @stop
 	cmp @start
 	bcs :+
@@ -163,6 +184,84 @@ scrollup:
 :
 .endrep
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; SCROLLUP SLOW
+; Scrolls all lines from .X to .A up by .Y characters
+; IN:
+;  - .X: the top line that characters are scrolled to
+;  - .A: the bottom line that is scrolled
+;  - .Y: the number of characters to scroll up by
+.proc scrollup_slow
+@src      = zp::text
+@dst      = zp::text+2
+@rowstart = zp::text+4
+@numrows  = zp::text+5
+@offset   = zp::text+6
+	sty @offset
+	stx @numrows
+	cmp @numrows
+	bcc @done
+
+	; calculate number of rows (bottom - top - offset)
+	;sec
+	sbc @numrows
+	sbc @offset
+	asl
+	asl
+	asl
+	sta @numrows
+
+	; get pixel offset (char offset * 8)
+	tya
+	asl
+	asl
+	asl
+	sta @offset
+
+	txa
+	asl
+	asl
+	asl
+	sta @dst
+
+	;clc
+	adc @offset
+	sta @src
+
+	lda #>BITMAP_ADDR
+	sta @dst+1
+	sta @src+1
+
+@l0:	ldy #$00
+@l1:	lda (@src),y
+	sta (@dst),y
+	iny
+	cpy @numrows
+	bne @l1
+
+@updatesrc:
+	lda @src
+	clc
+	adc #$c0
+	sta @src
+	bcc @updatedst
+	inc @src+1
+
+@updatedst:
+	lda @dst
+	clc
+	adc #$c0
+	sta @dst
+
+	lda @dst+1
+	adc #$00
+	sta @dst+1
+	cmp #$20
+	bne @l0
+@done:	rts
+.endproc
 
 .segment "FASTSCROLL_DOWN"
 ;*******************************************************************************

@@ -110,6 +110,7 @@ jumpptr:  .byte 0
 
 visual_start_line:	.word 0	; the line # a selection began at
 visual_start_x:		.byte 0	; the x-position a selection began at
+visual_start_pos:       .word 0 ; source cursor for visual seleciton
 selection_type:    	.byte 0 ; the type of selection (VISUAL_LINE or VISUAL)
 
 overwrite: .byte 0	; for SAVE commands, if !0, overwrite existing file
@@ -881,8 +882,8 @@ main:	jsr key::getch
 ;  - .XY: address to the buffer that was read
 ;  - .C: set if no input was read (the user pressed <-)
 .proc readinput
-@prompt=r2
-@result_offset=r8
+@prompt        = zp::editortmp
+@result_offset = zp::editortmp+2
 	stxy @prompt
 	jsr cur::off
 	jsr text::savebuff
@@ -1079,11 +1080,6 @@ main:	jsr key::getch
 ; ENTER_COMMAND
 ; Enters COMMAND mode
 .proc enter_command
-	jsr is_visual
-	bne :+
-	jsr src::popp		; VIS pushes source pos, clean it off stack
-
-:	lda mode
 	cmp #MODE_COMMAND
 	beq @done
 
@@ -1145,7 +1141,9 @@ main:	jsr key::getch
 	sta text::statusmode
 
 	; save current source position
-	jmp src::pushp
+	jsr src::pos
+	stxy visual_start_pos
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1892,7 +1890,7 @@ main:	jsr key::getch
 	jsr buff::putch
 	bcc @yankline
 @yydone:
-	jsr src::popgoto	; restore source pos from VISUAL
+	jsr goto_selection_start ; restore source pos from VISUAL
 	RETURN_OK
 
 ;--------------------------------------
@@ -1928,7 +1926,7 @@ main:	jsr key::getch
 	bcc @copy
 
 @restoresrc:
-	jsr src::popgoto	; restore source position to copy's origin
+	jsr goto_selection_start	; restore source pos to selection origin
 
 	lda @moveback		; do we need to move to top of selection?
 	beq @done		; if end was also the top, no
@@ -1966,12 +1964,12 @@ main:	jsr key::getch
 	lda #$00
 	sta @moveback
 
-	jsr src::pos	; get the current source position
+	jsr src::pos		; get the current source position
 	stxy @cur
-	jsr src::popp	; get the source position we started at
+	ldxy visual_start_pos	; get the source position we started at
 	stxy @end
 
-	jsr src::pushp	; push current source pos
+	jsr src::pushp		; push current source pos
 
 	ldxy @end
 	lda mode
@@ -4920,6 +4918,7 @@ __edit_gotoline:
 @diff=r6		; lines to move up or down
 @seekforward=r8		; 0=backwards 1=forwards
 @rowsave=rb
+@tmp=rc
 @cnt=rc
 	; clamp target to the total # of lines
 	cmpw src::lines
@@ -4998,15 +4997,50 @@ __edit_gotoline:
 	; (target +/- (EDITOR_HEIGHT - cury))
 	jsr src::home
 
-	; is the target just one row down?
+	; is the target within 1 screen?
 	lda @diff+1
 	bne :+
 	lda @diff
-	cmp #$01
-	bne :+
-	jmp ccdown		; target is just down a row
+	cmp height
+	bcs @longlong
 
-:	lda @diff
+	lda @seekforward
+	beq @shortlongbwd
+@shortlongfwd:
+	; scroll up by (diff - (height-cury)) characters
+	lda height
+	sec
+	sbc zp::cury
+	sta @tmp
+	lda @diff
+	sec
+	sbc @tmp
+	tay
+	sta @tmp
+	ldx #$00
+	jsr text::scrollupn
+	lda zp::cury
+	sec
+	sbc @tmp
+	bpl @longmove_cont	; branch always
+
+@shortlongbwd:
+	; scroll down by (diff - cury) characters
+	lda @diff
+	sec
+	sbc zp::cury
+	pha
+	tay
+	lda #$00
+	ldx height
+	jsr text::scrolldownn
+	pla
+	clc
+	adc zp::cury
+	bpl @longmove_cont	; branch always
+
+@longlong:
+	lda @diff
 	sec
 	sbc height
 	tax
@@ -5061,11 +5095,11 @@ __edit_gotoline:
 ; forward: reverse from (visual_start_x, end)
 	jsr text::rendered_line_len
 	ldy visual_start_x
-	bpl @rvspart			; branch
+	bpl @rvspart			; branch always
+
 ; backward: reverse from (0, visual_start_x+1)
 :	ldy #$00
 	ldx visual_start_x
-	inx
 @rvspart:
 	lda zp::cury
 	jsr scr::rvsline_part
@@ -5090,11 +5124,7 @@ __edit_gotoline:
 	bne @rowdown
 
 @rowup: lda zp::cury
-	cmp #$01
-	bne :+
-	sta zp::cury
-	jmp ccup
-:	beq @renderdone ; cmp #EDITOR_ROW_START-1; bcc @..  for non-zero starts
+	beq @updone
 	dec zp::cury
 	jsr src::up
 	bcc @l0
@@ -5103,7 +5133,24 @@ __edit_gotoline:
 	jsr src::get
 	lda #$00
 	jsr print_line
-	jmp @renderdone
+
+@updone:
+	jsr is_visual
+	bne @renderdone
+
+	; reverse from [curx, line-end)
+	jsr text::rendered_line_len
+	pha
+	lda #$00
+	jsr text::index2cursor
+	stx @tmp
+	pla
+	cmp @tmp
+	beq @renderdone
+	ldx @tmp
+	inx		; TODO: why do we need this?
+	ldy #$00
+	beq @rvs2
 
 @rowdown:
 	inc zp::cury
@@ -5116,6 +5163,7 @@ __edit_gotoline:
 	jsr src::get
 	jsr print_current_line
 
+@downdone:
 	jsr is_visual
 	bne @renderdone
 
@@ -5132,10 +5180,10 @@ __edit_gotoline:
 	cmp #$09		; TAB
 	bne @rvs
 	jsr src::right
-	ldx #TAB_WIDTH
+	ldx #TAB_WIDTH+1
 @rvs:	ldy #$00
 	lda zp::cury
-	jsr scr::rvsline_part
+@rvs2:	jsr scr::rvsline_part
 	jmp @renderdone
 
 ; if we ran out of source but we're not at the end of the screen,
@@ -5158,9 +5206,7 @@ __edit_gotoline:
 	sta zp::cury
 
 @renderdone:
-	; move the cursor to the top if we searched backwards or bottom
-	; if forward
-	; and move to appropriate column if we ended on a TAB
+	; move cursor to appropriate column if we ended on a TAB
 	lda mem::linebuffer
 	ldx #$00
 	cmp #$09		; TAB
@@ -5560,6 +5606,14 @@ unblank = scr::unblank
 	inc bufferedkeys
 	pla
 	rts
+.endproc
+
+;******************************************************************************
+; GOTO SELECTION START
+; Moves the source cursor to where the active visual selection began
+.proc goto_selection_start
+	ldxy visual_start_pos
+	jmp src::goto
 .endproc
 
 ;******************************************************************************
