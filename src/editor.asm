@@ -4999,7 +4999,7 @@ __edit_gotoline:
 
 	; is the target within 1 screen?
 	lda @diff+1
-	bne :+
+	bne @longlong
 	lda @diff
 	cmp height
 	bcs @longlong
