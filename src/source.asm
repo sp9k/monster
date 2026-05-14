@@ -845,6 +845,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ; OUT:
 ;  - .A: the character at the cursor position
 ;  - .C: set if cursor is at the start of the buffer
+.ifndef ultimem
 .export __src_up
 .proc __src_up
 	jsr __src_start
@@ -859,6 +860,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	bne @l0
 	RETURN_OK
 .endproc
+.else
+	.import __src_up
+.endif
 
 ;*******************************************************************************
 ; DOWN
@@ -866,6 +870,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ; the buffer if there is no such character
 ; OUT:
 ;  - .C: set if the end of the buffer was reached (cannot move "down")
+.ifndef ultimem
 .export __src_down
 .proc __src_down
 	jsr __src_end
@@ -879,6 +884,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	rts
 @ok:	RETURN_OK
 .endproc
+.else
+	.import __src_down
+.endif
 
 ;*******************************************************************************
 ; INSERT_LINE
@@ -1170,6 +1178,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ;  - .XY: contains the number of lines that were not read
 ;  - .C: set if the beginning was reached before the total lines requested could
 ;        be reached
+.ifndef ultimem
 .export __src_upn
 .proc __src_upn
 @cnt=r4
@@ -1183,6 +1192,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 @done:	ldxy @cnt
 	rts
 .endproc
+.else
+	.import __src_upn
+.endif
 
 ;*******************************************************************************
 ; ON_LAST_LINE

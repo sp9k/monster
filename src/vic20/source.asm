@@ -135,6 +135,163 @@ data: .res BUFFER_SIZE
 
 .PUSHSEG
 .segment "BANKCODE2"
+
+;*******************************************************************************
+; DOWN
+; Moves the cursor beyond the next RETURN character (or to the end of
+; the buffer if there is no such character
+; OUT:
+;  - .C: set if the end of the buffer was reached (cannot move "down")
+.export __src_down
+.proc __src_down
+	jsr activate_source
+
+	; if MSB of (end-poststart) > 0, use $ff for counter
+	; if they're equal, use the LSB of difference as the counter
+	ldx #$ff
+	lda end+1
+	cmp poststartzp+1
+	bne :+			; end > poststart, continue with .X=$ff
+	lda end
+	sec
+	sbc poststartzp
+	tax
+
+:	ldy #$00
+@l0:	lda (poststartzp),y
+	sta (cursorzp),y
+	iny
+	cmp #$0d
+	beq @ok
+
+	; check if we're at the end of the buffer
+	dex
+	bne @l0
+
+@eof:	jsr deactivate_source
+	sec		; end of the buffer
+	rts
+
+@ok:	incw line
+	tya
+	clc
+	adc poststartzp
+	sta poststartzp
+	bcc :+
+	inc poststartzp+1
+	clc
+
+:	tya
+	adc cursorzp
+	sta cursorzp
+	bcc :+
+	inc cursorzp+1
+:	clc
+	jmp deactivate_source
+.endproc
+
+;*******************************************************************************
+; UPN
+; Advances the source by the number of lines in .XY
+; IN:
+;  - .XY: the number of lines to move "up"
+; OUT:
+;  - .C: set if the beginning was reached before the total lines requested could
+;        be reached
+.export __src_upn
+.proc __src_upn
+@cnt=r4
+	stxy @cnt
+	jsr activate_source
+@loop:	lda @cnt
+	bne :+
+	dec @cnt+1
+	bmi @done
+:	dec @cnt
+	jsr up
+	bcc @loop
+@done:	jmp deactivate_source
+.endproc
+
+;*******************************************************************************
+; UP
+; Moves the cursor back one line or to the start of the buffer if it is
+; already on the first line
+; this will leave the cursor on the first newline character encountered while
+; going backwards through the source.
+; OUT:
+;  - .C: set if cursor is at the start of the buffer
+.export __src_up
+.proc __src_up
+	jsr activate_source
+	jsr up
+	jmp deactivate_source
+.endproc
+
+;*******************************************************************************
+; UP
+; Helper for UP/UPN
+; Moves the cursor back one line or to the start of the buffer if it is
+; already on the first line
+; this will leave the cursor on the first newline character encountered while
+; going backwards through the source.
+; OUT:
+;  - .C: set if cursor is at the start of the buffer
+.proc up
+	; if MSB of of cursorzp > (>data), use max value for counter ($ff)
+	; if MSB is >data, use the LSB of the cursorzp pointer as counter
+	ldx #$ff
+	lda cursorzp+1
+	cmp #>data
+	bne :+
+	ldx cursorzp
+	beq @eof
+
+:	decw cursorzp
+	decw poststartzp
+	ldy #$00
+	lda (cursorzp),y
+	sta (poststartzp),y
+	cmp #$0d
+	bne :+
+	decw line
+
+:	dex
+	beq @eof
+
+@l0:	decw cursorzp
+	decw poststartzp
+	lda (cursorzp),y
+	sta (poststartzp),y
+	cmp #$0d
+	beq @done
+	dex
+	bne @l0
+
+@eof:	jsr deactivate_source
+	sec				; end of the buffer
+	rts
+
+@done:	; increment pointers once (we want to end just before the newline
+	incw cursorzp
+	incw poststartzp
+	RETURN_OK
+.endproc
+
+;******************************************************************************
+; NEXT
+; Helper to move to next character. Assumes the source banks are already active
+.proc next
+	; move one byte from the end of the gap to the start
+	ldy #$00
+	lda (poststartzp),y
+	sta (cursorzp),y
+
+	incw cursorzp
+	incw poststartzp
+	rts
+.endproc
+
 ;******************************************************************************
 ; NEXT
 ; Moves the cursor up one character in the gap buffer
@@ -152,26 +309,11 @@ data: .res BUFFER_SIZE
 	beq @done
 
 @cont:	; switch to the bank that contains the source buffer's data
-	lda __src_bank
-.ifndef ultimem
-	SELECT_BANK_A
-.else
 	jsr activate_source
-.endif
-
-	; move one byte from the end of the gap to the start
-	ldy #$00
-	lda (poststartzp),y
-	sta (cursorzp),y
-
-	incw cursorzp
-	incw poststartzp
+	jsr next
 
 	; switch back to main bank
-	pha
-	lda #FINAL_BANK_MAIN
-	SELECT_BANK_A
-	pla
+	jsr deactivate_source
 
 	cmp #$0d
 	bne @done
@@ -198,12 +340,7 @@ data: .res BUFFER_SIZE
 	decw poststartzp
 
 	; switch to the bank that contains the source buffer's data
-	lda __src_bank
-.ifndef ultimem
-	SELECT_BANK_A
-.else
 	jsr activate_source
-.endif
 
 	; move one byte from the start of the gap to the end
 	ldy #$00
@@ -219,11 +356,7 @@ data: .res BUFFER_SIZE
 	lda (cursorzp),y
 	incw cursorzp
 
-	; switch back to main bank
-	pha
-	lda #FINAL_BANK_MAIN
-	SELECT_BANK_A
-	pla
+	jsr deactivate_source
 
 	RETURN_OK
 .endproc
@@ -259,20 +392,12 @@ data: .res BUFFER_SIZE
 	bcs @done		; not displayable, don't insert
 
 @store:	pha
-	lda __src_bank
-.ifndef ultimem
-	SELECT_BANK_A
-.else
 	jsr activate_source
-.endif
 	pla
 	ldy #$00
 	sta (end),y
 	incw end
-	pha
-	lda #FINAL_BANK_MAIN
-	SELECT_BANK_A		; switch back to main bank
-	pla
+	jsr deactivate_source
 @done:	RETURN_OK
 .endproc
 .POPSEG
@@ -350,7 +475,6 @@ data: .res BUFFER_SIZE
 	; bank in the source buffer
 	ldx __src_bank
 	stx $9ff8	; BLK1 = base of source bank
-	clc
 	inx
 	stx $9ffa	; BLK2 = source base bank + 1
 	inx
@@ -374,10 +498,14 @@ data: .res BUFFER_SIZE
 ; DEACTIVATE SOURCE
 .proc deactivate_source
 	; restore MAIN bank
-	pha
-	lda #FINAL_BANK_MAIN
-	SELECT_BANK_A
-	pla
+	ldx #$01
+	stx $9ff8
+	inx
+	stx $9ffa
+	inx
+	stx $9ffc
+	ldx #$55		; ROM in BLK 1/2/3
+	stx $9ff2
 	rts
 .endproc
 
