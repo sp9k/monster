@@ -1046,7 +1046,15 @@ main:	jsr key::getch
 
 	lda #TEXT_REPLACE
 	sta text::insertmode
+	rts
+.endproc
 
+;*******************************************************************************
+; CLOSE WINDOWS
+; Closes the active GUI (if there is one) and restores the editor to occupy
+; the full screen
+.proc close_windows
+	jsr gui::closeall		; close any open windows
 	; fall through to reset_size
 .endproc
 
@@ -1054,7 +1062,6 @@ main:	jsr key::getch
 ; RESET SIZE
 ; Resets the display to the largest size
 .proc reset_size
-	jsr gui::closeall		; close any open windows
 	lda debugging
 	beq :+
 	lda #DEBUG_MESSAGE_LINE-1
@@ -5675,6 +5682,7 @@ ro_commands:
 	.byte K_MONITOR		; enter console
 	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
+	.byte K_CLOSE_WINDOWS	; <- (close windows)
 numcommands=*-commands
 
 ; command tables for COMMAND mode key commands
@@ -5691,7 +5699,7 @@ numcommands=*-commands
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
 	command_find, next_drive, prev_drive, get_command, monitor, next_err, \
-	help::show
+	help::show, close_windows
 .linecont -
 
 command_vecs_lo: .lobytes cmd_vecs

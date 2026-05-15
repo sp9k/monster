@@ -29,6 +29,7 @@ K_LINK           = $8a  ; F4 (shift + F3)
 K_SHOW_BUFFERS   = $87	; F5
 K_SHOW_PROJECT	 = $8b	; F6
 K_MONITOR        = $88	; F7
+K_CLOSE_WINDOWS  = $5f	; <-
 
 K_NEXT_PAL       = $db	; SHIFT + +
 K_PREV_PAL       = $dd  ; SHIFT + -
