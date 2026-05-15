@@ -943,7 +943,7 @@ main:	jsr key::getch
 	ldx #$01
 	stx cmdreps		; init reps to 1
 @getreps:
-	cmp #$5f		; <-
+	cmp #K_QUIT
 	beq @done
 
 	; check if a number is given (to repeat the following commands)
@@ -985,8 +985,7 @@ main:	jsr key::getch
 @done:	rts
 
 ; repeat the command for the number of reps the user requested
-@dorep:
-	jmp (zp::jmpvec)
+@dorep: jmp (zp::jmpvec)
 .endproc
 
 ;*******************************************************************************

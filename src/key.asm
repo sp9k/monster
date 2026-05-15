@@ -47,18 +47,19 @@ CURSOR_LR_MASK      = 2
 
 	ldx #@num_translate
 @transloop:
-	cmp @to_translate,x
+	cmp @to_translate-1,x
 	bne :+
-	lda @translated,x
+	lda @translated-1,x
 	bne @cont	; branch always
 :	dex
-	bpl @transloop
+	bne @transloop
 
 @cont:	cmp #$41
 	bcc @done
 	cmp #$5a+1
 	bcs :+
 	eor #$20	; if alpha, EOR $20
+	;clc
 	rts		; rts with .C clear
 
 :	cmp #$c1
@@ -76,8 +77,6 @@ CURSOR_LR_MASK      = 2
 ; @translated
 ;
 @to_translate:
-	.byte $5c	; £ (Pound)
-	.byte $5e	; Arrow up
 	.byte $dd	; SHIFT Minus
 	.byte $5f	; Arrow left
 	.byte $ba	; SHIFT @
@@ -85,8 +84,6 @@ CURSOR_LR_MASK      = 2
 	.byte $c0	; Shift *
 	;.byte $xx	; Shift left-arrow TODO: ?
 @translated:
-	.byte 92	; \
-	.byte 94	; ^
 	.byte 95	; _
 	.byte 96	; `
 	.byte 123	; {
