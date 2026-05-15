@@ -134,7 +134,7 @@ data: .res BUFFER_SIZE
 .endproc
 
 .PUSHSEG
-.segment "BANKCODE2"
+.RODATA
 
 ;*******************************************************************************
 ; DOWN
@@ -169,7 +169,7 @@ data: .res BUFFER_SIZE
 	bne @l0
 
 @eof:	jsr deactivate_source
-	sec		; end of the buffer
+	sec			; end of the buffer
 	rts
 
 @ok:	incw line
@@ -249,6 +249,7 @@ data: .res BUFFER_SIZE
 
 :	decw cursorzp
 	decw poststartzp
+
 	ldy #$00
 	lda (cursorzp),y
 	sta (poststartzp),y
@@ -280,20 +281,6 @@ data: .res BUFFER_SIZE
 
 ;******************************************************************************
 ; NEXT
-; Helper to move to next character. Assumes the source banks are already active
-.proc next
-	; move one byte from the end of the gap to the start
-	ldy #$00
-	lda (poststartzp),y
-	sta (cursorzp),y
-
-	incw cursorzp
-	incw poststartzp
-	rts
-.endproc
-
-;******************************************************************************
-; NEXT
 ; Moves the cursor up one character in the gap buffer
 ; OUT:
 ;  - .A: the character at the new cursor position in .A
@@ -310,7 +297,14 @@ data: .res BUFFER_SIZE
 
 @cont:	; switch to the bank that contains the source buffer's data
 	jsr activate_source
-	jsr next
+
+	; move one byte from the end of the gap to the start
+	ldy #$00
+	lda (poststartzp),y
+	sta (cursorzp),y
+
+	incw cursorzp
+	incw poststartzp
 
 	; switch back to main bank
 	jsr deactivate_source
@@ -479,7 +473,7 @@ data: .res BUFFER_SIZE
 	stx $9ffa	; BLK2 = source base bank + 1
 	inx
 	stx $9ffc	; BLK3 = source base bank + 2
-	ldx #$3f
+	ldx #$7f
 	stx $9ff2	; RAM in BLK 1/2/3
 	rts
 .endproc
