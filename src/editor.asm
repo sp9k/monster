@@ -1396,20 +1396,26 @@ main:	jsr key::getch
 
 @sof:
 	jsr src::delete
+	jmp :+
 @moveup:
-	lda #$00
-	sta zp::curx
 	jsr src::backspace
-	jsr bumpup
+	jsr src::down
+	bcc :+
+
+	; end of buffer: clear the line we deleted
 	lda zp::cury
-	beq :+
+	jsr scr::clrline
+	dec zp::cury		; and don't leave cursor on same line (that line
+	                        ; is gone now)
+:	lda #$00
+	sta zp::curx
 	inc zp::cury
-:	jsr src::down
+	jsr bumpup
 	jsr refresh_line	; refresh linebuffer with new line's contents
 
 	lda #MODE_VISUAL_LINE
 	sta selection_type	; set copy mode to LINE
-	rts
+	jmp draw_active_line
 .endproc
 
 ;*******************************************************************************
@@ -2222,7 +2228,8 @@ main:	jsr key::getch
 	sec
 	rts
 
-@join:	jsr src::backspace	; delete the newline
+@join:	jsr src::popp		; clean stack
+	jsr src::backspace	; delete the newline
 	jsr refresh_line
 	lda @lena
 	jsr text::index2cursor
@@ -2364,6 +2371,7 @@ main:	jsr key::getch
 	.byte K_NEXT_PAL
 	.byte K_PREV_PAL
 	.byte K_TOGGLE_FMT
+	.byte K_VIS_WHITESPACE  ; C=-v toggle visual tabs
 @num_special_keys=*-@specialkeys
 .linecont +
 .define specialvecs ccleft, ccright, ccup, ccdown, \
@@ -2373,7 +2381,7 @@ main:	jsr key::getch
 	close_buffer, new_buffer, set_breakpoint, jumpback, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
 	next_buffer, prev_buffer, udgedit, fmt_and_enter_command, go_basic, \
-	gprefs::next_pal, gprefs::prev_pal, toggle_autoformat
+	gprefs::next_pal, gprefs::prev_pal, toggle_autoformat, toggle_vis_ws
 .linecont -
 
 @specialvecslo: .lobytes specialvecs
@@ -3513,7 +3521,7 @@ goto_buffer:
 
 	; save the character at the location we're terminating in case we need
 	; to undo this operation
-	jsr __text_char_index
+	jsr text::char_index
 	lda mem::linebuffer,y
 	pha
 	tya
@@ -4198,16 +4206,11 @@ goto_buffer:
 @xend=r9
 @selecting=ra
 @linelen=rb
-	lda mode
-	cmp #MODE_INSERT
-	beq @endins
-	jsr src::end_rep
-	beq @ret
-@endins:
-	jsr src::end
+	jsr src::on_last_line
 	bne :+
-	sec
-@ret:	rts		; cursor is at end of source file, return
+	jsr end_of_line
+	sec			; cursor wasn't moved DOWN
+	rts
 
 :	lda zp::curx
 	sta @xend
@@ -4444,20 +4447,10 @@ goto_buffer:
 	jmp print_line		; redraw line
 
 @prevline:
-	jsr src::after_cursor
-	pha
 	jsr src::prev		; move BEFORE the newline
 	jsr make_joined_line
-	pla
-	bcc @join
-	jmp src::next
-
-@join:	cmp #$00
-	beq :+
-	cmp #$0d		; was the line we joined empty?
-	bne :++
-:	inc zp::curx
-:	jsr bumpup
+	bcs @done
+@join:	jsr bumpup
 	jsr draw_active_line	; redraw the newly joined line
 @done:	rts
 .endproc
@@ -5701,7 +5694,6 @@ ro_commands:
 	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
 	.byte K_CLOSE_WINDOWS	; <- (close windows)
-	.byte K_VIS_WHITESPACE  ; C=-v toggle visual tabs
 numcommands=*-commands
 
 ; command tables for COMMAND mode key commands
@@ -5718,7 +5710,7 @@ numcommands=*-commands
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
 	command_find, next_drive, prev_drive, get_command, monitor, next_err, \
-	help::show, close_windows, toggle_vis_ws
+	help::show, close_windows
 .linecont -
 
 command_vecs_lo: .lobytes cmd_vecs

@@ -709,8 +709,8 @@ tempbuff: .res LINESIZE
 
 @l0:	ldx @i
 	lda mem::linebuffer,x
-	beq @end	; end of buffer
-	cmp #$09	; TAB
+	beq @done		; end of buffer
+	cmp #$09		; TAB
 	bne :+
 
 	; tabs need to be handled if we end on them
@@ -726,10 +726,16 @@ tempbuff: .res LINESIZE
 	cpx @seek
 	bcs @done
 	inc @x
-	bne @l0
+	bne @l0			; branch always
 
 @end:	dec @x
-@done:	ldx @x
+@done:	lda mem::linebuffer,x
+	cmp #$09
+	bne :+
+	lda __text_insertmode
+	beq :+
+	inc @x
+:	ldx @x
 	rts
 .endproc
 
