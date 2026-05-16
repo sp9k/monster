@@ -148,14 +148,14 @@ data: .res BUFFER_SIZE
 
 	; if MSB of (end-poststart) > 0, use $ff for counter
 	; if they're equal, use the LSB of difference as the counter
-	ldx #$ff
-	lda end+1
-	cmp poststartzp+1
-	bne :+			; end > poststart, continue with .X=$ff
 	lda end
 	sec
 	sbc poststartzp
 	tax
+	lda end+1
+	sbc poststartzp+1
+	beq :+
+	ldx #$ff
 
 :	ldy #$00
 @l0:	lda (poststartzp),y
@@ -240,14 +240,18 @@ data: .res BUFFER_SIZE
 .proc up
 	; if MSB of of cursorzp > (>data), use max value for counter ($ff)
 	; if MSB is >data, use the LSB of the cursorzp pointer as counter
-	ldx #$ff
+	lda cursorzp
+	sec
+	sbc #<data
+	tax
 	lda cursorzp+1
-	cmp #>data
-	bne :+
-	ldx cursorzp
-	beq @eof
+	sbc #>data
+	beq :+
+	ldx #$ff
 
-:	decw cursorzp
+:	txa
+	beq @eof		; cursorzp == data
+	decw cursorzp
 	decw poststartzp
 
 	ldy #$00

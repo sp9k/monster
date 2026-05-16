@@ -18,6 +18,7 @@
 .import __src_end
 .import __src_end_rep
 .import __src_get
+.import __src_getin
 .import __src_getflags
 .import __src_goto
 .import __src_get_filename
@@ -81,6 +82,7 @@ GAPSIZE = 20	; size of gap in gap buffer
 	end_rep        = __src_end_rep
 	filename       = __src_get_filename
 	get            = __src_get
+	getin          = __src_getin
 	getflags       = __src_getflags
 	goto           = __src_goto
 	home           = __src_home

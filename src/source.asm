@@ -1091,14 +1091,15 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .endproc
 
 ;*******************************************************************************
-; copy line
-; returns the text at the current cursor position and stores it to the given
+; GET IN
+; Reads the next line into the given address
 ; target location
 ; IN:
 ;  - .XY: destination to copy to
 ; OUT:
 ;  - (.XY): a line of text from the cursor position
-.proc copy_line
+.export __src_getin
+.proc __src_getin
 @src=zp::bankaddr0
 @target=zp::bankaddr1
 	stxy @target		; dest
@@ -1153,6 +1154,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .proc __src_downn
 @cnt=r4
 	stxy @cnt
+
 @loop:	ldxy @cnt
 	decw @cnt
 

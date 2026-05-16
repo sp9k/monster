@@ -1385,30 +1385,31 @@ main:	jsr key::getch
 	; delete the contents of the current line
 	jsr src::lineend	; go to end of line
 	jsr buff::clear		; clear copy buffer
+
 @l0:	jsr src::atcursor
 	cmp #$0d
 	beq @moveup
 	jsr src::backspace
-	bcs @moveup		; break if at start of source buffer
+	bcs @sof		; break if at start of source buffer
 	jsr buff::putch		; put the character that was deleted into the copy buffer
 	jmp @l0
 
+@sof:
+	jsr src::delete
 @moveup:
 	lda #$00
 	sta zp::curx
-	jsr enter_insert
-	jsr ccdown
-	jsr backspace
-	jsr enter_command
-	jsr src::pushp
-	jsr home
-	jsr src::get
-	jsr src::popp
+	jsr src::backspace
+	jsr bumpup
+	lda zp::cury
+	beq :+
+	inc zp::cury
+:	jsr src::down
+	jsr refresh_line	; refresh linebuffer with new line's contents
 
-	lda #MODE_VISUAL_LINE
+:	lda #MODE_VISUAL_LINE
 	sta selection_type	; set copy mode to LINE
-
-	jmp draw_active_line
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1803,10 +1804,7 @@ main:	jsr key::getch
 @finish_multi:
 	; if we pasted multiple lines, restore source position and don't move cursor
 	jsr src::popgoto
-	jsr src::pushp
-	jsr src::home
-	jsr src::get
-	jsr src::popgoto
+	jsr refresh_line
 
 @setcur:
 	pla				; restore index where paste ended
@@ -2150,69 +2148,86 @@ main:	jsr key::getch
 	ldxy @addr
 	jsr dbg::gotoaddr	; goto it
 	bcs @err
+:
 @ret:	rts			; return ok
 .endproc
 
 ;*******************************************************************************
 ; JOIN LINE
 ; Joins the contents of the line below the current one with the current line
+; For example if the cursor is on the line 'a' in the diagram below
+;   [  a   ][$0d]
+;   [     b    ]
+; The result, after calling this procedure will be a single line like this:
+;   [  a   ][     b    ]
+; If the rendered length of the joined line would be greater than the LINESIZE,
+; this operation does nothing
 .proc join_line
-@i=r6
-@join_idx=r7
-	jsr exit_visual
-	jsr src::on_last_line
-	beq :-			; -> rts
+	jsr make_joined_line
+	bcs :-			; can't join -> rts
+	inc zp::cury
+	jsr bumpup
+	jmp end_of_line		; go to end of the new line
+.endproc
 
+;*******************************************************************************
+; MAKE JOINED LINE
+; Joins the contents of the line below the current one with the current line
+; For example if the cursor is on the line 'a' in the diagram below
+;   [  a   ][$0d]
+;   [     b    ]
+; The result, after calling this procedure will be a single line like this:
+;   [  a   ][     b    ]
+; If the rendered length of the joined line would be greater than the LINESIZE,
+; this operation does nothing
+.proc make_joined_line
+@lena=r6	; length of line A
+	jsr exit_visual		; if in VISUAL mode, exit it
+	jsr src::on_last_line	; are there any lines to join?
+	sec
+	beq :-			; if not -> rts
+
+	; save buffer in case we need to abort operation (joined line too long)
+	jsr refresh_line
+	jsr text::savebuff
+	jsr src::pushp
+
+	; get the index to append B to
 	jsr text::linelen
-	stx @i
-	stx @join_idx
-	txa
-	bne :+
-	jmp delete_line
+	stx @lena
 
-:	jsr end_of_line		; set curx to the correct index
-	jsr src::pushp		; save our start position in the source
-	jsr src::next		; move to the newline
+	jsr src::lineend	; go to end of the line
 	jsr src::next		; move past the newline
 
 	; read the new line contents into the text buffer
-@readline:
-	jsr src::right
-	bcs @validate
-	ldx @i
-	cpx #LINESIZE
-	bcs @validate
-	sta mem::linebuffer,x
-	inc @i
-	bne @readline
+	lda #<mem::linebuffer
+	clc
+	adc @lena
+	tax
+	lda #>mem::linebuffer
+	adc #$00
+	tay
+	jsr src::getin
 
 	; make sure the rendered line is <= LINESIZE characters
-@validate:
-	ldx @i
-	cpx #LINESIZE
-	bcs :+
-	lda #$00
-	sta mem::linebuffer,x
-
-:	jsr text::rendered_line_len
+	jsr text::rendered_line_len
 	cpx #LINESIZE+1			; too long?
-	bcc @bump			; if not, continue
+	bcc @join			; if not, continue
 
 	; the join would have made the line too long, don't join it
-	ldx @join_idx
-	lda #$00
-	sta mem::linebuffer,x	; re-terminate the line buffer
-	jmp src::popgoto	; clean up and exit
+	jsr text::restorebuff	; restore the original text buffer
+	jsr src::popgoto	; clean up and exit
+	jsr beep::short
+	sec
+	rts
 
-@bump:	jsr src::popgoto
-	jsr src::next		; move to the newline
-	jsr src::delete		; delete the newline
-	jsr src::prev
-	jsr text::savebuff
-	inc zp::cury
-	jsr bumpup
-	jsr text::restorebuff
-	jmp draw_active_line
+@join:	jsr src::backspace	; delete the newline
+	jsr refresh_line
+	jsr draw_active_line	; redraw the newly joined line
+	lda @lena
+	jsr text::index2cursor
+	stx zp::curx
+	RETURN_OK
 .endproc
 
 ;******************************************************************************
@@ -3581,11 +3596,8 @@ goto_buffer:
 	tya
 	pha
 
-	jsr src::pushp
-	jsr src::home
-	jsr src::get
+	jsr refresh_line
 	jsr draw_active_line
-	jsr src::popgoto
 
 	pla
 	jsr text::index2cursor
@@ -4409,8 +4421,8 @@ goto_buffer:
 ;******************************************************************************
 ; BACKSPACE
 ; Deletes the previous character in the source and moves the cursor as needed.
-; Call text::drawline (with the newly updated cursor Y position) to render the
-; result of this routine.
+; If this command would effectively join two lines that would be too large
+; for the screen, it does nothing (similar to the JOIN LINE command)
 ; OUT:
 ;  - mem::linebuffer: the new rendering of the line
 ;  - zp::curx: updated
@@ -4418,52 +4430,29 @@ goto_buffer:
 .proc backspace
 @cnt=r6
 @line2len=r7
-	lda #$00
-	jsr src::backspace
-	bcs @done
-	lda #$14		; delete from the text buffer
-	jsr text::putch
-	bcs @prevline
-	lda zp::cury
-	jmp print_line
-
-@prevline:
-	; get the line we're moving up to in linebuffer
-	jsr src::get
-
-	; if the current char is a newline, we're done
+	lda zp::curx
+	beq @prevline		; if cursor is at column 0, append current line
+				; to the previous one
 	jsr src::atcursor
 	cmp #$0d
-	beq @scrollup
+	beq @prevline
 
-	jsr text::linelen
-	stx @line2len
+	jsr src::backspace
+	bcs @done		; can't delete -> return
 
-	; get the new cursor position (new_line_len - (old_line2_len))
-	jsr src::up
-	jsr src::get
-	jsr text::linelen
-	txa
-	sec
-	sbc @line2len
-	sta @cnt
-	beq @scrollup
-	dec @cnt
-	bmi @scrollup
-@endofline:
-	jsr ccright
-	dec @cnt
-	bpl @endofline
-@scrollup:
-	ldy zp::cury
-	beq :+
-	dey
-:	tya
-	jsr print_line		; draw the line we'll move to
-	jsr text::savebuff
-	jsr bumpup		; scroll the screen up (also move cursor up)
-	jmp text::restorebuff
+	lda #$14		; delete from the text buffer
+	jsr text::putch
+	bcs @done
+	lda zp::cury
+	jmp print_line		; redraw line
 
+@prevline:
+	jsr src::prev		; move BEFORE the newline
+	jsr make_joined_line
+	bcc @join
+	jmp src::next		; move back to original position and exit
+@join:	jsr bumpup
+	jsr draw_active_line	; redraw the newly joined line
 @done:	rts
 .endproc
 
@@ -4482,7 +4471,7 @@ goto_buffer:
 	ldx zp::cury
 	inx
 	cpx height
-	beq @noscroll	; if cursor is at end of screen, nothing to scroll
+	bcs @noscroll	; if cursor is at end of screen, nothing to scroll
 	lda height
 	jsr scrollup
 
@@ -4498,7 +4487,8 @@ goto_buffer:
 	jsr src::get
 	lda height
 	jsr draw_src_line	; draw the new line that was scrolled up
-	jmp src::popgoto	; restore source position
+	jsr src::popgoto	; restore source position
+	jmp refresh_line	; restore buffer
 .endproc
 
 ;*****************************************************************************
@@ -5620,6 +5610,16 @@ unblank = scr::unblank
 .proc goto_selection_start
 	ldxy visual_start_pos
 	jmp src::goto
+.endproc
+
+;******************************************************************************
+; REFRESH LINE
+; Reloads the linebuffer with its correct contents from the source buffer
+.proc refresh_line
+	jsr src::pushp
+	jsr src::home
+	jsr src::get
+	jmp src::popgoto
 .endproc
 
 ;******************************************************************************

@@ -16,6 +16,7 @@
 - [ ] Save/restore raster position while debugging
 
 ### TODO V1
+- [ ] Fix bug where lines with '*' references fail validation(?)
 - [ ] Support .REP and .MAC in monitor
 - [ ] Fix crash on boot if key is being pressed (Vic20?)
 - [?] Fix unstable file mappings in debug info

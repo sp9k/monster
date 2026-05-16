@@ -95,12 +95,15 @@
 	adc @tmp1		; *12
 	bcc :+
 	inc @entrypoint+1
+	clc
 :	adc @tmp0		; *14
 	bcc :+
 	inc @entrypoint+1
+	clc
 :	adc @rows		; *15
 	bcc :+
 	inc @entrypoint+1
+	clc
 
 :	asl			; *30
 	rol @entrypoint+1	;
