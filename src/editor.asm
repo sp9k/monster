@@ -1407,7 +1407,7 @@ main:	jsr key::getch
 :	jsr src::down
 	jsr refresh_line	; refresh linebuffer with new line's contents
 
-:	lda #MODE_VISUAL_LINE
+	lda #MODE_VISUAL_LINE
 	sta selection_type	; set copy mode to LINE
 	rts
 .endproc
@@ -2165,6 +2165,7 @@ main:	jsr key::getch
 .proc join_line
 	jsr make_joined_line
 	bcs :-			; can't join -> rts
+	jsr draw_active_line	; redraw the newly joined line
 	inc zp::cury
 	jsr bumpup
 	jmp end_of_line		; go to end of the new line
@@ -2223,7 +2224,6 @@ main:	jsr key::getch
 
 @join:	jsr src::backspace	; delete the newline
 	jsr refresh_line
-	jsr draw_active_line	; redraw the newly joined line
 	lda @lena
 	jsr text::index2cursor
 	stx zp::curx
@@ -4428,8 +4428,6 @@ goto_buffer:
 ;  - zp::curx: updated
 ;  - zp::cury: updated
 .proc backspace
-@cnt=r6
-@line2len=r7
 	lda zp::curx
 	beq @prevline		; if cursor is at column 0, append current line
 				; to the previous one
@@ -4447,11 +4445,20 @@ goto_buffer:
 	jmp print_line		; redraw line
 
 @prevline:
+	jsr src::after_cursor
+	pha
 	jsr src::prev		; move BEFORE the newline
 	jsr make_joined_line
+	pla
 	bcc @join
-	jmp ccright
-@join:	jsr bumpup
+	jmp src::next
+
+@join:	cmp #$00
+	beq :+
+	cmp #$0d		; was the line we joined empty?
+	bne :++
+:	inc zp::curx
+:	jsr bumpup
 	jsr draw_active_line	; redraw the newly joined line
 @done:	rts
 .endproc
