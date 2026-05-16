@@ -3622,7 +3622,7 @@ goto_buffer:
 
 ;******************************************************************************
 ; SCROLL LINE
-; Updates the curson and scrolls lines below the one we're on
+; Updates the cursor and scrolls lines below the one we're on
 ; The linebuffer is also updated to contain the contents of the new line
 ; IN:
 ;   - zp::cury: row to draw the line at
@@ -3675,8 +3675,7 @@ goto_buffer:
 @setx:	ldx #$00
 	ldy zp::cury
 	iny
-	jsr cur::set
-	jmp draw_active_line
+	jmp cur::set
 .endproc
 
 ;*******************************************************************************
