@@ -4450,7 +4450,7 @@ goto_buffer:
 	jsr src::prev		; move BEFORE the newline
 	jsr make_joined_line
 	bcc @join
-	jmp src::next		; move back to original position and exit
+	jmp ccright
 @join:	jsr bumpup
 	jsr draw_active_line	; redraw the newly joined line
 @done:	rts
@@ -4484,10 +4484,12 @@ goto_buffer:
 	tax
 	ldy #$00
 	jsr src::downn		; move to the line that we're bringing up
+	bcs @done		; no new line to get
+
 	jsr src::get
 	lda height
 	jsr draw_src_line	; draw the new line that was scrolled up
-	jsr src::popgoto	; restore source position
+@done:	jsr src::popgoto	; restore source position
 	jmp refresh_line	; restore buffer
 .endproc
 
@@ -5622,6 +5624,17 @@ unblank = scr::unblank
 	jmp src::popgoto
 .endproc
 
+
+;******************************************************************************
+; TOGGLE VIS WS
+; Toggles visual TABs.
+.proc toggle_vis_ws
+	lda text::show_ws
+	eor #$01
+	sta text::show_ws
+	jmp refresh
+.endproc
+
 ;******************************************************************************
 commands:
 ; these commands are only handled while in RW mode (NOT in the debugger)
@@ -5682,6 +5695,7 @@ ro_commands:
 	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
 	.byte K_CLOSE_WINDOWS	; <- (close windows)
+	.byte K_VIS_WHITESPACE  ; C=-v toggle visual tabs
 numcommands=*-commands
 
 ; command tables for COMMAND mode key commands
@@ -5698,7 +5712,7 @@ numcommands=*-commands
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
 	command_find, next_drive, prev_drive, get_command, monitor, next_err, \
-	help::show, close_windows
+	help::show, close_windows, toggle_vis_ws
 .linecont -
 
 command_vecs_lo: .lobytes cmd_vecs

@@ -44,6 +44,7 @@ K_REFRESH        = $bc  ; C= + c
 K_RENAME         = $b2  ; C= + r
 K_DIR            = $2d  ; -
 K_LIST_SYMBOLS   = $b7  ; C= + y
+K_VIS_WHITESPACE = $be	; C= + v
 K_FIND           = $2f	; /
 K_FIND_PREV      = $2f	; /
 K_GETCMD         = ':'  ; :

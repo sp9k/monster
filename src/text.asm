@@ -52,6 +52,8 @@ NUM_ESCAPE_CODES = 8
 STATUS_FORMAT_DEFAULT = 0	; display x, line/total lines
 STATUS_FORMAT_XY      = 1	; display x,y position of cursor
 
+VIS_WS_CHAR       = 133		; character to render for visual whitespace
+
 .BSS
 ;*******************************************************************************
 .export __text_len
@@ -68,6 +70,9 @@ __text_status_mode: .byte 0	; the mode to display on the status line
 
 .export __text_status_fmt
 __text_status_fmt: .byte 0	; the format to use for the status display
+
+.export __text_show_ws
+__text_show_ws: .byte 0	; if !0, TAB's will be rendered
 
 render_off: .byte 0
 indirect:   .byte 0
@@ -370,6 +375,12 @@ tempbuff: .res LINESIZE
 	txa
 	jsr __text_tabr_dist_a
 	tay
+	lda __text_show_ws
+	beq @invis_ws
+@vis_ws:
+	lda #VIS_WS_CHAR
+	skw
+@invis_ws:
 	lda #' '
 @tab:	sta @buff,x
 	inx

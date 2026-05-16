@@ -22,6 +22,7 @@
 .import __text_scrolldownn
 .import __text_scrollup
 .import __text_scrollupn
+.import __text_show_ws
 .import __text_status
 .import __text_status_mode
 .import __text_status_fmt
@@ -71,6 +72,7 @@ CH_R_ARROW	    = 135
 	scrolldownn      = __text_scrolldownn
 	scrollup         = __text_scrollup
 	scrollupn        = __text_scrollupn
+	show_ws          = __text_show_ws
 	statusfmt	 = __text_status_fmt
 	statusmode       = __text_status_mode
 	status           = __text_status

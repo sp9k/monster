@@ -1159,16 +1159,17 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	decw @cnt
 
 	; if .XY == 0, we're done
-	clc
 	txa
 	bne :+
 	tya
-	beq @done
+	beq @ok
 
 :	jsr __src_down
 	bcc @loop
 @done:	ldxy @cnt
 	rts
+
+@ok:	RETURN_OK
 .endproc
 
 ;*******************************************************************************

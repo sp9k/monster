@@ -275,7 +275,7 @@ charmap:
 .byte   $88,$88,$88,$88,$88,$88,$88,$88	  ; 130
 .byte   $ff,$00,$00,$00,$00,$00,$00,$00	  ; 131
 .byte   $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	  ; 132 cursor
-.byte   $00,$00,$22,$77,$77,$22,$00,$00	  ; 133 bullet/breakpoint symbol
+.byte   $00,$00,$00,$44,$00,$00,$00,$00	  ; 133 visible whitespace char
 .byte   $00,$00,$22,$55,$55,$22,$00,$00	  ; 134 unfilled bullet/breakpoint unset
 .byte   $00,$44,$66,$77,$77,$66,$44,$00	  ; 135 arrow pointing right
 num_chars = (*-charmap)/8

@@ -186,8 +186,8 @@ data: .res BUFFER_SIZE
 	sta cursorzp
 	bcc :+
 	inc cursorzp+1
-:	clc
-	jmp deactivate_source
+	clc
+:	jmp deactivate_source
 .endproc
 
 ;*******************************************************************************
