@@ -27,6 +27,7 @@
 .import __text_status_mode
 .import __text_status_fmt
 .import __text_tabl_dist
+.import __text_tabl_index
 .import __text_tabr_dist
 .import __text_update
 
@@ -78,6 +79,7 @@ CH_R_ARROW	    = 135
 	status           = __text_status
 	restorebuff      = __text_restorebuff
 	tabl_dist        = __text_tabl_dist
+	tabl_index       = __text_tabl_index
 	tabr_dist        = __text_tabr_dist
 	update           = __text_update
 .endscope

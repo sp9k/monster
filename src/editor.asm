@@ -342,7 +342,7 @@ main:	jsr key::getch
 	ldxy #strings::assembling
 	jsr blank
 
-	jsr cancel		; close errlog (if open)
+	jsr close_windows	; close errlog (if open)
 	jsr dbgi::init
 	jsr obj::init
 	jsr errlog::clear
@@ -489,7 +489,7 @@ main:	jsr key::getch
 	lda #ERR_UNNAMED_BUFFER
 	jmp report_typein_error
 
-:	jsr cancel		; close errlog (if open)
+:	jsr close_windows	; close errlog (if open)
 	;jsr init_log		; create a (new) log file
 
 	lda #$01
@@ -992,7 +992,6 @@ main:	jsr key::getch
 ; ENTER_INSERT
 ; Enters INSERT mode
 .proc enter_insert
-@tabcnt=r2
 	lda #MODE_INSERT
 	cmp mode
 	beq @done
@@ -1009,17 +1008,10 @@ main:	jsr key::getch
 	jsr text::char_index
 	cmp #$09		; if on a TAB, move cursor to start of it
 	bne @done
+	lda zp::curx
+	jsr text::tabl_index
+	sta zp::curx
 
-	jsr text::tabl_dist
-	sta @tabcnt
-@tabl:	dec zp::curx
-	jsr text::char_index
-	inc zp::curx
-	cmp #$09
-	bne @done
-	dec zp::curx
-	dec @tabcnt
-	bne @tabl
 @done:	rts
 .endproc
 
@@ -1027,7 +1019,7 @@ main:	jsr key::getch
 ; FMT AND ENTER COMMAND
 ; Attempts to format the current line and then enters command mode
 .proc fmt_and_enter_command
-	jsr cancel
+	jsr enter_command
 	jmp fmt_line
 .endproc
 
@@ -1038,15 +1030,7 @@ main:	jsr key::getch
 ; etc.
 ; Calling this from within a command handler (e.g. command_asm) will do the
 ; latter as the editor is guaranteed to already be in COMMAND mode.
-.proc cancel
-	lda mode
-	cmp #MODE_COMMAND
-	bne enter_command
-
-	lda #TEXT_REPLACE
-	sta text::insertmode
-	rts
-.endproc
+cancel = enter_command
 
 ;*******************************************************************************
 ; CLOSE WINDOWS
@@ -1086,11 +1070,13 @@ main:	jsr key::getch
 ; ENTER_COMMAND
 ; Enters COMMAND mode
 .proc enter_command
+	lda mode
 	cmp #MODE_COMMAND
 	beq @done
 
 	lda #CUR_NORMAL
 	sta cur::mode
+
 	jsr is_visual
 	bne @left
 
@@ -1101,21 +1087,23 @@ main:	jsr key::getch
 	lda mode
 	cmp #MODE_INSERT
 	bne :+
-	jsr ccleft	; insert places cursor after char
 
-:	lda #MODE_COMMAND
-	sta mode
+	; if we were in INSERT mode, we need to move the cursor back one char
+	jsr ccleft
 
 	; if we're on a TAB after moving left, move to the end of it
 	jsr src::after_cursor
 	cmp #$09
-	bne @done
+	bne :+
 	jsr advance_tab
 
-@done:  lda #MODE_COMMAND
+:	lda #MODE_COMMAND
 	sta mode
-	lda #'c'
+
+@done:  lda #'c'
 	sta text::statusmode
+	lda #TEXT_REPLACE
+	sta text::insertmode
 	clc			; OK
 
 :	rts			; <- enter_visual
@@ -1394,10 +1382,12 @@ main:	jsr key::getch
 	jsr buff::putch		; put the character that was deleted into the copy buffer
 	jmp @l0
 
-@sof:
+@sof:	; at start of the buffer, DELETE the newline (connecting the NEXT line)
 	jsr src::delete
 	jmp :+
+
 @moveup:
+	; BACKSPACE to delete the newline character connecting the PREVIOUS line
 	jsr src::backspace
 	jsr src::down
 	bcc :+
@@ -1407,11 +1397,14 @@ main:	jsr key::getch
 	jsr scr::clrline
 	dec zp::cury		; and don't leave cursor on same line (that line
 	                        ; is gone now)
-:	lda #$00
-	sta zp::curx
-	inc zp::cury
+:	inc zp::cury
 	jsr bumpup
 	jsr refresh_line	; refresh linebuffer with new line's contents
+
+	; move cursor to first column on the new line
+	lda #$00
+	jsr text::index2cursor
+	stx zp::curx
 
 	lda #MODE_VISUAL_LINE
 	sta selection_type	; set copy mode to LINE
@@ -2221,7 +2214,7 @@ main:	jsr key::getch
 	cpx #LINESIZE+1			; too long?
 	bcc @join			; if not, continue
 
-	; the join would have made the line too long, don't join it
+@err:	; the join would have made the line too long, don't join it
 	jsr text::restorebuff	; restore the original text buffer
 	jsr src::popgoto	; clean up and exit
 	jsr beep::short
@@ -2879,7 +2872,7 @@ goto_buffer:
 	jsr gui::listmenu
 
 	; we don't need to keep this window open, close it
-	jmp cancel
+	jmp close_windows
 
 .PUSHSEG
 .RODATA
@@ -4004,8 +3997,8 @@ goto_buffer:
 ; OUT:
 ;  - .C: set if cursor could not be moved
 .proc ccleft
-@tabcnt=r4
-@deselect=r5
+@tabidx   = r4
+@deselect = r5
 	lda zp::curx
 	beq @nomove
 
@@ -4051,41 +4044,30 @@ goto_buffer:
 	jsr cur::toggle		; turn off (deselect) old cursor position
 
 @movecur:
-	pla
+	pla			; get character we moved over
 	cmp #$09
 	bne @curl
 
-	ldy mode
-	cpy #MODE_INSERT
-	beq @cont
-
-	; TAB in command/replace mode
-	dec zp::curx
-	jsr text::char_index
-	inc zp::curx
-	cpy #$00
-	bne @cont
-	ldx #$00
-	cmp #$09
-	bne :+
-	ldx #TAB_WIDTH-1
-:	stx zp::curx
-	sec
-	rts
-
 ; handle TAB (repeat the MOVE LEFT logic til we're at the prev TAB col
 ; OR the previous character
-@cont:	lda @deselect
+@tab:	lda @deselect
 	pha
+
 	lda #$00
 	sta @deselect		; temporarily disable deselect
+
+	; get the index in the buffer the cursor is currently on
+	dec zp::curx
+	jsr text::char_index
+	sty @tabidx
+	inc zp::curx
 
 @tabl:	jsr @curl
 	dec zp::curx
 	jsr text::char_index
 	inc zp::curx
-	cmp #$09
-	beq @tabl
+	cpy @tabidx
+	beq @tabl		; repeat until the char index changes
 
 	pla
 	sta @deselect		; restore deselect flag
@@ -5622,7 +5604,6 @@ unblank = scr::unblank
 	jsr src::get
 	jmp src::popgoto
 .endproc
-
 
 ;******************************************************************************
 ; TOGGLE VIS WS

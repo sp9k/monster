@@ -657,8 +657,27 @@ tempbuff: .res LINESIZE
 ;  .Y: the character index of the cursor
 .export __text_char_index
 .proc __text_char_index
+	lda zp::curx
+	; fall through to __text_char_index_a
+.endproc
+
+;*******************************************************************************
+; CHAR INDEX
+; Returns the character index of the current cursor position
+; If the cursor is within a TAB character's rendered range, returns the
+; index of the start of the TAB
+; IN:
+;   - .A: the starting column to seek from
+; OUT:
+;   - .A: the character under the cursor
+;   - .X: the x column position of the cursor
+;   - .Y: the character index of the cursor
+.export __text_char_index_a
+.proc __text_char_index_a
 @tabsz=r0
 @savey=r1
+@x    =r2
+	sta @x
 	ldx #$ff
 	ldy #$ff
 @l0:	iny
@@ -678,7 +697,7 @@ tempbuff: .res LINESIZE
 	adc @tabsz
 	tax
 	dex			; undo the INX
-:	cpx zp::curx
+:	cpx @x
 	pla
 	bcc @l0
 @done:	lda mem::linebuffer,y
@@ -731,11 +750,17 @@ tempbuff: .res LINESIZE
 @end:	dec @x
 @done:	lda mem::linebuffer,x
 	cmp #$09
-	bne :+
+	bne @retx
 	lda __text_insertmode
-	beq :+
-	inc @x
-:	ldx @x
+	beq @retx
+
+	; if we end on a tab in INSERT mode, move cursor to start of it
+	lda @x
+	jsr __text_tabl_index
+	tax
+	rts
+
+@retx:	ldx @x
 	rts
 .endproc
 
@@ -770,6 +795,13 @@ __text_tabr_dist_a=*+2
 .export __text_tabl_dist
 .proc __text_tabl_dist
 	lda zp::curx
+.endproc
+.export __text_tabl_dist_a
+.proc __text_tabl_dist_a
+@xstart = zp::util
+@tmp    = zp::util+1
+	sta @xstart
+	cmp #$00
 	beq @done
 	ldy #tabs_end
 :	dey
@@ -777,11 +809,39 @@ __text_tabr_dist_a=*+2
 	bcc :-
 	beq :-
 	lda tabs,y
-	sta zp::util
-	lda zp::curx
+	sta @tmp
+	lda @xstart
 	; sec
-	sbc zp::util
+	sbc @tmp
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; TABL INDEX
+; Gets the column of the next non-TAB character to the left of the given
+; column position
+; IN:
+;   - .A: the starting column to seek from
+.export __text_tabl_index
+.proc __text_tabl_index
+@x      = zp::util+2		; set in tabl_dist_a
+@tabcnt = zp::util+3
+	sta @x
+	jsr __text_tabl_dist_a
+	sta @tabcnt
+
+@tabl:	dec @x
+	lda @x
+	jsr __text_char_index_a
+	inc @x
+	cmp #$09			; still on a TAB?
+	bne @done			; if not, we're done
+	dec @x
+	dec @tabcnt
+	bne @tabl
+
+@done:	lda @x
+	rts
 .endproc
 
 ;*******************************************************************************
