@@ -626,7 +626,7 @@ tempbuff: .res LINESIZE
 @l0:	iny
 	inx
 	cpy #LINESIZE
-	beq @done
+	bcs @ret		; too big
 	lda mem::linebuffer,y
 	beq @done
 	cmp #$09
@@ -642,8 +642,9 @@ tempbuff: .res LINESIZE
 	tax
 	dex			; undo the INX
 :	jmp @l0
+
 @done:	cpx #LINESIZE+1
-	rts
+@ret:	rts
 .endproc
 
 ;*******************************************************************************

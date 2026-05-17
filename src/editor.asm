@@ -2164,6 +2164,7 @@ cancel = enter_command
 .proc join_line
 	jsr make_joined_line
 	bcs :-			; can't join -> rts
+
 	jsr draw_active_line	; redraw the newly joined line
 	inc zp::cury
 	jsr bumpup
@@ -2211,7 +2212,6 @@ cancel = enter_command
 
 	; make sure the rendered line is <= LINESIZE characters
 	jsr text::rendered_line_len
-	cpx #LINESIZE+1			; too long?
 	bcc @join			; if not, continue
 
 @err:	; the join would have made the line too long, don't join it
