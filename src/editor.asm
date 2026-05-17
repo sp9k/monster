@@ -109,8 +109,8 @@ jumplist_hi: .res MAX_JUMPS
 jumpptr:  .byte 0
 
 visual_start_line:	.word 0	; the line # a selection began at
-visual_start_x:		.byte 0	; the x-position a selection began at
 visual_start_pos:       .word 0 ; source cursor for visual seleciton
+visual_start_x:		.byte 0	; the x-position a selection began at
 selection_type:    	.byte 0 ; the type of selection (VISUAL_LINE or VISUAL)
 
 overwrite: .byte 0	; for SAVE commands, if !0, overwrite existing file
@@ -1019,8 +1019,8 @@ main:	jsr key::getch
 ; FMT AND ENTER COMMAND
 ; Attempts to format the current line and then enters command mode
 .proc fmt_and_enter_command
-	jsr enter_command
-	jmp fmt_line
+	jsr fmt_line
+	jmp enter_command
 .endproc
 
 ;*******************************************************************************
@@ -1137,7 +1137,7 @@ cancel = enter_command
 	; save current source position
 	jsr src::pos
 	stxy visual_start_pos
-	rts
+:	rts				; <- enter_visual_line
 .endproc
 
 ;*******************************************************************************
@@ -1145,10 +1145,9 @@ cancel = enter_command
 ; Enters VISUAL_LINE mode
 .proc enter_visual_line
 	jsr is_visual
-	bne :+
-	rts		; already in VISUAL mode
+	beq :-				; already in VISUAL mode
 
-:	jsr enter_visual
+	jsr enter_visual		; set the usual VISUAL mode state
 	jsr cur::off
 	lda #MODE_VISUAL_LINE
 	sta mode
@@ -1156,6 +1155,10 @@ cancel = enter_command
 	jsr home			; go to column 0
 	lda zp::curx
 	sta visual_start_x
+
+	; save current source position
+	jsr src::pos
+	stxy visual_start_pos
 
 	lda #'l'
 	sta text::statusmode
@@ -1445,7 +1448,16 @@ cancel = enter_command
 	jsr delch
 	bcc @ok
 	rts
-@ok:	jmp redraw_to_end_of_line
+
+@ok:	jsr redraw_to_end_of_line
+	jsr at_line_end
+	bcc @ret
+	jsr text::rendered_line_len
+	dex
+	bpl :+
+	inx
+:	stx zp::curx
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1455,11 +1467,10 @@ cancel = enter_command
 	jsr buff::clear
 
 @l0:	jsr delch
-	jsr src::after_cursor
-	bcs :+			; if at end of buffer, we're done
-	cmp #$0d
-	bne @l0
-:	jsr buff::reverse
+	jsr at_line_end
+	bcc @l0
+
+	jsr buff::reverse
 	jmp redraw_to_end_of_line
 .endproc
 
@@ -1509,6 +1520,7 @@ cancel = enter_command
 
 	jsr buff::lines_copied
 	bcs :+
+	jmp redraw_to_end_of_line
 	jmp src::left
 
 	; paste_buff will assume cursor should be moved to the end of the line
@@ -1677,18 +1689,18 @@ cancel = enter_command
 @linelen=rf
 @posttext=$148
 @mode=zp::tmp10
-	; save the current buffer pointer
-	jsr buff::push
-
 	jsr validate_paste
-	bcc :+
+	bcc @paste
+
+	; invalid paste, beep and return
 	jsr beep::short
 	jsr enter_command
 	sec
 	rts
 
 ; paste between [linebuffer, char_index(curx)] with the first line from buffer
-:	lda zp::cury
+@paste:	jsr buff::push		; save the current buffer pointer
+	lda zp::cury
 	sta @row
 	jsr text::char_index
 	sty @splitindex
@@ -1697,7 +1709,6 @@ cancel = enter_command
 	cmp #$00
 	beq @scrolldone
 
-	pha			; save scroll amount
 	tay			; .Y = number of rolls to scroll
 
 	; multi-line pastes don't move the cursor / source position
@@ -1706,13 +1717,7 @@ cancel = enter_command
 	; scroll down by the number of lines we're pasting (.Y)
 	ldx height
 	lda @row
-	jsr text::scrolldownn
-
-	; scroll colors down by number of lines we're pasting
-	ldx @row
-	ldy height
-	pla
-	jsr draw::scrollcolorsd
+	jsr scrolldownn
 
 @scrolldone:
 	ldx @splitindex	; get index of text to save
@@ -1864,9 +1869,9 @@ cancel = enter_command
 ;  - zp::editortmp+1:	address of the beginning of the selection
 ;  - zp::editortmp+3:	address of the end of the selection
 .proc yank
-@cur=zp::editortmp+1
-@end=zp::editortmp+3
-@moveback=zp::editortmp+5	; flag to move to beginning of selection
+@cur      = zp::editortmp+1
+@end      = zp::editortmp+3
+@moveback = zp::editortmp+5	; flag to move to beginning of selection
 	jsr is_visual
 	beq @yank_selection
 
@@ -1893,7 +1898,6 @@ cancel = enter_command
 	jsr buff::putch
 	bcc @yankline
 @yydone:
-	jsr goto_selection_start ; restore source pos from VISUAL
 	RETURN_OK
 
 ;--------------------------------------
@@ -1901,6 +1905,7 @@ cancel = enter_command
 @yank_selection:
 	; get the bounds of the text we're copying and move the source cursor
 	; to the end of the selection
+	jsr src::pushp
 	jsr get_selection_bounds
 	bcs @restoresrc
 
@@ -1929,10 +1934,9 @@ cancel = enter_command
 	bcc @copy
 
 @restoresrc:
-	jsr goto_selection_start	; restore source pos to selection origin
-
-	lda @moveback		; do we need to move to top of selection?
-	beq @done		; if end was also the top, no
+	jsr src::popgoto
+	lda @moveback			; need to move to top of selection?
+	beq @done			; if end was also the top, no
 
 	; move back to the line the selection began on
 	ldxy visual_start_line
@@ -1971,8 +1975,6 @@ cancel = enter_command
 	stxy @cur
 	ldxy visual_start_pos	; get the source position we started at
 	stxy @end
-
-	jsr src::pushp		; push current source pos
 
 	ldxy @end
 	lda mode
@@ -2437,7 +2439,6 @@ cancel = enter_command
 ;--------------------------------------
 ; VISUAL mode; delete the selection
 @delvis:
-@start=zp::editortmp+1	; set by yank
 @cnt=zp::editortmp+3
 	jsr yank			; yank the selection
 	bcs @notfound			; quit if error occurred or no selection
@@ -2592,7 +2593,6 @@ __edit_refresh:
 	jsr text::savebuff	; save the line buffer
 
 	ldx zp::cury		; get # of rows to go up in source
-
 	ldy #$00
 	sty highlight_status	; disable highlight
 	sty zp::cury		; go to top row
@@ -3612,12 +3612,10 @@ goto_buffer:
 
 :	; make sure cursor is pointing to something in the source
 	; (unless line is empty)
-	jsr src::end
-	beq @back
-	jsr src::after_cursor
-	cmp #$0d
-	bne @done
+	jsr at_line_end
+	bcc @done
 @back:	jmp src::left
+
 @done:	rts
 .endproc
 
@@ -3639,11 +3637,6 @@ goto_buffer:
 	lda height
 	jsr scrollup
 
-	; and clear the new line
-	jsr text::clrline
-	lda height
-	jsr scr::clrline
-
 	dec zp::cury
 	bne @setcur		; branch always
 
@@ -3651,16 +3644,7 @@ goto_buffer:
 	iny
 	tya
 	ldx height
-	jsr text::scrolldown
-
-	; shift colors below cursor down by 1
-	ldx zp::cury
-	ldy height
-	jsr draw::scrollcolorsd1
-
-	; and clear the color of the newly opened line
-	ldx zp::cury
-	jsr draw::resetline
+	jsr scrolldown
 
 @setcur:
 	jsr src::get
@@ -3676,7 +3660,14 @@ goto_buffer:
 @setx:	ldx #$00
 	ldy zp::cury
 	iny
-	jmp cur::set
+	jsr cur::set
+
+@clrnew:
+	; clear the newly opened line
+	ldx zp::cury
+	jsr draw::resetline
+	lda zp::cury
+	jmp scr::clrline
 .endproc
 
 ;*******************************************************************************
@@ -3987,6 +3978,7 @@ goto_buffer:
 	lda #MODE_VISUAL
 	sta selection_type
 	jmp src::delete
+
 @nodel:	sec
 	rts
 .endproc
@@ -5012,7 +5004,8 @@ __edit_gotoline:
 	tay
 	lda #$00
 	ldx height
-	jsr text::scrolldownn
+	jsr scrolldownn
+
 	pla
 	clc
 	adc zp::cury
@@ -5224,22 +5217,39 @@ __edit_gotoline:
 
 ;*******************************************************************************
 ; SCROLLDOWN
-; scrolls everything in the given range of rows and highlights the row that
+; Scrolls everything in the given range of rows by 1 and highlights the row that
 ; is scrolled in (if highlight is enabled)
 ; IN:
 ;  - .A: the row to start scrolling at
 ;  - .X: the row to stop scrolling at
 .proc scrolldown
-@start=r1
-@stop=r2
+	ldy #$01
+
+	; fall through to scrolldownn
+.endproc
+
+;*******************************************************************************
+; SCROLLDOWNN
+; scrolls everything in the given range of rows by the given number of rows
+; and highlights the row that is scrolled in (if highlight is enabled)
+; IN:
+;  - .A: the row to start scrolling at
+;  - .X: the row to stop scrolling at
+;  - .Y: number of rows to scroll
+.proc scrolldownn
+@start = r1
+@stop  = r2
+@num   = r3
 	stx @stop
 	sta @start
-	jsr text::scrolldown
+	sty @num
+	jsr text::scrolldownn
 
 	; shift colors down by 1
 	ldx @start
 	ldy @stop
-	jsr draw::scrollcolorsd1
+	lda @num
+	jsr draw::scrollcolorsd
 
 	ldxy __edit_highlight_line
 	cmpw src::line
@@ -5316,6 +5326,18 @@ __edit_gotoline:
 .endproc
 
 .RODATA
+
+;*******************************************************************************
+; AT LINE END
+; Checks if the source cursor is at the end of a line or end of the buffer
+; OUT:
+;   - .C: set if the cursor is at the end of a line or the buffer
+.proc at_line_end
+	jsr src::after_cursor
+	bcs :+			; if at end of buffer, we're done
+	cmp #$0d
+:	rts
+.endproc
 
 ;*******************************************************************************
 ; DIR VIEW

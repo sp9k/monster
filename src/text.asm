@@ -625,12 +625,14 @@ tempbuff: .res LINESIZE
 	ldy #$ff
 @l0:	iny
 	inx
-	cpy #LINESIZE
+	cpy #LINESIZE+1
 	bcs @ret		; too big
 	lda mem::linebuffer,y
 	beq @done
 	cmp #$09
-	bne :+
+	bne @l0
+
+	; handle the TAB, move to next TAB column
 	txa
 	sty @savey
 	jsr __text_tabr_dist_a
@@ -641,7 +643,7 @@ tempbuff: .res LINESIZE
 	adc @tabsz
 	tax
 	dex			; undo the INX
-:	jmp @l0
+	bne @l0			; branch always
 
 @done:	cpx #LINESIZE+1
 @ret:	rts
@@ -675,9 +677,9 @@ tempbuff: .res LINESIZE
 ;   - .Y: the character index of the cursor
 .export __text_char_index_a
 .proc __text_char_index_a
-@tabsz=r0
-@savey=r1
-@x    =r2
+@tabsz = r0
+@savey = r1
+@x     = r2
 	sta @x
 	ldx #$ff
 	ldy #$ff
@@ -748,21 +750,28 @@ tempbuff: .res LINESIZE
 	inc @x
 	bne @l0			; branch always
 
-@end:	dec @x
-@done:	lda mem::linebuffer,x
-	cmp #$09
-	bne @retx
-	lda __text_insertmode
-	beq @retx
+@done:	lda __text_insertmode
+	beq @rep
 
-	; if we end on a tab in INSERT mode, move cursor to start of it
+@ins:	lda mem::linebuffer,x
+	cmp #$09
+	beq :+
+	ldx @x
+	rts
+:	; if we end on a tab in INSERT mode, move cursor to start of it
 	lda @x
 	jsr __text_tabl_index
 	tax
 	rts
 
-@retx:	ldx @x
-	rts
+@rep:	lda mem::linebuffer,x
+	ldx @x
+	cmp #$09
+	beq :+
+	dex
+	bpl :+
+	inx
+:	rts
 .endproc
 
 ;*******************************************************************************

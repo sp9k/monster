@@ -23,6 +23,8 @@
 .export __fmt_enable
 __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 
+offset = r7
+
 .CODE
 
 ;******************************************************************************
@@ -32,36 +34,44 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 ;  - .A: the "type" to format see (codes.inc) e.g. ASM_OPCODE, etc.
 .export __fmt_line
 .proc __fmt_line
-@linecontent=r6
-@cnt=r0
+@linecontent = r6
+@cnt         = r0
 	sta @linecontent	; save format "type"
-
 	lda __fmt_enable
-	beq @done
+	beq @done		; if formatting is disabled, just quit
 
 	; get current character index of cursor
 	jsr text::char_index
-	tya
-	pha			; save character index
+	sty offset		; save character index
 
-	jsr @fmt
+	jsr @fmt		; format the line
 
 	; fix cursor position for newly formatted line
 	jsr src::home
 	jsr src::get
 
-	pla			; restore character index
-	pha
+	; touch up source and cursor position, accounting for all the
+	; characters inserted and deleted during the formatting
+	lda offset
+	beq @done
+	sta @cnt
+
+@l0:	lda text::insertmode
+	beq :+
+	jsr src::right
+	jmp @cont
+:	jsr src::right_rep
+
+@cont:	bcs @updatecur
+	dec @cnt
+	bne @l0
+
+@updatecur:
+	lda offset
+	sec
+	sbc @cnt
 	jsr text::index2cursor
 	stx zp::curx
-
-	pla			; restore character index
-	sta @cnt
-	beq @done
-:	jsr src::right_rep
-	bcs @done
-	dec @cnt
-	bne :-
 	rts
 
 ;-------------------------------------------------------------------------------
@@ -75,6 +85,7 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 	jsr util::is_whitespace
 	bne @left_aligned
 
+	dec offset		; decrement offset to restore cursor to
 	jsr src::delete		; delete whitespace character
 	ldx #$00
 	ldy #LINESIZE-1
@@ -104,6 +115,7 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 	lda #$09
 	jsr src::insert		; insert a TAB at start of line
 
+	inc offset
 	jsr refresh
 
 	; check the size of the line now that it has a TAB
@@ -111,6 +123,7 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 	bcc :-				; ok
 
 	; line would be oversized with a TAB, undo the addition of it
+	dec offset
 	jmp src::backspace	; delete the TAB
 .endproc
 
@@ -133,8 +146,10 @@ __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 	beq @done		; newline -> done
 	jsr util::is_whitespace
 	bne indent		; non-whitespace -> separate with tab
+	dec offset
 	jsr src::delete		; delete whitespaced
 	bcc @l1
+	inc offset
 
 @done:	; fall through to refresh
 .endproc
