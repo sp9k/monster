@@ -1903,54 +1903,54 @@ cancel = enter_command
 ;--------------------------------------
 ; visual mode, copy the selected text
 @yank_selection:
-	; get the bounds of the text we're copying and move the source cursor
-	; to the end of the selection
+	; get the bounds of the text we're copying
 	jsr src::pushp
 	jsr get_selection_bounds
-	bcs @restoresrc
+	bcs @restoresrc			; if nothing was selected -> skip copy
 
-	; clear the current contents of the copy buffer
-	jsr buff::clear
+	jsr buff::clear			; clear current contents of copy buffer
 
 	; set the selection type so we know how to handle the eventual paste
 	lda mode
 	sta selection_type
 
-@copy:	jsr src::atcursor
-	cmp #$00
-	bne :+
-	lda #$0d
+@copy:	jsr src::atcursor	; get next char to copy
+	cmp #$00		; EOF?
+	bne :+			; if !EOF -> continue
+	lda #$0d		; use newline char for EOF marker
 :	jsr buff::putch		; add the character to the copy buffer
-	bcc @next
+	bcc @next		; continue (if buffer didn't overflow)
 
-	; copy selection is too large
+	; copy selection is too large, return an error
 	jsr @restoresrc
 	RETURN_ERR ERR_COPY_TOO_BIG
 
 @next:	jsr src::pos
 	cmpw @cur		; are we back at the START of the selection yet?
-	beq @restoresrc
-	jsr src::prev
-	bcc @copy
+	beq @restoresrc		; if so, we're done copying
+	jsr src::prev		; if not, move to previous char
+	bcc @copy		; and repeat til done
 
 @restoresrc:
-	jsr src::popgoto
-	lda @moveback			; need to move to top of selection?
-	beq @done			; if end was also the top, no
+	jsr src::popgoto	; restore source cursor
+	lda @moveback		; do we need to move to top of selection?
+	beq @done		; if end was also the top, no
 
+@movetostart:
 	; move back to the line the selection began on
 	ldxy visual_start_line
 	jsr gotoline
 
 	; move right until we're back at the start of the selection
-	jmp :++
-:	jsr ccright
-	bcs @done
+	jmp :+			; enter loop at conditional check
+@fix_x:
+	jsr ccright		; move cursor right one character
+	bcs @done		; if we couldn't move right anymore, we're done
 :	lda zp::curx
-	cmp visual_start_x
-	bcc :--
+	cmp visual_start_x	; are we at column the selection began at yet?
+	bcc @fix_x		; if not, repeat til we are
 
-@done:	jmp enter_command
+@done:	jmp enter_command	; done YANKing, return to COMMAND mode
 .endproc
 
 ;******************************************************************************
