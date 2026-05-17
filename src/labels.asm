@@ -396,6 +396,7 @@ labelvars_size=*-labelvars
 
 	ldx #>(NUM_BUCKETS*2)	; number of pages to clear
 	lda #$00
+	tay
 :	STOREB_Y @map
 	dey
 	bne :-
