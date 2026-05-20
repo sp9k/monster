@@ -34,6 +34,8 @@
 .import __src_prev
 .import __src_start
 
+.import sync_x
+
 ;*******************************************************************************
 ; CONSTANTS
 MAX_SOURCES    = 8	; # of source buffers that can be loaded at once
@@ -48,7 +50,7 @@ FLAG_DIRTY = 1
 ;*******************************************************************************
 data_start:
 sp:	.byte 0			; stack pointer for source position stack
-stack:	.res POS_STACK_SIZE	; stack for source positions
+stack:	.res POS_STACK_SIZE*2	; stack for source positions
 
 ;*******************************************************************************
 ; BUFFSTATE
@@ -63,7 +65,8 @@ poststartzp    = zp::srccur2
 line           = zp::srcline
 lines          = zp::srclines
 end            = zp::srcend
-SAVESTATE_SIZE = 10		; space used by above zeropage addresses
+srcx           = zp::srcx
+SAVESTATE_SIZE = 11		; space used by above zeropage addresses
 
 .exportzp __src_line
 __src_line = line
@@ -108,6 +111,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	sta line+1
 	sta lines
 	sta lines+1
+	sta zp::srcx
 
 	ldx #MAX_SOURCES
 :	sta bank-1,x
@@ -772,14 +776,15 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .export __src_left
 .proc __src_left
 	jsr __src_prev
-	bcs @nomove
+	bcs @ret
 	jsr __src_after_cursor
 	cmp #$0d
 	bne @done
 	jsr __src_next
+
 @nomove:
 	sec
-	rts
+@ret:	rts
 @done:	RETURN_OK
 .endproc
 
@@ -1054,7 +1059,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 @forwards:
 	jsr __src_end
-	beq @done
+	beq @sync_x
 	jsr __src_next
 	lda cursorzp
 	cmp @dest
@@ -1062,11 +1067,11 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	lda cursorzp+1
 	cmp @dest+1
 	bne @forwards
-	rts
+	beq @sync_x		; branch always
 
 @backwards:
 	jsr __src_start
-	beq @done
+	beq @sync_x
 	jsr __src_prev
 	lda cursorzp
 	cmp @dest
@@ -1074,6 +1079,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	lda cursorzp+1
 	cmp @dest+1
 	bne @backwards
+@sync_x:
+	jmp sync_x
+
 @done:  rts
 .endproc
 
@@ -1087,7 +1095,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .proc __src_get
 	ldxy #mem::linebuffer
 
-	; fall through to copy_line
+	; fall through to __src_getin
 .endproc
 
 ;*******************************************************************************

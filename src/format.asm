@@ -35,7 +35,7 @@ offset = r7
 .export __fmt_line
 .proc __fmt_line
 @linecontent = r6
-@cnt         = r0
+@cnt         = r8
 	sta @linecontent	; save format "type"
 	lda __fmt_enable
 	beq @done		; if formatting is disabled, just quit
@@ -61,17 +61,9 @@ offset = r7
 	jsr src::right
 	jmp @cont
 :	jsr src::right_rep
-
-@cont:	bcs @updatecur
+@cont:	bcs @done
 	dec @cnt
 	bne @l0
-
-@updatecur:
-	lda offset
-	sec
-	sbc @cnt
-	jsr text::index2cursor
-	stx zp::curx
 	rts
 
 ;-------------------------------------------------------------------------------

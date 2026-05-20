@@ -81,9 +81,9 @@ VISUAL_LINE = 2
 
 ;*******************************************************************************
 ; ZEROPAGE
-height = zp::editor+1	; height of the text-editor (shrinks when displaying
-			; error, showing debugger, etc.
-mode = zp::editor_mode	; editor mode (COMMAND, INSERT)
+height = zp::editor_height	; height of the text-editor (shrinks when
+				; displaying error, showing debugger, etc.)
+mode   = zp::editor_mode	; editor mode (COMMAND, INSERT)
 
 .export __edit_height
 __edit_height = height
@@ -778,8 +778,7 @@ main:	jsr key::getch
 
 	lda #MODE_INSERT
 	sta zp::editor_mode
-	lda #TEXT_INSERT
-	sta text::insertmode
+	jsr use_insert_cursor
 
 	ldx zp::curx
 	stx @result_offset	; offset to the user-input in line buffer
@@ -996,23 +995,13 @@ main:	jsr key::getch
 	cmp mode
 	beq @done
 
+	lda #MODE_INSERT
 	sta mode
-	lda #TEXT_INSERT
-	sta text::insertmode
+	jsr use_insert_cursor
 	lda #'i'
 	sta text::statusmode
-
-	lda zp::curx
-	beq @done
-
-	jsr text::char_index
-	cmp #$09		; if on a TAB, move cursor to start of it
-	bne @done
-	lda zp::curx
-	jsr text::tabl_index
-	sta zp::curx
-
-:
+	jsr sync_cur
+:				; <- fmt_and_enter_command
 @done:	rts
 .endproc
 
@@ -1022,7 +1011,7 @@ main:	jsr key::getch
 .proc fmt_and_enter_command
 	lda mode
 	cmp #MODE_COMMAND
-	beq :-			; already in command
+	beq :-			; already in COMMAND mode
 	jsr fmt_line
 	jmp enter_command
 .endproc
@@ -1076,7 +1065,7 @@ cancel = enter_command
 .proc enter_command
 	lda mode
 	cmp #MODE_COMMAND
-	beq @done
+	beq @ret
 
 	lda #CUR_NORMAL
 	sta cur::mode
@@ -1095,22 +1084,16 @@ cancel = enter_command
 	; if we were in INSERT mode, we need to move the cursor back one char
 	jsr ccleft
 
-	; if we're on a TAB after moving left, move to the end of it
-	jsr src::after_cursor
-	cmp #$09
-	bne :+
-	jsr advance_tab
-
 :	lda #MODE_COMMAND
 	sta mode
 
 @done:  lda #'c'
 	sta text::statusmode
-	lda #TEXT_REPLACE
-	sta text::insertmode
+	jsr use_replace_cursor	; set cursor to the "REPLACE" one
+	jsr sync_cur
 	clc			; OK
 
-:	rts			; <- enter_visual
+@ret:	rts			; <- enter_visual
 .endproc
 
 ;*******************************************************************************
@@ -1126,12 +1109,13 @@ cancel = enter_command
 	sta mode
 	lda #CUR_SELECT
 	sta cur::mode
-	lda #TEXT_REPLACE
-	sta text::insertmode
+	jsr use_replace_cursor	; set cursor to the "REPLACE" one
 
 	; save current editor position
 	jsr src::currline
 	stxy visual_start_line
+
+	; save PHYSICAL cursor position where selection began
 	lda zp::curx
 	sta visual_start_x
 
@@ -1155,8 +1139,11 @@ cancel = enter_command
 	jsr cur::off
 	lda #MODE_VISUAL_LINE
 	sta mode
+	jsr use_replace_cursor	; set cursor to the "REPLACE" one
 
 	jsr home			; go to column 0
+
+	; save PHYSICAL cursor position where selection began
 	lda zp::curx
 	sta visual_start_x
 
@@ -1179,8 +1166,7 @@ cancel = enter_command
 .proc replace
 	lda #MODE_INSERT
 	sta mode
-	lda #TEXT_REPLACE
-	sta text::insertmode
+	jsr use_replace_cursor	; set cursor to the "REPLACE" one
 	lda #CUR_NORMAL
 	sta cur::mode
 	lda #'r'
@@ -1409,9 +1395,7 @@ cancel = enter_command
 	jsr refresh_line	; refresh linebuffer with new line's contents
 
 	; move cursor to first column on the new line
-	lda #$00
-	jsr text::index2cursor
-	stx zp::curx
+	jsr gotoindex0
 
 	lda #MODE_VISUAL_LINE
 	sta selection_type	; set copy mode to LINE
@@ -1454,14 +1438,7 @@ cancel = enter_command
 	rts
 
 @ok:	jsr redraw_to_end_of_line
-	jsr at_line_end
-	bcc @ret
-	jsr text::rendered_line_len
-	dex
-	bpl :+
-	inx
-:	stx zp::curx
-@ret:	rts
+	jmp sync_cur
 .endproc
 
 ;*******************************************************************************
@@ -1537,9 +1514,7 @@ cancel = enter_command
 	jsr append_char
 	jsr paste_buff
 	bcs @ret			; if we failed to paste, return
-	jsr buff::lines_copied
-	bcs @ret
-	jmp src::left
+	jmp sync_cur
 .endproc
 
 ;******************************************************************************
@@ -1784,8 +1759,6 @@ cancel = enter_command
 @lastline:
 	; copy the text after the cursor upon insertion to the line buffer again
 	jsr text::linelen
-	txa
-	pha			; save the index of where the paste ended
 	ldy #$00
 :	lda @posttext,y
 	sta mem::linebuffer,x
@@ -1806,23 +1779,20 @@ cancel = enter_command
 	bcs @finish_multi
 
 	; fix source pos - cursor will be on char after paste (if there is one)
-	jsr src::right_rep
-	jmp @setcur
+	jsr src_right
+	jmp @done
 
 @finish_multi:
 	; if we pasted multiple lines, restore source position and don't move cursor
 	jsr src::popgoto
 	jsr refresh_line
 
-@setcur:
-	pla				; restore index where paste ended
-	jsr text::index2cursor
-	stx zp::curx
-
 @done:	; restore the buffer pointer
 	jsr buff::pop
 	lda #MODE_COMMAND
 	sta mode
+	jsr use_replace_cursor	; set cursor to the "REPLACE" one
+	jsr sync_cur		; re-sync the text cursor and source cursor
 	RETURN_OK
 .endproc
 
@@ -1947,10 +1917,10 @@ cancel = enter_command
 
 	; move right until we're back at the start of the selection
 	jmp :+			; enter loop at conditional check
-@fix_x:
-	jsr ccright		; move cursor right one character
+@fix_x: jsr src_right		; move cursor right one character
 	bcs @done		; if we couldn't move right anymore, we're done
-:	lda zp::curx
+:	jsr sync_cur		; re-sync physical cursor after src::right
+	lda zp::curx		; get updated cursor column
 	cmp visual_start_x	; are we at column the selection began at yet?
 	bcc @fix_x		; if not, repeat til we are
 
@@ -2125,7 +2095,7 @@ cancel = enter_command
 	sta @len
 @readword:
 	; at start of word, now read the word
-	jsr src::right
+	jsr src_right
 	bcs :+
 	jsr util::isalphanum
 	bcs :+
@@ -2230,10 +2200,7 @@ cancel = enter_command
 @join:	jsr src::popp		; clean stack
 	jsr src::backspace	; delete the newline
 	jsr refresh_line
-	lda @lena
-	jsr text::index2cursor
-	stx zp::curx
-	RETURN_OK
+	jmp sync_cur
 .endproc
 
 ;******************************************************************************
@@ -3068,8 +3035,7 @@ goto_buffer:
 	sta $911e		; disable CA1 (RESTORE key) interrupts
 .endif
 
-	lda #TEXT_INSERT
-	sta text::insertmode
+	jsr use_insert_cursor
 
 	jsr reset_size
 
@@ -3485,6 +3451,8 @@ goto_buffer:
 	beq @done		; if indent disabled, skip
 
 	jsr fmt::line
+	jsr sync_cur
+
 	ldx #$01		; indent on
 	lda mem::linebuffer
 	cmp #';'		; comment?
@@ -3597,30 +3565,15 @@ goto_buffer:
 ; Redraws the line starting at the cursor's x position to the next $0d in the
 ; source
 .proc redraw_to_end_of_line
-	jsr text::char_index
-	tya
-	pha
-
 	jsr refresh_line
 	jsr draw_active_line
 
-	pla
-	jsr text::index2cursor
-	stx zp::curx
-
-	; if we're on a TAB, move cursor to the end of it
-	jsr src::after_cursor
-	cmp #$09
-	bne :+
-	jsr advance_tab
-
-:	; make sure cursor is pointing to something in the source
+	; make sure cursor is pointing to something in the source
 	; (unless line is empty)
 	jsr at_line_end
 	bcc @done
-@back:	jmp src::left
-
-@done:	rts
+@back:	jsr src::left
+@done:	jmp sync_cur
 .endproc
 
 ;******************************************************************************
@@ -3835,12 +3788,7 @@ goto_buffer:
 	cmp #$09		; TAB
 	bne :+
 	jsr src::next
-	ldx #TAB_WIDTH
-:	ldy mode
-	cmp #MODE_INSERT
-	beq :+
-	dex
-:	stx zp::curx
+	jsr sync_cur
 	sec
 	rts		; done
 
@@ -3873,22 +3821,14 @@ goto_buffer:
 	jsr scr::rvsline_part
 	RETURN_OK
 
-@movex: lda zp::curx
-	cmp @xend
-	bcs :+
-	jsr src_right
-	bcs :+
-	jsr cur::right
-	jmp @movex
+@movex: jsr sync_cur		; update physical cursor based on source one
+	lda zp::curx
+	cmp @xend		; is physical cursor at end yet?
+	bcs :+			; if so, we're done
+	jsr src_right		; if not, move source cursor right again
+	bcc @movex		; and repeat unless we couldn't move source cur
 
-:	; if we ended on a TAB, advance to the next TAB col else curx
-	jsr src::after_cursor
-	cmp #$09		; did we end on a TAB?
-	bne ccup_highlight	; if not, continue
-	lda mode
-	cmp #MODE_INSERT
-	beq ccup_highlight
-	jsr advance_tab
+:	jsr sync_cur
 
 ; fallthrough to ccup_highlight
 .endproc
@@ -4427,9 +4367,12 @@ goto_buffer:
 @prevline:
 	jsr src::prev		; move BEFORE the newline
 	jsr make_joined_line
-	bcs @done
+	bcs @done		; failed to join -> quit
+
 @join:	jsr bumpup
 	jsr draw_active_line	; redraw the newly joined line
+	jmp sync_cur
+
 @done:	rts
 .endproc
 
@@ -5183,15 +5126,7 @@ __edit_gotoline:
 	sta zp::cury
 
 @renderdone:
-	; move cursor to appropriate column if we ended on a TAB
-	lda mem::linebuffer
-	ldx #$00
-	cmp #$09		; TAB
-	bne :+
-	jsr src::right
-	ldx #TAB_WIDTH
-:	stx zp::curx
-	rts
+	jmp sync_cur		; re-sync cursor column
 .endproc
 
 ;*******************************************************************************
@@ -5327,6 +5262,37 @@ __edit_gotoline:
 	RETURN_OK
 
 @done:	sec			; line off screen
+	rts
+.endproc
+
+;******************************************************************************
+; SYNC CUR
+; Syncs the physical cursor with the source one
+.proc sync_cur
+	lda zp::srcx
+	jsr text::index2cursor
+	stx zp::curx
+	RETURN_OK
+.endproc
+
+;******************************************************************************
+; SET REPLACE CURSOR
+; Sets the cursor to display to 'REPLACE' (used in a variety of modes).
+; This cursor doesn't just affect how the cursor looks, it also affects where
+; the cursor sits on a TAB character.  In REPLACE mode, the cursor sits at the
+; end of the TAB character
+.proc use_replace_cursor
+	lda #TEXT_REPLACE
+	sta text::insertmode
+	rts
+.endproc
+
+;******************************************************************************
+; SET INSERT CURSOR
+; Sets the cursor to display to 'INSERT' (used in INSERT mode).
+.proc use_insert_cursor
+	lda #TEXT_INSERT
+	sta text::insertmode
 	rts
 .endproc
 

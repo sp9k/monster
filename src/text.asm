@@ -722,18 +722,22 @@ tempbuff: .res LINESIZE
 @i=zp::text
 @x=zp::text+1
 @seek=zp::text+2
+@prevx=zp::text+3
 	sta @seek
+
 	lda #$00
+	sta @prevx
 	sta @i
 	sta @x
-	lda mem::linebuffer
-	beq @done		; if line is empty, cursor is on column 0
 
 @l0:	ldx @i
+	cpx @seek		; at the index we're looking for?
+	bcs @done		; if so, we're done
+	inc @i
 	lda mem::linebuffer,x
 	beq @done		; end of buffer
-	cmp #$09		; TAB
-	bne :+
+	cmp #$09		; TAB?
+	bne @next
 
 	; tabs need to be handled if we end on them
 	lda @x
@@ -743,35 +747,41 @@ tempbuff: .res LINESIZE
 	sta @x
 	dec @x
 
-:	ldx @i
-	inc @i
-	cpx @seek
-	bcs @done
-	inc @x
+@next:	inc @x
+	lda @x
+	sta @prevx
 	bne @l0			; branch always
 
+;---------------------------------------------------------------------
+; done, handle final character
 @done:	lda __text_insertmode
 	beq @rep
 
+; INSERT
 @ins:	lda mem::linebuffer,x
 	cmp #$09
 	beq :+
-	ldx @x
-	rts
-:	; if we end on a tab in INSERT mode, move cursor to start of it
-	lda @x
-	jsr __text_tabl_index
-	tax
+@retx:	ldx @x			; not TAB, return @x as is
 	rts
 
+:	; if we end on a tab in INSERT mode, move cursor to start of it
+	; (column we were at before encountering the tab)
+	ldx @prevx
+	rts
+
+; REPLACE
 @rep:	lda mem::linebuffer,x
-	ldx @x
 	cmp #$09
-	beq :+
+	bne @retx
+
+	; if we end on tab in REPLACE mode, move cursor to end of it
+	lda @x
+	jsr __text_tabr_dist_a
+	clc
+	adc @x
+	tax
 	dex
-	bpl :+
-	inx
-:	rts
+	rts
 .endproc
 
 ;*******************************************************************************

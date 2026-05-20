@@ -125,16 +125,58 @@ data: .res BUFFER_SIZE
 .endif
 	cmp #$0d
 	bne @insdone
+
 	incw line
 	jsr on_line_inserted
 	incw lines
+	lda #$ff
+	sta zp::srcx
+
 @insdone:
+	inc zp::srcx
 	incw cursorzp
 @done:	RETURN_OK
 .endproc
 
 .PUSHSEG
 .RODATA
+
+;*******************************************************************************
+; SYNC X
+; Syncs the zp::srcx based on the distance from the start of the line or buffer
+.export sync_x
+.proc sync_x
+@cur=r0
+@x=r2
+	jsr activate_source
+	ldxy cursorzp
+	stxy @cur
+
+	ldy #$00
+	sty @x
+
+@l0:	lda @cur
+	cmp #<data
+	bne :+
+	lda @cur+1
+	cmp #>data
+	beq @done
+
+:	lda (@cur),y
+	cmp #$0d
+	beq @at_newl
+
+	decw @cur
+	inc @x
+	bne @l0			; branch always
+
+@at_newl:
+	dec @x
+@done:	lda @x
+	sta zp::srcx
+	jsr deactivate_source
+	RETURN_OK
+.endproc
 
 ;*******************************************************************************
 ; DOWN
@@ -144,6 +186,10 @@ data: .res BUFFER_SIZE
 ;  - .C: set if the end of the buffer was reached (cannot move "down")
 .export __src_down
 .proc __src_down
+	; all paths will reset cursor "column" to 0
+	lda #$00
+	sta zp::srcx
+
 	jsr activate_source
 
 	; if MSB of (end-poststart) > 0, use $ff for counter
@@ -238,6 +284,10 @@ data: .res BUFFER_SIZE
 ; OUT:
 ;  - .C: set if cursor is at the start of the buffer
 .proc up
+	; all paths will reset cursor "column" to 0
+	lda #$00
+	sta zp::srcx
+
 	; if MSB of of cursorzp > (>data), use max value for counter ($ff)
 	; if MSB is >data, use the LSB of the cursorzp pointer as counter
 	lda cursorzp
@@ -316,12 +366,18 @@ data: .res BUFFER_SIZE
 	cmp #$0d
 	bne @done
 	incw line
-@done:	RETURN_OK
+
+	ldx #$ff
+	stx zp::srcx		; reset cursor "column"
+
+@done:	inc zp::srcx		; move to next "column"
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
 ; PREV
 ; Moves the cursor back one character in the gap buffer.
+; NOTE: srcx will not be accurate if a newline is crossed by this routine.
 ; OUT:
 ;  - .A: the character at the new cursor position (if not at the start of buff)
 ;  - .C: set if we're at the start of the buffer and couldn't move back
@@ -349,7 +405,9 @@ data: .res BUFFER_SIZE
 	bne :+
 	decw line
 
-:	; get the character at the new cursor position
+:	dec zp::srcx		; decrement cursor "column"
+
+@done:	; get the character at the new cursor position
 	decw cursorzp
 	lda (cursorzp),y
 	incw cursorzp

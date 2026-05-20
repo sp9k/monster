@@ -100,8 +100,9 @@ srccur2  = $d1	; right pointer of gap in active source buffer
 srcline  = $d3	; current line number in active source buffer
 srclines = $d5	; current number of lines in active source buffer
 srcend   = $d7	; pointer to end of buffer in active source buffer
+srcx     = $d9	; source cursor offset from last newline (or start of buffer)
 
-editor 	  	= $d9
+editor_height  	= $da	; height of editor in characters
 editor_mode	= $db	; editor mode (MODE_COMMAND or MODE_INSERT)
 editortmp 	= $dc
 
