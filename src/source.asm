@@ -697,7 +697,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	bne :+
 	decw line
 	jsr on_line_deleted
+
 :	decw cursorzp
+	dec srcx
 	pla
 	clc
 	rts
@@ -796,12 +798,19 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ;  - .A: the character at the position that was moved to
 .export __src_right
 .proc __src_right
+@savex=r0
 	jsr __src_end
 	beq @endofline
+
+	ldx srcx
+	stx @savex
 
 	jsr __src_next
 	cmp #$0d
 	bne @done
+
+	ldx @savex
+	stx srcx
 	jsr __src_prev
 @endofline:
 	sec
@@ -817,6 +826,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ;  - .A: the character at the position that was moved to
 .export __src_right_rep
 .proc __src_right_rep
+@savex=r0
 	jsr __src_before_end
 	beq @endofline
 
@@ -827,6 +837,8 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	cmp #$0d
 	beq @endofline
 
+	ldx srcx
+	stx @savex
 	jsr __src_next
 	jsr __src_after_cursor	;if moving would put us at end of buffer, stay
 	bcs @back
@@ -835,6 +847,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	bne @done
 
 @back:	jsr __src_prev
+	ldx @savex
+	stx srcx
+
 @endofline:
 	sec
 	rts

@@ -1512,9 +1512,7 @@ cancel = enter_command
 
 @vis:	; visual, move to next character and paste there
 	jsr append_char
-	jsr paste_buff
-	bcs @ret			; if we failed to paste, return
-	jmp sync_cur
+	jmp paste_buff
 .endproc
 
 ;******************************************************************************
@@ -1789,11 +1787,7 @@ cancel = enter_command
 
 @done:	; restore the buffer pointer
 	jsr buff::pop
-	lda #MODE_COMMAND
-	sta mode
-	jsr use_replace_cursor	; set cursor to the "REPLACE" one
-	jsr sync_cur		; re-sync the text cursor and source cursor
-	RETURN_OK
+	jmp enter_command
 .endproc
 
 ;******************************************************************************
@@ -3707,7 +3701,7 @@ goto_buffer:
 	bne :+			; not first line -> continue
 
 	; already on first line, return
-	;sec
+	sec
 	rts			; return, can't move up
 
 :	jsr src::atcursor
@@ -3828,8 +3822,7 @@ goto_buffer:
 	jsr src_right		; if not, move source cursor right again
 	bcc @movex		; and repeat unless we couldn't move source cur
 
-:	jsr sync_cur
-
+:
 ; fallthrough to ccup_highlight
 .endproc
 
