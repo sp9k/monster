@@ -241,9 +241,12 @@ label_addresses_sorted:     .res MAX_LABELS*2
 label_addresses_sorted_ids: .res MAX_LABELS*2
 
 ;*******************************************************************************
-; LABEL NAMES INDEX
-; Index table for names of each label to support by-name listing of labels
-; TODO: unimplemented
+; LABEL NAMES SORTED
+; Sorted array of symbol names.
+; label_names_sorted contains an array of addresses to the names of
+; the corresponding symbol ids array (label_addresses_sorted_ids)
+; These arrays are sorted by the alphanumeric ordering of the label names
+; in ascending order.
 .assert * & $01 = $00, error, "label_names_sorted must be word aligned"
 
 .export label_names_sorted
@@ -1502,10 +1505,14 @@ labelvars_size=*-labelvars
 ; These macros are used by sort_by_addr
 
 ;*******************************************************************************
-; SETPTRS
+; SETPTRS ADDR
 ; update @idi and @idj based on the values of @i and @j
 ; these pointers are offset by a fixed amount from @i and @j
-.macro setptrs
+.proc setptrs_addr
+@i   = r0
+@j   = r2
+@idi = zp::tmp10
+@idj = zp::tmp12
 	lda @i
 	clc
 	adc #<(label_addresses_sorted_ids-label_addresses_sorted)
@@ -1521,7 +1528,35 @@ labelvars_size=*-labelvars
 	lda @j+1
 	adc #>(label_addresses_sorted_ids-label_addresses_sorted)
 	sta @idj+1
-.endmacro
+	rts
+.endproc
+
+;*******************************************************************************
+; SETPTRS NAME
+; update @idi and @idj based on the values of @i and @j
+; these pointers are offset by a fixed amount from @i and @j
+.proc setptrs_name
+@i   = r0
+@j   = r2
+@idi = zp::tmp10
+@idj = zp::tmp12
+	lda @i
+	clc
+	adc #<(label_names_sorted_ids-label_names_sorted)
+	sta @idi
+	lda @i+1
+	adc #>(label_names_sorted_ids-label_names_sorted)
+	sta @idi+1
+
+	lda @j
+	;clc
+	adc #<(label_names_sorted_ids-label_names_sorted)
+	sta @idj
+	lda @j+1
+	adc #>(label_names_sorted_ids-label_names_sorted)
+	sta @idj+1
+	rts
+.endproc
 
 ;*******************************************************************************
 ; INDEX
@@ -1530,23 +1565,48 @@ labelvars_size=*-labelvars
 ;
 ; Code adapted from code by Vladimir Lidovski aka litwr (with help of BigEd)
 ; via codebase64.org
+; IN:
+;   - r0:  array to sort
+;   - r2:  arallel array to sort, e.g. label_addresses_sorted_ids
+;   - .XY: comparator procedure to sort by
 .proc index
-@i   = r0
-@j   = r2
-@x   = r4
-@ub  = r6
-@lb  = r8
-@tmp = ra
-@num = rc
-@idi = zp::tmp10
-@idj = zp::tmp12
-@sp  = zp::tmp14
+@i          = r0
+@j          = r2
+@a          = r4
+@b          = r6
+@ub         = r8
+@lb         = ra
+@tmp        = rc
+@num        = re
+@idi        = zp::tmp10
+@idj        = zp::tmp12
+@sp         = zp::tmp14
+@comparator = zp::tmp15
+@setptrs_fn = zp::util
+@arr        = zp::util+2
 	lda __label_num
 	ora __label_num+1
-	bne @setup
+	bne @index_by_addr
 	rts			; nothing to index
 
-@setup:	; @num = 2*(__label_num-1)
+@index_by_addr:
+	ldxy #label_addresses_sorted
+	stxy @arr
+	ldxy #setptrs_addr
+	stxy @setptrs_fn
+	ldxy #addr_comparator
+	jmp @index
+
+@index_by_name:
+	;ldxy #label_names_sorted
+	;stxy @arr
+	;ldxy #setptrs_name
+	;stxy @setptrs_fn
+	;ldxy #name_comparator
+
+@index:	stxy @comparator
+
+	; @num = 2*(__label_num-1)
 	lda __label_num
 	sec
 	sbc #$01
@@ -1567,18 +1627,17 @@ labelvars_size=*-labelvars
 	txs
 
 @quicksort:
-	lda #<label_addresses_sorted
+	; initialize upper bound pointer to end of array to sort
+	lda @arr
+	sta @lb
 	clc
 	adc @num
 	sta @ub
-	lda #>label_addresses_sorted
+	lda @arr+1
+	sta @lb+1
 	adc @num+1
 	sta @ub+1
 
-	lda #>label_addresses_sorted
-	sta @lb+1
-	lda #<label_addresses_sorted
-	sta @lb
 
 	tsx
 	stx @sp
@@ -1606,58 +1665,61 @@ labelvars_size=*-labelvars
 	sta @tmp+1
 	ror @tmp
 
-	; @x = array[(@j+@i) / 2]
+	; @a = array[(@j+@i) / 2]
 	ldy #$00
 	LOADB_Y @tmp
-	sta @x
+	sta @a
 	iny
 	LOADB_Y @tmp
-	sta @x+1
+	sta @a+1
 
 @qsloop1:
-	; while (array[i] > @x) { inc @i }
+	; @b = array[i]
+	; while (@b  > @a) { inc @i }
 	ldy #$00		; compare array[i] and x
 	LOADB_Y @i
-	cmp @x
+	sta @b
 	iny
 	LOADB_Y @i
-	sbc @x+1
-	bcs @qs_l1
-	lda #$02	; move @i to next element
+	sta @b+1
+
+	jsr @compare_func	; is @a < @b?
+	bcc @qs_l1
+	beq @qs_l1
+
+	lda #$02		; move @i to next element
+	clc
 	adc @i
 	sta @i
 	bcc @qsloop1
 	inc @i+1
-	bne @qsloop1	; branch always
+	bne @qsloop1		; branch always
 
-@qs_l1:	ldy #$00	; compare array[j] and x
+@qs_l1:	ldy #$00		; compare array[j] and x
 	LOADB_Y @j
-	sta @tmp
+	sta @b
 	iny
 	LOADB_Y @j
-	sta @tmp+1
-	lda @x
-	cmp @tmp
-	lda @x+1
-	sbc @tmp+1
-	bcs @qs_l3
+	sta @b+1
+	jsr @compare_func	; is @a < @b?
+	bcs @qs_l3		; if so, break
 
 	lda @j
 	sec
-	sbc #$02	; move @j to prev element
+	sbc #$02		; move @j to prev element
 	sta @j
 	bcs @qs_l1
 	dec @j+1
-	bne @qs_l1	; branch always
+	bne @qs_l1		; branch always
 
 @qs_l3:
-	lda @j		; compare i and j
+	lda @j			; compare iterators i and j
 	cmp @i
 	lda @j+1
 	sbc @i+1
 	bcc @qs_l8
 
-@qs_l6:	setptrs
+@qs_l6:	jsr @setptrs
 	SWAPB_Y @i, @j		; swap array[@i] and array[@j]
 	SWAPB_Y @idi, @idj	; swap ids[@i] and ids[@j]
 
@@ -1724,6 +1786,50 @@ labelvars_size=*-labelvars
 	sta @lb
 	jmp @qsok
 @done:  rts
+
+;-------------------------------------------------------------------------------
+@compare_func:
+	jmp (@comparator)
+
+;-------------------------------------------------------------------------------
+@setptrs:
+	jmp (@setptrs_fn)
+.endproc
+
+;*******************************************************************************
+; ADDR COMPARATOR
+; Comparator for the quicksort procedure for sort-by ADDRESS.
+; IN:
+;   - @a: address of first address to compare (LHS of comparison)
+;   - @b: address of second address to compare (RHS of comparison)
+; OUT:
+;   - .C: set if the address @a >= @b
+;   - .Z: set if the values are equal
+.proc addr_comparator
+@a = r4
+@b = r6
+	lda @a+1
+	cmp @b+1
+	bne :+
+	lda @a
+	cmp @b
+:	rts
+.endproc
+
+;*******************************************************************************
+; NAME COMPARATOR
+; Comparator for the quicksort procedure for sort-by NAME.
+; IN:
+;   - @a: address of first string to compare (LHS of comparison)
+;   - @b: address of second string to compare (RHS of comparison)
+; OUT:
+;   - .Z: set if the @a is alphanumerically BEFORE @b
+.proc name_comparator
+@a = r4
+@b = r6
+	; TODO:
+
+	rts
 .endproc
 
 ;*******************************************************************************
