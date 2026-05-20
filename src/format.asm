@@ -149,7 +149,6 @@ offset = r7
 	dec offset
 	jsr src::delete		; delete whitespaced
 	bcc @l1
-	inc offset
 
 @done:	; fall through to refresh
 .endproc

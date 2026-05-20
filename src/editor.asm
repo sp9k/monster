@@ -1012,6 +1012,7 @@ main:	jsr key::getch
 	jsr text::tabl_index
 	sta zp::curx
 
+:
 @done:	rts
 .endproc
 
@@ -1019,6 +1020,9 @@ main:	jsr key::getch
 ; FMT AND ENTER COMMAND
 ; Attempts to format the current line and then enters command mode
 .proc fmt_and_enter_command
+	lda mode
+	cmp #MODE_COMMAND
+	beq :-			; already in command
 	jsr fmt_line
 	jmp enter_command
 .endproc
