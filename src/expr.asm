@@ -187,9 +187,15 @@ operands: .res $100
 
 @done:	jsr @popval		; read result (should be only value on stack)
 	bcs @ret
+
 	stxy @val1
 
-	; set the kind of result, symbol, segment, and post-processing
+	; make sure stack is empty
+	lda @sp
+	beq :+
+	RETURN_ERR ERR_INVALID_EXPRESSION
+
+:	; set the kind of result, symbol, segment, and post-processing
 	; for the result
 	lda @segment
 	sta __expr_segment
