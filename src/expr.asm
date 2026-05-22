@@ -20,6 +20,8 @@
 .include "target.inc"
 .include "util.inc"
 
+.macpack longbranch
+
 ;*******************************************************************************
 ; CONSTANTS
 MAX_OPERATORS = $10
@@ -174,12 +176,17 @@ operands: .res $100
 	stx @i
 	stx @sp
 
+	cpx __expr_rpnlistlen
+	bne @evalloop
+	RETURN_ERR ERR_VALUE_EXPECTED
+
 @evalloop:
 	ldx @i
 	lda __expr_rpnlist,x
 	bpl @cont
 
 @done:	jsr @popval		; read result (should be only value on stack)
+	bcs @ret
 	stxy @val1
 
 	; set the kind of result, symbol, segment, and post-processing
@@ -248,14 +255,14 @@ operands: .res $100
 @cont:	inx			; move past token index
 	cmp #TOK_UNARY_OP
 	bne :+
-	jsr @eval_unary
-	jmp @evalloop
+	jsr @eval_unary		; evaluate the unary operator
+	jmp @evalloop		; and continue
 
 :	cmp #TOK_BINARY_OP
 	bne :+
-	jsr @eval_binary
+	jsr @eval_binary	; evaluate the binary operator
 	bcs @ret
-	jmp @evalloop
+	jmp @evalloop		; and continue
 
 :	cmp #TOK_PC
 	bne @getoperand
@@ -347,6 +354,7 @@ operands: .res $100
 
 	; get the operand for the unary operation
 	jsr @popval
+	jcs @ret
 
 	; if VAL_REL, this must be the last operator
 	pla				; restore operator
@@ -415,6 +423,7 @@ operands: .res $100
 
 	; get the operands for the binary operation
 	jsr @popval
+	bcs @err
 	stxy @val2
 	lda @kind
 	sta @kind2
@@ -434,6 +443,7 @@ operands: .res $100
 
 @getval1:
 	jsr @popval
+	bcs @err
 	stxy @val1
 	lda @kind
 	sta @kind1
@@ -571,7 +581,10 @@ operands: .res $100
 	; sp -= 7
 	lda @sp
 	sec
-	sbc #$07
+	bne :+
+	; if stack is empty, error out
+	RETURN_ERR ERR_VALUE_EXPECTED
+:	sbc #$07
 	sta @sp
 
 	ldx @sp
@@ -588,6 +601,7 @@ operands: .res $100
 	ldy @operands+1,x	; get MSB
 	lda @operands,x		; and LSB
 	tax
+	clc			; ok
 	rts
 
 ;--------------------------------------
@@ -748,11 +762,13 @@ operands: .res $100
 	ldy #$00
 	sty @num_operators
 	sty @i
+	sty __expr_rpnlistlen
 
 	lda (zp::line),y
 	bne :+
-	sec
-	rts			; no expression
+
+	; no expression
+	RETURN_ERR ERR_VALUE_EXPECTED
 
 :	; by default flag that operator might be unary
 	iny
@@ -828,8 +844,8 @@ operands: .res $100
 	jmp @process_ops	; continue til op on left has lower priority
 
 @process_ops_done:
-	pla
-	jsr @pushop
+	pla			; restore operator of operator
+	jsr @pushop		; push it to operator stack
 	jsr inc_line
 	inc @may_be_unary
 	bne @l0			; branch always
@@ -1056,6 +1072,10 @@ operands: .res $100
 
 @cont:	lda (zp::line),y
 	jsr isseparator
+	beq @err	; end found before any digits -> not a VALUE
+
+@l0:	lda (zp::line),y
+	jsr isseparator
 	beq @done
 
 	cpx #$00
@@ -1077,7 +1097,7 @@ operands: .res $100
 	bcs @err
 
 @ok:	iny
-	bne @cont
+	bne @l0
 
 @done:	RETURN_OK
 @err:	sec
@@ -1306,6 +1326,7 @@ operands: .res $100
 	ldx @xsave
 	plp
 	rts
+
 @ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', '<', '>'
 @numops = *-@ops
 .endproc

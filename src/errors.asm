@@ -89,6 +89,10 @@ err_unexpected_char:
 	;.byte "unexpected char", 0
 	.byte $ab,$85,$c4,$5,$1d,$5,$26,$c3,$40,$52,$0
 
+err_value_expected:
+	;.byte "expected value", 0
+	.byte $2e,$10,$28,$d4,$29,$1b,$b0,$4c,$a9,$40
+
 err_io:
 	;.byte "io error"
 	.byte $4b,$db,$2c,$92,$7c,$80
@@ -254,6 +258,7 @@ err_no_matching_scope:
 	err_illegal_label, \
 	err_label_too_long, \
 	err_unexpected_char, \
+	err_value_expected, \
 	err_io, \
 	err_no_macro_name, \
 	err_unresolvable_label, \
