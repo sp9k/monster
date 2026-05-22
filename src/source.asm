@@ -683,6 +683,10 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ;*******************************************************************************
 ; BACKSPACE
 ; Deletes the character immediately before the current cursor position.
+;
+; NOTE: srcx is updated but will NOT be correct if a newline has been deleted.
+; The caller must resynchronize the cursor in this case (see sync_x).
+;
 ; OUT:
 ;  - .A: the character that was deleted
 ;  - .C: set if the backspace failed (we're at the START of the source)

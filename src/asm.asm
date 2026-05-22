@@ -286,6 +286,7 @@ directives:
 	.byte "incbin",0
 	.byte "import",0
 	.byte "export",0
+	.byte "res",0
 	.byte "seg",0
 	.byte "segzp",0
 	.byte "align",0
@@ -296,7 +297,7 @@ directives_len=*-directives
 .define directive_vectors definebyte, defineconst, defineword, includefile, \
 defineorg, define_psuedo_org, repeat, macro, do_if, do_else, do_endif, \
 do_ifdef, create_macro, handle_repeat, incbinfile, import, export, \
-directive_seg, directive_segzp, directive_align
+directive_res, directive_seg, directive_segzp, directive_align
 .linecont -
 
 directive_vectorslo: .lobytes directive_vectors
@@ -1804,6 +1805,30 @@ __asm_tokenize_pass1 = __asm_tokenize
 .endproc
 
 ;*******************************************************************************
+; DIRECTIVE RES
+; Fills the next n bytes with the 0 values
+.proc directive_res
+@cnt=r0
+	jsr line::process_ws
+	jsr expr::eval
+	stxy @cnt
+	bcc @fill
+	lda #ERR_SYNTAX_ERROR
+@err:	rts
+
+@fill:	lda #$00
+	tay
+	jsr writeb
+	bcs @err
+	jsr incpc
+	decw @cnt
+	iszero @cnt
+	bne @fill
+
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
 ; IMPORTZP
 ; Imports the label following this directive as a zeropage label reference
 ; e.g. `IMPORT LABEL`
@@ -3073,6 +3098,8 @@ __asm_include:
 	bcc update_top
 	inc zp::virtualpc+1
 	bcs update_top		; branch always
+
+	; fall through to incpc
 .endproc
 
 ;*******************************************************************************

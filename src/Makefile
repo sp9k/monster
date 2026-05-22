@@ -80,8 +80,12 @@ TEST_TXTS=$(wildcard tests/*.txt)
 UNIT=$(wildcard *.a65)
 #TEST_INCS=$(wildcard tests/*.inc)
 #TESTS=$(wildcard tests/*.s)
-TESTS=$(wildcard tests/wg/*.s)
-TEST_INCS=$(wildcard tests/wg/*.inc)
+
+#TESTS=$(wildcard tests/wg/*.s)
+#TEST_INCS=$(wildcard tests/wg/*.inc)
+
+TESTS=$(wildcard tests/SLOELECTRIC/*.a65)
+TEST_INCS=$(wildcard tests/SLOELECTRIC/*.inc)
 
 TEST_FILES=$(TESTS) $(TEST_INCS) $(TEST_TXTS) tests/link tests/hello.o tests/export.o tests/hello.d
 
