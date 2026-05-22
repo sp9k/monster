@@ -114,7 +114,7 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 ; IN:
 ;   - .A: the line to draw the item at
 .proc print_item
-@row=tmp+1
+@row=r0
 	sta @row
 
 	ldxy #sym_line_no_file
