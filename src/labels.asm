@@ -1706,9 +1706,11 @@ labelvars_size=*-labelvars
 	stxy @setptrs_fn
 	ldxy #addr_comparator
 	jsr @index
+	rts
 
 ;-------------------------------------------------------------------------------
 ; index by name
+; TODO:
 @index_by_name:
 	ldxy #label_names_sorted
 	stxy @arr

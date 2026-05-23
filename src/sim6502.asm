@@ -217,6 +217,7 @@ msave: .byte 0
 	jsr ultim::reset_blk5
 .endif
 	; unable to complete STEP (e.g. JAM or BRK), return with .C set
+	sec
 	rts
 
 @ok:	; check if opcode uses indexed/indrect addressing
@@ -348,6 +349,7 @@ msave: .byte 0
 	lda __sim_affected
 	and #OP_STORE
 	beq @chkjam
+	ldxy @operand
 	jsr is_write_safe
 	bcc @chkjam
 	ldxy __sim_pc		; return original PC (processor jammed)
@@ -913,7 +915,7 @@ msave: .byte 0
 
 @err:	; an important memory location will be clobbered
 	inc __sim_vital_addr_clobbered
-	;sec
+	sec
 	rts
 
 .ifndef ultimem
