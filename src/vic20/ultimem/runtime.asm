@@ -16,6 +16,7 @@
 .include "../../macros.inc"
 .include "../../monitor.inc"
 .include "../../ram.inc"
+.include "../../screen.inc"
 .include "../../sim6502.inc"
 .include "../../text.inc"
 .include "../../vmem.inc"
@@ -255,10 +256,10 @@ ret:     .word 0
 ; Runs the user program until the next breakpoint or an NMI occurs
 .export __run_go
 .proc __run_go
+	jsr scr::blank
+
 	; install the NMI, STEP, and TRAMPOLINE handlers
 	jsr __run_init
-
-	jsr irq::off
 
 	; disable NMIs
 	lda #$7f
@@ -288,15 +289,6 @@ ret:     .word 0
 
 	jsr dbg::swap_in
 
-	sei
-	lda #<$eb15
-	sta $0314
-	lda #>$eb15
-	sta $0314+1
-
-	lda prefs::normal_color
-	sta $900f
-
 	lda #$7f
 	sta $911e
 	sta $911d	; ack all interrupts
@@ -310,6 +302,7 @@ ret:     .word 0
 	jmp dbg::restore_user_zp
 
 @restore_done:
+	sei
 	; reinstall NMI
 	lda #<nmi_handler
 	sta $0318
@@ -319,6 +312,10 @@ ret:     .word 0
 	sta $0316
 	lda #>(brk_handler)
 	sta $0316+1
+	lda #<$eb15
+	sta $0314
+	lda #>$eb15
+	sta $0314+1
 .endproc
 
 	ldx sim::reg_sp

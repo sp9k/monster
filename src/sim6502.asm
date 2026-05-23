@@ -349,7 +349,7 @@ msave: .byte 0
 	lda __sim_affected
 	and #OP_STORE
 	beq @chkjam
-	ldxy @operand
+	ldxy __sim_effective_addr
 	jsr is_write_safe
 	bcc @chkjam
 	ldxy __sim_pc		; return original PC (processor jammed)
