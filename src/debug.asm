@@ -994,7 +994,7 @@ blank   = scr::blank
 .proc jam_detected
 	ldx #<strings::jam_detected
 	ldy #>strings::jam_detected
-	bne print_msg
+	bne print_msg			; branch always
 .endproc
 
 ;*******************************************************************************
