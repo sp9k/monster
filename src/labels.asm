@@ -140,6 +140,7 @@ SEG_ABS = $ff
 .export __label_addrmode
 .export __label_get_segment
 .export __label_set_addr
+.export __label_id_by_alpha_index
 
 ;*******************************************************************************
 ; Label JUMP table
@@ -149,30 +150,31 @@ SEG_ABS = $ff
 
 .RODATA
 
-__label_clr:              LBLJUMP clr
-__label_add:              LBLJUMP add
-__label_find:             LBLJUMP find
-__label_by_addr:          LBLJUMP by_addr
-__label_by_id:            LBLJUMP by_id
-__label_isvalid:          LBLJUMP is_valid
-__label_get_name:         LBLJUMP get_name
-__label_get_addr:         LBLJUMP getaddr
-__label_is_local:         LBLJUMP is_local
-__label_set:              LBLJUMP set
-__label_address:          LBLJUMP address
-__label_address_by_id:    LBLJUMP address_by_id
-__label_setscope:         LBLJUMP set_scope
-__label_popscope:         LBLJUMP pop_scope
-__label_addanon:          LBLJUMP add_anon
-__label_get_fanon:        LBLJUMP get_fanon
-__label_get_banon:        LBLJUMP get_banon
-__label_index:            LBLJUMP index
-__label_id_by_addr_index: LBLJUMP id_by_addr_index
-__label_addrmode:         LBLJUMP addrmode
-__label_get_segment:      LBLJUMP get_segment
-__label_set_addr:         LBLJUMP setaddr
-__label_dump:             LBLJUMP dump
-__label_load:             LBLJUMP load
+__label_clr:               LBLJUMP clr
+__label_add:               LBLJUMP add
+__label_find:              LBLJUMP find
+__label_by_addr:           LBLJUMP by_addr
+__label_by_id:             LBLJUMP by_id
+__label_isvalid:           LBLJUMP is_valid
+__label_get_name:          LBLJUMP get_name
+__label_get_addr:          LBLJUMP getaddr
+__label_is_local:          LBLJUMP is_local
+__label_set:               LBLJUMP set
+__label_address:           LBLJUMP address
+__label_address_by_id:     LBLJUMP address_by_id
+__label_setscope:          LBLJUMP set_scope
+__label_popscope:          LBLJUMP pop_scope
+__label_addanon:           LBLJUMP add_anon
+__label_get_fanon:         LBLJUMP get_fanon
+__label_get_banon:         LBLJUMP get_banon
+__label_index:             LBLJUMP index
+__label_id_by_addr_index:  LBLJUMP id_by_addr_index
+__label_addrmode:          LBLJUMP addrmode
+__label_get_segment:       LBLJUMP get_segment
+__label_set_addr:          LBLJUMP setaddr
+__label_dump:              LBLJUMP dump
+__label_load:              LBLJUMP load
+__label_id_by_alpha_index: LBLJUMP id_by_alpha_index
 
 ;*******************************************************************************
 ; LABEL NAMES
@@ -251,6 +253,7 @@ label_addresses_sorted_ids: .res MAX_LABELS*2
 
 .export label_names_sorted
 label_names_sorted:     .res MAX_LABELS*2
+.export label_names_sorted_ids
 label_names_sorted_ids: .res MAX_LABELS*2
 
 ;*******************************************************************************
@@ -507,7 +510,7 @@ labelvars_size=*-labelvars
 ;   - zp::label_segmentid: new value for label's SEGMENT ID
 ;   - zp::label_mode:      new value for label's MODE
 .proc set_addr
-@index = temp
+@addr_index = temp
 	; overwrite the current MODE and SEGMENT
 	; FLAGS = (SEG << 1) | MODE
 	ldy #LABEL_FLAGS
@@ -527,48 +530,48 @@ labelvars_size=*-labelvars
 	; get location of label address in the sorted index
 	lda id
 	asl
-	sta @index
+	sta @addr_index
 	lda id+1
 	rol
-	sta @index+1
-	lda @index
+	sta @addr_index+1
+	lda @addr_index
 	;clc
 	adc #<label_addresses_sorted
-	sta @index
-	lda @index+1
+	sta @addr_index
+	lda @addr_index+1
 	adc #>label_addresses_sorted
-	sta @index+1
+	sta @addr_index+1
 
 	; overwrite the index's value for the label
 	ldy #$00
 	lda zp::label_value
-	STOREB_Y @index
+	STOREB_Y @addr_index
 	iny
 	lda zp::label_value+1
-	STOREB_Y @index
+	STOREB_Y @addr_index
 
 	; get location of label id in sorted index
 	lda id
 	asl
-	sta @index
+	sta @addr_index
 	lda id+1
 	rol
-	sta @index+1
-	lda @index
+	sta @addr_index+1
+	lda @addr_index
 	;clc
 	adc #<label_addresses_sorted_ids
-	sta @index
-	lda @index+1
+	sta @addr_index
+	lda @addr_index+1
 	adc #>label_addresses_sorted_ids
-	sta @index+1
+	sta @addr_index+1
 
 	; write ID to label_addresses_sorted_ids
 	lda id
 	ldy #$00
-	STOREB_Y @index
+	STOREB_Y @addr_index
 	lda id+1
 	iny
-	STOREB_Y @index
+	STOREB_Y @addr_index
 
 	RETURN_OK
 .endproc
@@ -1077,19 +1080,28 @@ labelvars_size=*-labelvars
 
 ;*******************************************************************************
 ; SET NAME
-; Writes the NAME for the label
+; Writes the NAME for the label and updates the pointer to it in the index
+; array.
 ; IN:
 ;   - .XY: id of the label to (over)write the NAME of
 ;   - r0:  address to the string to write
 .proc set_name
-@name=r0
-@addr=r2
+@name       = r0
+@addr       = r2
+@id2        = r4
+@name_index = temp+2
 	; get address of the label (id * MAX_LABEL_NAME_LEN)
 	sty @addr+1
 
 	txa
 	asl		; *2
+	sta @id2
+
+	; set id2 to intermediate calc result (id*2)
 	rol @addr+1
+	ldx @addr+1
+	stx @id2+1
+
 	asl		; *4
 	rol @addr+1
 	asl		; *8
@@ -1104,14 +1116,50 @@ labelvars_size=*-labelvars
 	adc #>labelnames
 	sta @addr+1
 
+;------------------------------------------------------------------------------
+	; get address to write the ID for this label in the NAMES index
+	lda @id2
+	;clc
+	adc #<label_names_sorted_ids
+	sta @name_index
+	lda @id2+1
+	adc #>label_names_sorted_ids
+	sta @name_index+1
+
+	; write ID to label_addresses_sorted_ids
+	lda id
+	ldy #$00
+	STOREB_Y @name_index
+	lda id+1
+	iny
+	STOREB_Y @name_index
+
+	; get address to write NAME pointer to in the parallel index array
+	lda @id2
+	;clc
+	adc #<label_names_sorted
+	sta @name_index
+	lda @id2+1
+	adc #>label_names_sorted
+	sta @name_index+1
+
+;------------------------------------------------------------------------------
+
 	; set the NAME pointer to the address we're storing the NAME to
+	; also duplicate NAME pointer in the name index for future sorting
 	ldy #LABEL_NAME
 	lda @addr
-	STOREB_Y label	; write pointer LSB
-	iny
-	lda @addr+1
-	STOREB_Y label	; write pointer MSB
+	STOREB_Y label		; write NAME pointer LSB
+	ldy #$00
+	STOREB_Y @name_index	; and also to the index
 
+	ldy #LABEL_NAME+1
+	lda @addr+1
+	STOREB_Y label		; write NAME pointer MSB
+	ldy #$01
+	STOREB_Y @name_index	; and also to the index
+
+;------------------------------------------------------------------------------
 	; switch to SYMBOL NAMES bank
 	SELECT_BANK "SYMBOL_NAMES"
 
@@ -1120,12 +1168,12 @@ labelvars_size=*-labelvars
 @l0:	lda (@name),y
 	jsr is_definition_separator
 	bne :+
-	lda #$00
+	lda #$00		; terminate the name string
 :	STOREB_Y @addr
 	cmp #$00
-	beq @done
+	beq @done		; repeat until string is terminated
 	iny
-	cpy #MAX_LABEL_NAME_LEN
+	cpy #MAX_LABEL_NAME_LEN	; or until string is max length
 	bcc @l0
 
 @done:	; switch back to main SYMBOLS bank
@@ -1177,6 +1225,37 @@ labelvars_size=*-labelvars
 .endproc
 
 ;*******************************************************************************
+; ID BY ALPHA INDEX
+; Looks up the ID of the label indexed alphanumerically at the provided index.
+; the correct ID. If you've added a label since the last index, it is necessary
+; IN:
+;  - .XY: address of label name to get the name of (in LABEL_NAMES bank)
+; OUT:
+;  - .XY: the ID of the label at the given alphanumeric index
+.proc id_by_alpha_index
+@arr = r0
+@i   = r2
+	sty @i
+	txa
+	asl
+	rol @i
+	;clc
+	adc #<label_names_sorted_ids
+	sta @arr
+	lda @i
+	adc #>label_names_sorted_ids
+	sta @arr+1
+
+	ldy #$00
+	LOADB_Y @arr
+	tax
+	iny
+	LOADB_Y @arr
+	tay
+	rts
+.endproc
+
+;*******************************************************************************
 ; BY ADDR
 ; Returns the label for a given address by performing a binary search on the
 ; cache of sorted label addresses
@@ -1190,121 +1269,19 @@ labelvars_size=*-labelvars
 ;         the one provided.
 ;  - .C: set if no EXACT match for the label is found
 .proc by_addr
-@addr = ra
-@lb   = rc
-@ub   = re
-@m    = zp::tmp10
-@top  = zp::tmp12
-	stxy @addr
-
-	lda __label_num
-	asl
-	sta @ub
-	lda __label_num+1
-	rol
-	sta @ub+1
-
-	; @lb = label_addresses_sorted
-	; @ub = label_addresses_sorted + (__label_num*2)
+@arr        = r0
+@comparator = r2
 	lda #<label_addresses_sorted
-	sta @lb
-	adc @ub
-	sta @ub
-	sta @top
+	sta @arr
 	lda #>label_addresses_sorted
-	sta @lb+1
-	adc @ub+1
-	sta @ub+1
-	sta @top+1
+	sta @arr+1
 
-@loop:	lda @ub
-	sec
-	sbc @lb
-	tax
-	lda @ub+1
-	sbc @lb+1
-	bcc @done	; if low > high, not found
-	lsr		; calculate (high-low) / 2
-	tay
-	txa
-	ror		; carry cleared because multiple of 2
-	and #$02	; align to element size
-	adc @lb		; mid = low + ((high - low) / 2)
-	sta @m
-	tya
-	adc @lb+1
-	sta @m+1
-	ldy #$01		; load index to MSB
-	LOADB_Y @m
-	cmp @addr+1
-	beq @chklsb
-	bcs @modhigh		; A[mid] > value
+	lda #<name_comparator
+	sta @comparator
+	lda #>name_comparator
+	sta @comparator+1
 
-@modlow:
-	; A[mid] < value
-	lda @m		; low = mid + element size
-	adc #2-1	; carry always set
-	sta @lb
-	lda @m+1
-	adc #$00
-	sta @lb+1
-	jmp @loop
-
-@chklsb:
-	dey		; set index to LSB (0)
-	LOADB_Y @m	; compare LSB
-	cmp @addr	; load target value LSB
-	beq @done
-	bcc @modlow	; A[mid] < value
-
-@modhigh:		; A[mid] > value
-	lda @m		; high = mid - element size
-	;clc
-	sbc #2-1	; carry always clear
-	sta @ub
-	lda @m+1
-	sbc #$00
-	sta @ub+1
-	jmp @loop
-
-@done:	bcc @err
-
-@ok:	; look up the ID for the address
-	lda @m
-	clc
-	adc #<(label_addresses_sorted_ids - label_addresses_sorted)
-	sta @m
-
-	lda @m+1
-	adc #>(label_addresses_sorted_ids - label_addresses_sorted)
-	sta @m+1
-
-	ldy #$00
-	LOADB_Y @m
-	tax
-	iny
-	LOADB_Y @m
-	tay
-	RETURN_OK
-
-@err:	ldxy @ub	; get the lower bound of where our search ended
-	stxy @m		; and set our result variable to it (ub < lb here)
-	jsr @ok		; get the closest label
-	cmpw __label_num	; was the result a valid label?
-	bcc :+		; if so, continue to return
-
-	; if label wasn't valid, get the highest label by address
-	lda @top
-	;sec
-	sbc #$02
-	sta @m
-	lda @top+1
-	sbc #$00
-	sta @m+1
-	jsr @ok
-
-:	sec
-	rts
+	jmp find_sorted
 .endproc
 
 ;******************************************************************************
@@ -1559,16 +1536,147 @@ labelvars_size=*-labelvars
 .endproc
 
 ;*******************************************************************************
+; FIND SORTED
+; Finds the value in the provided sorted array using the given comparator
+; IN:
+;   - .XY: value to find
+;   - r0:  array to seek within
+;   - r2:  comparator to use for binary search
+.proc find_sorted
+@arr        = r0
+@comparator = r2
+@a          = r4
+@b          = r6
+@lb         = rc
+@ub         = re
+@m          = zp::tmp10
+@top        = zp::tmp12
+	stxy @b
+
+	lda __label_num
+	asl
+	sta @ub
+	lda __label_num+1
+	rol
+	sta @ub+1
+
+	; @lb = @arr
+	; @ub = @arr + (__label_num*2)
+	lda @arr
+	sta @lb
+	adc @ub
+	sta @ub
+	sta @top
+	lda @arr+1
+	sta @lb+1
+	adc @ub+1
+	sta @ub+1
+	sta @top+1
+
+;-------------------------------------------------------------------------------
+@loop:	lda @ub
+	sec
+	sbc @lb
+	tax
+	lda @ub+1
+	sbc @lb+1
+	bcc @done	; if low > high, not found
+	lsr		; calculate (high-low) / 2
+	tay
+	txa
+	ror		; carry cleared because multiple of 2
+	and #$02	; align to element size
+	adc @lb		; mid = low + ((high - low) / 2)
+	sta @m
+	tya
+	adc @lb+1
+	sta @m+1
+	ldy #$00
+
+	; load A[mid] and compare our target against it
+	LOADB_Y @m
+	sta @a
+	iny
+	LOADB_Y @m
+	sta @a+1
+	jsr @compare_func
+	beq @done
+	bcs @modhigh	; A[mid] > value
+
+@modlow:
+	; A[mid] < value
+	lda @m		; low = mid + element size
+	;clc
+	adc #$02
+	sta @lb
+	lda @m+1
+	adc #$00
+	sta @lb+1
+	jmp @loop
+
+@modhigh:		; A[mid] > value
+	lda @m		; high = mid - element size
+	;clc
+	sbc #2-1	; carry always clear
+	sta @ub
+	lda @m+1
+	sbc #$00
+	sta @ub+1
+	jmp @loop
+
+@done:	bne @err	; if not exact match, jump to error handling
+
+;-------------------------------------------------------------------------------
+@ok:	; look up the ID for the address
+	lda @m
+	clc
+	adc #<(label_addresses_sorted_ids - label_addresses_sorted)
+	sta @m
+
+	lda @m+1
+	adc #>(label_addresses_sorted_ids - label_addresses_sorted)
+	sta @m+1
+
+	ldy #$00
+	LOADB_Y @m
+	tax
+	iny
+	LOADB_Y @m
+	tay
+	RETURN_OK
+
+@err:	ldxy @ub	; get the lower bound of where our search ended
+	stxy @m		; and set our result variable to it (ub < lb here)
+	jsr @ok		; get the closest label
+	cmpw __label_num	; was the result a valid label?
+	bcc :+		; if so, continue to return
+
+	; if label wasn't valid, get the highest label by address
+	lda @top
+	;sec
+	sbc #$02
+	sta @m
+	lda @top+1
+	sbc #$00
+	sta @m+1
+	jsr @ok
+
+:	sec
+	rts
+
+;-------------------------------------------------------------------------------
+@compare_func:
+	jmp (@comparator)
+.endproc
+
+;*******************************************************************************
 ; INDEX
-; Updates the by-address sorting of the labels. This allows labels to be looked
-; up by their address (see lbl::by_addr).
+; Updates the by-address and by-name sorting of the labels. This allows labels
+; to be looked up by their address (see lbl::by_addr), or their
+; name (see lbl::by_name)
 ;
 ; Code adapted from code by Vladimir Lidovski aka litwr (with help of BigEd)
 ; via codebase64.org
-; IN:
-;   - r0:  array to sort
-;   - r2:  arallel array to sort, e.g. label_addresses_sorted_ids
-;   - .XY: comparator procedure to sort by
 .proc index
 @i          = r0
 @j          = r2
@@ -1589,21 +1697,29 @@ labelvars_size=*-labelvars
 	bne @index_by_addr
 	rts			; nothing to index
 
+;-------------------------------------------------------------------------------
+; index by address
 @index_by_addr:
 	ldxy #label_addresses_sorted
 	stxy @arr
 	ldxy #setptrs_addr
 	stxy @setptrs_fn
 	ldxy #addr_comparator
-	jmp @index
+	jsr @index
 
+;-------------------------------------------------------------------------------
+; index by name
 @index_by_name:
-	;ldxy #label_names_sorted
-	;stxy @arr
-	;ldxy #setptrs_name
-	;stxy @setptrs_fn
-	;ldxy #name_comparator
+	ldxy #label_names_sorted
+	stxy @arr
+	ldxy #setptrs_name
+	stxy @setptrs_fn
+	ldxy #name_comparator
 
+	; fall through to @index
+
+;-------------------------------------------------------------------------------
+; MAIN INDEX SUBPROC
 @index:	stxy @comparator
 
 	; @num = 2*(__label_num-1)
@@ -1637,7 +1753,6 @@ labelvars_size=*-labelvars
 	sta @lb+1
 	adc @num+1
 	sta @ub+1
-
 
 	tsx
 	stx @sp
@@ -1823,12 +1938,33 @@ labelvars_size=*-labelvars
 ;   - @a: address of first string to compare (LHS of comparison)
 ;   - @b: address of second string to compare (RHS of comparison)
 ; OUT:
-;   - .Z: set if the @a is alphanumerically BEFORE @b
+;   - .C: set if the name @a is alphanumerically AFTER @b
+;   - .Z: set if the @a and @b names are equal
 .proc name_comparator
-@a = r4
-@b = r6
-	; TODO:
+@str_a = r4
+@str_b = r6
+@b     = r8
+	SELECT_BANK "SYMBOL_NAMES"
 
+	; compare the two name strings
+	ldy #$00
+@l0:	LOADB_Y @str_b
+	sta @b
+	beq @end
+	LOADB_Y @str_a
+	beq @end
+	cmp @b
+	bne @done		; if strings mismatch at this byte, we're done
+
+@next:	iny			; move to next byte
+	bne @l0			; branch always
+
+@end:	LOADB_Y @str_a
+	ora @b			; exact match (strlen(a) = strlen(b))?
+
+@done:	php			; save .C and .Z
+	SELECT_BANK "SYMBOLS"
+	plp			; restore .C and .Z
 	rts
 .endproc
 

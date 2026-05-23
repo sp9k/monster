@@ -46,10 +46,10 @@ name     = $100
 ; these strings are modified depending on the address mode
 ; ESCAPE_BYTE replaces the ESCAPE_VALUE for zeropage symbols
 sym_line:
-.byte ESCAPE_VALUE_DEC, ESCAPE_GOTO, 5, "$", ESCAPE_VALUE, " ", ESCAPE_STRING, " ", ESCAPE_GOTO, 22, ESCAPE_STRING
+.byte ESCAPE_VALUE_DEC, ESCAPE_GOTO, 5, "$", ESCAPE_VALUE, ESCAPE_GOTO, $b, ESCAPE_STRING, " ", ESCAPE_GOTO, 22, ESCAPE_STRING
 .byte " ", "l:", ESCAPE_VALUE_DEC, 0
 sym_line_no_file:
-.byte ESCAPE_VALUE_DEC, ESCAPE_GOTO, 5, "$", ESCAPE_VALUE, " ", ESCAPE_STRING, 0
+.byte ESCAPE_VALUE_DEC, ESCAPE_GOTO, 5, "$", ESCAPE_VALUE, ESCAPE_GOTO, $b, ESCAPE_STRING, 0
 
 ;*******************************************************************************
 .RODATA
@@ -78,9 +78,13 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 
 @sortaddr:
 	jsr lbl::idbyaddrindex	; lookup via sorted addresses
+	jmp @getinfo
 
 @sortalpha:
-	stxy lbl		; store the ID for the label
+	jsr lbl::id_by_alpha_index
+
+@getinfo:
+	stxy lbl			; store the ID for the label
 
 	; destination buffer for getname
 	lda #<$100
