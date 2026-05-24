@@ -5,6 +5,7 @@
 ; program state as well as debugging.
 ;*******************************************************************************
 
+.include "asm.inc"
 .include "config.inc"
 .include "cursor.inc"
 .include "debug.inc"
@@ -291,6 +292,7 @@ screen: .res LINESIZE*HEIGHT
 @line=r2
 @linebuff=mem::spare
 	CALLMAIN scr::clr
+	CALLMAIN asm::reset
 
 	lda line
 	beq @cont

@@ -41,7 +41,7 @@ prog9110: .res $20		; $9110-$9130
 .ifdef ultimem
 .res $9400-$9130		; padding between VIAs and color RAM
 .endif
-prog9400: .res $f0		; $9400-$94f0
+prog9400: .res $100		; $9400-$9500
 
 ;******************************************************************************
 ; DBG
@@ -52,7 +52,7 @@ prog9400: .res $f0		; $9400-$94f0
 .endif
 dbg1000: .res $1000	; $1000-$2000
 dbg9000: .res $10	; $9000-$9010
-dbg9400: .res $f0	; $9400-$94f0
+dbg9400: .res $100	; $9400-$9500
 
 .CODE
 
@@ -119,16 +119,15 @@ restore_debug_visual:
 	sta $911e
 	sta $912e
 
-	ldx #$10
-:	lda @vicsave-1,x
-	sta $9000-1,x
-	dex
+	ldy #$10
+:	lda @vicsave-1,y
+	sta $9000-1,y
+	dey
 	bne :-
 
-	ldy #$f0
-; save $9400-$94f0
-:	lda @colorsave-1,y
-	sta $9400-1,y
+; save $9400-$9500
+:	lda @colorsave,y
+	sta $9400,y
 	dey
 	bne :-
 
@@ -168,20 +167,21 @@ save_debug_visual:
 @colorsave=dbg9400
 @src=r0
 @dst=r2
-	ldx #$10
+	ldy #$10
 @savevic:
-	lda $9000-1,x
-	sta @vicsave-1,x
-	dex
+	lda $9000-1,y
+	sta @vicsave-1,y
+	dey
 	bne @savevic
 
-	ldx #$f0
-; save $9400-$94f0
+; save $9400-$9500
 @savecolor:
-	lda $9400-1,x
-	sta @colorsave-1,x
-	dex
+	lda $9400,y
+	sta @colorsave,y
+	dey
 	bne @savecolor
+
+	sty @src
 
 ; save $1000-$2000
 @savescreen:
@@ -192,8 +192,6 @@ save_debug_visual:
 	lda #$10
 	sta @src+1		; start from $1000
 
-	ldy #$00
-	sty @src
 :	lda (@src),y
 	sta (@dst),y
 	dey
@@ -257,11 +255,10 @@ save_debug_visual:
 	cmp #$20		; at $2000 yet?
 	bne :-			; loop until we are
 
-	ldx #$f0
-; restore $9400-$94f0
-:	lda prog9400-1,x
-	sta $9400-1,x
-	dex
+; restore $9400-$9500
+:	lda prog9400,y
+	sta $9400,y
+	dey
 	bne :-
 	rts
 .endproc
@@ -298,12 +295,11 @@ save_debug_visual:
 	cmp #$20		; at $2000 yet?
 	bne :-			; loop until we are
 
-	ldx #$f0
-; save $9400-$94f0
+; save $9400-$9500
 @savecolor:
-	lda $9400-1,x
-	sta @colorsave-1,x
-	dex
+	lda $9400,y
+	sta @colorsave,y
+	dey
 	bne @savecolor
 
 	; fall through to save_vic_state

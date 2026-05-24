@@ -3594,6 +3594,8 @@ goto_buffer:
 @scrolld:
 	iny
 	tya
+	cpy height
+	bcs @setcur
 	ldx height
 	jsr scrolldown
 

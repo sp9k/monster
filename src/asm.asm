@@ -1544,7 +1544,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bcc @ok
 	RETURN_ERR ERR_INVALID_DIRECTIVE
 
-@ok:	inc @cnt	; move to next directive
+@ok:	inc @cnt		; move to next directive
 
 @l2:	lda directives,x
 	inx
@@ -1650,7 +1650,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 @done:  jsr ctx::pop		; pop the context
 
 	; did we close all contexts?
-	lda __ctx_active
+	lda ctx::active
 	bne :+
 	jsr lbl::popscope	; all contexts popped, pop the scope
 	clc

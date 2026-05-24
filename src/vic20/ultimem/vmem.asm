@@ -167,7 +167,7 @@ BASE=$2000
 
 	cpy #>$9800
 	bcs :+
-@9000:	add16 #prog9000-$9000	; $9000-$9800 -> I/O
+@9000:	add16 #prog9000-$9800	; $9000-$9800 -> I/O
 	lda #VMEM_IO_BANK
 	rts
 
@@ -246,7 +246,7 @@ BASE=$2000
 	bcc @internal
 	cpy #$80
 	bcc @external
-	cmpw #$94f0
+	cmpw #$9500
 	bcc @internal
 @external:
 	lda #$ff

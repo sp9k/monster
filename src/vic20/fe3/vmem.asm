@@ -104,7 +104,7 @@
 	bcc @internal
 	cmpw #$8000
 	bcc @external
-	cmpw #$94f0
+	cmpw #$9500
 	bcc @internal
 @external:
 	lda #$ff
@@ -154,12 +154,10 @@
 	lda #FINAL_BANK_FASTCOPY
 	rts
 
-:	cpy #>$9400
+:	cpy #>$9500
 	bne @done
 
-@9400:	; $9400-$94f0 is stored in the prog9400 buffer
-	cpx #$f0
-	bcs @done			; if addr > $94ef, not virtual
+@9400:	; $9400-$9500 is stored in the prog9400 buffer
 	add16 #(prog9400-$9400)
 	lda #FINAL_BANK_FASTCOPY
 	rts

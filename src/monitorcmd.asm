@@ -6,6 +6,7 @@
 
 .include "asm.inc"
 .include "breakpoints.inc"
+.include "ctx.inc"
 .include "monitor.inc"
 .include "cursor.inc"
 .include "debug.inc"
@@ -896,19 +897,27 @@ __mon_default_start_set: .byte 0
 	sta zp::verify
 	sta zp::gendebuginfo
 
+	; do first pass of assembly on the entered line
 	lda #$01
 	sta zp::pass
 	lda #FINAL_BANK_MAIN
 	ldxy zp::line
 	stxy @line
 @pass1:	CALLMAIN asm::tokenize	; assemble the instruction
-	bcs :+
-@pass2:	ldxy @addr
+	bcs @asmdone		; if error occurred, skip pass 2
+
+@pass2:	; do first pass of assembly on the entered line
+	lda ctx::open
+	bne :+
+	ldxy @addr
 	CALLMAIN asm::setpc
-	inc zp::pass
+
+:	inc zp::pass
 	ldxy @line
 	CALLMAIN asm::tokenize	; assemble the instruction (again)
-:	sta @err
+
+@asmdone:
+	sta @err
 	pla
 	sta zp::gendebuginfo
 	pla

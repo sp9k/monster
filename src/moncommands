@@ -1,1 +1,2 @@
-watch store $00 if @cpu:$00 == $52
+watch load store $7101
+;watch store $00 if @cpu:$00 == $52
