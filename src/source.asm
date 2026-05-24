@@ -234,7 +234,11 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	ldx @free
 	beq @found
 	clc
+.ifdef ultimem
+	adc #$03		; each bank is 3 "blocks" on Ultimem
+.else
 	adc #$01
+.endif
 	cmp #FINAL_BANK_SOURCE0+MAX_SOURCES
 	bcc @l0
 	sec		; no open banks
