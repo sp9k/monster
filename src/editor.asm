@@ -490,7 +490,7 @@ main:	jsr key::getch
 	jmp report_typein_error
 
 :	jsr close_windows	; close errlog (if open)
-	;jsr init_log		; create a (new) log file
+	jsr init_log		; create a (new) log file
 
 	lda #$01
 	sta zp::gendebuginfo	; enable debug info
@@ -511,7 +511,7 @@ main:	jsr key::getch
 
 	; log file we are assembling
 	jsr src::current_filename
-	;jsr log::out
+	jsr log::out
 
 ;--------------------------------------
 ; Pass 1
@@ -553,7 +553,7 @@ main:	jsr key::getch
 
 	; log file we are assembling (again)
 	jsr src::current_filename
-	;jsr log::out
+	jsr log::out
 
 	; set the initial file for debugging
 	; sections are closed by the .SEG directive
@@ -623,7 +623,7 @@ main:	jsr key::getch
 @err:	lda height
 	jsr errlog::activate
 
-	;jsr log::close
+	jsr log::close
 	sec			; assembly failed
 	rts
 
@@ -674,7 +674,7 @@ main:	jsr key::getch
 	jsr draw::hiline
 	jsr lbl::index		; index labels for debugging, etc.
 
-	;jsr log::close
+	jsr log::close
 	RETURN_OK
 .PUSHSEG
 .RODATA
@@ -2266,6 +2266,19 @@ cancel = enter_command
 .endproc
 
 ;*******************************************************************************
+; SHOW LOG
+; Sets the current buffer to the special LOG buffer
+.proc show_log
+	lda log::written
+	bne :+
+	rts			; no log
+
+:	lda #LOG_BUFFER
+	jsr src::forceset
+	jmp refresh
+.endproc
+
+;*******************************************************************************
 ; HANDLE_UNIVERSAL_KEYS
 ; Handles keys that behave the same regardless of which mode the editor is in
 ; IN:
@@ -2306,6 +2319,7 @@ cancel = enter_command
 	.byte K_REFRESH		; refresh
 	.byte K_LIST_SYMBOLS	; list symbols
 	.byte K_VIEW_MACROS	; open macro viewer
+	.byte K_VIEW_LOG	; open LOG
 	.byte K_LINK            ; link program
 	.byte K_CLOSE_BUFF	; close buffer
 	.byte K_NEW_BUFF	; new buffer
@@ -2336,7 +2350,7 @@ cancel = enter_command
 .define specialvecs ccleft, ccright, ccup, ccdown, \
 	home, \
 	command_asmdbg, show_buffers, refresh, \
-	symview::enter, view_macros, command_link, \
+	symview::enter, view_macros, show_log, command_link, \
 	close_buffer, new_buffer, set_breakpoint, jumpback, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
 	next_buffer, prev_buffer, udgedit, fmt_and_enter_command, go_basic, \
@@ -2692,6 +2706,7 @@ __edit_set_breakpoint:
 .proc next_buffer
 	ldx src::activebuff
 	inx
+
 	bpl change_buff		; branch always
 .endproc
 
@@ -2702,6 +2717,7 @@ __edit_set_breakpoint:
 .proc prev_buffer
 	ldx src::activebuff
 	dex
+
 	; fall through to change_buff
 .endproc
 

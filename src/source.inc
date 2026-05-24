@@ -17,6 +17,7 @@
 .import __src_downn
 .import __src_end
 .import __src_end_rep
+.import __src_force_set
 .import __src_get
 .import __src_getin
 .import __src_getflags
@@ -34,6 +35,7 @@
 .import __src_name
 .import __src_names
 .import __src_new
+.import __src_new_log
 .import __src_numbuffers
 .import __src_on_last_line
 .import __src_up
@@ -55,7 +57,8 @@
 
 ;******************************************************************************
 ; CONSTANTS
-MAX_SOURCES = 8	; maximum number of source banks/buffers
+MAX_SOURCES = 8			; maximum number of source banks/buffers
+LOG_BUFFER  = MAX_SOURCES 	; special buffer for logging
 
 FLAG_DIRTY = 1	; flag that source buffer has been changed since last save
 
@@ -77,10 +80,12 @@ GAPSIZE = 20	; size of gap in gap buffer
 	down           = __src_down
 	downn          = __src_downn
 	names          = __src_names
+	new_log        = __src_new_log
 	numbuffers     = __src_numbuffers
 	end            = __src_end
 	end_rep        = __src_end_rep
 	filename       = __src_get_filename
+	forceset       = __src_force_set
 	get            = __src_get
 	getin          = __src_getin
 	getflags       = __src_getflags

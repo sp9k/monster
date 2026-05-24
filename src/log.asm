@@ -4,16 +4,18 @@
 ; Log files are stored to disk
 ;******************************************************************************
 
-.include "file.inc"
-.include "kernal.inc"
 .include "macros.inc"
 .include "memory.inc"
+.include "source.inc"
 .include "text.inc"
 .include "zeropage.inc"
 
 ;******************************************************************************
 .BSS
 file_id: .byte 0
+
+.export __log_written
+__log_written: .byte 0
 
 .CODE
 
@@ -26,18 +28,9 @@ file_id: .byte 0
 ;   - .A: error code (on error)
 .export __log_new
 .proc __log_new
-	; delete the existing log file if there is one
-	ldxy #@filename
-	jsr file::scratch
-
-	ldxy #@filename
-	jsr file::open_w
-	sta file_id
-	rts
-.PUSHSEG
-.RODATA
-@filename: .byte "log",0
-.POPSEG
+	lda #$01
+	sta __log_written
+	jmp src::new_log
 .endproc
 
 ;******************************************************************************
@@ -47,22 +40,22 @@ file_id: .byte 0
 ;   - .XY: the string to write
 .export __log_out
 .proc __log_out
-@str=zp::util
-	stxy @str
-	ldx file_id
-	jsr krn::chkout
+@msg=r0
+	stxy @msg
+	lda src::activebuff
+	pha
 
-	ldy #$00
-@l0:	lda (@str),y
-	beq @done
-	jsr krn::ciout
-	iny
-	cpy #40
-	bcc @l0
-
-@done:	; emit a newline
+	; switch to the log buffer temporarily and write the line
+	lda #LOG_BUFFER
+	jsr src::forceset
+	ldxy @msg
+	jsr src::insertline
 	lda #$0d
-	jmp krn::ciout
+	jsr src::insert
+
+	pla
+	jsr src::setbuff	; return to buffer we started on
+	rts
 .endproc
 
 ;******************************************************************************
@@ -70,6 +63,14 @@ file_id: .byte 0
 ; Closes the log file that was created with log::new.
 .export __log_close
 .proc __log_close
-	lda file_id
-	jmp file::close
+	lda src::activebuff
+	pha
+
+	lda #LOG_BUFFER
+	jsr src::forceset
+
+	jsr src::rewind
+
+	pla
+	jmp src::setbuff
 .endproc

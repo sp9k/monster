@@ -38,8 +38,10 @@
 
 ;*******************************************************************************
 ; CONSTANTS
-MAX_SOURCES    = 8	; # of source buffers that can be loaded at once
+MAX_SOURCES    = 8+1	; # of source buffers that can be loaded at once
 POS_STACK_SIZE = 16 	; size of source position stack
+
+LOG_BUFFER	= MAX_SOURCES-1	; reservered buffer for LOG
 
 ;*******************************************************************************
 ; FLAGS
@@ -154,7 +156,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	cpx #SAVESTATE_SIZE
 	bne @l0
 
-	rts
+:	rts			; <- __src_set
 .endproc
 
 ;*******************************************************************************
@@ -167,8 +169,16 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .export __src_set
 .proc __src_set
 	cmp numsrcs
-	bcs @ret	; buffer doesn't exist; return with .C set
+	bcs :-		; buffer doesn't exist; return with .C set
 
+	; fall through to __src_force_set
+.endproc
+
+;*******************************************************************************
+; FORCE SET LOG
+; Entrypoint for src::set that bypasses the "numsrcs" check
+.export __src_force_set
+.proc __src_force_set
 	pha
 
 	jsr __src_save	; save current buffer before switching
@@ -212,6 +222,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .proc find_bank
 @free=r0
 	lda #FINAL_BANK_SOURCE0
+
 @l0:	ldx #$00
 	stx @free
 @l1:	cmp banks,x
@@ -233,6 +244,39 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .endproc
 
 ;*******************************************************************************
+; NEW LOG
+; Initializes the LOG buffer.  This is a reserved buffer for use as a log
+.export __src_new_log
+.proc __src_new_log
+	; save current source buffer state
+	lda activesrc
+	pha
+	jsr __src_save
+
+	; init the LOG buffer
+	lda #LOG_BUFFER
+	sta activesrc
+	jsr init_buff
+
+	; set cursor to (0,0) for the new log buffer
+	lda #$00
+	sta buffs_curx+LOG_BUFFER
+	sta buffs_cury+LOG_BUFFER
+
+	; name the buffer
+	ldxy #@filename
+	jsr __src_name
+
+	; go back to the buffer we were on
+	pla
+	jmp __src_set
+.PUSHSEG
+.RODATA
+@filename: .byte "log",0
+.POPSEG
+.endproc
+
+;*******************************************************************************
 ; NEW
 ; Initializes a new source buffer and sets it as the current buffer
 ; OUT:
@@ -241,16 +285,29 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .export __src_new
 .proc __src_new
 	ldx numsrcs
-	beq @init
+	beq @cont
 	inx
-	cpx #MAX_SOURCES
+	cpx #MAX_SOURCES-1	; -1 because last source is reserved for LOG
 	bcc @saveold
-	rts		; err, too many sources
+	rts			; err, too many sources
 
 @saveold:
-	lda numsrcs
+	lda activesrc
 	jsr __src_save	; save current source data
-@init:
+
+@cont:	lda numsrcs
+	sta activesrc
+	inc numsrcs
+
+	; fall through to init_buff
+.endproc
+
+;*******************************************************************************
+; INIT BUFF
+; Initializes the active state for a new buffer
+.proc init_buff
+	tay
+
 	; clear the state for the new buffer
 	ldx #SAVESTATE_SIZE-1
 	lda #$00
@@ -261,11 +318,6 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	; init line and lines to 1
 	inc line
 	inc lines
-
-	lda numsrcs
-	sta activesrc
-	inc numsrcs
-	tay
 
 	; set name to 0 (unnamed)
 	asl
@@ -547,6 +599,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	asl
 	asl			; *16
 	tax
+
 	ldy #$00
 @l0:	lda (@name),y
 	sta names,x

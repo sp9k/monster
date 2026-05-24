@@ -7,10 +7,10 @@ K_HOME      = $13	; HOME
 
 K_UP_ARROW  = $5e	; up arrow
 
-K_PREV_BUFF  = $b4	; C= + h
-K_NEXT_BUFF  = $b6	; C= + l
-K_NEW_BUFF   = $aa	; C= + n
-K_CLOSE_BUFF = $ab	; C= + q
+K_PREV_BUFF  = $08	; Ctrl + h
+K_NEXT_BUFF  = $0c	; Ctrl + l
+K_NEW_BUFF   = $0e	; Ctrl + n
+K_CLOSE_BUFF = $11	; Ctrl + q
 
 K_UDG_EDIT         = $b8	; C= + u
 K_UDG_TOGGLE_MODE  = $6d	; m
@@ -39,6 +39,7 @@ K_HELP           = $3f	; ?
 
 K_SET_BREAKPOINT = $bf	; C= + B
 K_ASM_FILE       = $b0	; C= + a
+K_VIEW_LOG       = $b6	; C= + l
 K_VIEW_MACROS    = $a7	; C= + m
 K_REFRESH        = $bc  ; C= + c
 K_RENAME         = $b2  ; C= + r
