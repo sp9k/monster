@@ -76,7 +76,8 @@ __src_lines = lines
 ;*******************************************************************************
 ; SAVESTATE
 ; This buffer holds the "buffer state" for each source buffer. See BUFFSTATE
-savestate:  .res MAX_SOURCES*10	; 10 bytes: curl, curr, line, lines, end
+; 11 bytes: curl, curr, line, lines, end, srcx
+savestate:  .res MAX_SOURCES*SAVESTATE_SIZE
 
 .export __src_names
 __src_names:
@@ -127,7 +128,6 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ; another source
 .export __src_save
 .proc __src_save
-@save=r0
 	; save the cursor position in the current buffer
 	ldx activesrc
 
@@ -142,10 +142,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 	; save the data for the source we're switching from
 	txa
-	asl		; *2
-	asl		; *4
-	adc activesrc	; *5
-	asl		; *10
+	jsr mul_state_size
 	tay
 
 	; save the buffer state
@@ -169,17 +166,18 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ;  - .C: set if the buffer could not be switched to
 .export __src_set
 .proc __src_set
-@save=r0
 	cmp numsrcs
 	bcs @ret	; buffer doesn't exist; return with .C set
 
+	pha
+
+	jsr __src_save	; save current buffer before switching
+
 	; set the pointers to those of the source we're switching to
-	tax
+	pla
 	sta activesrc
-	asl		; *2
-	asl		; *4
-	adc activesrc	; *5
-	asl		; *10
+	tax
+	jsr mul_state_size
 	tay
 
 	; set the active bank ID
@@ -453,7 +451,6 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .export __src_close
 .proc __src_close
 @cnt=r0
-@end=r0
 ; get number of last byte to move (num_buffers)*2
 	lda numsrcs
 	beq @ok		; no buffer to close
@@ -478,10 +475,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 	; get offset to start shifting at
 	lda activesrc
-	asl		; *2
-	asl		; *4
-	adc activesrc	; *5
-	asl		; *10
+	jsr mul_state_size
 	tax
 
 @l0:	; copy all the buffers' data down
@@ -1248,5 +1242,23 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	lda #FLAG_DIRTY
 	ldx activesrc
 	sta flags,x
+	rts
+.endproc
+
+;*******************************************************************************
+; MUL STATE SIZE
+; Returns the input value times the size of each buffer's state
+; IN:
+;    - .A: value to multiply by SAVESTATE_SIZE
+; OUT:
+;    - .A: SAVESTATE_SIZE*.A
+.proc mul_state_size
+@tmp=r2
+	sta @tmp
+	asl		; *2
+	asl		; *4
+	adc @tmp	; *5
+	asl		; *10
+	adc @tmp	; *11
 	rts
 .endproc

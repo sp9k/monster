@@ -725,7 +725,6 @@ main:	jsr key::getch
 	beq @retok		; if there are 0 buffers, we're done
 
 	jsr src::pushp		; save current source pos
-	jsr src::save
 	lda src::activebuff
 	pha			; save active buffer
 
@@ -2691,7 +2690,6 @@ __edit_set_breakpoint:
 ; Moves to the source buffer before the active one. If we are already at the
 ; first buffer, does nothing
 .proc next_buffer
-	jsr src::save		; save the active buffer's state
 	ldx src::activebuff
 	inx
 	bpl change_buff		; branch always
@@ -2702,7 +2700,6 @@ __edit_set_breakpoint:
 ; Moves to the source buffer after the active one. If we are already at the
 ; last buffer, does nothing
 .proc prev_buffer
-	jsr src::save		; save the active buffer's state
 	ldx src::activebuff
 	dex
 	; fall through to change_buff
@@ -2818,9 +2815,6 @@ buffer7: lda #$06
 	 skw
 buffer8: lda #$07
 goto_buffer:
-	pha
-	jsr src::save
-	pla
 	jsr src::setbuff
 	bcs @done		; if we can't set the buffer, exit
 	jmp refresh
@@ -3363,9 +3357,6 @@ goto_buffer:
 	cmp src::activebuff
 	beq @ok			; buffer already active; quit
 
-	pha
-	jsr src::save		; save the current buffer's state
-	pla
 	jsr src::setbuff	; switch to the new buffer
 
 	jsr refresh
