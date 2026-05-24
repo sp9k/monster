@@ -9,29 +9,30 @@
 
 Monster is an all-in-one development system comprised of an editor, assembler, debugger, and linker all running natively on the Commodore Vic-20.
 The design philosophy is uncompromising maximalism without sacrificing efficiency or code density.
-This is in contrast to most existing Vic-20 assemblers (and most native development tools on 8-bit computers in general), which not only put memory efficiency first and foremost, but also
-let it guide the overall usability and design.
 
 Large RAM expansions have become ubiquitous on the Vic-20 in recent years, so the philosophy of
 this project is to provide a rich feature set for a generously expanded memory configuration.
-Virtually any feature that I deem valuable in an assembly IDE is implemented.
+Virtually any feature that I deem valuable in an assembly IDE is implemented.  Monster leverages the Ultimem
+expansion to implement the following features (and many more) while running in such a way that almost the entire
+flat address space is still available for the user's program.
 
-Features include:
- - 40 column bitmap-based editor
- - vi-like keybindings
- - interactive source-level debugger
- - linker
- - breakpoint editor
- - memory viewer/editor
- - robust label support (including anonymous and local)
- - save/load files and export to .PRG
- - directory viewer
- - symbol viewer
- - auto-formatter and realtime syntax checking
- - powerful macro support
- - virtual memory for user program isolation
- - 8x8 custom character editor
- - many, many more...
+
+| Features                                                  |
+|-----------------------------------------------------------|
+| 40 column bitmap-based editor                             |
+| vi-style keybindings                                      |
+| interactive source-level debugger                         |
+| linker                                                    |
+| breakpoint editor                                         |
+| memory viewer/editor                                      |
+| robust label support (including anonymous and local)      |
+| directory viewer                                          |
+| symbol viewer                                             |
+| automatic formatting and syntax checking                  |
+| powerful macro support                                    |
+| virtual memory for user program isolation                 |
+| user-defined character editor                             |
+| many, many more...                                        |
 
 For more information about each of the major components of Monster, refer to the documents
 linked below.
@@ -50,13 +51,13 @@ linked below.
 
 ## REQUIREMENTS
 
-Monster requires a [Final Expansion 3](https://github.com/edi-z/FE3) to
-function.  The Final Expansion 3 contains 512KB of expansion memory, which is available via 16 banks.
+Monster requires the [Ultimeme](https://www.go4retro.com/products/ultimem) to function.
+
 Much of this RAM is used to store the multiple source code buffers (up to 8), but it is also used to store code, debug-info, and other data.
 
 The banked memory allows the user program to execute in almost complete
-isolation.  The user program state is entirely backed up in the FE3, which means that, although this environment consumes a vast amount of
-memory itself, everything except address $9c02 (the bank select register) and a couple tiny interrupt handlers is preserved when control moves between the
+isolation.  The user program state is entirely backed up in the Ultimem, which means that, although this environment consumes a vast amount of
+memory itself, everything except address the IO address space ($9800-$9fff) is preserved when control moves between the
 editor and the user program.  Moreso even than small monitor cartridges, the program itself is virtually unaware of the resident tooling.
 
 ## RUNNING
@@ -73,7 +74,7 @@ LOAD "BOOT.PRG",8,1
 RUN
 ```
 
-The cartridge binary, `monster.bin`, can be flashed to your FE3 to boot Monster directly from ROM.
+The cartridge binary, `monster.bin`, can be flashed to your Ultimem to boot Monster directly from ROM.
 Copy this file to your IEC storage device along with the installer (`install.prg`). Then run
 the following commands on your Vic-20 from the BASIC prompt:
 
