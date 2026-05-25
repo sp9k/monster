@@ -512,7 +512,7 @@ main:	jsr key::getch
 	jsr src::current_filename
 	jsr log::out
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; Pass 1
 ; do a pass on the source to simply get labels and basic debug info
 ; (# of lines and # of segments/file)
@@ -546,7 +546,7 @@ main:	jsr key::getch
 
 	jsr obj::close_section	; close final OBJ section
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; Pass 2
 ; now we have defined labels and enough debug info to generate both the
 ; program binary and the full debug info (if enabled)
@@ -1049,7 +1049,7 @@ cancel = enter_command
 	jmp refresh
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; COMMAND YANK
 ; In SELECT mode, copies the selected text to the copy buffer. If not in SELECT
 ; mode, does nothing
@@ -1319,7 +1319,7 @@ cancel = enter_command
 .endproc
 
 
-;******************************************************************************
+;*******************************************************************************
 ; NEWL
 ; Inserts a newline at the current cursor position
 ; The indentation flag is ignored (line will not be indented)
@@ -1373,7 +1373,7 @@ cancel = enter_command
 	beq @moveup
 	jsr src::backspace
 	bcs @sof		; break if at start of source buffer
-	jsr buff::putch		; put the character that was deleted into the copy buffer
+	jsr buff::putch		; put character that was deleted into copy buff
 	jmp @l0
 
 @sof:	; at start of the buffer, DELETE the newline (connecting the NEXT line)
@@ -1487,7 +1487,7 @@ cancel = enter_command
 	jmp redraw_to_end_of_line
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; PASTE BELOW
 ; Pastes the contents of the copy buffer to the line below the cursor
 .proc paste_below
@@ -1516,7 +1516,7 @@ cancel = enter_command
 	jmp paste_buff
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; PASTE ABOVE
 ; Pastes the contents of the copy buffer to the line above the cursor
 .proc paste_above
@@ -1782,7 +1782,8 @@ cancel = enter_command
 	jmp @done
 
 @finish_multi:
-	; if we pasted multiple lines, restore source position and don't move cursor
+	; if we pasted multiple lines, restore source position and don't move
+	; cursor
 	jsr src::popgoto
 	jsr refresh_line
 
@@ -1791,7 +1792,7 @@ cancel = enter_command
 	jmp enter_command
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; DRAW_LINE_IF_VISIBLE
 ; If the given row is within the current screen range, (0, height], draws the
 ; linebuffer.  If not, does nothing.
@@ -1806,7 +1807,7 @@ cancel = enter_command
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; COMMAND_MOVE_SCR
 ; Accepts another key and moves the screen around depending on what that key is:
 ;  - l: move screen 2 characters to the left
@@ -1828,7 +1829,7 @@ cancel = enter_command
 .endif
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; YANK
 ; In SELECT mode, copies the selected text to the copy buffer. If not in SELECT
 ; mode, does nothing
@@ -2431,7 +2432,7 @@ cancel = enter_command
 	jsr is_visual
 	bne @cont
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; VISUAL mode; delete the selection
 @delvis:
 @cnt=zp::editortmp+3
@@ -2458,7 +2459,7 @@ cancel = enter_command
 	bne @delsel
 	beq refresh		; done, refresh to clear deleted text
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; get a key to decide what to delete
 @cont:	jsr key::waitch
 	ldx #@numcmds-1
@@ -3101,20 +3102,20 @@ goto_buffer:
 	jsr krn::chkin		; CHKIN, file in .X is input
 
 	; read the start address of the program
-	jsr krn::chrin
+	jsr krn::chrin		; read LSB
 	sta asm::origin
 	sta @addr
-	jsr krn::chrin
+	jsr krn::chrin		; read MSB
 	sta asm::origin+1
 	sta @addr+1
 
 	; read the size of the program and calculate the "top" address
-	jsr krn::chrin
+	jsr krn::chrin		; size LSB
 	clc
 	adc asm::origin
 	sta asm::top
 	php
-	jsr krn::chrin
+	jsr krn::chrin		; size MSB
 	plp
 	adc asm::origin+1
 	sta asm::top+1

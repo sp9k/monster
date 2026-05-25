@@ -5,6 +5,8 @@
 ;
 ; See the OBJECT CODE overview below for details on the object format.
 ;*******************************************************************************
+
+.include "asm.inc"
 .include "config.inc"
 .include "debuginfo.inc"
 .include "errors.inc"
@@ -1109,6 +1111,12 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	bne @pass2		; if so, repeat
 ;-------------------------------------------------------------------------------
 
+	; calculate ORIGIN and TOP of linked program
+	jsr segmin
+	stxy asm::origin
+	jsr segmax
+	stxy asm::top
+
 	jsr generate_map	; produce the map file
 
 	clc			; all objects linked, return success
@@ -1134,6 +1142,89 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	lda @obj_file_handle
 	CALLMAIN file::close
 	plp					; restore error flag
+	rts
+.endproc
+
+;*******************************************************************************
+; SEGMIN
+; Returns the minimum address found in the segments array
+.proc segmin
+@min=r0
+	ldx #$ff
+	stx @min
+	stx @min+1
+
+	inx			; .X=0
+
+@l0:	lda segments_addrhi,x
+	cmp @min+1
+	beq @chklo
+	bcs @next
+
+	sta @min+1
+	lda segments_addrlo,x
+	sta @min
+	bcc @next
+
+@chklo:	lda segments_addrlo,x
+	cmp @min
+	bcs @next
+	sta @min
+	lda segments_addrhi,x
+	sta @min+1
+
+@next:	inx
+	cpx numsegments
+	bne @l0
+
+	ldxy @min
+	rts
+.endproc
+
+;*******************************************************************************
+; SEGMAX
+; Returns the maximum address found in the segments array.  This is the base
+; of the last SEGMENT + the size of it
+; TODO: exclude empty segments
+.proc segmax
+@max=r0
+@i=r2
+	ldx #$00
+	stx @i
+	stx @max
+	stx @max+1
+
+@l0:	lda segments_addrhi,x
+	cmp @max+1
+	beq @chklo
+	bcc @next
+
+	sta @max+1
+	lda segments_addrlo,x
+	sta @max
+	stx @i
+	bcc @next
+
+@chklo:	lda segments_addrlo,x
+	cmp @max
+	bcc @next
+	sta @max
+	lda segments_addrhi,x
+	sta @max+1
+	stx @i
+
+@next:	inx
+	cpx numsegments
+	bne @l0
+
+	lda @max
+	clc
+	ldy @i
+	adc segments_sizelo,y
+	tax
+	lda @max+1
+	adc segments_sizehi,y
+	tay
 	rts
 .endproc
 
