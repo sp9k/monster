@@ -271,7 +271,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	ldxy #@filename
 	jsr __src_name
 
-	; go back to the buffer we were on
+	; go back to the buffer we started on
 	pla
 	jmp __src_set
 .PUSHSEG

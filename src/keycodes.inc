@@ -9,8 +9,8 @@ K_UP_ARROW  = $5e	; up arrow
 
 K_PREV_BUFF  = $08	; Ctrl + h
 K_NEXT_BUFF  = $0c	; Ctrl + l
-K_NEW_BUFF   = $0e	; Ctrl + n
-K_CLOSE_BUFF = $11	; Ctrl + q
+K_NEW_BUFF   = $aa	; C=   + n
+K_CLOSE_BUFF = $ab	; C=   + q
 
 K_UDG_EDIT         = $b8	; C= + u
 K_UDG_TOGGLE_MODE  = $6d	; m
