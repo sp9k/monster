@@ -2277,8 +2277,21 @@ cancel = enter_command
 	rts			; no log
 
 :	lda #LOG_BUFFER
-	jsr src::forceset
+	cmp src::activebuff	; is log already open?
+	bne :+
+
+	; switch back to the buffer we were on when the log opened
+	lda @buffsave
+	bpl @set
+
+:	ldx src::activebuff
+	stx @buffsave
+@set:	jsr src::forceset
 	jmp refresh
+.PUSHSEG
+.BSS
+@buffsave: .byte 0
+.POPSEG
 .endproc
 
 ;*******************************************************************************
