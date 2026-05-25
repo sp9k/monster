@@ -310,7 +310,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ; INIT BUFF
 ; Initializes the active state for a new buffer
 .proc init_buff
-	tay
+	tay				; save buffer id
 
 	; clear the state for the new buffer
 	ldx #SAVESTATE_SIZE-1
@@ -324,6 +324,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	inc lines
 
 	; set name to 0 (unnamed)
+	tya				; restore buffer id
 	asl
 	asl
 	asl

@@ -106,7 +106,7 @@ readonly:  .byte 0	; if !0 no edits are allowed to be made via the editor
 ; jump list lines and current index
 jumplist_lo: .res MAX_JUMPS
 jumplist_hi: .res MAX_JUMPS
-jumpptr:  .byte 0
+jumpptr:     .byte 0
 
 visual_start_line:	.word 0	; the line # a selection began at
 visual_start_pos:       .word 0 ; source cursor for visual seleciton
@@ -594,7 +594,8 @@ main:	jsr key::getch
 	bne @pass2loop		; repeat if not
 	beq @done		; branch always (done)
 
-@done:	ldxy zp::asmresult
+@done:
+	ldxy zp::asmresult
 	jsr dbgi::endblock	; end the final debug info block
 	jsr obj::close_section	; close final OBJ section
 
@@ -5531,7 +5532,9 @@ unblank = scr::unblank
 	jsr src::filename
 	bcs :+			; failed to get filename -> return
 	jsr dbgi::getfileid	; .A = id of the file
-	jmp src::currline
+	bcs :+
+	jsr src::currline
+	clc
 :	rts
 .endproc
 
