@@ -1225,8 +1225,10 @@ cancel = enter_command
 	jsr enter_insert
 	jsr src::end
 	beq @done
+
 	jsr src::before_newl
 	beq @done
+
 	jmp ccright
 @done:	rts
 .endproc
@@ -5288,6 +5290,7 @@ __edit_gotoline:
 ;******************************************************************************
 ; SYNC CUR
 ; Syncs the physical cursor with the source one
+.export sync_cur
 .proc sync_cur
 	lda zp::srcx
 	jsr text::index2cursor

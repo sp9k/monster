@@ -1233,6 +1233,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	tay
 	rts
 
+;-------------------------------------------------------------------------------
 @empty: sta @a
 	lda segments_sizelo,x
 	ora segments_sizehi,x

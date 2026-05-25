@@ -856,9 +856,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	cmp #$0d
 	bne @done
 
+	jsr __src_prev
 	ldx @savex
 	stx srcx
-	jsr __src_prev
 @endofline:
 	sec
 	rts
