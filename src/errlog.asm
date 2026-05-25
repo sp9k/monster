@@ -146,8 +146,8 @@ numerrs: .byte 0
 @done:	php
 
 	; log the error to the log file too
-	;jsr render_error
-	;jsr log::out
+	jsr render_error
+	jsr log::out
 
 	plp
 	rts

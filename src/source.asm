@@ -185,8 +185,8 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 	; set the pointers to those of the source we're switching to
 	pla
-	sta activesrc
 	tax
+	sta activesrc
 	jsr mul_state_size
 	tay
 

@@ -4,6 +4,7 @@
 ; Log files are stored to disk
 ;******************************************************************************
 
+.include "config.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "source.inc"
@@ -54,8 +55,33 @@ __log_written: .byte 0
 	jsr src::insert
 
 	pla
-	jsr src::setbuff	; return to buffer we started on
-	rts
+	jmp src::setbuff	; return to buffer we started on
+.endproc
+
+;******************************************************************************
+; WRITE BANNER
+; Writes a banner to the log
+.export __log_banner
+.proc __log_banner
+@cnt=r0
+	lda src::activebuff
+	pha
+
+	lda #LOG_BUFFER
+	jsr src::forceset
+
+	lda #LINESIZE-1
+	sta @cnt
+
+:	lda #'*'
+	jsr src::insert
+	dec @cnt
+	bne :-
+	lda #$0d
+	jsr src::insert
+
+	pla
+	jmp src::setbuff	; return to buffer we started on
 .endproc
 
 ;******************************************************************************
@@ -68,7 +94,6 @@ __log_written: .byte 0
 
 	lda #LOG_BUFFER
 	jsr src::forceset
-
 	jsr src::rewind
 
 	pla

@@ -366,7 +366,7 @@ main:	jsr key::getch
 	bne @done
 
 	; do the second assembly pass
-	;jsr log_pass2
+	jsr log_pass2
 	lda #$02
 	jsr asm::startpass
 	ldxy @filename
@@ -522,11 +522,13 @@ main:	jsr key::getch
 	jsr asm::startpass
 
 @pass1loop:
+	jsr src::currline
+	stxy asm::linenum
+
+	; check if user interrupted assembly
 	lda __edit_sigint
 	bne @done
 
-	jsr src::currline
-	stxy asm::linenum
 	jsr src::readline
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
@@ -549,7 +551,7 @@ main:	jsr key::getch
 ; Pass 2
 ; now we have defined labels and enough debug info to generate both the
 ; program binary and the full debug info (if enabled)
-@pass2: ;jsr log_pass2
+@pass2: jsr log_pass2
 
 	; log file we are assembling (again)
 	jsr src::current_filename
@@ -5552,7 +5554,7 @@ unblank = scr::unblank
 ; LOG PASS 2
 ; Prints a banner to separate pass 1 logs and then "PASS 2" to the log file
 .proc log_pass2
-	jsr file::write_banner
+	jsr log::banner
 	ldxy #strings::pass2
 	jmp log::out
 .endproc
