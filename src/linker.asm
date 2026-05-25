@@ -1185,10 +1185,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ; SEGMAX
 ; Returns the maximum address found in the segments array.  This is the base
 ; of the last SEGMENT + the size of it
-; TODO: exclude empty segments
 .proc segmax
 @max=r0
 @i=r2
+@a=r3
 	ldx #$00
 	stx @i
 	stx @max
@@ -1199,6 +1199,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	beq @chklo
 	bcc @next
 
+	jsr @empty			; is this SEGMENT empty?
+	beq @next			; if so, exclude it
+
 	sta @max+1
 	lda segments_addrlo,x
 	sta @max
@@ -1208,6 +1211,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @chklo:	lda segments_addrlo,x
 	cmp @max
 	bcc @next
+
+	jsr @empty			; is this SEGMENT empty?
+	beq @next			; if so, exclude it
 	sta @max
 	lda segments_addrhi,x
 	sta @max+1
@@ -1225,6 +1231,14 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	lda @max+1
 	adc segments_sizehi,y
 	tay
+	rts
+
+@empty: sta @a
+	lda segments_sizelo,x
+	ora segments_sizehi,x
+	php
+	lda @a
+	plp
 	rts
 .endproc
 
@@ -1259,7 +1273,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	stx @cnt
 	cpx numsections
 	bcc @l0
+
 @notfound:
+	;sec
 	rts
 
 @found: lda @cnt
@@ -1347,7 +1363,7 @@ __link_get_segment_by_name:
 	cpx numsegments
 	bcc @l0
 
-@notfound:
+@otfound:
 	;sec
 	rts
 
