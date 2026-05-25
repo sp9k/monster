@@ -947,20 +947,20 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	lda #$01
 	sta activeobj
 
-@pass1: ; pass 1:
-	; Extract header data foreach file and update pointers to each file
-	; to the main block of the .O file
-	; Also define labels for the globals (IMPORT/EXPORT blocks) defined
-	; in each object file
-
-	; load the next .O (object) file in the object list
-	ldxy #strings::pass1
+;-------------------------------------------------------------------------------
+; PASS1
+; Extract header data foreach file and update pointers to each file to the main
+; block of the .O file.
+; Also define labels for the globals (IMPORT/EXPORT blocks) defined in each
+; object file.
+@pass1: ldxy #strings::pass1
 	CALLMAIN log::out
 
 	; log the filename being assembled
 	ldxy @objfile
 	CALLMAIN log::out
 
+	; load the next .O (object) file in the object list
 	ldxy @objfile
 	stxy obj::filename
 	CALLMAIN file::open_r_prg
@@ -1054,6 +1054,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	lda (@objfile),y	; get char after the terminating 0
 	beq @pass1done		; if it's another 0, we're at end of obj list
 	jmp @pass1		; if not, repeat for next obj file
+;-------------------------------------------------------------------------------
 
 @pass1done:
 	; resolve symbols now that we know the base address of each SEGMENT
@@ -1067,6 +1068,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; RETURN_ERR ERR_SECTION_TOO_SMALL
 
 @start_pass2:
+	CALLMAIN log::banner
 	ldxy #strings::pass2
 	CALLMAIN log::out
 
@@ -1076,8 +1078,11 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	lda #$01
 	sta activeobj
 
-@objects:
-	; iterate over each object file and link it
+;-------------------------------------------------------------------------------
+; PASS2
+; iterate over each object file again, but this time link it to to produce the
+; final binary.
+@pass2:
 	ldxy @objfile
 	CALLMAIN log::out
 
@@ -1101,7 +1106,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 :	inc activeobj
 	ldy #$01
 	lda (@objfile),y	; are there more files? (next file is !0)
-	bne @objects		; if so, repeat
+	bne @pass2		; if so, repeat
+;-------------------------------------------------------------------------------
 
 	jsr generate_map	; produce the map file
 
@@ -1127,7 +1133,6 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	php					; save error flag
 	lda @obj_file_handle
 	CALLMAIN file::close
-
 	plp					; restore error flag
 	rts
 .endproc

@@ -231,7 +231,6 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	adc #FINAL_BANK_SOURCE0+MAX_SOURCES
 	rts
 .else
-	;adc #$01
 	clc
 	adc #FINAL_BANK_SOURCE0+MAX_SOURCES
 	rts

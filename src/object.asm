@@ -1583,7 +1583,7 @@ __obj_close_section = close_section
 	incw @seg
 
 	lda @sz
-	beq :+
+	bne :+
 	dec @sz+1
 :	dec @sz
 	bne @objcode

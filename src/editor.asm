@@ -392,7 +392,6 @@ main:	jsr key::getch
 	jsr blank
 
 	; create a new log and write "linking..." to it
-	jsr file::init_drive
 	jsr log::new
 	ldxy #strings::linking
 	jsr log::out
