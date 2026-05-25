@@ -214,37 +214,28 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .endproc
 
 ;*******************************************************************************
-; FIND_BANK
-; Returns the ID of a free bank to store source in
+; GET BANK
+; Returns the "bank" that corresponds to the given source ID.
+; NOTE: this is quite platform specific. What defines a "bank" varies
+; a lot between platforms.
 ; OUT:
-;  - .A: the next available ID
-;  - .C: set if no open bank was found
-.proc find_bank
-@free=r0
-	lda #FINAL_BANK_SOURCE0
-
-@l0:	ldx #$00
-	stx @free
-@l1:	cmp banks,x
-	bne :+
-	inc @free		; flag NOT free
-:	inx
-	cpx #MAX_SOURCES
-	bne @l1
-	ldx @free
-	beq @found
-	clc
+;  - .A: the "bank" for the ID
+.proc get_bank
 .ifdef ultimem
-	adc #$03		; each bank is 3 "blocks" on Ultimem
-.else
-	adc #$01
-.endif
-	cmp #FINAL_BANK_SOURCE0+MAX_SOURCES
-	bcc @l0
-	sec		; no open banks
+@tmp=r0
+	; *3 (each bank is 3 "blocks" on Ultimem)
+	sta @tmp
+	asl
+	;clc
+	adc @tmp
+	adc #FINAL_BANK_SOURCE0+MAX_SOURCES
 	rts
-
-@found:	RETURN_OK
+.else
+	;adc #$01
+	clc
+	adc #FINAL_BANK_SOURCE0+MAX_SOURCES
+	rts
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -309,22 +300,12 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ;*******************************************************************************
 ; INIT BUFF
 ; Initializes the active state for a new buffer
+; IN:
+;   - .A: the buffer to initialize
 .proc init_buff
 	tay				; save buffer id
 
-	; clear the state for the new buffer
-	ldx #SAVESTATE_SIZE-1
-	lda #$00
-:	sta buffstate-1,x
-	dex
-	bne :-
-
-	; init line and lines to 1
-	inc line
-	inc lines
-
 	; set name to 0 (unnamed)
-	tya				; restore buffer id
 	asl
 	asl
 	asl
@@ -333,15 +314,26 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	lda #$00
 	sta names,x
 
+	; clear the state for the new buffer
+	ldx #SAVESTATE_SIZE-1
+	;lda #$00
+:	sta buffstate-1,x
+	dex
+	bne :-
+
 	; mark the buffer as clean
-	lda #$00
+	;lda #$00
 	sta flags,y
 
-	jsr find_bank
-	sta bank
-	jsr __src_init_buff
+	; init line and lines to 1
+	inc line
+	inc lines
 
-	rts
+	tya
+	jsr get_bank
+	sta bank
+
+	jmp __src_init_buff
 .endproc
 
 ;*******************************************************************************

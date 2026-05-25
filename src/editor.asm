@@ -2271,6 +2271,8 @@ cancel = enter_command
 ;*******************************************************************************
 ; SHOW LOG
 ; Sets the current buffer to the special LOG buffer
+; If the LOG is already active, switches back to the buffer that the user was
+; on when they activated the LOG.
 .proc show_log
 	lda log::written
 	bne :+
