@@ -1255,9 +1255,9 @@ cancel = enter_command
 ; END_OF_LINE
 ; Moves the cursor to the end of the current line
 .proc end_of_line
-@l0:	jsr ccright
+@l0:	jsr src_right
 	bcc @l0
-	rts
+	jmp sync_cur
 .endproc
 
 ;*******************************************************************************
