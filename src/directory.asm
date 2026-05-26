@@ -141,13 +141,6 @@ HEIGHT = SCREEN_HEIGHT-2
 	; highlight disk name row
 	jsr draw::hiline
 
-	; and the bottom (status) row
-	ldx #HEIGHT-1
-	jsr draw::hiline
-	lda #HEIGHT-1
-	ldy #$03
-	jsr draw::rvs_line
-
 ;--------------------------------------
 ; parse the name of the disk
 @getdiskname:
@@ -205,6 +198,13 @@ HEIGHT = SCREEN_HEIGHT-2
 @cont:	lda @file
 	jsr file::close
 	jsr scr::unblank
+
+	; and the bottom (status) row
+	ldx @row
+	jsr draw::hiline
+	lda @row
+	ldy #$03
+	jsr draw::rvs_line
 
 	dec @row
 
