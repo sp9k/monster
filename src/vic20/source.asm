@@ -406,6 +406,8 @@ data: .res BUFFER_SIZE
 	decw line
 
 :	dec zp::srcx		; decrement cursor "column"
+	bpl @done
+	inc zp::srcx
 
 @done:	; get the character at the new cursor position
 	decw cursorzp
