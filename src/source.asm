@@ -792,6 +792,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	jsr __src_mark_dirty
 	clc
 	rts
+
 @skip:	sec
 	rts
 .endproc

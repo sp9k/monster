@@ -1451,7 +1451,6 @@ cancel = enter_command
 	jsr buff::clear
 
 @l0:	jsr delch
-	jsr at_line_end
 	bcc @l0
 
 	jsr buff::reverse
