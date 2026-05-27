@@ -87,7 +87,7 @@ TESTS=$(wildcard tests/*.s)
 #TESTS=$(wildcard tests/SLOELECTRIC/*.a65)
 #TEST_INCS=$(wildcard tests/SLOELECTRIC/*.inc)
 
-TEST_FILES=$(TESTS) $(TEST_INCS) $(TEST_TXTS) tests/link tests/hello.o tests/export.o tests/hello.d
+TEST_FILES=$(TESTS) $(TEST_INCS) $(TEST_TXTS) tests/link
 
 all: test.d81
 

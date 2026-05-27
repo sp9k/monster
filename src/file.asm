@@ -290,10 +290,14 @@ OSPROC __file_scratch
 
 	ldx #<@s_colon
 	ldy #>@s_colon
-	jsr str::cat		; s@:<filename>
+	jsr str::cat		; s:<filename>
 	lda #15			; SA (command channel)
 	jsr __file_open
 	bcs @err
+	pha
+	jsr @close
+	pla
+	jmp __file_close	; close logical file of deleted file
 
 @close: lda #$0f		; command channel
 	jsr __file_close
@@ -402,9 +406,9 @@ OSPROC __file_open
 	lda @file
 	sta secondaryaddr
 
-:	pla		; get length of filename
+:	pla			; get length of filename
 	ldxy @filename
-	jsr krn::setnam	; SETNAM
+	jsr krn::setnam		; SETNAM
 
 	lda @file		; file handle
 	ldx zp::device		; last used device number
@@ -438,6 +442,7 @@ OSPROC __file_exists
 @file=r0
 	jsr __file_open_r
 	bcs @done
+
 	sta @file
 	tax
 	jsr krn::chkin		; CHKIN (file in .X now used as input)

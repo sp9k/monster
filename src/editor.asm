@@ -3354,9 +3354,12 @@ goto_buffer:
 ;  - .XY: the filename of the file to delete
 .proc command_scratch
 @file=r8
+	stxy @file
+
 	ldxy #strings::deleting
 	jsr blank
 
+	ldxy @file
 	jsr file::exists
 	bcs @err
 
