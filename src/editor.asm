@@ -1485,13 +1485,15 @@ cancel = enter_command
 	bcc @done
 	jsr delch
 	bcc @nonalphanum
+	bcs @done
 
 @whitespace:
 	jsr src::after_cursor
 	jsr util::is_whitespace
 	bne @done
 	jsr delch
-	beq @whitespace
+	bcc @whitespace
+	bcs @done
 
 @alphanum:
 	jsr src::after_cursor
