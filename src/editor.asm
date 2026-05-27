@@ -1459,30 +1459,48 @@ cancel = enter_command
 
 ;*******************************************************************************
 ; DELETE WORD
-; This is a subcommand of the 'd' (delete) command.  Deletes everything from
-; the character under the cursor to the first non-whitespace (if we're on a WS
-; character) or until the first whitespace character if we are.
+; This is a subcommand of the 'd' (delete) command.
+; The behavior depends on the character under the cursor.
+; If starting on:
+; 1. Whitespace: deletes until the next non-whitepspace char
+; 2. An alphanumeric character: deletes til the first NON-alphanumeric char
+; 3. A non-alphanumeric character: deletes til the first alphanumeric char (or
+;    whitespace)
 .proc delete_word
-@endonalpha=r1
 	jsr buff::clear
 
 	; if we're on an alphanum char, end on the first non-alphanum char
 	; if we're NOT on an alphanum char, end on the first alphanum char
 	jsr src::after_cursor
+	jsr util::is_whitespace
+	beq @whitespace
 	jsr util::isalphanum
-	lda #$00
-	rol		; 0 if starting char is alphanum, 1 if not
-	sta @endonalpha	; flag if we are to end on an alphanum char or not
+	bcc @alphanum
 
-@l0:	jsr delch
-	bcs @done
-
-	; check if this is a character we're looking to end on
+@nonalphanum:
 	jsr src::after_cursor
+	jsr util::is_whitespace
+	beq @done
 	jsr util::isalphanum
-	ldx @endonalpha
-	bne @done		; if we don't want to end on alphanum, skip
-	bcs @l0			; if alphanum, continue
+	bcc @done
+	jsr delch
+	bcc @nonalphanum
+
+@whitespace:
+	jsr src::after_cursor
+	jsr util::is_whitespace
+	bne @done
+	jsr delch
+	beq @whitespace
+
+@alphanum:
+	jsr src::after_cursor
+	jsr util::is_whitespace
+	beq @done
+	jsr util::isalphanum
+	bcs @done
+	jsr delch
+	bcc @alphanum
 
 @done:  jsr buff::reverse
 	jmp redraw_to_end_of_line

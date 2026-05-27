@@ -498,6 +498,7 @@ result=mem::spare
 	cmp #$7a+1
 	bcs @no
 @yes:	rts
+
 @no:	sec
 	rts
 .endproc
