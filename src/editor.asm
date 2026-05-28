@@ -1083,7 +1083,7 @@ cancel = enter_command
 	bne :+
 
 	; if we were in INSERT mode, we need to move the cursor back one char
-	jsr ccleft
+	jsr src::left
 
 :	lda #MODE_COMMAND
 	sta mode
@@ -1199,13 +1199,13 @@ cancel = enter_command
 ; HOME COL
 ; Moves cursor to the first non-whitespace character on the line
 .proc home_col
-	jsr home
+	jsr src::home
 @l1:	jsr src::after_cursor
 	jsr util::is_whitespace
 	bne @done
-	jsr ccright
+	jsr src::right
 	bcc @l1
-@done:	rts
+@done:	jmp sync_cur
 .endproc
 
 ;*******************************************************************************
@@ -1213,9 +1213,9 @@ cancel = enter_command
 ; Moves the cursor to the end of the line and enters INSERT mode
 .proc append_to_line
 	jsr enter_insert
-@l0:	jsr ccright
+@l0:	jsr src::right
 	bcc @l0
-	rts
+	jmp sync_cur
 .endproc
 
 ;*******************************************************************************
@@ -1223,32 +1223,28 @@ cancel = enter_command
 ; Moves the cursor after the current character and enters INSERT mode
 .proc append_char
 	jsr enter_insert
-	jsr src::end
-	beq @done
-
 	jsr src::before_newl
 	beq @done
-
-	jmp ccright
-@done:	rts
+	jsr src::right
+@done:	jmp sync_cur
 .endproc
 
 ;*******************************************************************************
 ; END_OF_WORD
 ; Moves the cursor to the end of the current "word"
 .proc endofword
-	jsr ccright
+	jsr src::right
 	bcs @done
-	jsr ccright
+	jsr src::right
 	bcs @done
 
-@l0:	jsr ccright
+@l0:	jsr src::right
 	bcs @done
 	jsr src::after_cursor
 	jsr util::isalphanum
 	bcc @l0
-	jsr ccleft	; move back to the last char
-@done:	rts
+	jsr src::left		; move back to the last char
+@done:	jmp sync_cur
 .endproc
 
 ;*******************************************************************************
@@ -1440,8 +1436,7 @@ cancel = enter_command
 	bcc @ok
 	rts
 
-@ok:	jsr redraw_to_end_of_line
-	jmp sync_cur
+@ok:	jmp redraw_to_end_of_line
 .endproc
 
 ;*******************************************************************************
@@ -3610,13 +3605,7 @@ goto_buffer:
 .proc redraw_to_end_of_line
 	jsr refresh_line
 	jsr draw_active_line
-
-	; make sure cursor is pointing to something in the source
-	; (unless line is empty)
-	jsr at_line_end
-	bcc @done
-@back:	jsr src::left
-@done:	jmp sync_cur
+	jmp sync_cur
 .endproc
 
 ;******************************************************************************
@@ -3959,16 +3948,26 @@ goto_buffer:
 ; OUT:
 ;  - .C: set if no character could be deleted.
 .proc delch
-@tmp=r0
-	jsr src::before_newl
-	beq @nodel
-@del:	jsr buff::putch
-	lda #MODE_VISUAL
-	sta selection_type
-	jmp src::delete
+	lda mem::linebuffer
+	beq @nodel		; if nothing to delete -> return
 
+	pha			; save char to delete
+	jsr src::delete
+	pla			; restore char to delete
+	bcc @ok
 @nodel:	sec
-	rts
+	rts			; can't delete anything -> exit
+
+@ok:	; buffer the character that was deleted
+	jsr buff::putch
+
+	jsr src::before_newl
+	bne :+
+	jsr src::left
+
+:	lda #MODE_VISUAL
+	sta selection_type
+	RETURN_OK
 .endproc
 
 ;******************************************************************************
@@ -5342,18 +5341,6 @@ __edit_gotoline:
 .endproc
 
 .RODATA
-
-;*******************************************************************************
-; AT LINE END
-; Checks if the source cursor is at the end of a line or end of the buffer
-; OUT:
-;   - .C: set if the cursor is at the end of a line or the buffer
-.proc at_line_end
-	jsr src::after_cursor
-	bcs :+			; if at end of buffer, we're done
-	cmp #$0d
-:	rts
-.endproc
 
 ;*******************************************************************************
 ; DIR VIEW

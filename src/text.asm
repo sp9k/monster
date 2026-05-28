@@ -736,6 +736,8 @@ tempbuff: .res LINESIZE
 	inc @i
 	lda mem::linebuffer,x
 	beq @done		; end of buffer
+	cmp #$0d
+	beq @done		; end of line
 	cmp #$09		; TAB?
 	bne @next
 
@@ -771,7 +773,11 @@ tempbuff: .res LINESIZE
 
 ; REPLACE
 @rep:	lda mem::linebuffer,x
-	cmp #$09
+	bne :+
+	dec @x		; if we ended on EOL in REPLACE, go back to last char
+	bpl :+
+	inc @x		; unless the line is empty
+:	cmp #$09
 	bne @retx
 
 	; if we end on tab in REPLACE mode, move cursor to end of it

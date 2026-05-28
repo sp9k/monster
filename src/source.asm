@@ -778,14 +778,17 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ; Deletes the character at the current cursor position.
 ; OUT:
 ;  - .A: the character that was deleted
-;  - .C: set if there is nothing to delete (cursor is at END)
+;  - .C: set if there is nothing to delete (buffer empty)
 .export __src_delete
 .proc __src_delete
 	jsr __src_end
-	beq @skip
+	bne @cont
+	jsr __src_start
+	beq @skip		; buffer is completely empty
 
-	jsr __src_after_cursor
-	cmp #$0d
+	jmp __src_backspace	; at end of buffer, BACKSPACE instead of DELETE
+
+@cont:	jsr __src_before_newl
 	bne :+
 	jsr on_line_deleted
 :	incw poststartzp
@@ -1012,14 +1015,17 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 ;*******************************************************************************
 ; BEFORE_NEWL
-; Checks if src::aftercursor is a newline ($0d)
+; Checks if src::after_cursor is a newline ($0d) or if the cursor is at the end
+; of the buffer.
 ; OUT:
 ;  - .Z: set if src::aftercursor == $0d
 .export __src_before_newl
 .proc __src_before_newl
+	jsr __src_end
+	beq :+
 	jsr __src_after_cursor
 	cmp #$0d
-	rts
+:	rts
 .endproc
 
 ;*******************************************************************************
