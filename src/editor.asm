@@ -1199,13 +1199,13 @@ cancel = enter_command
 ; HOME COL
 ; Moves cursor to the first non-whitespace character on the line
 .proc home_col
-	jsr src::home
+	jsr home
 @l1:	jsr src::after_cursor
 	jsr util::is_whitespace
 	bne @done
-	jsr src::right
+	jsr ccright
 	bcc @l1
-@done:	jmp sync_cur
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1233,18 +1233,18 @@ cancel = enter_command
 ; END_OF_WORD
 ; Moves the cursor to the end of the current "word"
 .proc endofword
-	jsr src::right
+	jsr ccright
 	bcs @done
-	jsr src::right
+	jsr ccright
 	bcs @done
 
-@l0:	jsr src::right
+@l0:	jsr ccright
 	bcs @done
 	jsr src::after_cursor
 	jsr util::isalphanum
 	bcc @l0
-	jsr src::left		; move back to the last char
-@done:	jmp sync_cur
+	jsr ccleft	; move back to the last char
+@done:	rts
 .endproc
 
 ;*******************************************************************************
