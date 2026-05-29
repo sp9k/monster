@@ -54,6 +54,7 @@ reloc = zp::link	; when linking, pointer to current relocation
 .export __obj_segments
 .export __obj_segments_sizelo
 .export __obj_segments_sizehi
+
 ;*******************************************************************************
 ; SYMBOL INDEX MAP
 ; Each entry in this array contains the index that we will map the corresponding
@@ -138,8 +139,6 @@ segments: .res MAX_SEGMENT_NAME_LEN*MAX_SECTIONS ; name of target SEG
 ; link-time start addresses of each SEGMENT
 segments_startlo:      .res MAX_SECTIONS
 segments_starthi:      .res MAX_SECTIONS
-segments_relocstartlo: .res MAX_SECTIONS
-segments_relocstarthi: .res MAX_SECTIONS
 
 ; SEGMENT id for each SECTION
 segment_ids: .res MAX_SECTIONS
@@ -272,9 +271,9 @@ __obj_close_section = close_section
 ; a never before seen SEGMENT or where the last section that referenced this
 ; SEGMENT left off if not.
 ; IN:
-;   - .A:             size/addressing mode (0=ZP, 1=ABS)
+;   - .A:             address mode: 0=ZP relocate, 1=ABS relocate, $FF=ABS
 ;   - zp::asmresult:  the physical address to begin the section at
-;   - $100:           the name of the SEGMENT for the SECTION
+;   - $100:           the name of the SEGMENT for the SECTION (if relative)
 ; OUT:
 ;   - .A:  the ID of the SEGMENT the section corresponds to
 ;   - .XY: the base address for the section
@@ -746,6 +745,7 @@ __obj_close_section = close_section
 :	; init segment sizes to 0
 	ldx numsegments
 	lda #$00
+	sta @seg_idx
 :	sta segments_relocsizelo-1,x
 	sta segments_relocsizehi-1,x
 	dex
@@ -754,8 +754,8 @@ __obj_close_section = close_section
 ; compute the size of each SEGMENT (sum of all SECTIONS that use it)
 @l0:	lda #$00
 	sta @sec_idx
-	sta @seg_idx
 
+; iterate over all SECTIONS and check if they're in this SEGMENT
 @l1:	inc @seg_idx
 	lda @seg_idx			; get current SEGMENT
 	clc

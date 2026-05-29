@@ -2210,10 +2210,19 @@ __asm_include:
 	ldy #$01		; absolute
 :	sty __asm_segmode	; set segment mode
 
-@done:	; set segment to ABSOLUTE (we know the exact address of all labels
+@done:	; close the current section (if any)
+	jsr obj::close_section
+
+	lda #$00
+	sta $100		; name for this segment is null (empty)
+
+	; set segment to ABSOLUTE (we know the exact address of all labels
 	; declared within a .ORG "section")
 	lda #SEG_ABS
 	sta __asm_segmentid
+
+	; create a new SECTION for the parsed SEGMENT name
+	CALL FINAL_BANK_LINKER, obj::add_section
 
 	lda #ASM_ORG
 	clc			; ok
