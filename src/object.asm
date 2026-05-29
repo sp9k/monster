@@ -83,7 +83,6 @@ seg_cnt: .byte 0
 ; Calling obj::addreloc appends a relocation to this table
 reloc_tables:
 .ifdef vic20
-	; TODO: map this for ultimem
 	.res $3000
 .else
 .endif
@@ -714,17 +713,15 @@ __obj_close_section = close_section
 @cont:	; write the SEGMENT id
 	ldxy @id
 	CALLMAIN lbl::getsegment	; get SEGMENT id
-	jsr krn::chrout				; dump the SEGMENT id
-
-	; write the SEGMENT offset
-	; TODO: this is currently writing the SECTION offset
-	; need to look up this section's SEGMENT offset and add the two
+	jsr krn::chrout			; write SEGMENT id
 	ldxy @id
+
+	; look up symbol's (segment-relative) address and write it
 	CALLMAIN lbl::getaddr
 	txa
-	jsr krn::chrout				; write offset LSB
+	jsr krn::chrout			; write offset LSB
 	tya
-	jsr krn::chrout				; write offset MSB
+	jsr krn::chrout			; write offset MSB
 
 	inc @i
 	lda @i
@@ -1371,17 +1368,15 @@ __obj_close_section = close_section
 	bne :-
 
 @addexport:
-	jsr readb				; get SEGMENT id
+	jsr readb				; get SEGMENT id for EXPORT
 	bcs @ret
 
-	; TODO: get the address mode for the SEGMENT the symbol is in
-	;tax
-	;lda segments_info-1,x
-	lda #$01
-	sta zp::label_mode
+	tax
+	lda segments_info-1,x
+	sta zp::label_mode			; set address mode for label
 
 	ldxy @namebuff
-	jsr __obj_get_segment_name_by_id		; get name of SEGMENT
+	jsr __obj_get_segment_name_by_id	; get name of SEGMENT
 	jsr link::segid_by_name
 	sta zp::label_segmentid			; and store with the symbol
 	jsr readb				; get LSB of symbol offset

@@ -1118,8 +1118,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	stxy asm::top
 
 	jsr generate_map	; produce the map file
+	jmp validate_segments	; validate segments and return error if needed
 
-	clc			; all objects linked, return success
 @done:	rts
 .endproc
 
@@ -1803,6 +1803,76 @@ __link_get_segment_by_name:
 .RODATA
 @filename:       .byte "map",0
 .POPSEG
+.endproc
+
+;*******************************************************************************
+; VALIDATE SEGMENTS
+; Checks if any segments generated during the linking overlap
+; OUT:
+;   - .A: error code (if validation failed)
+;   - .C: set if any two segments overlap
+.proc validate_segments
+@i=r0
+@addr0_start = r2
+@addr0_stop  = r4
+@addr1_start = r6
+@addr1_stop  = r8
+	lda #$00
+	sta @i
+
+@l0:	ldx @i
+	lda segments_addrlo,x
+	sta @addr0_start
+	ldy segments_addrhi,x
+	sty @addr0_start+1
+	clc
+	adc segments_sizelo,x
+	sta @addr0_stop
+	lda @addr0_start+1
+	adc segments_sizehi,x
+	sta @addr0_stop
+
+@l1:	inc @i
+	ldx @i
+	cpx numsegments
+	bcs @ok
+
+	lda segments_addrlo,x
+	sta @addr1_start
+	ldy segments_addrhi,x
+	sty @addr1_start+1
+	clc
+	adc segments_sizelo,x
+	sta @addr1_stop
+	lda @addr1_start+1
+	adc segments_sizehi,x
+	sta @addr1_stop
+
+	jsr @validate_segments
+	bcc @l1
+	lda #ERR_OVERLAPPING_SEGMENTS
+	rts				; overlap found
+
+@ok:	RETURN_OK
+
+;-------------------------------------------------------------------------------
+@validate_segments:
+	; if addr1.stop < addr0.start, no overlap
+	lda @addr1_stop+1
+	cmp @addr0_start+1
+	bcc :+
+	lda @addr1_stop
+	cmp @addr0_start
+	bcs @ret
+
+:	; if addr0.stop < addr1.start, no overlap
+	lda @addr0_stop+1
+	cmp @addr1_start+1
+	bcc :+
+	lda @addr0_stop
+	cmp @addr1_start
+
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
