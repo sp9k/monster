@@ -1,6 +1,21 @@
 ;*******************************************************************************
 ; OBJ.ASM
 ; This file contains procedures used to construct object files.
+;
+; OBJECT FILE FORMAT:
+; NUM SEGMENTS    [0]      ; number of segments in object file
+; NUM_EXPORTS     [1]      ; number of symbols exported in object file
+; NUM_IMPORTS     [2:3]    ; number of symbols imported by object file
+; SEGMENT HEADERS [4:...]  ; headers for each SEGMENT
+;  NAME  [$0:$7] ; segment name or $0000 for ABSOLUTE (.org derived segments)
+;  ALIGN [$8:$9] ; offset of data (RELATIVE) or aboslute position (ABSOLUTE)
+;  SIZE  [$a:$b] ; bytes used in segment
+; IMPORTS
+; EXPORTS
+; SEGMENT TABLES:
+;
+;   OBJCODE
+; DEBUGINFO
 ;*******************************************************************************
 
 .include "asm.inc"
@@ -323,7 +338,7 @@ __obj_close_section = close_section
 
 	lda @info
 	cmp #SEG_ABS
-	beq @add		; if ABS (.org), always add a new SEGMENT
+	beq @add		; if ABS, always create a new segment
 
 	; is there already a SEGMENT by this name?
 	ldxy #@name
@@ -355,9 +370,20 @@ __obj_close_section = close_section
 @add:	ldxy #@name
 	jsr add_segment		; add new SEGMENT
 	pha
-
-	; store INFO byte (address mode) for the SEGMENT
 	tax
+
+	lda @info
+	cmp #SEG_ABS
+	bne @addrel
+
+@abs:	; if ABS (.org), set START address to the literal PC value
+	lda zp::asmresult
+	sta segments_startlo-1,x
+	lda zp::asmresult+1
+	sta segments_starthi-1,x
+
+@addrel:
+	; store INFO byte (address mode) for the SEGMENT
 	lda @info
 	sta segments_info-1,x
 
@@ -813,8 +839,15 @@ __obj_close_section = close_section
 	cpy #$08
 	bne :-
 
-	; write the number of bytes used for this SEGMENT (2 bytes)
+	; write SEGMENT offset (always $0000 for relative) or
+	; literal start address of SEGMENT (for ABSOLUTE segments)
 	ldx @i
+	lda segments_startlo,x
+	jsr krn::chrout
+	lda segments_starthi,x
+	jsr krn::chrout
+
+	; write the number of bytes used for this SEGMENT (2 bytes)
 	lda __obj_segments_sizelo,x
 	jsr krn::chrout
 	lda __obj_segments_sizehi,x
@@ -1184,12 +1217,12 @@ __obj_close_section = close_section
 
 	; read number of SEGMENTs used
 	jsr readb
-	bcs @ret
 	sta numsegments
+	jcs @ret
 
 	; read number of EXPORTS (1 byte)
 	jsr readb
-	bcs @ret
+	jcs @ret
 	sta numexports
 
 	; read number of IMPORTS (2 bytes)
@@ -1216,8 +1249,16 @@ __obj_close_section = close_section
 	cpy #MAX_SECTION_NAME_LEN
 	bne @segname
 
-	; get the number of bytes used in the SEGMENT
+	; get OFFSET (or literal start address if ABS) for SEGMENT
 	ldy @i
+	jsr readb
+	bcs @ret
+	sta segments_startlo,y
+	jsr readb
+	bcs @ret
+	sta segments_starthi,y
+
+	; get the number of bytes used in the SEGMENT
 	jsr readb			; get LSB
 	bcs @ret
 	sta __obj_segments_sizelo,y
@@ -1225,17 +1266,28 @@ __obj_close_section = close_section
 	bcs @ret
 	sta __obj_segments_sizehi,y
 
-	; get the base address of this SEGMENT in the linker
+	; if ABS segment, directly set the SEGMENT start address
+	lda segment_ids,x
+	cmp #SEG_ABS
+	beq @next			; if ABS, already know start addr
+
+@rel:	; for REL segments, get the base address of this SEGMENT in the linker
 	; NOTE: this will be garbage in pass 1
 	ldxy @name
 	jsr link::segaddr_for_file_by_name
+
+	; add the offset (always $0000 for now) to the SEGMENT
 	tya
+	pha
 	ldy @i
-	sta segments_starthi,y		; store MSB of SEGMENT base
 	txa
+	clc
+	adc segments_starthi,y		; add offset
+	pla
+	adc segments_starthi,y		; store MSB of SEGMENT base
 	sta segments_startlo,y		; store LSB of SEGMENT base
 
-	; move name pointer to next location
+@next:	; move name pointer to next location
 	lda @name
 	clc
 	adc #MAX_SECTION_NAME_LEN

@@ -842,8 +842,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	RETURN_OK				; no globals
 
 :	; iterate through all labels
-	ldxy #$0000
-	stxy @i
+	lda #$00
+	sta @i
+	sta @i+1
 
 @l0:	; get the address of the segment table for file containing the symbol
 	ldxy #@namebuff
@@ -857,7 +858,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	; look up the segment ID for the symbol
 	ldxy @i
-	CALLMAIN lbl::getsegment	; get segment ID
+	CALLMAIN lbl::getsegment		; get segment ID
 	cmp #SEG_ABS				; is segment ABSOLUTE?
 	beq @next				; if so, already resolved
 	cmp #SEG_UNDEF				; is segment UNDEFINED?
