@@ -999,17 +999,26 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	cpx numsegments
 	bne :-
 
-@calc_segment_sizes:
-	; get the new size of each SEGMENT by adding the number of bytes
-	; used in the object file for that SEGMENT
-	ldxy #obj::segments
-	stxy @segname
 	lda #$00
 	sta @i
+	ldxy #obj::segments
+	stxy @segname
+
+; get the new size of each SEGMENT by adding the number of bytes used in the
+; object file for that SEGMENT
+@calc_segment_sizes:
+	lda @i
 	cmp obj::numsegments
 	beq @nextfile			; if no sections used, continue
 
-	; get the id of the segment by its name
+	ldy #$00
+	lda (@segname),y
+	bne @rel
+
+@abs:	; absolute SEGMENT, not stored in global SEGMENT table, skip
+	jmp @nextseg
+
+@rel:	; get the id of the segment by its name
 	ldxy @segname			; address of segment name
 	jsr get_segment_by_name		; get its ID
 	bcc :+
@@ -1027,6 +1036,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	adc segments_sizehi-1,x
 	sta segments_sizehi-1,x
 
+@nextseg:
 	; move to next segment name
 	lda @segname
 	clc
@@ -1035,8 +1045,6 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	bcc :+
 	inc @segname+1
 :	inc @i				; next SEGMENT
-	lda @i
-	cmp obj::numsegments		; are we done?
 	bne @calc_segment_sizes		; repeat for all SEGMENTS in file
 
 @nextfile:

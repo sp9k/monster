@@ -245,8 +245,16 @@ __obj_close_section = close_section
 @name=r0
 @dst=r2
 	stxy @name
-	jsr get_segment_by_name
-	stxy @dst		; address to store new name to
+
+	lda numsegments
+	asl
+	asl
+	asl			; * MAX_SEGMENT_NAME_LEN
+	adc #<segments
+	sta @dst
+	lda #>segments
+	adc #$00
+	sta @dst+1
 
 	ldy #$00
 @l0:	lda (@name),y
@@ -338,7 +346,7 @@ __obj_close_section = close_section
 
 	lda @info
 	cmp #SEG_ABS
-	beq @add		; if ABS, always create a new segment
+	beq @abs	; if ABS, continue to create a new segment
 
 	; is there already a SEGMENT by this name?
 	ldxy #@name
@@ -367,6 +375,10 @@ __obj_close_section = close_section
 	inc numsections
 	RETURN_OK
 
+@abs:	; set name to 0 (empty) for absolute segments
+	lda #$00
+	sta @name
+
 @add:	ldxy #@name
 	jsr add_segment		; add new SEGMENT
 	pha
@@ -376,7 +388,7 @@ __obj_close_section = close_section
 	cmp #SEG_ABS
 	bne @addrel
 
-@abs:	; if ABS (.org), set START address to the literal PC value
+	; if ABS (.org), set START address to the literal PC value
 	lda zp::asmresult
 	sta segments_startlo-1,x
 	lda zp::asmresult+1
@@ -820,7 +832,7 @@ __obj_close_section = close_section
 	lda #$00
 	sta @i
 @dump_headers:
-	; get offset to name for this section (*8)
+	; get offset to name for this section name (*8)
 	lda @i
 	asl
 	asl
@@ -1492,10 +1504,10 @@ __obj_close_section = close_section
 
 ;*******************************************************************************
 ; LOAD
-; Loads the object state for the file with the given filename so that it may
-; be linked. A preliminary pass is assumed to have taken place.
+; Effectively links the object file.
 ; The global symbol table is expected to be built (labels created for any
-; IMPORTs used in the program being linked)
+; IMPORTs used in the program being linked) as well as the global segment
+; layout.
 .export __obj_load
 .proc __obj_load
 @tmp=r0
