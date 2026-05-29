@@ -10,11 +10,13 @@
 .include "file.inc"
 .include "kernal.inc"
 .include "labels.inc"
+.include "log.inc"
 .include "limits.inc"
 .include "linker.inc"
 .include "macros.inc"
 .include "ram.inc"
 .include "target.inc"
+.include "text.inc"
 .include "vmem.inc"
 .include "zeropage.inc"
 
@@ -319,10 +321,16 @@ __obj_close_section = close_section
 	lda zp::asmresult+1
 	sta sections_starthi,x	; set obj section start MSB
 
+	lda @info
+	cmp #SEG_ABS
+	beq @add		; if ABS (.org), always add a new SEGMENT
+
+	; is there already a SEGMENT by this name?
 	ldxy #@name
 	jsr get_segment_by_name
-	bcs @add
+	bcs @add		; new name, add a new SEGMENT
 
+; existing SEGMENT, start section where the SEGMENT left off
 @get:	pha
 	ldy numsections
 	sta segment_ids,y
@@ -1741,3 +1749,131 @@ __obj_close_section = close_section
 	.include "util.inc"
 	is_ws = util::is_whitespace
 .endif
+
+;*******************************************************************************
+; SECTION STOP
+; Gets the stop address for the given SECTION
+; IN:
+;   - .X: the index of the SECTION to get the address for
+; OUT:
+;   - .XY: stop address of the SECTION
+.proc get_section_stop
+	lda sections_startlo,x
+	clc
+	adc sections_sizelo,x
+	pha
+	lda sections_starthi,x
+	adc sections_sizehi,x
+	tay
+	pla
+	tax
+	rts
+.endproc
+
+;*******************************************************************************
+; LOG STATE
+; Emits the active state of the assembled object metadata to the log.
+; This is used to inform the user about the number/size of their segments after
+; assembly, etc.
+.export __obj_log_state
+.proc __obj_log_state
+@i    = zp::link
+@buff = r0
+@name = $100
+	CALLMAIN log::banner
+
+	; output all absolute segments
+	ldxy #@abs_title
+	CALLMAIN log::out
+
+	lda #$00
+	sta @i
+
+@abs:	ldx @i
+	lda segments_info,x
+	cmp #SEG_ABS		; is this an ABS segment?
+	bne :+			; if not, skip it
+
+	; push stop address then start address
+	jsr get_section_stop
+	txa
+	pha
+	tya
+	pha
+
+	ldx @i
+	lda sections_startlo,x
+	pha
+	lda sections_starthi,x
+	pha
+	ldxy #@abs_seg
+.ifdef vic20
+	CALLMAIN text::render_ind
+.endif
+	CALLMAIN log::out	; write section range to log
+
+:	inc @i
+	lda @i
+	cmp numsegments
+	bne @abs
+
+	; output all REL segments
+	ldxy #@rel_title
+	CALLMAIN log::out
+
+	lda #$00
+	sta @i
+@rel:	ldx @i
+	lda segments_info,x
+	cmp #SEG_ABS		; is this an ABS segment?
+	beq @next		; if so, skip it
+
+	; copy name to buffer
+	lda @i
+	clc
+	adc #$01		; get 1-based ID
+	jsr __obj_get_segment_name_by_id
+	stxy @buff
+
+	ldy #MAX_SECTION_NAME_LEN-1
+:	lda (@buff),y
+	sta @name,y
+	dey
+	bpl :-
+
+	; push the size of this SECTION
+	ldx @i
+	lda sections_sizelo,x
+	pha
+	lda sections_sizehi,x
+	pha
+
+	; push address of name
+	lda #>@name
+	pha
+	lda #<@name
+	pha
+
+	ldxy #@rel_seg
+.ifdef vic20
+	CALLMAIN text::render_ind
+.endif
+	CALLMAIN log::out	; write section range to log
+
+@next:	inc @i
+	lda @i
+	cmp numsegments
+	bne @rel
+
+	CALLMAIN log::banner
+
+	rts
+
+.PUSHSEG
+.RODATA
+@abs_title: .byte "absolute segments",0
+@abs_seg:   .byte "$", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
+@rel_title: .byte "relative segments",0
+@rel_seg:   .byte ESCAPE_STRING, ": ", ESCAPE_VALUE, 0
+.POPSEG
+.endproc

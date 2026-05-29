@@ -662,8 +662,10 @@ main:	jsr key::getch
 	pha
 
 @success:
-	ldxy #@success_msg
+	; write object state to log
+	CALL FINAL_BANK_LINKER, obj::log_state
 
+	ldxy #@success_msg
 @print: jsr text::render
 	jsr print_info
 
@@ -831,10 +833,12 @@ main:	jsr key::getch
 	jsr cur::on
 	jmp @getloop
 
-@done:	clc 		; clear carry for success
-@exit:	    		; carry is implicitly set by CMP for ==
-	php		; save success state
-	jsr cur::off	; turn off the cursor
+@done:	clc			; clear carry for success
+	lda #$00
+	sta mem::linebuffer,x	; terminate buffer
+@exit:				; carry is implicitly set by CMP for ==
+	php			; save success state
+	jsr cur::off		; turn off the cursor
 
 	; move the read text into $100
 	ldx @result_offset

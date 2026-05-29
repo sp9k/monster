@@ -2288,10 +2288,10 @@ __asm_include:
 	bcs @err
 
 :	lda #CTX_REPEAT
-	jsr ctx::push	; push a new context
+	jsr ctx::push		; push a new context
 
-	jsr expr::eval  ; get the number of times to repeat the code
-	bcs @ret	; error evaluating # of reps expression
+	jsr expr::eval  	; get the number of times to repeat the code
+	bcs @ret		; error evaluating # of reps expression
 
 @ok:	stxy zp::ctx+repctx::iter_end	; set number of iterations
 	jsr line::process_ws		; .Y=0

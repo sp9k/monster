@@ -20,7 +20,7 @@ __str_noname: .byte "[no name]",0
 __str_null = *-1
 
 .export __str_endrep
-__str_endrep: .byte ".endrep"
+__str_endrep: .byte ".endrep",0
 
 .export __str_breakpoints_title
 .ifdef hard8x8

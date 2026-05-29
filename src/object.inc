@@ -7,6 +7,7 @@
 .import __obj_get_segment_name_by_id
 .import __obj_init
 .import __obj_load
+.import __obj_log_state
 .import __obj_load_headers
 .import __obj_numsections
 .import __obj_sections_sizelo
@@ -27,6 +28,7 @@
 	init                   = __obj_init
 	load                   = __obj_load
 	load_headers           = __obj_load_headers
+	log_state              = __obj_log_state
 	numsegments            = __obj_numsegments
 	numsections            = __obj_numsections
 	sections_sizelo        = __obj_sections_sizelo
