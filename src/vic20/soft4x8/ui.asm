@@ -545,6 +545,8 @@ BYTES_TO_DISPLAY=8
 .proc __ui_memline
 @src=ra
 @col=rc
+	stxy @src
+
 	; initialize line to empty (all spaces)
 	lda #' '
 	ldx #40-1
