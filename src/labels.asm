@@ -1234,15 +1234,17 @@ labelvars_size=*-labelvars
 ;  - .XY: the ID of the label at the given alphanumeric index
 .proc id_by_alpha_index
 @arr = r0
-@i   = r2
-	sty @i
 	txa
 	asl
-	rol @i
+	sta @arr
+	tya
+	rol
+	sta @arr+1
 	;clc
+	lda @arr
 	adc #<label_names_sorted_ids
 	sta @arr
-	lda @i
+	lda @arr+1
 	adc #>label_names_sorted_ids
 	sta @arr+1
 
@@ -1706,11 +1708,9 @@ labelvars_size=*-labelvars
 	stxy @setptrs_fn
 	ldxy #addr_comparator
 	jsr @index
-	rts
 
 ;-------------------------------------------------------------------------------
 ; index by name
-; TODO:
 @index_by_name:
 	ldxy #label_names_sorted
 	stxy @arr
@@ -1945,27 +1945,31 @@ labelvars_size=*-labelvars
 .proc name_comparator
 @str_a = r4
 @str_b = r6
-@b     = r8
+@b     = rc
+@savey = rd
 	SELECT_BANK "SYMBOL_NAMES"
 
 	; compare the two name strings
+	sty @savey
 	ldy #$00
 @l0:	LOADB_Y @str_b
 	sta @b
 	beq @end
+
+	; compare str_a[i] with str_b[i]
 	LOADB_Y @str_a
 	beq @end
 	cmp @b
 	bne @done		; if strings mismatch at this byte, we're done
-
 @next:	iny			; move to next byte
 	bne @l0			; branch always
 
 @end:	LOADB_Y @str_a
-	ora @b			; exact match (strlen(a) = strlen(b))?
+	cmp @b			; exact match (strlen(a) = strlen(b))?
 
 @done:	php			; save .C and .Z
 	SELECT_BANK "SYMBOLS"
+	ldy @savey
 	plp			; restore .C and .Z
 	rts
 .endproc
