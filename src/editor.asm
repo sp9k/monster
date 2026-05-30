@@ -4989,8 +4989,8 @@ __edit_gotoline:
 	sec
 	sbc @tmp
 	tay
-	lda @tmp
 	sty @tmp
+	lda height
 	ldx #$00
 	jsr text::scrollupn
 	lda zp::cury
