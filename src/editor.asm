@@ -4409,6 +4409,7 @@ goto_buffer:
 	lda #$14		; delete from the text buffer
 	jsr text::putch
 	bcs @done
+	jsr sync_cur
 	lda zp::cury
 	jmp print_line		; redraw line
 
