@@ -162,18 +162,13 @@ data: .res BUFFER_SIZE
 	cmp #>data
 	beq @done
 
-:	lda (@cur),y
+:	decw @cur
+	lda (@cur),y
 	cmp #$0d
-	beq @at_newl
-
-	decw @cur
+	beq @done
 	inc @x
 	bne @l0			; branch always
 
-@at_newl:
-	dec @x
-	bpl @done
-	inc @x			; newlines on both sides, reset to 0
 @done:	lda @x
 	sta zp::srcx
 	jsr deactivate_source

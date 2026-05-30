@@ -747,7 +747,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 :	decw cursorzp
 	dec srcx
-	pla
+	bpl :+
+	jsr sync_x
+:	pla
 	clc
 	rts
 @skip:	sec
@@ -817,7 +819,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .proc __src_line_end
 :	jsr __src_right
 	bcc :-
-	rts
+	jmp sync_x
 .endproc
 
 ;*******************************************************************************

@@ -3563,7 +3563,8 @@ goto_buffer:
 	pla
 	sta mem::linebuffer,y
 	jsr print_current_line
-	jmp src::backspace
+	jsr src::backspace	; delete the newline that was added
+	jmp sync_cur
 
 @ok:
 @fmt_done:
@@ -5320,6 +5321,9 @@ __edit_gotoline:
 	rts
 .endproc
 
+.RODATA
+
+
 ;******************************************************************************
 ; SYNC CUR
 ; Syncs the physical cursor with the source one
@@ -5351,8 +5355,6 @@ __edit_gotoline:
 	sta text::insertmode
 	rts
 .endproc
-
-.RODATA
 
 ;*******************************************************************************
 ; DIR VIEW
