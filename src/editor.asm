@@ -2560,7 +2560,14 @@ cancel = enter_command
 ; Frees the current source buffer and moves to the previous buffer (if there
 ; is one) or a new source.
 .proc close_buffer
-	jsr src::close
+	lda src::activebuff
+	cmp #LOG_BUFFER
+	bne :+
+
+	; if we're on the special LOG buffer, toggle it off
+	jmp show_log
+
+:	jsr src::close
 	bcc refresh
 
 	; if there was no buffer to switch to, reset cursor and clear screen
@@ -4410,8 +4417,7 @@ goto_buffer:
 	jsr text::putch
 	bcs @done
 	jsr sync_cur
-	lda zp::cury
-	jmp print_line		; redraw line
+	jmp print_current_line	; redraw line
 
 @prevline:
 	jsr src::prev		; move BEFORE the newline
