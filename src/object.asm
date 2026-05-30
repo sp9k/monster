@@ -1621,22 +1621,29 @@ __obj_close_section = close_section
 
 	; read the table sizes for this SEGMENT
 	ldy seg_idx
-	jsr readb			; get code size LSB
-	bcs @eof
-
+	jsr krn::chrin			; get code size LSB
 	sta segments_sizelo,y
 	sta @sz
-	jsr readb			; get code size MSB
-	bcs @eof
+	pha
+	jsr krn::chrin			; get code size MSB
 	sta segments_sizehi,y
 	sta @sz+1
+	pha
 
-	jsr readb
-	bcs @eof
+	jsr krn::chrin
+	pha
 	sta segments_relocsizelo,y	; get relocation table size LSB
-	jsr readb
-	bcs @eof
+	jsr krn::chrin
+	pha
 	sta segments_relocsizehi,y	; get relocation table size MSB
+
+	; log the table sizes
+	ldxy #@reloc_log
+	CALLMAIN text::render_ind
+	CALLMAIN log::out
+	ldxy #@obj_log
+	CALLMAIN text::render_ind
+	CALLMAIN log::out
 
 	; get the address to write the object code to
 	ldx seg_idx
@@ -1677,6 +1684,12 @@ __obj_close_section = close_section
 
 @done:	clc
 @eof:	rts
+
+.PUSHSEG
+.RODATA
+@obj_log: .byte "object code: $", ESCAPE_VALUE, " bytes",0
+@reloc_log: .byte "relocation: $", ESCAPE_VALUE, " bytes",0
+.POPSEG
 .endproc
 
 ;******************************************************************************
