@@ -276,11 +276,14 @@ operands: .res $100
 	lda asm::mode		; check if we are in DIRECT mode
 	bne :+			; continue to push relocation value if not
 
-	; direct mode -> just push the current PC as VAL_ABS
+	; direct mode or ABS segment -> just push the current PC as VAL_ABS
+@abs_pc:
 	ldxy zp::virtualpc
 	jmp @const
 
 :	lda asm::segment	; current segment at assembly time
+	cmp #SEG_ABS
+	beq @abs_pc
 	sta @segment
 	ldxy #PC_SYMBOL_ID	; use the magic value for PC as the symbol ID
 	stxy @symbol
