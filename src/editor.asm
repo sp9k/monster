@@ -493,6 +493,7 @@ main:	jsr key::getch
 
 	lda #$01
 	sta zp::gendebuginfo	; enable debug info
+	sta asm::mode		; and object code relocation generation
 
 	ldxy #strings::assembling
 	jsr blank

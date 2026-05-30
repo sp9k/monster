@@ -383,7 +383,6 @@ __obj_close_section = close_section
 	jsr add_segment		; add new SEGMENT
 	pha
 	tax
-
 	lda @info
 	cmp #SEG_ABS
 	bne @addrel
@@ -395,16 +394,23 @@ __obj_close_section = close_section
 	sta segments_starthi-1,x
 
 @addrel:
-	; store INFO byte (address mode) for the SEGMENT
-	lda @info
-	sta segments_info-1,x
-
-	; init SEGMENT size to 0
+	; init SEGMENT SIZE and START (unless ABS) to 0
 	lda #$00
 	sta segments_sizelo-1,x
 	sta sections_sizehi-1,x
 
-	ldx numsections
+	; store INFO byte (address mode) for the SEGMENT
+	lda @info
+	sta segments_info-1,x
+	cmp #SEG_ABS
+	beq :+
+
+	; init REL segments start address to 0
+	lda #$00
+	sta segments_startlo-1,x
+	sta segments_starthi-1,x
+
+:	ldx numsections
 	pla			; restore SEGMENT id
 	sta segment_ids,x
 	ldxy #$0000		; return 0 for address for new segment
@@ -1261,7 +1267,7 @@ __obj_close_section = close_section
 	cpy #MAX_SECTION_NAME_LEN
 	bne @segname
 
-	; get OFFSET (or literal start address if ABS) for SEGMENT
+	; read OFFSET (or literal start address if ABS) for SEGMENT
 	ldy @i
 	jsr readb
 	bcs @ret
@@ -1279,8 +1285,8 @@ __obj_close_section = close_section
 	sta __obj_segments_sizehi,y
 
 	; if ABS segment, directly set the SEGMENT start address
-	lda segment_ids,x
-	cmp #SEG_ABS
+	ldy #$00
+	lda (@name),y
 	beq @next			; if ABS, already know start addr
 
 @rel:	; for REL segments, get the base address of this SEGMENT in the linker
@@ -1294,10 +1300,11 @@ __obj_close_section = close_section
 	ldy @i
 	txa
 	clc
-	adc segments_starthi,y		; add offset
-	pla
-	adc segments_starthi,y		; store MSB of SEGMENT base
+	adc segments_startlo,y		; add offset
 	sta segments_startlo,y		; store LSB of SEGMENT base
+	pla
+	adc segments_starthi,y		; get MSB of SEGMENT base
+	sta segments_starthi,y		; store MSB of SEGMENT base
 
 @next:	; move name pointer to next location
 	lda @name

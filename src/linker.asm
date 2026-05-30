@@ -144,6 +144,7 @@ segment_names: .res MAX_SEGMENT_NAME_LEN*MAX_SEGMENTS
 .export segment_names
 
 ; base addresses for each segment per file
+.export file_segments_start
 file_segments_start: .res MAX_OBJS*MAX_SEGMENTS*2
 
 ;*******************************************************************************
@@ -1013,10 +1014,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	ldy #$00
 	lda (@segname),y
-	bne @rel
-
-@abs:	; absolute SEGMENT, not stored in global SEGMENT table, skip
-	jmp @nextseg
+	beq @nextseg	; absolute SEGMENT, not stored in global table, skip
 
 @rel:	; get the id of the segment by its name
 	ldxy @segname			; address of segment name
@@ -1304,7 +1302,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ;   - .XY: the base address for the requested segment within objfile
 .export __link_segaddr_for_file_by_name
 .proc __link_segaddr_for_file_by_name
-	jsr get_segment_by_name		; get the id of the SEGMENT
+	jsr get_segment_by_name		; get id of the SEGMENT
+
 	; fall through
 .endproc
 
