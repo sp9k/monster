@@ -594,19 +594,19 @@ main:	jsr key::getch
 	bne @pass2loop		; repeat if not
 	beq @done		; branch always (done)
 
-@done:
-	ldxy zp::asmresult
+@done:	ldxy zp::asmresult
 	jsr dbgi::endblock	; end the final debug info block
 	jsr obj::close_section	; close final OBJ section
 
 	jsr src::popgoto
 	jsr text::restorebuff	; restore the linebuffer
+	jsr sync_cur		; resync cursor
 
 	; fall through to display_result
 .endproc
 
 ;*******************************************************************************
-; ASM DONE
+; DISPLAY RESULT
 ; Displays the result of the assembly. Prints an error if one occurred or
 ; the size of the assembled program if not.
 ; IN:

@@ -172,6 +172,8 @@ data: .res BUFFER_SIZE
 
 @at_newl:
 	dec @x
+	bpl @done
+	inc @x			; newlines on both sides, reset to 0
 @done:	lda @x
 	sta zp::srcx
 	jsr deactivate_source
