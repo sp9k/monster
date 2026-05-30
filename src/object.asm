@@ -38,8 +38,7 @@
 .macpack longbranch
 
 ;*******************************************************************************
-; CONSTANTS
-MAX_SEGMENTS         = 8
+; CONSTANTS (see limits.inc for others)
 MAX_SECTIONS         = 8	; max number of memory sections per OBJ file
 MAX_OBJS             = 16	; max number of object files that may be used
 MAX_SECTION_NAME_LEN = 8	; max length of a single section name
@@ -48,8 +47,6 @@ MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
 MAX_SYMBOL_INDEXES = $200	; max number of symbols that may be referenced
 
 MAX_SYMBOL_NAME_LEN = 32
-MAX_IMPORTS         = 128
-MAX_EXPORTS         = 32
 
 SYM_IMPORT_BYTE     = 1
 SYM_IMPORT_WORD     = 2
@@ -107,6 +104,21 @@ reloc_tables:
 reloc_tables_end=*
 
 ;*******************************************************************************
+.segment "SHAREBSS"
+
+.export __obj_num_exports
+__obj_num_exports:
+numexports: .byte 0
+
+.export __obj_num_imports
+__obj_num_imports:
+numimports: .word 0
+
+.export __obj_numsegments
+__obj_numsegments:
+numsegments: .byte 0	; number of SEGMENTs in obj file being written/read
+
+;*******************************************************************************
 ; VARIABLES
 .segment "OBJVARS"
 reloctop: .word 0	; pointer to top of relocation table being built
@@ -118,14 +130,8 @@ numsections: .byte 0	; number of sections in obj file being written/read
 .export __obj_filename
 __obj_filename: .word 0	; pointer to name of object file being loaded
 
-.export __obj_numsegments
-__obj_numsegments:
-numsegments: .byte 0	; number of SEGMENTs in obj file being written/read
 import_indexeshi:   .res MAX_EXPORTS	; MSBs for index (in symbol_index_map)
 import_indexeslo:   .res MAX_EXPORTS	; LSBs for index (in symbol_index_map)
-
-numexports: .byte 0
-numimports: .word 0
 
 ;*******************************************************************************
 ; NUM SYMBOLS MAPPED

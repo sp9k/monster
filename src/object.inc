@@ -13,6 +13,8 @@
 .import __obj_sections_sizelo
 .import __obj_sections_sizehi
 .import __obj_segments
+.import __obj_num_exports
+.import __obj_num_imports
 .import __obj_numsegments
 .import __obj_segments_sizelo
 .import __obj_segments_sizehi
@@ -29,6 +31,8 @@
 	load                   = __obj_load
 	load_headers           = __obj_load_headers
 	log_state              = __obj_log_state
+	numexports             = __obj_num_exports
+	numimports             = __obj_num_imports
 	numsegments            = __obj_numsegments
 	numsections            = __obj_numsections
 	sections_sizelo        = __obj_sections_sizelo

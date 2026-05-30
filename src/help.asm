@@ -8,6 +8,7 @@
 .include "macro.inc"
 .include "macros.inc"
 .include "memory.inc"
+.include "object.inc"
 .include "ram.inc"
 .include "screen.inc"
 .include "target.inc"
@@ -183,11 +184,44 @@ START_ROW = 0
 	jsr print
 
 ;------------------------------------------------------------------------------
-; draw a separator after all the info that was printed
+; print the number of segments defined / available
+@segments:
+	lda obj::numsegments
+	pha
+	lda #$00
+	pha
+	ldxy #@segments_msg
 	lda #START_ROW+10
+	jsr print
+
+;------------------------------------------------------------------------------
+; print the number of imports defined / available
+@imports:
+	lda obj::numimports
+	pha
+	lda #$00
+	pha
+	ldxy #@imports_msg
+	lda #START_ROW+11
+	jsr print
+
+;------------------------------------------------------------------------------
+; print the number of exports defined / available
+@exports:
+	lda obj::numexports
+	pha
+	lda #$00
+	pha
+	ldxy #@exports_msg
+	lda #START_ROW+12
+	jsr print
+
+;------------------------------------------------------------------------------
+; draw a separator after all the info that was printed
+	lda #START_ROW+13
 	CALLMAIN scr::clrline
 	lda #COLOR_RVS
-	ldx #START_ROW+10
+	ldx #START_ROW+13
 	CALLMAIN draw::hline
 
 	CALLMAIN key::waitch
@@ -218,6 +252,12 @@ START_ROW = 0
                   .byte ESCAPE_VALUE_DEC, "/", .string(MAX_BREAKPOINTS), 0
 @watchpoints_msg: .byte "watches     "
                   .byte ESCAPE_VALUE_DEC, "/", .string(MAX_BREAKPOINTS), 0
+@segments_msg:    .byte "segments    "
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_SEGMENTS), 0
+@imports_msg:     .byte "imports     "
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_SEGMENTS), 0
+@exports_msg:     .byte "exports     "
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_SEGMENTS), 0
 .POPSEG
 .endproc
 
