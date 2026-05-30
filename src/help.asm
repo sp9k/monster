@@ -232,7 +232,7 @@ START_ROW = 0
 .PUSHSEG
 .RODATA
 @noasm:           .byte "program     no assembly",0
-@program_msg:     .byte "program     "
+@program_msg:     .byte "program     $"
                   .byte ESCAPE_VALUE, "-$", ESCAPE_VALUE, 0
 @debugger_msg:    .byte "debugger    "
                   .byte DEBUGGER_START, "-", DEBUGGER_STOP, 0
@@ -242,22 +242,22 @@ START_ROW = 0
                   .byte ESCAPE_VALUE_DEC, "/", .string(MAX_ANON), 0
 @macros_msg:      .byte "macros      "
                   .byte ESCAPE_VALUE_DEC, "/", .string(MAX_MACROS), 0
-@macro_usage:     .byte "macro usage "
+@macro_usage:     .byte "macro usage $"
                   .byte ESCAPE_VALUE, "/", MACROS_STOP, 0
 @files_msg:       .byte "files       "
                   .byte ESCAPE_VALUE_DEC, "/", .string(MAX_FILES), 0
-@dbginfo_msg:     .byte "debug info  "
+@dbginfo_msg:     .byte "debug info  $"
                   .byte ESCAPE_VALUE, "/", DEBUGINFO_SIZE, 0
 @breakpoints_msg: .byte "breakpoints "
                   .byte ESCAPE_VALUE_DEC, "/", .string(MAX_BREAKPOINTS), 0
 @watchpoints_msg: .byte "watches     "
-                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_BREAKPOINTS), 0
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_WATCHPOINTS), 0
 @segments_msg:    .byte "segments    "
                   .byte ESCAPE_VALUE_DEC, "/", .string(MAX_SEGMENTS), 0
 @imports_msg:     .byte "imports     "
-                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_SEGMENTS), 0
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_IMPORTS), 0
 @exports_msg:     .byte "exports     "
-                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_SEGMENTS), 0
+                  .byte ESCAPE_VALUE_DEC, "/", .string(MAX_EXPORTS), 0
 .POPSEG
 .endproc
 

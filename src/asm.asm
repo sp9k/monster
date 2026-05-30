@@ -434,6 +434,7 @@ num_illegals = *-illegal_opcodes
 
 	jsr ctx::init
 	CALL FINAL_BANK_MACROS, mac::init
+	jsr obj::init
 	jsr lbl::clr
 
 	; fall through to RESETPC

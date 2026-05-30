@@ -344,7 +344,6 @@ main:	jsr key::getch
 
 	jsr close_windows	; close errlog (if open)
 	jsr dbgi::init
-	jsr obj::init
 	jsr errlog::clear
 
 	;jsr init_log
@@ -501,7 +500,6 @@ main:	jsr key::getch
 	jsr run::install_sigint	; reset SIGINT flag
 
 	jsr dbgi::init
-	jsr obj::init
 	jsr errlog::clear
 
 	; save the current source position and rewind it for assembly
