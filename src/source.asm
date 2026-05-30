@@ -254,8 +254,8 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 	; set cursor to (0,0) for the new log buffer
 	lda #$00
-	sta buffs_curx+LOG_BUFFER
-	sta buffs_cury+LOG_BUFFER
+	sta zp::curx
+	sta zp::cury
 
 	; name the buffer
 	ldxy #@filename
