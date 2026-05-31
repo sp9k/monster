@@ -15,5 +15,7 @@ loop:
 	bne loop
 done:
 	jmp *
+
+.seg "data"
 msg:
 	.db "hello world!",0

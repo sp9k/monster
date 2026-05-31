@@ -1935,6 +1935,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	jsr dbgi::set_seg_id	; and set it for debug info too
 
 	; create a new BLOCK of debug info at zp::virtualpc
+	ldxy zp::virtualpc
 	jsr dbgi::newblock	; start new block for included file
 
 @done:	lda #ASM_DIRECTIVE

@@ -419,8 +419,8 @@ __obj_close_section = close_section
 :	ldx numsections
 	pla			; restore SEGMENT id
 	sta segment_ids,x
-	ldxy #$0000		; return 0 for address for new segment
 
+	ldxy #$0000		; return 0 for address for new segment
 	inc numsections
 	RETURN_OK
 .endproc
@@ -894,7 +894,7 @@ __obj_close_section = close_section
 @sec=r0
 @sz=r2
 @sec_idx=r4
-@seg_idx=r6
+@seg_idx=r5
 	lda #$00
 	sta @seg_idx
 	cmp numsections
@@ -902,10 +902,9 @@ __obj_close_section = close_section
 	bne @l0
 	RETURN_OK		; no sections
 
-@l0:	lda #$00
-	sta @sec_idx		; reset section counter
-
-	ldx @seg_idx
+;-------------------------------------------------------------------------------
+; iterate over all SEGMENTs and dump them
+@l0:	ldx @seg_idx
 
 	; write the INFO byte
 	lda segments_info,x
@@ -923,23 +922,29 @@ __obj_close_section = close_section
 	lda segments_relocsizehi,x
 	jsr krn::chrout
 
-@l1:	ldx @sec_idx
+;-------------------------------------------------------------------------------
+; OBJECT CODE
+; iterate over all SECTIONS and dump them if they're part of the SEGMENT we're
+; working on
+	lda #$00
+	sta @sec_idx		; reset section counter
+@objloop:
+	ldx @sec_idx
 
 	; check if this SECTION is part of the SEGMENT we're building
 	lda @seg_idx
 	clc
 	adc #$01			; +1 because id's are 1-based
 	cmp segment_ids,x		; is our SECTION part of the SEGMENT?
-	beq :+				; if so, dump it
-	jmp @nextsec			; not our SEGMENT, try next SECTION
+	bne @obj_next			; not our SEGMENT, try next SECTION
 
-:	ldx @sec_idx
+	ldx @sec_idx
 	lda __obj_sections_sizelo,x
 	sta @sz
 	lda __obj_sections_sizehi,x
 	sta @sz+1
 	ora @sz
-	beq @nextsec			; if no OBJ code, done with this SECTION
+	beq @obj_next			; if no OBJ code, done with this SECTION
 
 	; get start address of SECTION to dump
 	lda sections_startlo,x
@@ -947,17 +952,52 @@ __obj_close_section = close_section
 	lda sections_starthi,x
 	sta @sec+1
 
-@objloop:
-	; dump the object code for the section
+:	; dump the object code for the section
 	ldxy @sec		; address to load
 	jsr vmem_load		; load a byte of object code
 	jsr krn::chrout		; and dump it
 	incw @sec
 	decw @sz
 	iszero @sz
-	bne @objloop		; repeat til done
+	bne :-			; repeat til done
 
-@reloc:	; then dump the relocation table
+@obj_next:
+	inc @sec_idx
+	lda @sec_idx
+	cmp numsections
+	jne @objloop
+
+;-------------------------------------------------------------------------------
+; RELOCATION TABLE
+; iterate over all SECTIONS and dump them if they're part of the SEGMENT we're
+; working on
+	lda #$00
+	sta @sec_idx		; reset SECTION index
+@dump_rel:
+	ldx @sec_idx
+
+	; check if this SECTION is part of the SEGMENT we're building
+	lda @seg_idx
+	clc
+	adc #$01			; +1 because id's are 1-based
+	cmp segment_ids,x		; is our SECTION part of the SEGMENT?
+	bne @reloc_next			; not our SEGMENT, try next SECTION
+
+	ldx @sec_idx
+	lda __obj_sections_sizelo,x
+	sta @sz
+	lda __obj_sections_sizehi,x
+	sta @sz+1
+	ora @sz
+	beq @reloc_next			; if no OBJ code, done with this SECTION
+
+	; get start address of SECTION to dump
+	lda sections_startlo,x
+	sta @sec
+	lda sections_starthi,x
+	sta @sec+1
+
+@reloc:	; dump the relocation table
 	ldx @sec_idx
 	lda sections_relocstartlo,x
 	sta @sec
@@ -968,7 +1008,7 @@ __obj_close_section = close_section
 	lda sections_relocsizehi,x
 	sta @sz+1
 	ora @sz
-	beq @nextseg			; if no relocation table, skip
+	beq @reloc_next			; if no relocation table, skip
 
 	ldy #$00
 @relocloop:
@@ -979,19 +1019,19 @@ __obj_close_section = close_section
 	iszero @sz
 	bne @relocloop
 
-@nextsec:
+@reloc_next:
 	inc @sec_idx
 	lda @sec_idx
 	cmp numsections
-	beq @nextseg
-	jmp @l1
+	jne @dump_rel
 
+;-------------------------------------------------------------------------------
+; move to next SEGMENT index and repeat til all are dumped
 @nextseg:
 	inc @seg_idx
 	lda @seg_idx
 	cmp numsegments
-	beq @done
-	jmp @l0
+	jne @l0
 
 @done:	RETURN_OK
 .endproc
@@ -1038,8 +1078,9 @@ __obj_close_section = close_section
 
 ;*******************************************************************************
 ; APPLY RELOCATION
-; Produces the final binary for the object table by iteratively applying each
-; section's relocation table to its base object code.
+; Produces the final binary for the object table for the given SEGMENT
+; IN:
+;   - .A: id (index) of SEGMENT to apply relocation data to
 ; OUT:
 ;   - .C: set if there is no remaining relocation to apply for the section
 .proc apply_relocation
@@ -1052,8 +1093,6 @@ __obj_close_section = close_section
 @rec=r7
 @sz=re
 @seg_base=zp::tmp10
-	lda #$00
-	sta @seg_idx
 
 @apply: ldx @seg_idx
 	lda segments_relocsizelo,x
@@ -1166,7 +1205,15 @@ __obj_close_section = close_section
 	; no post-processing, just add 1 byte addend and we're done
 	lda @tmp
 	jsr vmem_store		; store relocated value
-	jmp @nopostproc_done
+@nopostproc_done:
+	; update sz (sz -= 5)
+	lda @sz
+	sec
+	sbc #$05
+	sta @sz
+	bcs @next
+	dec @sz+1
+	bcc @next		; branch always
 
 @postproc:
 	php			; save carry from LSB addition
@@ -1200,24 +1247,13 @@ __obj_close_section = close_section
 	jsr vmem_store		; and store
 	jmp @next
 
-@nopostproc_done:
-	; update sz (sz -= 5)
-	lda @sz
-	sec
-	sbc #$05
-	sta @sz
-	bcs @next
-	dec @sz+1
-
 @next:	iszero @sz
-	beq :+
-	jmp @section_loop
+	jne @section_loop
 
-:	inc @seg_idx
+	inc @seg_idx
 	lda @seg_idx
 	cmp numsegments
-	beq @done
-	jmp @apply
+	jne @apply
 
 @done:	RETURN_OK
 .endproc
@@ -1257,7 +1293,7 @@ __obj_close_section = close_section
 	bcs @ret
 	sta numimports+1
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; read the SEGMENTS used in the object file (names and sizes)
 	lda #$00
 	sta @i
@@ -1266,8 +1302,7 @@ __obj_close_section = close_section
 	ldy #$00
 @segname:
 	; read the SEGMENT name
-	jsr readb
-	bcs @ret
+	jsr krn::chrin
 	sta (@name),y
 	iny
 	cpy #MAX_SECTION_NAME_LEN
@@ -1275,19 +1310,15 @@ __obj_close_section = close_section
 
 	; read OFFSET (or literal start address if ABS) for SEGMENT
 	ldy @i
-	jsr readb
-	bcs @ret
+	jsr krn::chrin
 	sta segments_startlo,y
-	jsr readb
-	bcs @ret
+	jsr krn::chrin
 	sta segments_starthi,y
 
 	; get the number of bytes used in the SEGMENT
-	jsr readb			; get LSB
-	bcs @ret
+	jsr krn::chrin
 	sta __obj_segments_sizelo,y
-	jsr readb			; get MSB
-	bcs @ret
+	jsr krn::chrin
 	sta __obj_segments_sizehi,y
 
 	; if ABS segment, directly set the SEGMENT start address
@@ -1523,7 +1554,6 @@ __obj_close_section = close_section
 ; layout.
 .export __obj_load
 .proc __obj_load
-@tmp=r0
 @i=r4
 @name=r6
 @addr=r6
@@ -1615,13 +1645,12 @@ __obj_close_section = close_section
 @load_segments:
 	lda #$00
 	sta seg_idx
-	cmp numsegments
-	bne @load_segment
-	jmp @done			; if no SEGMENTS, we're done
+	lda numsegments
+	sta seg_cnt
+	jeq @done
 
 @load_segment:
-	jsr readb			; get "info" byte for SEGMENT
-	bcs @export_error
+	jsr krn::chrin			; get "info" byte for SEGMENT
 
 	; TODO: make sure SEGMENT's address mode for SEGMENT matches linker's
 
@@ -1658,13 +1687,9 @@ __obj_close_section = close_section
 	jsr get_segment_base
 	stxy @seg
 
-	lda numsegments
-	sta seg_cnt
-
 @objcode:
 	; finally, load the object code for the segment to vmem
-	jsr readb
-	bcs @eof
+	jsr krn::chrin
 	ldxy @seg		; address to store to
 	jsr vmem_store		; store a byte of object code
 	incw @seg

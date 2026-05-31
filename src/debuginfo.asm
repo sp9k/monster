@@ -1466,21 +1466,25 @@ get_filename = get_filename_addr
 
 	ldxy #blockheaders
 	stxy @dbgi
-	ldx numblocks
 
 	; dump each header
-	ldx numblocks
+	tax			; .X = numblocks
 	beq @done		; if no BLOCKS, we're done
+
+@dump_block_header:
 	ldy #$00
-@headers:
-	LOADB_Y @dbgi
+
+	; dump the header for the block
+:	LOADB_Y @dbgi
 	jsr krn::chrout
 	iny
 	cpy #SIZEOF_BLOCK_HEADER_OBJ
-	bne @headers
+	bne :-
 
 	; calculate the size of the line program for the block
 	; (progstop-progstart)
+
+	;ldy #BLOCK_LINE_PROG
 	LOADB_Y @dbgi
 	sta @progstart
 	iny
@@ -1503,8 +1507,9 @@ get_filename = get_filename_addr
 	sta @dbgi
 	bcc :+
 	inc @dbgi+1
+
 :	dex
-	bne @headers
+	bne @dump_block_header
 
 ;--------------------------------------
 ; dump the line program data for the object file
@@ -1701,8 +1706,7 @@ get_filename = get_filename_addr
 	inc @block_i
 	lda @block_i
 	cmp numblocks
-	beq @done
-	jmp @load_block
+	jne @load_block
 
 @done:	RETURN_OK
 .endproc

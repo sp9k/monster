@@ -283,7 +283,8 @@ operands: .res $100
 
 :	lda asm::segment	; current segment at assembly time
 	cmp #SEG_ABS
-	beq @abs_pc
+	beq @abs_pc		; if * used in an ABS segment, treat as constant
+
 	sta @segment
 	ldxy #PC_SYMBOL_ID	; use the magic value for PC as the symbol ID
 	stxy @symbol
