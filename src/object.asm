@@ -791,6 +791,8 @@ __obj_close_section = close_section
 ;*******************************************************************************
 ; DUMP SEGMENTS
 ; Dumps the SEGMENTS used in the object file and their sizes
+; Also computes the sizes of the object and relocation tables, which are
+; written in front of their corresponding data tables.
 .proc dump_segments
 @name=r0
 @sec_idx=r2
@@ -809,7 +811,9 @@ __obj_close_section = close_section
 	dex
 	bne :-
 
-; compute the size of each SEGMENT (sum of all SECTIONS that use it)
+;-------------------------------------------------------------------------------
+; compute the size of each SEGMENT (sum of all SECTIONS that use it) and size
+; of all relocation tables
 @l0:	lda #$00
 	sta @sec_idx
 
@@ -821,12 +825,11 @@ __obj_close_section = close_section
 	cmp segment_ids,x		; is this SECTION in this SEGMENT?
 	bne :+				; if not, continue
 
-	tay
+	tay				; .Y=segment_id for section
 	lda sections_relocsizelo,x	; get size of code for section
 	clc
 	adc segments_relocsizelo-1,y	; add with current SEGMENT size
 	sta segments_relocsizelo-1,y
-
 	lda sections_relocsizehi,x
 	adc segments_relocsizehi-1,y
 	sta segments_relocsizehi-1,y
@@ -983,14 +986,6 @@ __obj_close_section = close_section
 	cmp segment_ids,x		; is our SECTION part of the SEGMENT?
 	bne @reloc_next			; not our SEGMENT, try next SECTION
 
-	ldx @sec_idx
-	lda __obj_sections_sizelo,x
-	sta @sz
-	lda __obj_sections_sizehi,x
-	sta @sz+1
-	ora @sz
-	beq @reloc_next			; if no OBJ code, done with this SECTION
-
 	; get start address of SECTION to dump
 	lda sections_startlo,x
 	sta @sec
@@ -1080,7 +1075,7 @@ __obj_close_section = close_section
 ; APPLY RELOCATION
 ; Produces the final binary for the object table for the given SEGMENT
 ; IN:
-;   - .A: id (index) of SEGMENT to apply relocation data to
+;   - .A: id of SEGMENT to apply relocation for
 ; OUT:
 ;   - .C: set if there is no remaining relocation to apply for the section
 .proc apply_relocation
@@ -1089,12 +1084,10 @@ __obj_close_section = close_section
 @tmp=r0
 @addrmode=r2
 @pc=r4
-@seg_idx=r6
 @rec=r7
 @sz=re
 @seg_base=zp::tmp10
-
-@apply: ldx @seg_idx
+	tax				; .X=id (index)
 	lda segments_relocsizelo,x
 	sta @sz
 	lda segments_relocsizehi,x
@@ -1108,7 +1101,7 @@ __obj_close_section = close_section
 	jsr get_segment_base
 	stxy @seg_base
 
-@section_loop:
+@relocate:
 	; read a record from the RELOCATION table
 	ldy #$00
 :	jsr krn::chrin	; read a byte
@@ -1248,12 +1241,7 @@ __obj_close_section = close_section
 	jmp @next
 
 @next:	iszero @sz
-	jne @section_loop
-
-	inc @seg_idx
-	lda @seg_idx
-	cmp numsegments
-	jne @apply
+	jne @relocate
 
 @done:	RETURN_OK
 .endproc
@@ -1640,6 +1628,7 @@ __obj_close_section = close_section
 	dec @symcnt
 	bne @eat_export
 
+;-------------------------------------------------------------------------------
 ; done with symbols, now load all the SEGMENT information to get the sizes
 ; of each table we will need to walk
 @load_segments:
@@ -1703,16 +1692,18 @@ __obj_close_section = close_section
 	bne @objcode
 
 @reltab:
+	lda seg_idx
 	jsr apply_relocation			; load/apply relocation table
-	lda #$01				; apply relocation
-	CALL FINAL_BANK_DEBUG, dbgi::load	; load debug info
-
+	lda #$01				; flag for dbgi::load (apply relocation)
 	inc seg_idx
 	dec seg_cnt				; decrement segment counter
-	beq @done
+	jne @load_segment			; repeat for all segments
 
-	jmp @load_segment			; repeat for all segments
+;-------------------------------------------------------------------------------
+; finally, link the debug information for the object file
+	CALL FINAL_BANK_DEBUG, dbgi::load	; load debug info
 
+;-------------------------------------------------------------------------------
 @done:	clc
 @eof:	rts
 
