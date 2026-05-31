@@ -1661,13 +1661,16 @@ __obj_close_section = close_section
 	pha
 	sta segments_relocsizehi,y	; get relocation table size MSB
 
-	; log the table sizes
+	; log the SEGMENT name and table sizes for it
+	ldx seg_idx
+	inx
+	txa
+	jsr __obj_get_segment_name_by_id
+	jsr log_msg
 	ldxy #@reloc_log
-	CALLMAIN text::render_ind
-	CALLMAIN log::out
+	jsr log_msg
 	ldxy #@obj_log
-	CALLMAIN text::render_ind
-	CALLMAIN log::out
+	jsr log_msg
 
 	; get the address to write the object code to
 	ldx seg_idx
@@ -1707,11 +1710,8 @@ __obj_close_section = close_section
 @done:	clc
 @eof:	rts
 
-.PUSHSEG
-.RODATA
 @obj_log: .byte "object code: $", ESCAPE_VALUE, " bytes",0
 @reloc_log: .byte "relocation: $", ESCAPE_VALUE, " bytes",0
-.POPSEG
 .endproc
 
 ;******************************************************************************
@@ -1982,4 +1982,39 @@ __obj_close_section = close_section
 @rel_title: .byte "relative segments",0
 @rel_seg:   .byte ESCAPE_STRING, ": ", ESCAPE_VALUE, 0
 .POPSEG
+.endproc
+
+;******************************************************************************
+; LOG MSG
+; Copies the provided string to shared RAM and logs it
+; IN:
+;   - .XY: address of string to log
+.proc log_msg
+@ret=r4
+@str=r4
+@buff=$100
+	stxy @str
+
+	; copy the string to RAM
+	ldy #$ff
+:	iny
+	lda (@str),y
+	sta @buff,y
+	cmp #$00
+	bne :-
+
+	pla
+	sta @ret
+	pla
+	sta @ret+1
+
+	ldxy #@buff
+	CALLMAIN text::render_ind	; render the string
+	CALLMAIN log::out		; and log it
+
+	lda @ret+1
+	pha
+	lda @ret
+	pha
+	rts
 .endproc
