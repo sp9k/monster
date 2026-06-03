@@ -603,14 +603,24 @@ __mon_default_start_set: .byte 0
 
 ;*******************************************************************************
 ; GOTO
-; Sets the program counter to the given value
+; Sets the program counter to the given value (or the current PC if none is
+; given)
 ; Example:
 ;  `g $1234`
 .proc goto
 	jsr debugging
-	bcc :+				; can't step if not debugging
-	CALLMAIN run::go
-:	rts
+	bcc @done			; can't step if not debugging
+
+	lda (zp::line),y
+	beq :+				; if no argument given, skip setting PC
+
+	; set the PC to the provided value
+	jsr eval
+	bcs @done			; if invalid address, break
+	stxy sim::pc
+:	CALLMAIN run::go
+
+@done:	rts
 .endproc
 
 ;*******************************************************************************

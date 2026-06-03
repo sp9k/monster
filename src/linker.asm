@@ -22,6 +22,7 @@
 .include "strings.inc"
 .include "util.inc"
 .include "target.inc"
+.include "text.inc"
 .include "zeropage.inc"
 
 .include "ram.inc"
@@ -957,10 +958,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ; block of the .O file.
 ; Also define labels for the globals (IMPORT/EXPORT blocks) defined in each
 ; object file.
-@pass1: ldxy #strings::pass1
+	ldxy #strings::pass1
 	CALLMAIN log::out
 
-	; log the filename being assembled
+@pass1: ; log the filename being assembled
 	ldxy @objfile
 	CALLMAIN log::out
 
@@ -1027,12 +1028,15 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	; update the size of the segment: segment_size += section_size
 	lda obj::segments_sizelo,y
+	pha				; push LSB of segment usage for logging
 	clc
 	adc segments_sizelo-1,x
 	sta segments_sizelo-1,x
 	lda obj::segments_sizehi,y
+	pha				; push MSB for logging
 	adc segments_sizehi-1,x
 	sta segments_sizehi-1,x
+	jsr log_msg
 
 @nextseg:
 	; move to next segment name
@@ -1128,6 +1132,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jmp validate_segments	; validate segments and return error if needed
 
 @done:	rts
+
+@pass1_seg_msg: .byte "$", ESCAPE_VALUE, 0
 .endproc
 
 ;*******************************************************************************
@@ -1958,4 +1964,40 @@ __link_get_segment_by_name:
 	bne :-
 
 @done:	rts
+.endproc
+
+;******************************************************************************
+; LOG MSG
+; Copies the provided string to shared RAM and logs it
+; IN:
+;   - .XY: address of string to log
+;   - r
+.proc log_msg
+@ret=r4
+@str=r4
+@buff=$100
+	stxy @str
+
+	; copy the string to RAM
+	ldy #$ff
+:	iny
+	lda (@str),y
+	sta @buff,y
+	cmp #$00
+	bne :-
+
+	pla
+	sta @ret
+	pla
+	sta @ret+1
+
+	ldxy #@buff
+	CALLMAIN text::render_ind	; render the string
+	CALLMAIN log::out		; and log it
+
+	lda @ret+1
+	pha
+	lda @ret
+	pha
+	rts
 .endproc

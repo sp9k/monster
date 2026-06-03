@@ -1648,11 +1648,9 @@ __obj_close_section = close_section
 	jsr krn::chrin			; get code size LSB
 	sta segments_sizelo,y
 	sta @sz
-	pha
 	jsr krn::chrin			; get code size MSB
 	sta segments_sizehi,y
 	sta @sz+1
-	pha
 
 	jsr krn::chrin
 	pha
@@ -1669,8 +1667,6 @@ __obj_close_section = close_section
 	jsr log_msg
 	ldxy #@reloc_log
 	jsr log_msg
-	ldxy #@obj_log
-	jsr log_msg
 
 	; get the address to write the object code to
 	ldx seg_idx
@@ -1678,6 +1674,23 @@ __obj_close_section = close_section
 	txa
 	jsr get_segment_base
 	stxy @seg
+
+	; get the stop address for logging
+	txa
+	clc
+	adc @sz
+	pha
+	tya
+	adc @sz+1
+	pha
+
+	; push the start address for logging
+	lda @seg
+	pha
+	lda @seg+1
+	pha
+	ldxy #@obj_log
+	jsr log_msg
 
 @objcode:
 	; finally, load the object code for the segment to vmem
@@ -1710,7 +1723,10 @@ __obj_close_section = close_section
 @done:	clc
 @eof:	rts
 
-@obj_log: .byte "object code: $", ESCAPE_VALUE, " bytes",0
+; object code: $xxxx-$xxxx
+@obj_log: .byte "object code: $", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
+
+; relocation: $xxxx bytes"
 @reloc_log: .byte "relocation: $", ESCAPE_VALUE, " bytes",0
 .endproc
 
