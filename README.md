@@ -51,7 +51,7 @@ linked below.
 
 ## REQUIREMENTS
 
-Monster requires the [Ultimeme](https://www.go4retro.com/products/ultimem) to function.
+Monster requires the [Ultimem](https://www.go4retro.com/products/ultimem) to function.
 
 Much of this RAM is used to store the multiple source code buffers (up to 8), but it is also used to store code, debug-info, and other data.
 
@@ -75,23 +75,14 @@ RUN
 ```
 
 The cartridge binary, `monster.bin`, can be flashed to your Ultimem to boot Monster directly from ROM.
-Copy this file to your IEC storage device along with the installer (`install.prg`). Then run
-the following commands on your Vic-20 from the BASIC prompt:
-
-```
-LOAD "INSTALLER.PRG",8,1
-RUN
-```
-
-This will flash Monster to the Final Expansion.  Reset the computer to enter Monster.
 
 If you wish to run Monster in an emulator (VICE), ensure that VICE is installed on your
 machine and run `make start-disk` or `make start-cart` from the root of the project to attach the
 corresponding disk or cartridge image.
-Alternatively, simply run VICE with the `-cartfe` argument:
+Alternatively, simply run VICE with the `-ultimem` argument:
 
 ```
-xvic -cartfe monster.bin
+xvic -ultimem monster.bin
 ```
 
 ## BUILD INSTRUCTIONS
@@ -111,16 +102,16 @@ Clone this repo `git clone https://github.com/gummyworm/monster.git`
 `cd` to the directory you cloned to and run `make` for the appropriate target
 
 Monster can be built for two targets: disk and cartridge.  The disk format
-is useful if you want to test on your Final Expansion 3 without erasing its firmware.
+is useful if you want to test on your Ultimem without erasing its firmware.
 
 The cartridge is a better choice for emulators or power users on real hardware.
 It loads significantly faster (although JiffyDOS mostly closes the gap between the two)
 
 To build the disk version, run
-`make disk`
+`make TARGET=vic20 EXPANSION=ultimem disk`
 
 To build the cart version, run
-`make cart`
+`make TARGET=vic20 EXPANSION=ultimem cart`
 
 ---
 

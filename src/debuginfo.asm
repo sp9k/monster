@@ -1426,13 +1426,13 @@ get_filename = get_filename_addr
 .export __debuginfo_dump
 .proc __debuginfo_dump
 @name=r0
-@i=r0
 @dbgi=r2
 @progstart=r4
+@cnt=r6
 	ldxy #filenames
 	stxy @name
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; dump the filenames
 	ldx numfiles
 	beq @filesdone
@@ -1445,6 +1445,7 @@ get_filename = get_filename_addr
 	cmp #$00
 	bne :-
 
+	; move @name pointer to the next filename
 	lda @name
 	clc
 	adc #MAX_FILENAME_LEN
@@ -1470,6 +1471,7 @@ get_filename = get_filename_addr
 	; dump each header
 	tax			; .X = numblocks
 	beq @done		; if no BLOCKS, we're done
+	sta @cnt
 
 ;-------------------------------------------------------------------------------
 ; dump the header for the block
@@ -1511,7 +1513,7 @@ get_filename = get_filename_addr
 	bcc :+
 	inc @dbgi+1
 
-:	dex
+:	dec @cnt
 	bne @dump_block_header
 
 ;-------------------------------------------------------------------------------
