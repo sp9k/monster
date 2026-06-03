@@ -1458,7 +1458,7 @@ get_filename = get_filename_addr
 	lda #$00
 	jsr krn::chrout		; write 0 to terminate filename list
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; dump the BLOCK headers
 	; write the number of blocks
 	lda numblocks
@@ -1471,10 +1471,13 @@ get_filename = get_filename_addr
 	tax			; .X = numblocks
 	beq @done		; if no BLOCKS, we're done
 
+;-------------------------------------------------------------------------------
+; dump the header for the block
 @dump_block_header:
 	ldy #$00
+	jsr header_addr
+	stxy @dbgi
 
-	; dump the header for the block
 :	LOADB_Y @dbgi
 	jsr krn::chrout
 	iny
@@ -1511,8 +1514,8 @@ get_filename = get_filename_addr
 :	dex
 	bne @dump_block_header
 
-;--------------------------------------
-; dump the line program data for the object file
+;-------------------------------------------------------------------------------
+; dump the line program data for the BLOCK
 @progdata:
 	; write all bytes between debuginfo and freeptr
 	lda #<debuginfo
@@ -1548,24 +1551,28 @@ get_filename = get_filename_addr
 ;   - .C: set on error
 .export __debuginfo_load
 .proc __debuginfo_load
-@i        = r0
-@header   = r0
-@freeptr  = r0
-@segname  = r0
-@offset   = r0
-@block_i  = zp::tmp10
-@relocate = zp::tmp12
-@filemap  = $100
-@filename = $100+MAX_FILES
+@i         = r0
+@header    = r0
+@freeptr   = r0
+@segname   = r0
+@offset    = r0
+@block_i   = zp::tmp10
+@relocate  = zp::tmp12
+@progstart = zp::tmp14
+@filemap   = $100
+@filename  = $100+MAX_FILES
 	sta @relocate
 
-;--------------------------------------
+	ldxy freeptr
+	stxy @progstart
+
+;-------------------------------------------------------------------------------
 ; load the file table and map ids to global ids
 @load_files:
 	lda #$00
 	sta @i
 @mapfile:
-	; read a filename
+	; read a filename into the filename buffer
 	ldy #$00
 :	jsr krn::chrin
 	sta @filename,y
@@ -1575,6 +1582,7 @@ get_filename = get_filename_addr
 	cpy #$01		; was filename empty?
 	beq @load_blocks	; if so, we're at end of list
 
+	; generate the ID for the file
 	ldxy #@filename
 	jsr set_file
 	ldx @i
@@ -1582,7 +1590,7 @@ get_filename = get_filename_addr
 	inc @i
 	bne @mapfile
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; load the BLOCK data
 @load_blocks:
 	jsr krn::chrin		; read number of blocks
@@ -1608,15 +1616,16 @@ get_filename = get_filename_addr
 	sta progstart
 	lda freeptr+1
 	sta progstart+1
+
 	jsr krn::chrin		; read size LSB
 	clc
 	adc freeptr
-	sta progstop		; store stop address LSB
+	sta freeptr		; store stop address LSB
 	php
 	jsr krn::chrin		; read size MSB
 	plp
 	adc freeptr+1
-	sta progstop+1		; store stop address MSB
+	sta freeptr+1		; store stop address MSB
 
 	; check if we should do relocation (for linking)
 	lda @relocate
@@ -1660,20 +1669,6 @@ get_filename = get_filename_addr
 	sta blockstop+1
 
 @relocate_done:
-	lda freeptr
-	sta progstart
-	lda freeptr+1
-	sta progstart+1
-
-	lda freeptr
-	clc
-	adc progstop
-	sta progstop
-	lda freeptr+1
-	clc
-	adc progstop+1
-	sta progstop+1
-
 	; write the modified header to its stable location
 	lda @block_i
 	jsr header_addr
@@ -1684,29 +1679,37 @@ get_filename = get_filename_addr
 	dey
 	bpl :-
 
-;--------------------------------------
-; load/write the line program data
-	ldxy freeptr
-	stxy @freeptr
-	ldy #$00
-:	jsr krn::chrin		; load byte
-	STOREB_Y @freeptr	; store it
-	incw @freeptr
-
-	; repeat for all bytes
-	lda @freeptr
-	cmp progstop
-	bne :-
-	sta freeptr
-	lda @freeptr+1
-	cmp progstop+1
-	bne :-
-	sta freeptr+1
-
+@next_block:
 	inc @block_i
 	lda @block_i
 	cmp numblocks
 	jne @load_block
+
+	; where freeptr ended is the new top of the program
+	ldxy freeptr
+	stxy progstop
+
+;-------------------------------------------------------------------------------
+; load the line program data for the
+@load_program:
+	ldxy @progstart
+	stxy @freeptr
+	cmpw progstop
+	beq @next_block		; block has size 0
+
+	ldy #$00
+:	jsr krn::chrin		; load byte
+	STOREB_Y @freeptr	; store it
+
+	; check if we're at the end (@freeptr == progstop)
+	; and if we're not, repeat til we are
+	incw @freeptr
+	lda @freeptr
+	cmp progstop
+	bne :-
+	lda @freeptr+1
+	cmp progstop+1
+	bne :-
 
 @done:	RETURN_OK
 .endproc
