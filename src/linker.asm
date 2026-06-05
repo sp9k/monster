@@ -1160,7 +1160,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 ;*******************************************************************************
 ; SEGMIN
-; Returns the minimum address found in the segments array
+; Returns the minimum address found in the segments array, excluding empty
+; segments
 .proc segmin
 @min=r0
 	ldx #$ff
@@ -1169,7 +1170,12 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	inx			; .X=0
 
-@l0:	lda segments_addrhi,x
+@l0:	; first check if the segment is empty (size == 0)
+	lda segments_sizelo,x
+	ora segments_sizehi,x
+	beq @next			; if segment is empty, skip
+
+	lda segments_addrhi,x
 	cmp @min+1
 	beq @chklo
 	bcs @next

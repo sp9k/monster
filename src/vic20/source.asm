@@ -493,9 +493,12 @@ data: .res BUFFER_SIZE
 	jsr __src_get_filename
 	jsr dbgi::getfileid
 
-	; shift breakpoints
+	; shift breakpoints, line to shift is current line+1
 	jsr edit::currentfile
-	sta r0
+	inx
+	bne :+
+	iny
+:	sta r0
 	lda #$01
 	jmp dbg::shift_breakpointsd
 .endproc
