@@ -486,6 +486,7 @@ tempbuff: .res LINESIZE
 	jsr @appendch
 	pla
 	jsr @appendch
+	stx @savex
 
 	pla
 	jsr util::hextostr
