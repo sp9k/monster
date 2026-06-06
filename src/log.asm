@@ -70,7 +70,7 @@ __log_written: .byte 0
 	lda #LOG_BUFFER
 	jsr src::forceset
 
-	lda #LINESIZE-1
+	lda #LINESIZE
 	sta @cnt
 
 :	lda #'*'

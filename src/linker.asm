@@ -829,12 +829,13 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 .endproc
 
 ;*******************************************************************************
-; RESOLVE GLOBALS
-; Calculates the addresses for each global that was extracted from the object
+; RESOLVE SYMBOLS
+; Calculates the addresses for each symbol that was extracted from the object
 ; file headers in the linker's first pass
+; Symbols includes EXPORTS, IMPORTS, and LOCALS
 ; OUT:
 ;   - .C: set on error
-.proc resolve_globals
+.proc resolve_symbols
 @i=zp::tmp10
 @seg_id=zp::tmp12
 @obj_seg_offsets=zp::tmp14
@@ -1072,7 +1073,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @pass1done:
 	; resolve symbols now that we know the base address of each SEGMENT
 	; in each object file
-	jsr resolve_globals
+	jsr resolve_symbols
 	bcs @done
 
 @validate:
