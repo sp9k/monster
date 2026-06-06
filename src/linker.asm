@@ -1037,6 +1037,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	pha				; push MSB for logging
 	adc segments_sizehi-1,x
 	sta segments_sizehi-1,x
+	ldxy #@pass1_seg_msg
 	jsr log_msg
 
 @nextseg:

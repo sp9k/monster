@@ -1473,13 +1473,14 @@ get_filename = get_filename_addr
 	beq @done		; if no BLOCKS, we're done
 	sta @cnt
 
+	lda #$00
+	jsr header_addr
+	stxy @dbgi
+
 ;-------------------------------------------------------------------------------
 ; dump the header for the block
 @dump_block_header:
 	ldy #$00
-	jsr header_addr
-	stxy @dbgi
-
 :	LOADB_Y @dbgi
 	jsr krn::chrout
 	iny
