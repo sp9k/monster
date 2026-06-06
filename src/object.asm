@@ -1535,6 +1535,7 @@ __obj_close_section = close_section
 :	iszero @i
 	beq @ok
 	jsr load_local
+	bcs @ret
 	decw @i
 	jmp :-
 
@@ -1609,8 +1610,10 @@ __obj_close_section = close_section
 	lda segments_modes-1,x
 	sta zp::label_mode			; set address mode for label
 
+	txa
 	jsr __obj_get_segment_name_by_id	; get name of SEGMENT from its id
 	jsr link::segid_by_name			; get global id for SEGMENT
+	bcs @ret
 
 @cont:	sta zp::label_segmentid			; and store with the symbol
 	jsr krn::chrin				; get LSB of symbol offset
@@ -1671,8 +1674,11 @@ __obj_close_section = close_section
 	lda segments_modes-1,x
 	sta zp::label_mode			; set address mode for label
 
+	txa
 	jsr __obj_get_segment_name_by_id	; get name of SEGMENT
 	jsr link::segid_by_name			; get global id for SEGMENT
+	bcc @add
+	rts					; segment not defined
 
 @add:	sta zp::label_segmentid			; and store with the symbol
 	jsr krn::chrin				; get LSB of symbol offset

@@ -1386,6 +1386,7 @@ __link_get_segment_by_name:
 
 @notfound:
 	;sec
+	lda #ERR_UNKNOWN_SEGMENT
 	rts
 
 @found: lda @cnt
