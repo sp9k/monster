@@ -5273,6 +5273,8 @@ __edit_gotoline:
 	jmp beep::short
 .endproc
 
+.RODATA
+
 ;*******************************************************************************
 ; SRC2SCREEN
 ; Takes the given source line number and returns its row position on the screen.
@@ -5318,9 +5320,6 @@ __edit_gotoline:
 @done:	sec			; line off screen
 	rts
 .endproc
-
-.RODATA
-
 
 ;******************************************************************************
 ; SYNC CUR

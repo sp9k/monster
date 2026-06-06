@@ -312,6 +312,14 @@ ret:     .word 0
 	sta $0316
 	lda #>(brk_handler)
 	sta $0316+1
+
+	; save the user IRQ and temporarily set it to no-op, restore it only
+	; after we're ready to execute the user memory (in the trampoline)
+	lda $0314
+	sta irqlo
+	lda $0314+1
+	sta irqhi
+
 	lda #<$eb15
 	sta $0314
 	lda #>$eb15
@@ -583,6 +591,14 @@ go_pre_run:
 	tay
 	pla
 	tax
+
+irqlo=*+1
+	lda #$00
+	sta $0314
+irqhi=*+1
+	lda #$00
+	sta $0315
+
 	lda #$2b
 	sta $9ff1		; make IO 2/3 read only
 	pla			; restore .A

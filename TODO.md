@@ -22,7 +22,7 @@
 - [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
 - [ ] get disk access working from BASIC
 - [ ] fix linking/object code generation for C64
-- [ ] fix linking/object code generation for Ultimem
+- [x] fix linking/object code generation for Ultimem
 - [x] fix indirect jmp assembly
 - [x] fix debug-info line mapping for .REP
 - [x] fix nested .REP (again)

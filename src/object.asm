@@ -12,12 +12,12 @@
 ;  ALIGN [$8:$9] ; offset of data (RELATIVE) or aboslute position (ABSOLUTE)
 ;  SIZE  [$a:$b] ; bytes used in segment
 ; IMPORTS[]
-;   NAME
+;   NAME[...]
 ;   INDEX                  ; object-local id for the import
 ; EXPORTS[]
-;   NAME
-;   SEGMENT ID
-;   RELATIVE ADDR
+;   NAME[...]
+;   SEGMENT ID[1]
+;   RELATIVE ADDR[2]
 ; LOCALS[]
 ;   NAME[...]
 ;   SEGMENT ID[1]
