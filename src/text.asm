@@ -382,8 +382,7 @@ tempbuff: .res LINESIZE
 	skw
 @invis_ws:
 	lda #' '
-@tab:	sta @buff,x
-	inx
+@tab:	jsr @appendch
 	dey
 	bne @tab
 	ldy @savey
@@ -404,20 +403,19 @@ tempbuff: .res LINESIZE
 	ldx @savex
 	jmp (zp::jmpvec)
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @esc_ch:
 	pla			; get character from stack
-@putch:	sta @buff,x
-	inx
+@putch:	jsr @appendch
 
 @cont:	; escape-code handlers JMP back here when they are done
 	iny
-	cpx #LINESIZE
+	cpy #LINESIZE
 	bcc @l0
 @gotodisp:
         jmp @disp
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @esc_spacing:
 ;substitute escape character with number of spaces from next byte
 	iny
@@ -428,8 +426,7 @@ tempbuff: .res LINESIZE
 	tay
 	beq :++		; 0 -> we're done
 :	lda #' '
-	sta @buff,x
-	inx
+	jsr @appendch
 	cpx #LINESIZE
 	beq @gotodisp
 	dey
@@ -437,7 +434,7 @@ tempbuff: .res LINESIZE
 :	ldy @savey
 	jmp @cont
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @esc_byte:
 	stx @savex
 	sty @savey
@@ -446,12 +443,14 @@ tempbuff: .res LINESIZE
 	jsr util::hextostr
 	txa
 	ldx @savex
-	sta @buff+1,x
+	pha
 	tya
-	sta @buff,x
-	jmp @value_1byte_done
+	jsr @appendch
+	pla
+	jsr @appendch
+	jmp @valdone
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @esc_value_dec:
 	stx @savex
 	sty @savey
@@ -466,15 +465,14 @@ tempbuff: .res LINESIZE
 	ldx @savex
 :	lda mem::spare,y
 	beq @decdone
-	sta @buff,x
-	inx
+	jsr @appendch
 	iny
 	bne :-
 @decdone:
 	ldy @savey
 	jmp @cont
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @esc_value:
 	stx @savex
 	sty @savey
@@ -483,27 +481,27 @@ tempbuff: .res LINESIZE
 	jsr util::hextostr
 	txa
 	ldx @savex
-	sta @buff+1,x
+	pha
 	tya
-	sta @buff,x
+	jsr @appendch
+	pla
+	jsr @appendch
 
 	pla
 	jsr util::hextostr
 	txa
 	ldx @savex
-	sta @buff+3,x
+	pha
 	tya
-	sta @buff+2,x
+	jsr @appendch
+	pla
+	jsr @appendch
 
-	inx
-	inx
-@value_1byte_done:
-	inx
-	inx
+@valdone:
 	ldy @savey
 	jmp @cont
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @esc_string:
 ;substitute escape character with string from stack
 	pla
@@ -515,9 +513,8 @@ tempbuff: .res LINESIZE
 
 @l1:	lda (@sub),y
 	beq @esc_string_done
-	sta @buff,x
+	jsr @appendch
 	iny
-	inx
 	cpx #LINESIZE
 	bcc @l1
 
@@ -525,7 +522,7 @@ tempbuff: .res LINESIZE
 	ldy @savey
 	jmp @cont
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @esc_goto_col:
 	iny
 	sty @savey
@@ -538,7 +535,7 @@ tempbuff: .res LINESIZE
 	bmi @esc_string_done
 	jmp @insert_spaces
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 .define escape_vectors @esc_goto_col, $0000, @esc_ch, @esc_byte, @esc_spacing, @esc_value_dec, @esc_value, @esc_string
 .PUSHSEG
 .RODATA
@@ -546,18 +543,19 @@ tempbuff: .res LINESIZE
 @escvecs_hi: .hibytes escape_vectors
 .POPSEG
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @disp:	; fill the rest of the line buffer with spaces
 	lda render_off
 	beq :+
+
 	; if rendering is disabled don't fill buffer with spaces
 	lda #$00
-	sta @buff,x
-	beq @buffdone
+	jsr @appendch
+	jmp @buffdone
 
-:	lda #' '
-:	sta @buff,x
-	inx
+:	; if rendering, pad line with spaces
+	lda #' '
+:	jsr @appendch
 	cpx #LINESIZE
 	bcc :-
 
@@ -592,6 +590,15 @@ tempbuff: .res LINESIZE
 	lda @row
 
 	jmp puts
+
+;-------------------------------------------------------------------------------
+; Adds a character to the line buffer at offset .X if there's room
+@appendch:
+	cpx #LINESIZE
+	bcs :+
+	sta @buff,x
+	inx
+:	rts
 .endproc
 
 ;*******************************************************************************
