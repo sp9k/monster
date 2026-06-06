@@ -795,7 +795,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	inc @objs+1
 	bne @l1
 
-@done:	lda @i
+@done:	inc @i			; get 1 based id
+	lda @i
 	rts
 .endproc
 
@@ -853,7 +854,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	ldxy #@namebuff
 	stxy r0
 	ldxy @i
-	CALLMAIN lbl::getname	; look up the label's name
+	CALLMAIN lbl::getname			; look up the label's name
 	ldxy #@namebuff
 	jsr file_id_from_scope
 	jsr get_file_segment_table		; get offset table for file
@@ -870,18 +871,16 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	; look up the segment-offset (address) for the symbol
 	ldxy @i
-	CALLMAIN lbl::getaddr	; look up the symbol's offset
+	CALLMAIN lbl::getaddr			; look up the symbol's offset
 	tya
 	pha					; save MSB
 	clc
-	txa
 
-	ldy @seg_id				; restore segment ID
-	dey					; -1 because table is 0-based
-	tya
+	lda @seg_id				; restore segment ID
 	asl					; *2 (each record in table is word-sized)
 	tay
 
+	txa
 	adc (@obj_seg_offsets),y		; add file offset to resolve
 	sta zp::label_value
 	pla					; restore MSB
@@ -1386,7 +1385,7 @@ __link_get_segment_by_name:
 	cpx numsegments
 	bcc @l0
 
-@otfound:
+@notfound:
 	;sec
 	rts
 

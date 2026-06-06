@@ -169,7 +169,7 @@ __obj_segments_sizelo:
 segments_sizelo:   .res MAX_SECTIONS
 __obj_segments_sizehi:
 segments_sizehi:   .res MAX_SECTIONS
-segments_info:     .res MAX_SECTIONS
+segments_modes:    .res MAX_SECTIONS
 
 __obj_segments:
 segments: .res MAX_SEGMENT_NAME_LEN*MAX_SECTIONS ; name of target SEG
@@ -422,9 +422,9 @@ __obj_close_section = close_section
 	sta segments_sizelo-1,x
 	sta sections_sizehi-1,x
 
-	; store INFO byte (address mode) for the SEGMENT
+	; store MODE byte (address mode) for the SEGMENT
 	lda @info
-	sta segments_info-1,x
+	sta segments_modes-1,x
 	cmp #SEG_ABS
 	beq :+
 
@@ -963,6 +963,10 @@ __obj_close_section = close_section
 	lda segments_starthi,x
 	jsr krn::chrout
 
+	; write segment mode (rel-zeropage, rel-absolute, or absolute)
+	lda segments_modes,x
+	jsr krn::chrout
+
 	; write the number of bytes used for this SEGMENT (2 bytes)
 	lda __obj_segments_sizelo,x
 	jsr krn::chrout
@@ -999,7 +1003,7 @@ __obj_close_section = close_section
 @l0:	ldx @seg_idx
 
 	; write the INFO byte
-	lda segments_info,x
+	lda segments_modes,x
 	jsr krn::chrout
 
 	; write the size of the SEGMENT
@@ -1414,6 +1418,10 @@ __obj_close_section = close_section
 	jsr krn::chrin
 	sta segments_starthi,y
 
+	; read MODE
+	jsr krn::chrin
+	sta segments_modes,y
+
 	; get the number of bytes used in the SEGMENT
 	jsr krn::chrin
 	sta __obj_segments_sizelo,y
@@ -1468,7 +1476,7 @@ __obj_close_section = close_section
 .export __obj_load_headers
 .proc __obj_load_headers
 @cnt=r0
-@name=r6
+@name=r2
 @i=zp::tmp10
 @namebuff=$100
 	jsr load_info
@@ -1488,6 +1496,8 @@ __obj_close_section = close_section
 	cmp numimports
 	bne @import_loop
 
+;-------------------------------------------------------------------------------
+; load all the EXPORTS
 @exports:
 	; copy name to shared RAM
 	ldxy __obj_filename
@@ -1507,7 +1517,7 @@ __obj_close_section = close_section
 	lda #$00
 	sta @i
 	cmp numexports
-	beq @ok
+	beq @load_locals
 
 @export_loop:
 	jsr load_export
@@ -1516,6 +1526,17 @@ __obj_close_section = close_section
 	lda @i
 	cmp numexports
 	bne @export_loop
+
+;-------------------------------------------------------------------------------
+; load LOCAL symbols
+@load_locals:
+	ldxy numlocals
+	stxy @i
+:	iszero @i
+	beq @ok
+	jsr load_local
+	decw @i
+	jmp :-
 
 @ok:	clc
 @ret:	rts
@@ -1531,13 +1552,13 @@ __obj_close_section = close_section
 .proc load_import
 @namebuff=$100
 	; get the name of a symbol
-	ldx #$00
+	ldy #$00
 	stx zp::label_value
 	stx zp::label_value+1
 :	jsr krn::chrin
-	sta @namebuff,x
+	sta @namebuff,y
 	beq @cont
-	inx
+	iny
 	bne :-
 
 @cont:
@@ -1569,26 +1590,29 @@ __obj_close_section = close_section
 .proc load_export
 @namebuff=$120
 	; get the name of a symbol
-	ldx #$00
+	ldy #$00
 	lda #'@'
 	sta @namebuff
 :	jsr krn::chrin
-	sta @namebuff+1,x
+	sta @namebuff+1,y
 	beq @addexport
-	inx
+	iny
 	bne :-
 
 @addexport:
 	jsr krn::chrin				; get SEGMENT id for EXPORT
+	cmp #SEG_ABS
+	beq @cont				; if ABS, no need to resolve
 
+	; find the global segment id from the object-local one
 	tax
-	lda segments_info-1,x
+	lda segments_modes-1,x
 	sta zp::label_mode			; set address mode for label
 
-	ldxy @namebuff
-	jsr __obj_get_segment_name_by_id	; get name of SEGMENT
+	jsr __obj_get_segment_name_by_id	; get name of SEGMENT from its id
 	jsr link::segid_by_name			; get global id for SEGMENT
-	sta zp::label_segmentid			; and store with the symbol
+
+@cont:	sta zp::label_segmentid			; and store with the symbol
 	jsr krn::chrin				; get LSB of symbol offset
 	sta zp::label_value
 	jsr krn::chrin				; get MSB of symbol offset
@@ -1598,7 +1622,7 @@ __obj_close_section = close_section
 	CALLMAIN lbl::find			; was label already added?
 	bcs @add				; no -> add it
 
-	; validate: is segment SEG_UNDEF?
+	; validate: is segment SEG_UNDEF (previously added as an IMPORT)?
 	; if not, error (only 1 EXPORT is allowed per symbol)
 	CALLMAIN lbl::getsegment
 	cmp #SEG_UNDEF
@@ -1628,24 +1652,29 @@ __obj_close_section = close_section
 .proc load_local
 @namebuff=$120
 	; read symbol name
-	ldx #$00
+	ldy #$00
 	lda #'@'
 	sta @namebuff
 :	jsr krn::chrin
-	sta @namebuff+1,x
-	beq @add
-	inx
+	sta @namebuff+1,y
+	cmp #$00
+	beq @cont
+	iny
 	bne :-
 
-@add:	jsr krn::chrin				; get SEGMENT id
+@cont:	jsr krn::chrin				; get SEGMENT id
+	cmp #SEG_ABS
+	beq @add				; if ABS, no need to do lookup
+
+	; find the global segment id from the object-local one
 	tax
-	lda segments_info-1,x
+	lda segments_modes-1,x
 	sta zp::label_mode			; set address mode for label
 
-	ldxy @namebuff
 	jsr __obj_get_segment_name_by_id	; get name of SEGMENT
 	jsr link::segid_by_name			; get global id for SEGMENT
-	sta zp::label_segmentid			; and store with the symbol
+
+@add:	sta zp::label_segmentid			; and store with the symbol
 	jsr krn::chrin				; get LSB of symbol offset
 	sta zp::label_value
 	jsr krn::chrin				; get MSB of symbol offset
@@ -1750,27 +1779,19 @@ __obj_close_section = close_section
 @eat_exports:
 	lda numexports
 	sta @symcnt
-	beq @load_locals	; no EXPORTS? skip ahead
-@eat_export:
-@eat_name:
-	jsr krn::chrin
-	cmp #$00		; did we read terminating 0 for filename?
-	bne @eat_name		; loop til we found it
-	ldy #3			; sizeof(info+segment_idx+address)
-:	jsr krn::chrin
-	dey
-	bne :-
+	beq @eat_locals		; no EXPORTS? skip ahead
+:	jsr @eatsym
 	dec @symcnt
-	bne @eat_export
+	bne :-
 
 ;-------------------------------------------------------------------------------
-; load LOCAL symbols
-@load_locals:
+; LOCAL symbols are also handled in first pass, skip them too
+@eat_locals:
 	ldxy numlocals
 	stxy @i
 :	iszero @i
 	beq @load_segments
-	jsr load_local
+	jsr @eatsym
 	decw @i
 	jmp :-
 
@@ -1869,6 +1890,21 @@ __obj_close_section = close_section
 @done:	clc
 @eof:	rts
 
+;-------------------------------------------------------------------------------
+; "eats" one symbol by reading and discarding its name and metadata
+@eatsym:
+	jsr krn::chrin
+	cmp #$00		; did we read terminating 0 for symbol's name?
+	bne @eatsym		; loop til we found it
+
+	; now "eat" the metadata
+	ldy #3			; sizeof(info+segment_idx+address)
+:	jsr krn::chrin
+	dey
+	bne :-
+	rts
+
+;-------------------------------------------------------------------------------
 ; object code: $xxxx-$xxxx
 @obj_log: .byte "object code: $", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
 
@@ -2037,7 +2073,7 @@ __obj_close_section = close_section
 	sta @i
 
 @abs:	ldx @i
-	lda segments_info,x
+	lda segments_modes,x
 	cmp #SEG_ABS		; is this an ABS segment?
 	bne :+			; if not, skip it
 
@@ -2071,7 +2107,7 @@ __obj_close_section = close_section
 	lda #$00
 	sta @i
 @rel:	ldx @i
-	lda segments_info,x
+	lda segments_modes,x
 	cmp #SEG_ABS		; is this an ABS segment?
 	beq @next		; if so, skip it
 
