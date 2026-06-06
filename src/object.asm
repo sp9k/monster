@@ -1534,16 +1534,14 @@ __obj_close_section = close_section
 	ldx #$00
 	stx zp::label_value
 	stx zp::label_value+1
-:	jsr readb
-	bcs @ret
+:	jsr krn::chrin
 	sta @namebuff,x
 	beq @cont
 	inx
 	bne :-
 
 @cont:
-	jsr readb				; get info byte (address mode)
-	bcs @ret
+	jsr krn::chrin				; get info byte (address mode)
 	sta zp::label_mode
 
 	ldxy #@namebuff
@@ -1560,8 +1558,7 @@ __obj_close_section = close_section
 
 :	JUMPMAIN lbl::add
 @ok:	clc
-@ret:
-:	rts
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1582,8 +1579,7 @@ __obj_close_section = close_section
 	bne :-
 
 @addexport:
-	jsr readb				; get SEGMENT id for EXPORT
-	bcs @ret
+	jsr krn::chrin				; get SEGMENT id for EXPORT
 
 	tax
 	lda segments_info-1,x
@@ -1593,11 +1589,9 @@ __obj_close_section = close_section
 	jsr __obj_get_segment_name_by_id	; get name of SEGMENT
 	jsr link::segid_by_name			; get global id for SEGMENT
 	sta zp::label_segmentid			; and store with the symbol
-	jsr readb				; get LSB of symbol offset
-	bcs @ret
+	jsr krn::chrin				; get LSB of symbol offset
 	sta zp::label_value
-	jsr readb				; get MSB of symbol offset
-	bcs @ret
+	jsr krn::chrin				; get MSB of symbol offset
 	sta zp::label_value+1
 
 	ldxy #@namebuff
@@ -1711,8 +1705,7 @@ __obj_close_section = close_section
 @load_imports:
 	; get the name of a symbol
 	ldy #$00
-:	jsr readb
-	bcs @ret
+:	jsr krn::chrin
 	sta @namebuff,y
 	beq @mapimport
 	iny
@@ -1725,8 +1718,7 @@ __obj_close_section = close_section
 	CALLMAIN lbl::addr	; get the resolved address
 	stxy @addr
 
-	jsr readb			; eat info byte
-	bcs @ret
+	jsr krn::chrin		; eat info byte
 
 	; get pointer to the resolved address for this symbol's index
 	lda #$00
@@ -1761,16 +1753,11 @@ __obj_close_section = close_section
 	beq @load_locals	; no EXPORTS? skip ahead
 @eat_export:
 @eat_name:
-	jsr readb
-	bcc :+
-@export_error:
-	rts			; return error
-
-:	cmp #$00		; did we read terminating 0 for filename?
+	jsr krn::chrin
+	cmp #$00		; did we read terminating 0 for filename?
 	bne @eat_name		; loop til we found it
 	ldy #3			; sizeof(info+segment_idx+address)
-:	jsr readb
-	bcs @export_error
+:	jsr krn::chrin
 	dey
 	bne :-
 	dec @symcnt
@@ -1887,27 +1874,6 @@ __obj_close_section = close_section
 
 ; relocation: $xxxx bytes"
 @reloc_log: .byte "relocation: $", ESCAPE_VALUE, " bytes",0
-.endproc
-
-;******************************************************************************
-; READB
-; Reads a byte and checks for error (READST)
-; OUT:
-;   - .A: the byte read or error code (0=eof)
-;   - .C: set on error/eof
-.proc readb
-	jsr krn::readst		; call READST (read status byte)
-	bne @eof		; either EOF or read error
-	jsr krn::chrin		; call CHRIN (get a byte from file)
-	RETURN_OK
-
-; read drive err chan and translate CBM DOS error code to ours if possible
-@eof:  	and #$40
-	beq @err
-	lda #$00	; EOF
-	RETURN_OK
-
-@err:	JUMPMAIN file::geterr
 .endproc
 
 ;******************************************************************************
