@@ -1060,6 +1060,7 @@ cancel = enter_command
 	jsr yank
 	bcc @done
 	jsr report_typein_error
+
 @done:	; fall through to enter_command
 .endproc
 
@@ -2711,6 +2712,7 @@ __edit_set_breakpoint:
 @addr=zp::editortmp
 	jsr __edit_current_file	; get the debug file ID and line #
 	bcc :+
+
 @noname:
 	lda #ERR_UNNAMED_BUFFER
 	jmp report_typein_error
@@ -3492,7 +3494,12 @@ goto_buffer:
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
 	jsr asm::tokenize
-	bcs @ret		; failed to assemble, skip formatting
+	bcc @fmt
+
+	; failed to assemble, don't format and print the error
+	jsr report_typein_error
+	sec
+	rts
 
 ; format the line based on the line's contents (in .A from tokenize)
 @fmt:	ldx autoindent
@@ -3517,7 +3524,7 @@ goto_buffer:
 @ret:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LINEDONE
 ; Inserts a newline ($0d) and attempts to compile the line entered in
 ; (mem::linebuffer).
@@ -3574,7 +3581,7 @@ goto_buffer:
 	; fall through to start_next_line
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; START NEXT LINE
 ; Begins a new line based on the given indentation hint
 ; IN:
@@ -3609,7 +3616,7 @@ goto_buffer:
 	jmp print_current_line
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; REDRAW_TO_END_OF_LINE
 ; Redraws the line starting at the cursor's x position to the next $0d in the
 ; source
@@ -3619,7 +3626,7 @@ goto_buffer:
 	jmp sync_cur
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SCROLL LINE
 ; Updates the cursor and scrolls lines below the one we're on
 ; The linebuffer is also updated to contain the contents of the new line

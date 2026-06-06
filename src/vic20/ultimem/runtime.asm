@@ -121,6 +121,7 @@ ret:     .word 0
 
 :	jsr $e55b
 	jsr $e518	; initialize rest of hardware
+
 	; blank screen so user doesn't see garbage
 	lda #$00
 	sta $9002

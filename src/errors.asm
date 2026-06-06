@@ -1,10 +1,10 @@
-;******************************************************************************
+;*******************************************************************************
 ; ERRORS.ASM
 ; This file contains the error definitions for errors that may occur during
 ; assembly or some other situations (such as loading a file).  The errors
 ; are stored in a compressed, 5-bits per character, format.  You can generate
 ; compressed errors with the utils/compress-text.py tool.
-;******************************************************************************
+;*******************************************************************************
 
 .include "layout.inc"
 .include "macros.inc"
@@ -12,12 +12,16 @@
 .include "string.inc"
 .include "text.inc"
 
+.ifdef ultimem
+.include "vic20/ultimem/banks.inc"
+.endif
+
 .ifdef fe3
 .RODATA
 .else
 .segment "ERRORS"
 .endif
-;******************************************************************************
+;*******************************************************************************
 err_no_err:
 	.byte 0
 
@@ -60,7 +64,7 @@ err_too_many_macros:
 	; .byte "too many macros",0
 	.byte $a3,$cf,$db,$41,$76,$5b,$68,$43,$93,$d3,$0
 
-;******************************************************************************
+;*******************************************************************************
 err_unaligned_label:
 	;.byte "label not left aligned",0
 	.byte $60,$42,$2b,$1b,$73,$d4,$db,$5,$35,$1b,$b,$9,$3b,$85,$20,$0
@@ -237,7 +241,7 @@ err_no_matching_scope:
 ; .byte "no matching scope",0
 .byte $73,$db,$68,$54,$1a,$9,$71,$db,$98,$cf,$81,$40
 
-;******************************************************************************
+;*******************************************************************************
 .linecont +
 .define errors \
 	err_no_err, \
@@ -305,7 +309,7 @@ NUM_ERRORS=*-errorshi
 err_unknown_err: .byte $aa,$ce,$7d,$ce,$d9,$52,$93,$d2,$0
 
 .CODE
-;******************************************************************************
+;*******************************************************************************
 ; GET
 ; Returns the address of the given error id's error message
 ; IN:
@@ -317,12 +321,12 @@ err_unknown_err: .byte $aa,$ce,$7d,$ce,$d9,$52,$93,$d2,$0
 	tax
 	cpx #NUM_ERRORS
 	bcc :+
-	ldy #>err_unknown_err
 	ldx #<err_unknown_err
-	rts
+	ldy #>err_unknown_err
+	bne @uncompress		; branch always
+
 :
 .ifdef ultimem
-	.include "vic20/ultimem/banks.inc"
 @err=r0
 @compressed_buff=mem::spare+120
 	; bank in the errors
@@ -346,12 +350,12 @@ err_unknown_err: .byte $aa,$ce,$7d,$ce,$d9,$52,$93,$d2,$0
 :	pla
 	sta $9ffe
 	ldxy #@compressed_buff
-	jmp str::uncompress
-
 .else
 	ldy errorshi,x
 	lda errorslo,x
 	tax
-	jmp str::uncompress
 .endif
+
+@uncompress:
+	jmp str::uncompress
 .endproc
