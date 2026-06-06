@@ -968,11 +968,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; load the next .O (object) file in the object list
 	ldxy @objfile
 	stxy obj::filename
-	CALLMAIN file::open_r_prg
+	CALLMAIN file::open_r
 	pha				; save file handle
 	tax
 	jsr krn::chkin			; CHKIN
-
 	jsr obj::load_headers	; get section sizes and add global labels
 	pla			; restore file handle
 	php			; save .C (error)
@@ -1145,7 +1144,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 .proc link_object
 @sec_idx=zp::tmp10
 @obj_file_handle=zp::tmp12
-	CALLMAIN file::open_r_prg
+	CALLMAIN file::open_r
 	sta @obj_file_handle
 
 	tax
