@@ -41,9 +41,6 @@
 ;   symbol id                         (2 bytes)
 ; 7 NAME
 ;   address of symbol's name          (2 bytes)
-;
-; TODO:
-; the following fields are aspirational
 ; 9 FILE
 ;   id of file containing label       (1 byte)
 ; 10 LINE
@@ -57,6 +54,8 @@ LABEL_HASH  = 1
 LABEL_ADDR  = 3
 LABEL_ID    = 5
 LABEL_NAME  = 7
+LABEL_FILE  = 9
+LABEL_LINE  = 10
 
 ;*******************************************************************************
 ; LIST NODE STRUCT
@@ -86,17 +85,18 @@ LIST_NEXT   = 2
 
 ;*******************************************************************************
 ; ZEROPAGE
-label   = zp::labels	; pointer to base label struct
-name    = zp::labels+2	; pointer to NAME field for symbol
-hash    = zp::labels+4	; precomputed hash value (2 bytes)
-addr    = zp::labels+6	; ADDR field for active label
-id      = zp::labels+8	; ID field for active label
-flags   = zp::labels+$a	; FLAGS field for active symbol
-list    = zp::labels+$b	; address to linked list of nodes for current bucket
-listtop = zp::labels+$d	; address of free memory (next available list
-bucket  = zp::labels+$f
-
-temp    = zp::labels+$11	; temporary scratchpad
+label   = zp::labels		; pointer to base label struct
+name    = zp::labels+2		; pointer to NAME field for symbol
+hash    = zp::labels+4		; precomputed hash value (2 bytes)
+addr    = zp::labels+6		; ADDR field for active label
+id      = zp::labels+8		; ID field for active label
+flags   = zp::labels+$a		; FLAGS field for active symbol
+file_id = zp::labels+$b		; FILE field for active symbol
+lineno  = zp::labels+$c		; LINE field for active symbol
+list    = zp::labels+$e		; address to list of nodes for current bucket
+listtop = zp::labels+$10	; address of free memory (next available list
+bucket  = zp::labels+$12
+temp    = zp::labels+$14	; temporary scratchpad
 
 ;*******************************************************************************
 ; CONSTANTS
@@ -110,7 +110,7 @@ NUM_BUCKETS = 2048	; number of buckets for the symbol hash map
 MAX_LABEL_NAME_LEN = 32
 MAX_SCOPES         = 4
 
-SIZEOF_LABEL           = 9
+SIZEOF_LABEL           = 12
 SIZEOF_LABEL_LIST_NODE = 4
 
 SEG_ABS = $ff
@@ -123,8 +123,9 @@ SEG_ABS = $ff
 .export __label_by_id
 .export __label_dump
 .export __label_isvalid
-.export __label_get_name
 .export __label_get_addr
+.export __label_get_name
+.export __label_get_line
 .export __label_load
 .export __label_is_local
 .export __label_set
@@ -175,6 +176,7 @@ __label_set_addr:          LBLJUMP setaddr
 __label_dump:              LBLJUMP dump
 __label_load:              LBLJUMP load
 __label_id_by_alpha_index: LBLJUMP id_by_alpha_index
+__label_get_line:          LBLJUMP get_file_and_line
 
 ;*******************************************************************************
 ; LABEL NAMES
@@ -703,12 +705,23 @@ labelvars_size=*-labelvars
 	; 4. write all ADDR related fields (FLAGS, ADDR)
 	jsr set_addr
 
-	; 5. append pointer to the node we just built to its bucket's list
+	; 5. write the FILE and LINE number for the label
+	ldy #LABEL_FILE
+	lda zp::label_fileid
+	STOREB_Y label		; store file ID
+	iny
+	lda zp::label_lineno
+	STOREB_Y label		; store line # (LSB)
+	iny
+	lda zp::label_lineno
+	STOREB_Y label		; store line # (MSB)
+
+	; 6. append pointer to the node we just built to its bucket's list
 	ldxy hash
 	jsr getlist		; load relevant list from the label's hash
 	jsr listappend		; append node to that list
 
-	incw __label_num		; success, increment symbol count
+	incw __label_num	; success, increment symbol count
 
 ;------------------------------------------------------------------------------
 @done:	RETURN_OK
@@ -1071,7 +1084,6 @@ labelvars_size=*-labelvars
 ;  - .XY: the address of the label
 ;  - .A:  the size (address mode) of the label (0=ZP, 1=ABS)
 .proc address_by_id
-@tmp=zp::labels
 	jsr getaddr		; get address
 	lda flags
 	and #$01		; mask MODE bit
@@ -1144,7 +1156,6 @@ labelvars_size=*-labelvars
 	sta @name_index+1
 
 ;------------------------------------------------------------------------------
-
 	; set the NAME pointer to the address we're storing the NAME to
 	; also duplicate NAME pointer in the name index for future sorting
 	ldy #LABEL_NAME
@@ -1423,6 +1434,30 @@ labelvars_size=*-labelvars
 	iny
 	LOADB_Y label
 	tay
+	rts
+.endproc
+
+;*******************************************************************************
+; GET FILE NND LINE
+; Returns the file ID and the line number for the requested label ID
+; IN:
+;   - .XY: ID of label to get file/line # of
+; OUT:
+;   - .A:  file ID for label
+;   - .XY: line number within file
+.proc get_file_and_line
+	jsr loadlabel
+
+	ldy #LABEL_FILE
+	LOADB_Y label
+	pha
+	iny
+	LOADB_Y label
+	tax
+	iny
+	LOADB_Y label
+	tay
+	pla
 	rts
 .endproc
 
@@ -1984,25 +2019,25 @@ labelvars_size=*-labelvars
 .proc loadlabel
 @tmp=temp
 	; get address of the label data to (*SIZEOF_LABEL)
-	stxy @tmp
 	stxy label
 
 	txa
 	asl			; *2
+	sta @tmp
 	rol label+1
+	ldx label+1
+	stx @tmp+1
 	asl			; *4
 	rol label+1
-	asl			; *8
-	rol label+1
-	;clc
-	adc @tmp		; *9
+	adc @tmp		; *6
 	sta label
 	bcc :+
 	inc label+1
-	clc
 :	lda label+1
 	adc @tmp+1
 	sta label+1
+	asl label		; *12
+	rol label+1
 
 	; add offset to labels data
 	lda label
@@ -2050,6 +2085,19 @@ labelvars_size=*-labelvars
 	iny
 	LOADB_Y label
 	sta name+1
+
+	; load FILE id
+	iny
+	LOADB_Y label
+	sta file_id
+
+	; load LINE number
+	iny
+	LOADB_Y label
+	sta lineno
+	iny
+	LOADB_Y label
+	sta lineno+1
 
 	rts
 .endproc

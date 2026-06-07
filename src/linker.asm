@@ -856,7 +856,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	ldxy @i
 	CALLMAIN lbl::getname			; look up the label's name
 	ldxy #@namebuff
-	jsr file_id_from_scope
+
+	ldxy @i
+	CALLMAIN lbl::get_line			; get file ID of the label
 	jsr get_file_segment_table		; get offset table for file
 	stxy @obj_seg_offsets			; save the SEGMENT offsets addr
 
@@ -951,6 +953,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	lda #$01
 	sta activeobj
+	sta zp::label_fileid
 
 ;-------------------------------------------------------------------------------
 ; PASS1
@@ -1066,6 +1069,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 :	ldy #$01
 	lda (@objfile),y	; get char after the terminating 0
 	beq @pass1done		; if it's another 0, we're at end of obj list
+
+	inc activeobj
+	inc zp::label_fileid
 	jmp @pass1		; if not, repeat for next obj file
 ;-------------------------------------------------------------------------------
 
@@ -1090,6 +1096,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	stxy @objfile
 	lda #$01
 	sta activeobj
+	sta zp::label_fileid
 
 ;-------------------------------------------------------------------------------
 ; PASS2
@@ -1116,7 +1123,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	sta @objfile
 	bcc :+
 	inc @objfile+1
+
 :	inc activeobj
+	inc zp::label_fileid
+
 	ldy #$01
 	lda (@objfile),y	; are there more files? (next file is !0)
 	bne @pass2		; if so, repeat

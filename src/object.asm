@@ -1509,12 +1509,7 @@ __obj_close_section = close_section
 	iny
 	bne :-
 
-:	; prepend the filename as scope so that we know the file the symbol
-	; was defined in when we resolve it
-	ldxy #@namebuff
-	CALLMAIN lbl::setscope
-
-	lda #$00
+:	lda #$00
 	sta @i
 	cmp numexports
 	beq @load_locals
@@ -1530,6 +1525,11 @@ __obj_close_section = close_section
 ;-------------------------------------------------------------------------------
 ; load LOCAL symbols
 @load_locals:
+	; prepend the filename as scope so that we know the file the symbol
+	; was defined in when we resolve it
+	ldxy #@namebuff
+	CALLMAIN lbl::setscope
+
 	ldxy numlocals
 	stxy @i
 :	iszero @i
@@ -1539,7 +1539,8 @@ __obj_close_section = close_section
 	decw @i
 	jmp :-
 
-@ok:	clc
+@ok:	CALLMAIN lbl::popscope
+	clc
 @ret:	rts
 .endproc
 
@@ -1592,10 +1593,8 @@ __obj_close_section = close_section
 @namebuff=$120
 	; get the name of a symbol
 	ldy #$00
-	lda #'@'
-	sta @namebuff
 :	jsr krn::chrin
-	sta @namebuff+1,y
+	sta @namebuff,y
 	beq @addexport
 	iny
 	bne :-

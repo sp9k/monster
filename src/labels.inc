@@ -11,6 +11,7 @@
 .import __label_get_addr
 .import __label_get_banon
 .import __label_get_fanon
+.import __label_get_line
 .import __label_get_name
 .import __label_get_segment
 .import __label_id_by_alpha_index
@@ -49,6 +50,7 @@ SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 	find              = __label_find
 	get_banon         = __label_get_banon
 	get_fanon         = __label_get_fanon
+	get_line          = __label_get_line
 	getname           = __label_get_name
 	getsegment        = __label_get_segment
 	getaddr           = __label_get_addr
