@@ -1,0 +1,17 @@
+MEMORY [
+A:
+ START=$1000
+ END=$1100;
+B:
+ START=$1100
+ END=$1200;
+]
+
+SEGMENTS [
+ CODE:
+  LOAD=A
+  RUN=A;
+ DATA:
+  LOAD=B
+  RUN=B;
+]

@@ -706,8 +706,8 @@ __obj_close_section = close_section
 ; They are indentified by a SEG_UNDEF section index in the relocation tables at
 ; link time
 .proc dump_imports
-@i=r0
-@idx=r2
+@i=zp::tmp10
+@idx=zp::tmp12
 @buff=$100
 	lda #$00
 	sta @i
@@ -810,6 +810,7 @@ __obj_close_section = close_section
 ; Dumps the local (not-export, not-import) symbols to the open object file
 .proc dump_locals
 @id=zp::tmp12
+@segid=zp::tmp14
 @buff=$100
 	lda #$00
 	sta @id
@@ -820,6 +821,13 @@ __obj_close_section = close_section
 
 @l0:	; check if the label is already dumped as an export and skip it if so
 	jsr @isexport
+	beq @next
+
+	; check if label was dumped as IMPORT (segment is UNDEF)
+	ldxy @id
+	CALLMAIN lbl::getsegment	; get SEGMENT id
+	sta @segid
+	cmp #SEG_UNDEF
 	beq @next
 
 	; get the symbol name by looking up its label ID
@@ -838,12 +846,11 @@ __obj_close_section = close_section
 	bne :-
 
 @cont:	; write the SEGMENT id
-	ldxy @id
-	CALLMAIN lbl::getsegment	; get SEGMENT id
-	jsr krn::chrout			; write SEGMENT id
-	ldxy @id
+	lda @segid
+	jsr krn::chrout
 
 	; look up symbol's (segment-relative) address and write it
+	ldxy @id
 	CALLMAIN lbl::getaddr
 	txa
 	jsr krn::chrout			; write offset LSB
@@ -1154,9 +1161,10 @@ __obj_close_section = close_section
 	clc
 	adc numimports
 	sta @tmp
-	lda numexports+1
-	adc numimports
+	lda numimports+1
+	adc #$00
 	sta @tmp+1
+
 	lda lbl::num
 	sec
 	sbc @tmp
@@ -1552,7 +1560,7 @@ __obj_close_section = close_section
 ; OUT:
 ;   - .C: set on error
 .proc load_import
-@namebuff=$100
+@namebuff=$120
 	; get the name of a symbol
 	ldy #$00
 	stx zp::label_value
@@ -1776,7 +1784,7 @@ __obj_close_section = close_section
 
 	incw @i
 	ldxy @i
-	cmp numimports
+	cmpw numimports
 	bne @load_imports	; repeat for all IMPORTS
 
 ;-------------------------------------------------------------------------------

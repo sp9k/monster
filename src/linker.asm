@@ -1069,6 +1069,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 :	ldy #$01
 	lda (@objfile),y	; get char after the terminating 0
 	beq @pass1done		; if it's another 0, we're at end of obj list
+	incw @objfile		; move to the next filename
 
 	inc activeobj
 	inc zp::label_fileid
@@ -1111,7 +1112,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	bcs @done		; if .C set, return with error
 
 	; update filename pointer to next filename
-	ldy #$01
+	ldy #$0
 :	lda (@objfile),y
 	beq :+
 	iny
@@ -1128,10 +1129,13 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	inc zp::label_fileid
 
 	ldy #$01
-	lda (@objfile),y	; are there more files? (next file is !0)
-	bne @pass2		; if so, repeat
-;-------------------------------------------------------------------------------
+	lda (@objfile),y	; are we done? (0 at end of file list)
+	beq @pass2done
+	incw @objfile
+	jmp @pass2		; repeat for all object files
 
+;-------------------------------------------------------------------------------
+@pass2done:
 	; calculate ORIGIN and TOP of linked program
 	jsr segmin
 	stxy asm::origin
