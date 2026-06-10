@@ -276,11 +276,14 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @buff=ra
 @errcode=r0
 	; load link file into filebuff
+	ldxy #strings::link
 	CALLMAIN file::open_r
 	pha					; save file ID
+	bcs @parse
 	tax
 	jsr krn::chkin
 
+	; read the file into the buffer (until EOF)
 	ldxy #@filebuff
 	stxy @buff
 @readfile:
@@ -295,7 +298,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ;-------------------------------------------------------------------------------
 @parse: sta @errcode
 	pla				; restore file ID
-	CALLMAIN file::close
+	CALLMAIN file::close		; CLOSE the LINK file
+
 	lda @errcode
 	cmp #$40			; check status, EOF?
 	bne @err			; if not, failed for some other reason
@@ -340,9 +344,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jsr cmpline
 	beq @parse_segments
 
-	; invalid string
-	sec
-@err:	rts
+	; else invalid string
+
+@err:	sec
+	rts
 
 ;-------------------------------------------------------------------------------
 @parse_sections:
@@ -1704,10 +1709,21 @@ __link_get_segment_by_name:
 @tmp=r4
 @name=r6
 @symbuff=$100
+	; check if there is already a MAP file
 	ldxy #@filename
+	CALLMAIN file::exists
+	cmp #$00
+	bne @new
+
+	; scratch the existing MAP file if it exists
+	ldxy #@filename
+	CALLMAIN file::scratch
+	bcs @err
+
+@new:	ldxy #@filename
 	CALLMAIN file::open_w
 	bcc :+
-	rts
+@err:	rts
 
 :	pha				; save file handle
 	tax

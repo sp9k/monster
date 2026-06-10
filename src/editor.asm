@@ -396,7 +396,6 @@ main:	jsr key::getch
 	jsr log::out
 
 	; parse the LINK file to setup the linking context
-	ldxy #strings::link
 	inc $900f
 	CALL FINAL_BANK_LINKER, link::parse
 	inc $900f

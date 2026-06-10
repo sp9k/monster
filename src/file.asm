@@ -435,6 +435,7 @@ ENDOSPROC
 ; IN:
 ;  - .XY: the filename to check if exists
 ; OUT:
+;  - .A: 0 if file exists
 ;  - .C: set on error
 ;  - .Z: set if the file exists; clear if it does
 .export __file_exists
@@ -450,7 +451,7 @@ OSPROC __file_exists
 	jsr krn::readst		; call READST (read status byte)
 	cmp #20
 	bcs :+
-	lda #$00		; ignore errors 0-19
+	lda #$00		; ignore errors 0-19 (file exists)
 :	pha
 
 	; close the file we were testing
