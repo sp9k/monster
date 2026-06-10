@@ -89,11 +89,6 @@ reloc = zp::link	; when linking, pointer to current relocation
 ; The indexes in this array represent the id of the symbol at assembly time
 symbol_index_map: .res MAX_LABELS*2
 
-;*******************************************************************************
-; SYMBOL INFO
-; This table contains the fully resolved addresses for each symbol index used
-; in the object file.
-symbol_addresses: .res MAX_IMPORTS+MAX_EXPORTS
 
 ;*******************************************************************************
 ; SEG IDX, SEG CNT
@@ -145,8 +140,8 @@ numsections: .byte 0	; number of sections in obj file being written/read
 .export __obj_filename
 __obj_filename: .word 0	; pointer to name of object file being loaded
 
-import_indexeshi:   .res MAX_EXPORTS	; MSBs for index (in symbol_index_map)
-import_indexeslo:   .res MAX_EXPORTS	; LSBs for index (in symbol_index_map)
+import_label_idshi:   .res MAX_IMPORTS	; MSBs for index (in symbol_index_map)
+import_label_idslo:   .res MAX_IMPORTS	; LSBs for index (in symbol_index_map)
 
 ;*******************************************************************************
 ; NUM SYMBOLS MAPPED
@@ -508,6 +503,36 @@ __obj_close_section = close_section
 .endproc
 
 ;*******************************************************************************
+; ADD IMPORT
+; Defines an IMPORT for the given label name
+; IN:
+;   - .XY: address of the symbol name to define an IMPORT for
+; OUT:
+;   - .C: set on error
+.export __obj_add_import
+.proc __obj_add_import
+	; define a label for the import so that references to it succeed
+	lda #SEG_UNDEF			; UNDEF (external)
+	sta zp::label_segmentid
+	lda #$00			; dummy value
+	sta zp::label_value
+	sta zp::label_value+1
+
+	CALLMAIN lbl::add
+	bcs @ret			; not found -> err
+
+	; store the ID of the label that was added
+	txa
+	ldx numimports
+	sta import_label_idslo,x	; get LSB of index for symbol
+	tya
+	sta import_label_idshi,x	; get MSB of index for symbol
+	incw numimports
+	clc				; ok
+@ret:	rts
+.endproc
+
+;*******************************************************************************
 ; ADD RELOC
 ; Adds a new relocation entry to the current object file in construction
 ; NOTE: the addend is written by the assembler
@@ -535,6 +560,7 @@ __obj_close_section = close_section
 
 :	stxy @rel
 
+;-------------------------------------------------------------------------------
 ; encode the "info" byte for the relocation based on the result of the
 ; expression evaluation and the size of the relocation
 ;  field   bit(s)   description
@@ -547,9 +573,9 @@ __obj_close_section = close_section
 	asl
 	ora @sz
 
-	; is symbol in the expression is unresolved (section_id == SEG_UNDEF)?
-	; yes -> use symbol-based relocation
-	; no  -> use segment-based relocation
+	; is symbol in expression unresolved (section_id == SEG_UNDEF)?
+	; yes -> use SYMBOL-based relocation
+	; no  -> use SEGMENT-based relocation
 	ldx expr::segment
 	cpx #SEG_UNDEF
 	beq :+
@@ -584,11 +610,14 @@ __obj_close_section = close_section
 	bne @done		; branch always
 
 @sym_based:
-	lda expr::symbol
-	STOREB_Y @rel		; write symbol-id LSB
-	lda expr::symbol+1
+	ldxy expr::symbol
+	jsr get_import_id	; look up object-local ID for symbol
+	ldy #$03
+	txa
+	STOREB_Y @rel		; write local symbol-id LSB
 	iny			; .Y=4
-	STOREB_Y @rel		; write symbol-id MSB
+	lda #$00		; MSB (always 0 for now)
+	STOREB_Y @rel		; write local symbol-id MSB
 
 @done:  ; update reloctop
 	lda expr::postproc
@@ -599,6 +628,37 @@ __obj_close_section = close_section
 	bcc @ok
 	inc reloctop+1
 @ok:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; GET IMPORT ID
+; Translates the given label ID (from the assembly symbol table) to a "local"
+; one for the active object state.
+; IN:
+;   - .XY: symobl ID to translate
+; OUT:
+;   - .A: local ID (index into import_label_idslo/hi)
+;   - .C: set if the ID is not found (wasn't marked as an IMPORT)
+.proc get_import_id
+@id=r0
+	stxy @id
+
+	ldx #$00
+@l0:	; look for the matching symbol ID in the table of mapped IMPORTs
+	lda @id
+	cmp import_label_idslo,x
+	bne @next
+	lda @id+1
+	cmp import_label_idshi,x
+	beq @found
+
+@next:	inx
+	cpx numimports
+	bcc @l0
+	RETURN_ERR ERR_IMPORT_UNDEFINED
+
+@found:	txa
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -719,10 +779,11 @@ __obj_close_section = close_section
 	ldxy #@buff
 	stxy r0
 	ldx @i
-	ldy import_indexeshi,x		; get LSB of index for symbol
+	ldy import_label_idshi,x	; get MSB of index for symbol
 	sty @idx+1
-	lda import_indexeslo,y		; get MSB of index for symbol
+	lda import_label_idslo,y	; get LSB of index for symbol
 	sta @idx
+	tax
 	CALLMAIN lbl::getname
 
 	; write out the name
@@ -734,10 +795,8 @@ __obj_close_section = close_section
 	iny
 	bne :-
 
-@cont:	; write the object-local index for the import
-	lda @idx	; restore index LSB
-	jsr krn::chrout	; and write it
-	ldy @idx	; and MSB
+@cont:	; write the address mode for the IMPORT (ZP or ABS)
+	CALLMAIN lbl::addrmode
 	jsr krn::chrout
 
 	; next symbol
@@ -1244,26 +1303,17 @@ __obj_close_section = close_section
 
 @sym:	; apply (global) symbol based relocation
 	; symbols are fully resolved by the time we apply relocation, so
-	; just look up the address in symbol_addresses
+	; just look up the address in the IMPORTS look up table
 	lda @rec+3		; get symbol LSB
 	sta @symbol_id
 	lda @rec+4		; get symbol MSB
 	sta @symbol_id+1
 
 	; look up the address that we resolved for this symbol id (index)
-	lda @symbol_id
-	clc
-	adc #<symbol_addresses
-	sta @symbol_addr
-	lda @symbol_id+1
-	adc #>symbol_addresses
-	sta @symbol_addr+1
-	ldy #$00
-	LOADB_Y @symbol_addr
+	ldx @symbol_id
+	ldy import_label_idshi,x
+	lda import_label_idslo,x
 	tax
-	iny
-	LOADB_Y @symbol_addr
-	tay
 	jmp @add_offset		; continue to calculate target address
 
 @seg:	; apply segment (local symbol) based relocation
@@ -1499,6 +1549,15 @@ __obj_close_section = close_section
 	beq @exports
 @import_loop:
 	jsr load_import
+	bcs @ret
+
+	; eat object-local ID for the import
+	ldy @i
+	jsr krn::chrin
+	sta import_label_idslo,y
+	jsr krn::chrin
+	sta import_label_idshi,y
+
 	inc @i
 	lda @i
 	cmp numimports
@@ -1749,6 +1808,7 @@ __obj_close_section = close_section
 	ldy #$00
 :	jsr krn::chrin
 	sta @namebuff,y
+	cmp #$00
 	beq @mapimport
 	iny
 	bne :-
@@ -1757,30 +1817,16 @@ __obj_close_section = close_section
 	; look up the import's fully resolved address by its name
 	ldxy #@namebuff
 	CALLMAIN lbl::find	; find label ID by name
-	CALLMAIN lbl::addr	; get the resolved address
-	stxy @addr
-
-	jsr krn::chrin		; eat info byte
-
-	; get pointer to the resolved address for this symbol's index
-	lda #$00
-	sta @symaddr+1
-	lda @i
-	asl
-	rol @symaddr+1
-	adc #<symbol_addresses
-	sta @symaddr
-	lda #$00
-	adc #>symbol_addresses
-	sta @symaddr+1
+	CALLMAIN lbl::getaddr	; get the resolved address
 
 	; store the resolved address for this symbol's index
-	ldy #$00
-	lda @addr
-	STOREB_Y @symaddr
-	iny
-	lda @addr
-	STOREB_Y @symaddr
+	tya
+	ldy @i
+	sta import_label_idshi,y
+	txa
+	sta import_label_idslo,y
+
+	jsr krn::chrin		; eat info byte
 
 	incw @i
 	ldxy @i

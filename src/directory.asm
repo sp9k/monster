@@ -41,9 +41,9 @@ HEIGHT = SCREEN_HEIGHT-2
 .export __dir_get_by_type
 .proc __dir_get_by_type
 @ext=r5
-@file=r6
-@resultptr=r7
-@cnt=r9
+@file=r8
+@resultptr=ra
+@cnt=rc
 @buff=$100
 	sta @ext
 	stxy @resultptr
@@ -91,13 +91,13 @@ HEIGHT = SCREEN_HEIGHT-2
 @done:	ldy #$00
 	tya
 	sta (@resultptr),y	; terminate list
+
 	lda @file
 	jsr file::close
 
 @ok:	lda @cnt
 	ldxy @resultptr
-@ret:
-	rts			; <- from __dir_view
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -109,13 +109,13 @@ HEIGHT = SCREEN_HEIGHT-2
 ; It could also easily be modified to support more (e.g. for the 1581)
 .export __dir_view
 .proc __dir_view
-@file=r8
 @line=r8
 @row=ra
 @select=rb
 @cnt=rc			; number of files extracted from listing
 @scrollmax=rd		; maximum amount to allow scrolling
 @scroll=re
+@file=zp::tmp10
 @dirbuff=mem::spare+40		; 0-40 will be corrupted by text routines
 @namebuff=mem::spareend-40	; buffer for the file name
 @fptrslo=@namebuff-(128*2)	; room for 128 files
@@ -414,7 +414,6 @@ HEIGHT = SCREEN_HEIGHT-2
 ; OPEN DIR
 ; Opens the directory "file" for loading
 .proc open_dir
-	jsr krn::clall
 	ldxy #strings::dir
 	jsr file::exists
 	bcs :+
@@ -422,7 +421,9 @@ HEIGHT = SCREEN_HEIGHT-2
 	jsr file::open_r_prg
 	bcs :+
 	tax
+	pha
 	jsr krn::chkin
+	pla
 	clc			; ok
 :	rts
 .endproc

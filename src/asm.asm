@@ -1849,24 +1849,15 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; The label is assumed to be in the absolute ($100-$ffff) address range.
 ; The actual resolution of the label will happen when the object code is linked
 .proc import
+	lda #$01			; ABS
+	sta zp::label_mode
+
 	jsr pass1
 	beq :+
 	RETURN_OK			; imports are handled in pass 1
 
-:	lda #$01			; ABS
-	sta zp::label_mode
-
-	; define a label for the import so that references to it succeed
-	lda #SEG_UNDEF			; UNDEF (external)
-	sta zp::label_segmentid
-
-	lda #$00			; dummy value
-	sta zp::label_value
-	sta zp::label_value+1
-
-	incw obj::numimports
-	ldxy zp::line
-	jmp lbl::add
+:	ldxy zp::line
+	JUMP FINAL_BANK_LINKER, obj::add_import
 .endproc
 
 ;*******************************************************************************

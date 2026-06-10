@@ -397,7 +397,9 @@ main:	jsr key::getch
 
 	; parse the LINK file to setup the linking context
 	ldxy #strings::link
+	inc $900f
 	CALL FINAL_BANK_LINKER, link::parse
+	inc $900f
 	bcs @done				; error
 
 	; get all object files on disk
@@ -406,6 +408,7 @@ main:	jsr key::getch
 	jsr dir::get_by_type
 	bcs @done
 
+	inc $900f
 	; link all object files that were found
 	CALL FINAL_BANK_LINKER, link::link
 

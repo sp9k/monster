@@ -479,8 +479,6 @@ ENDOSPROC
 ; Closes all open files/channels
 .export __file_closeall
 OSPROC __file_closeall
-	lda #$00
-	sta zp::numfiles
 	jmp krn::clall
 ENDOSPROC
 

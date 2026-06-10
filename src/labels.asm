@@ -647,6 +647,7 @@ labelvars_size=*-labelvars
 @overwrite:
 	; label exists, overwrite its old value
 	jsr setaddr		; set the new value for the label
+	ldxy id
 	clc			; ok
 @ret:	rts
 
@@ -724,7 +725,8 @@ labelvars_size=*-labelvars
 	incw __label_num	; success, increment symbol count
 
 ;------------------------------------------------------------------------------
-@done:	RETURN_OK
+@done:	ldxy id
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************

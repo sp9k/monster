@@ -43,46 +43,47 @@ ERR_NO_ORIGIN            = 28
 ERR_BRANCH_OUT_OF_RANGE  = 29
 ERR_FILE_NOT_FOUND       = 30
 ERR_UNKNOWN_SEGMENT      = 31
-ERR_PC_TARGET_UNWRITABLE = 32
-ERR_CANNOT_REDUCE        = 33
+ERR_IMPORT_UNDEFINED     = 32
+ERR_PC_TARGET_UNWRITABLE = 33
+ERR_CANNOT_REDUCE        = 34
 
 ;******************************************************************************
 ; file i/o errors
-ERR_TOO_MANY_OPEN_FILES   = 34
-ERR_LOGICAL_FILE_IN_USE   = 35
-ERR_DRIVE_DID_NOT_RESPOND = 36
-ERR_FILE_TOO_BIG          = 37
+ERR_TOO_MANY_OPEN_FILES   = 35
+ERR_LOGICAL_FILE_IN_USE   = 36
+ERR_DRIVE_DID_NOT_RESPOND = 37
+ERR_FILE_TOO_BIG          = 38
 
 ;******************************************************************************
-ERR_UNNAMED_BUFFER   = 38
-ERR_TOO_MANY_BUFFERS = 39
-ERR_NO_FILENAME      = 40
-ERR_NO_OPEN_SCOPE    = 41
+ERR_UNNAMED_BUFFER   = 39
+ERR_TOO_MANY_BUFFERS = 40
+ERR_NO_FILENAME      = 41
+ERR_NO_OPEN_SCOPE    = 42
 
-ERR_LABEL_ALREADY_DEFINED = 42
-ERR_TOO_MANY_LABELS       = 43
-ERR_LABEL_NOT_KNOWN_PASS1 = 44
+ERR_LABEL_ALREADY_DEFINED = 43
+ERR_TOO_MANY_LABELS       = 44
+ERR_LABEL_NOT_KNOWN_PASS1 = 45
 
-ERR_INVALID_COMMAND = 45
+ERR_INVALID_COMMAND = 47
 
-ERR_COPY_TOO_BIG = 46
+ERR_COPY_TOO_BIG = 48
 
-ERR_BUFFER_NAME_EXISTS   = 47
-ERR_BUFFER_FULL          = 48
+ERR_BUFFER_NAME_EXISTS   = 49
+ERR_BUFFER_FULL          = 50
 
 ;******************************************************************************
 ; linker errors
-ERR_TOO_MANY_GLOBAL_REFS = 49
-ERR_TOO_MANY_SEGMENTS    = 50
-ERR_SECTION_TOO_SMALL    = 51
-ERR_ADDRMODE_MISMATCH    = 53
-ERR_ALREADY_EXPORTED     = 54
+ERR_TOO_MANY_GLOBAL_REFS = 51
+ERR_TOO_MANY_SEGMENTS    = 52
+ERR_SECTION_TOO_SMALL    = 53
+ERR_ADDRMODE_MISMATCH    = 55
+ERR_ALREADY_EXPORTED     = 56
 
 ;******************************************************************************
 ; general errors
-ERR_OOM                  = 55
-ERR_CTX_FULL             = 56
-ERR_NO_MATCHING_SCOPE    = 57
+ERR_OOM                  = 57
+ERR_CTX_FULL             = 58
+ERR_NO_MATCHING_SCOPE    = 59
 
 .import __err_get
 

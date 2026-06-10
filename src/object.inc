@@ -1,4 +1,5 @@
 .import __obj_add_export
+.import __obj_add_import
 .import __obj_add_reloc
 .import __obj_add_section
 .import __obj_close_section
@@ -21,6 +22,7 @@
 
 .scope obj
 	add_export             = __obj_add_export
+	add_import             = __obj_add_import
 	addreloc               = __obj_add_reloc
 	add_section            = __obj_add_section
 	close_section          = __obj_close_section

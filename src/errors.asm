@@ -149,6 +149,10 @@ err_unknown_segment:
 	;.byte "unknown segment",0
 	.byte $ab,$8b,$73,$d7,$76,$d3,$29,$cd,$2b,$94,$0
 
+err_import_undefined:
+	; .byte "import undefined",0
+	.byte $4b,$50,$7c,$94,$dd,$4e,$21,$46,$4b,$85,$20,$0
+
 err_pc_target_unwritable:
 	; .byte "pc target unwritable",0
 	.byte $80,$db,$a0,$52,$39,$54,$dd,$4e,$bc,$89,$a0,$42,$61,$40
@@ -276,6 +280,7 @@ err_no_matching_scope:
 	err_branch_out_of_range, \
 	err_file_not_found, \
 	err_unknown_segment, \
+	err_import_undefined, \
 	err_pc_target_unwritable, \
 	err_cannot_reduce, \
 	err_too_many_open_files, \

@@ -273,27 +273,32 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @filebuff_end=mem::spareend
 @segments_declared=r8
 @sections_declared=r9
-	; setup the load address
-	pha
-	lda #<@filebuff
-	sta file::loadaddr
-	lda #>@filebuff
-	sta file::loadaddr+1
-	lda #<@filebuff_end
-	sta file::load_address_end
-	lda #>@filebuff_end
-	sta file::load_address_end+1
-	pla
-
+@buff=ra
+@errcode=r0
 	; load link file into filebuff
-	CALLMAIN file::open_r_prg
+	CALLMAIN file::open_r
 	pha					; save file ID
-	CALLMAIN file::loadbin
-	pla					; restore file ID
-	php					; save .C
+	tax
+	jsr krn::chkin
+
+	ldxy #@filebuff
+	stxy @buff
+@readfile:
+	jsr krn::chrin
+	ldy #$00
+	sta (@buff),y
+	incw @buff
+	jsr krn::readst
+	cmp #$00
+	beq @readfile
+
+;-------------------------------------------------------------------------------
+@parse: sta @errcode
+	pla				; restore file ID
 	CALLMAIN file::close
-	plp					; restore .C
-	bcs @err
+	lda @errcode
+	cmp #$40			; check status, EOF?
+	bne @err			; if not, failed for some other reason
 
 	ldxy #@filebuff
 	stxy zp::line
@@ -315,10 +320,11 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	bne @unexpected_char
 	incw zp::line
 	ldxy zp::line
-	cmpw file::loadaddr
+	cmpw @buff
 	bne :-
 @done:	RETURN_OK
 
+;-------------------------------------------------------------------------------
 @read_block:
 	; look for MEMORY or SEGMENTS definition
 	jsr process_ws
@@ -338,6 +344,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	sec
 @err:	rts
 
+;-------------------------------------------------------------------------------
 @parse_sections:
 	; make sure we haven't already declared sections
 	lda @sections_declared
@@ -367,6 +374,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	incw zp::line		; else, move over the ']'
 	bne @getblock		; and get the next block (SEGMENTS)
 
+;-------------------------------------------------------------------------------
 @parse_segments:
 	; make sure SEGMENTS weren't already declared
 	lda @segments_declared
@@ -394,6 +402,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	incw zp::line		; else, move over the ']'
 	jmp @getblock		; and get next block (SECTIONS)
 
+;-------------------------------------------------------------------------------
 ; return .Z set if first non-whitespace char is a '['
 @get_open_brace:
 	jsr process_ws
@@ -402,6 +411,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	cmp #'['
 	rts
 
+;-------------------------------------------------------------------------------
 ; return .Z set if first non-whitespace char is a ']'
 @get_closing_brace:
 	jsr process_ws
@@ -410,6 +420,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	cmp #']'
 	rts
 
+;-------------------------------------------------------------------------------
 @memory:   .byte "memory",0
 @segments: .byte "segments",0
 .endproc
@@ -1159,16 +1170,16 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @sec_idx=zp::tmp10
 @obj_file_handle=zp::tmp12
 	CALLMAIN file::open_r
-	sta @obj_file_handle
+	pha			; save file ID
 
 	tax
 	jsr krn::chkin		; CHKIN
 	jsr obj::load		; load the object file with the given index
 
-	php					; save error flag
-	lda @obj_file_handle
+	pla			; restore file ID
+	php			; save error flag
 	CALLMAIN file::close
-	plp					; restore error flag
+	plp			; restore error flag
 	rts
 .endproc
 
