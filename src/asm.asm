@@ -1390,8 +1390,8 @@ __asm_is_opcode = getopcode
 ;  - .C: set if (line) is not an opcode
 ;  - cc: updated with the cc part of the opcode
 .proc getopcode
-@optab = r6
-@op = r8
+@optab = r0
+@op = r2
 	lda #$00
 	sta @op
 	sta cc
