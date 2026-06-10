@@ -73,6 +73,7 @@ LIST_LABEL  = 0
 LIST_NEXT   = 2
 
 ;*******************************************************************************
+.include "asm.inc"
 .include "config.inc"
 .include "errors.inc"
 .include "kernal.inc"
@@ -1355,11 +1356,9 @@ labelvars_size=*-labelvars
 	cmp #'Z'+1
 	bcs @err
 
-	; TODO:
-	;jsr getopcode	; opcodes are not valid labels
-	;bcs @cont
-	;sec
-	;rts
+	; make sure string is not an opcode (opcodes are not valid labels)
+	CALLMAIN asm::isopcode
+	bcc @err
 
 	; following characters must be between '0' and 'Z'
 @cont:	ldx #$00

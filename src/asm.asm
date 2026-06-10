@@ -1369,6 +1369,16 @@ __asm_tokenize_pass1 = __asm_tokenize
 .endproc
 
 ;*******************************************************************************
+; IS OPCODE
+; Checks if the value in zp::line is an opcode
+; IN:
+;  - zp::line: the line to parse the opcode from
+; OUT:
+;   - .C: set if the string is not an opcode
+.export __asm_is_opcode
+__asm_is_opcode = getopcode
+
+;*******************************************************************************
 ; GETOPCODE
 ; Parses zp::line for an instruction and returns information about it if it
 ; is determined to be an instruction

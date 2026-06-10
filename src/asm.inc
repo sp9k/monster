@@ -14,10 +14,12 @@
 .import __asm_tokenize_pass2
 .import __asm_top
 .import __asm_linenum
+.import __asm_is_opcode
 
 .scope asm
 	disassemble    = __asm_disassemble
 	include        = __asm_include
+	isopcode       = __asm_is_opcode
 	linenum        = __asm_linenum
 	mode           = __asm_mode
 	origin         = __asm_origin
