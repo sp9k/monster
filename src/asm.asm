@@ -82,6 +82,8 @@
 .include "vmem.inc"
 .include "zeropage.inc"
 
+.macpack longbranch
+
 ;*******************************************************************************
 MAX_IFS      = 4 ; max nesting depth for .if/.endif
 MAX_CONTEXTS = 3 ; max nesting depth for contexts (activated by .MAC, .REP, etc)
@@ -1091,7 +1093,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	; finally, check for invalid instructions ("gaps" in the ISA)
 	ldx #num_illegals-1
 :	cmp illegal_opcodes,x
-	beq @err
+	jeq @err
 	dex
 	bpl :-
 
@@ -1374,30 +1376,16 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; IN:
 ;  - zp::line: the line to parse the opcode from
 ; OUT:
+;   - .A: if line contains an opcode, the index of it in the assembler's table
 ;   - .C: set if the string is not an opcode
 .export __asm_is_opcode
-__asm_is_opcode = getopcode
-
-;*******************************************************************************
-; GETOPCODE
-; Parses zp::line for an instruction and returns information about it if it
-; is determined to be an instruction
-; IN:
-;  - zp::line: the line to parse the opcode from
-; OUT:
-;  - .A: ASM_OPCODE (on success) else error
-;  - .X: the opcode's ID
-;  - .C: set if (line) is not an opcode
-;  - cc: updated with the cc part of the opcode
-.proc getopcode
+.proc __asm_is_opcode
 @optab = r0
-@op = r2
-	lda #$00
-	sta @op
-	sta cc
-
+@op    = r2
 	ldxy #opcodes
 	stxy @optab
+	lda #$00
+	sta @op
 
 @l0:	ldy #$02
 @l1:	lda (zp::line),y
@@ -1413,9 +1401,42 @@ __asm_is_opcode = getopcode
 	beq @done
 	jsr util::is_whitespace
 	bne @err
-
 @done:	lda @op
-	tax
+	RETURN_OK
+
+@next:	lda @optab
+	clc
+	adc #$03
+	sta @optab
+	bcc :+
+	inc @optab+1
+:	inc @op
+	lda @op
+	cmp #NUM_OPCODES
+	bcc @l0
+@err:	RETURN_ERR ERR_ILLEGAL_OPCODE
+.endproc
+
+;*******************************************************************************
+; GETOPCODE
+; Parses zp::line for an instruction and returns information about it if it
+; is determined to be an instruction
+; IN:
+;  - zp::line: the line to parse the opcode from
+; OUT:
+;  - .A: ASM_OPCODE (on success) else error
+;  - .X: the opcode's ID
+;  - .C: set if (line) is not an opcode
+;  - cc: updated with the cc part of the opcode
+.proc getopcode
+	lda #$00
+	sta cc
+
+	; check if (zp::line) is an opcode and get its index if it is
+	jsr __asm_is_opcode
+	bcs @ret
+
+	; look up cc bits for this opcode (.A = index of opcode)
 	cmp #CC_01
 	bcc @setcc
 	inc cc
@@ -1451,18 +1472,7 @@ __asm_is_opcode = getopcode
 	inc zp::line+1
 :	RETURN_OK
 
-@next:	lda @optab
-	clc
-	adc #$03
-	sta @optab
-	bcc :+
-	inc @optab+1
-:	inc @op
-	lda @op
-	cmp #NUM_OPCODES
-	bcc @l0
-
-@err:	RETURN_ERR ERR_ILLEGAL_OPCODE
+@ret:	rts
 .endproc
 
 ;*******************************************************************************

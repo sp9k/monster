@@ -233,6 +233,14 @@ err_already_exported:
 ; "multiple definitions for symbol"
 .byte $6d,$4c,$a2,$50,$61,$5b,$21,$46,$4b,$89,$a2,$4f,$74,$db,$33,$d2,$dc,$d9,$68,$8f,$60,$0
 
+err_unknown_type:
+; "unknown type"
+.byte $ab,$8b,$73,$d7,$76,$d4,$cc,$5,$0
+
+err_unexpected_type:
+; "unexpected type"
+.byte $ab,$85,$c4,$5,$1d,$5,$26,$d4,$cc,$5,$0
+
 err_oom:
 ; "out of memory"
 .byte $7d,$54,$db,$c6,$db,$45,$6b,$d2,$c8,$0
@@ -303,6 +311,8 @@ err_no_matching_scope:
 	err_section_too_small, \
 	err_addrmode_mismatch, \
 	err_already_exported, \
+	err_unknown_type, \
+	err_unexpected_type, \
 	err_oom, \
 	err_ctx_full, \
 	err_no_matching_scope

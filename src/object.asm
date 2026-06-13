@@ -10,7 +10,8 @@
 ; SEGMENT HEADERS [6:...]  ; headers for each SEGMENT
 ;  NAME  [$0:$7] ; segment name or $0000 for ABSOLUTE (.org derived segments)
 ;  ALIGN [$8:$9] ; offset of data (RELATIVE) or aboslute position (ABSOLUTE)
-;  SIZE  [$a:$b] ; bytes used in segment
+;  MODE  [$a]    ; address mode (0=rel zeropage, 1=rel absolute, $ff=absolute)
+;  SIZE  [$b:$c] ; bytes used in segment
 ; IMPORTS[]
 ;   NAME[...]
 ;   INDEX                  ; object-local id for the import
@@ -81,6 +82,13 @@ reloc = zp::link	; when linking, pointer to current relocation
 .export __obj_segments_sizehi
 
 ;*******************************************************************************
+; Type flags for SEGMENT
+TYPE_ZP  = 0
+TYPE_RW  = 1
+TYPE_BSS = 2
+TYPE_ABS = $ff
+
+;*******************************************************************************
 ; SYMBOL INDEX MAP
 ; Each entry in this array contains the index that we will map the corresponding
 ; label to (see labels.asm)
@@ -88,7 +96,6 @@ reloc = zp::link	; when linking, pointer to current relocation
 ; If the symbol is unused, we store $ff
 ; The indexes in this array represent the id of the symbol at assembly time
 symbol_index_map: .res MAX_LABELS*2
-
 
 ;*******************************************************************************
 ; SEG IDX, SEG CNT
@@ -164,7 +171,8 @@ __obj_segments_sizelo:
 segments_sizelo:   .res MAX_SECTIONS
 __obj_segments_sizehi:
 segments_sizehi:   .res MAX_SECTIONS
-segments_modes:    .res MAX_SECTIONS
+.export segments_type
+segments_type:    .res MAX_SECTIONS
 
 __obj_segments:
 segments: .res MAX_SEGMENT_NAME_LEN*MAX_SECTIONS ; name of target SEG
@@ -314,7 +322,7 @@ __obj_close_section = close_section
 ; a never before seen SEGMENT or where the last section that referenced this
 ; SEGMENT left off if not.
 ; IN:
-;   - .A:             address mode: 0=ZP relocate, 1=ABS relocate, $FF=ABS
+;   - .A:             TYPE: 0=ZP relocate, 1=ABS relocate, 2=BSS, $FF=ABS
 ;   - zp::asmresult:  the physical address to begin the section at
 ;   - $100:           the name of the SEGMENT for the SECTION (if relative)
 ; OUT:
@@ -363,7 +371,7 @@ __obj_close_section = close_section
 	sta sections_starthi,x	; set obj section start MSB
 
 	lda @info
-	cmp #SEG_ABS
+	cmp #TYPE_ABS
 	beq @abs	; if ABS, continue to create a new segment
 
 	; is there already a SEGMENT by this name?
@@ -402,7 +410,7 @@ __obj_close_section = close_section
 	pha
 	tax
 	lda @info
-	cmp #SEG_ABS
+	cmp #TYPE_ABS
 	bne @addrel
 
 	; if ABS (.org), set START address to the literal PC value
@@ -417,10 +425,10 @@ __obj_close_section = close_section
 	sta segments_sizelo-1,x
 	sta sections_sizehi-1,x
 
-	; store MODE byte (address mode) for the SEGMENT
+	; store TYPE byte (ZP/BSS/etc) for the SEGMENT
 	lda @info
-	sta segments_modes-1,x
-	cmp #SEG_ABS
+	sta segments_type-1,x
+	cmp #TYPE_ABS
 	beq :+
 
 	; init REL segments start address to 0
@@ -490,7 +498,7 @@ __obj_close_section = close_section
 ;   - .C: set on error
 .export __obj_add_export
 .proc __obj_add_export
-	CALLMAIN lbl::find	; look up the label by name
+	CALLMAIN lbl::find		; look up the label by name
 	bcs @ret			; not found -> err
 	txa
 	ldx numexports
@@ -1029,8 +1037,8 @@ __obj_close_section = close_section
 	lda segments_starthi,x
 	jsr krn::chrout
 
-	; write segment mode (rel-zeropage, rel-absolute, or absolute)
-	lda segments_modes,x
+	; write TYPE (ZP, RW, BSS)
+	lda segments_type,x
 	jsr krn::chrout
 
 	; write the number of bytes used for this SEGMENT (2 bytes)
@@ -1069,7 +1077,7 @@ __obj_close_section = close_section
 @l0:	ldx @seg_idx
 
 	; write the INFO byte
-	lda segments_modes,x
+	lda segments_type,x
 	jsr krn::chrout
 
 	; write the size of the SEGMENT
@@ -1314,6 +1322,7 @@ __obj_close_section = close_section
 	ldy import_label_idshi,x
 	lda import_label_idslo,x
 	tax
+	CALLMAIN lbl::getaddr	; get address for LABEL
 	jmp @add_offset		; continue to calculate target address
 
 @seg:	; apply segment (local symbol) based relocation
@@ -1424,7 +1433,6 @@ __obj_close_section = close_section
 ; OUT:
 ;   - .C: set on error
 .proc load_info
-@cnt=r0
 @i=r4
 @name=r6
 @symoff=r8
@@ -1476,9 +1484,9 @@ __obj_close_section = close_section
 	jsr krn::chrin
 	sta segments_starthi,y
 
-	; read MODE
+	; read TYPE and ensure it matches the corresponding one read from LINK
 	jsr krn::chrin
-	sta segments_modes,y
+	sta segments_type,y
 
 	; get the number of bytes used in the SEGMENT
 	jsr krn::chrin
@@ -1488,13 +1496,14 @@ __obj_close_section = close_section
 
 	; if ABS segment, directly set the SEGMENT start address
 	ldy #$00
-	lda (@name),y
-	beq @next			; if ABS, already know start addr
+	lda (@name),y			; is name empty?
+	beq @next			; if so (ABS), already know start addr
 
 @rel:	; for REL segments, get the base address of this SEGMENT in the linker
 	; NOTE: this will be garbage in pass 1
 	ldxy @name
 	jsr link::segaddr_for_file_by_name
+	pha
 
 	; add the offset (always $0000 for now) to the SEGMENT
 	tya
@@ -1507,6 +1516,13 @@ __obj_close_section = close_section
 	pla
 	adc segments_starthi,y		; get MSB of SEGMENT base
 	sta segments_starthi,y		; store MSB of SEGMENT base
+
+	; validate that LINK file and declaration have same TYPE
+	pla
+	cmp segments_type,y
+	beq @next
+
+	RETURN_ERR ERR_UNEXPECTED_TYPE
 
 @next:	; move name pointer to next location
 	lda @name
@@ -1523,7 +1539,7 @@ __obj_close_section = close_section
 	bne @load_segments
 
 	clc				; ok
-@ret:	rts
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1533,7 +1549,6 @@ __obj_close_section = close_section
 ; state.
 .export __obj_load_headers
 .proc __obj_load_headers
-@cnt=r0
 @name=r2
 @i=zp::tmp10
 @namebuff=$100
@@ -1541,8 +1556,6 @@ __obj_close_section = close_section
 
 ; read the IMPORTS and EXPORTS and add them to the global symbol table
 @imports:
-	lda #SEG_UNDEF
-	sta zp::label_segmentid	; imports' section is UNDEFINED
 	lda #$00
 	sta @i
 	cmp numimports
@@ -1636,7 +1649,7 @@ __obj_close_section = close_section
 
 	ldxy #@namebuff
 	CALLMAIN lbl::find			; was label already added?
-	bcs :+					; if no -> add it
+	bcs @add				; if no -> add it
 
 	; validate: does address mode match existing symbol?
 	CALLMAIN lbl::addrmode
@@ -1646,7 +1659,9 @@ __obj_close_section = close_section
 	; error: address mode doesn't match
 	RETURN_ERR ERR_ADDRMODE_MISMATCH	; conflicting import/exports
 
-:	JUMPMAIN lbl::add
+@add:	lda #SEG_UNDEF
+	sta zp::label_segmentid
+	JUMPMAIN lbl::add
 @ok:	clc
 @ret:	rts
 .endproc
@@ -1668,12 +1683,13 @@ __obj_close_section = close_section
 
 @addexport:
 	jsr krn::chrin				; get SEGMENT id for EXPORT
-	cmp #SEG_ABS
+	cmp #TYPE_ABS
 	beq @cont				; if ABS, no need to resolve
 
 	; find the global segment id from the object-local one
+	; NOTE: ZP, RW, and ABS correspond to the label modes
 	tax
-	lda segments_modes-1,x
+	lda segments_type-1,x
 	sta zp::label_mode			; set address mode for label
 
 	txa
@@ -1695,18 +1711,14 @@ __obj_close_section = close_section
 	; if not, error (only 1 EXPORT is allowed per symbol)
 	CALLMAIN lbl::getsegment
 	cmp #SEG_UNDEF
-	beq :+
-	RETURN_ERR ERR_ALREADY_EXPORTED		; multiple exports
-
-:	; validate: does address mode match existing symbol?
-	CALLMAIN lbl::addrmode
-	cmp zp::label_mode
-	bne @addr_mode_mismatch
-@ok:	clc
+	beq @ok
+	lda #ERR_ALREADY_EXPORTED		; multiple exports
 @ret:	rts
 
-@addr_mode_mismatch:
-	RETURN_ERR ERR_ADDRMODE_MISMATCH	; conflicting addr modes
+@ok:	; overwrite symbol with the new (corrected) segment id
+	; TODO: this is pretty heavy. make a label util to overwrite info
+	ldxy #@namebuff
+	JUMPMAIN lbl::set
 
 @add:	ldxy #@namebuff
 	JUMPMAIN lbl::add
@@ -1732,12 +1744,12 @@ __obj_close_section = close_section
 	bne :-
 
 @cont:	jsr krn::chrin				; get SEGMENT id
-	cmp #SEG_ABS
+	cmp #TYPE_ABS
 	beq @add				; if ABS, no need to do lookup
 
 	; find the global segment id from the object-local one
 	tax
-	lda segments_modes-1,x
+	lda segments_type-1,x
 	sta zp::label_mode			; set address mode for label
 
 	txa
@@ -1817,9 +1829,8 @@ __obj_close_section = close_section
 	; look up the import's fully resolved address by its name
 	ldxy #@namebuff
 	CALLMAIN lbl::find	; find label ID by name
-	CALLMAIN lbl::getaddr	; get the resolved address
 
-	; store the resolved address for this symbol's index
+	; store the resolved (GLOBAL) id for this symbol's index (LOCAL id)
 	tya
 	ldy @i
 	sta import_label_idshi,y
@@ -1866,8 +1877,6 @@ __obj_close_section = close_section
 
 @load_segment:
 	jsr krn::chrin			; get "info" byte for SEGMENT
-
-	; TODO: make sure SEGMENT's address mode for SEGMENT matches linker's
 
 	; read the table sizes for this SEGMENT
 	ldy seg_idx
@@ -1947,7 +1956,7 @@ __obj_close_section = close_section
 
 ;-------------------------------------------------------------------------------
 @done:	clc
-@eof:	rts
+	rts
 
 ;-------------------------------------------------------------------------------
 ; "eats" one symbol by reading and discarding its name and metadata
@@ -2132,8 +2141,8 @@ __obj_close_section = close_section
 	sta @i
 
 @abs:	ldx @i
-	lda segments_modes,x
-	cmp #SEG_ABS		; is this an ABS segment?
+	lda segments_type,x
+	cmp #TYPE_ABS		; is this an ABS segment?
 	bne :+			; if not, skip it
 
 	; push stop address then start address
@@ -2166,8 +2175,8 @@ __obj_close_section = close_section
 	lda #$00
 	sta @i
 @rel:	ldx @i
-	lda segments_modes,x
-	cmp #SEG_ABS		; is this an ABS segment?
+	lda segments_type,x
+	cmp #TYPE_ABS		; is this an ABS segment?
 	beq @next		; if so, skip it
 
 	; copy name to buffer

@@ -27,6 +27,8 @@
 
 .include "ram.inc"
 
+.macpack longbranch
+
 .import __LINKER_BSS_LOAD__
 .import __LINKER_BSS_SIZE__
 
@@ -47,6 +49,13 @@ SYM_REL_EXPORT_BYTE = 3
 SYM_REL_EXPORT_WORD = 4
 SYM_ABS_EXPORT_BYTE = 5
 SYM_ABS_EXPORT_WORD = 6
+
+;*******************************************************************************
+; Type flags for SEGMENT
+TYPE_ZP  = 0
+TYPE_RW  = 1
+TYPE_BSS = 2
+TYPE_ABS = $ff
 
 ;*******************************************************************************
 ; SECTION flags
@@ -130,6 +139,7 @@ segments_run:    .res MAX_SEGMENTS	; id of section to run at
 segments_flags:  .res MAX_SEGMENTS
 segments_sizelo: .res MAX_SEGMENTS
 segments_sizehi: .res MAX_SEGMENTS
+segments_type:   .res MAX_SEGMENTS
 
 ; pointers for the current address of each SEGMENT during linking
 segments_addrlo: .res MAX_SEGMENTS
@@ -275,6 +285,13 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @sections_declared=r9
 @buff=ra
 @errcode=r0
+	; set default values
+	ldy #MAX_SEGMENTS
+	lda #TYPE_RW
+:	sta segments_type-1,y
+	dey
+	bne :-
+
 	; load link file into filebuff
 	ldxy #strings::link
 	CALLMAIN file::open_r
@@ -527,7 +544,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	; run the handler for the given key
 	jsr zp::jmpaddr
-	jmp @getprops	; repeat (get next key if there is one)
+	bcc @getprops	; repeat (get next key if there is one)
+
 
 @next:	; move zp::str2 to the next key to check
 	ldy #$00
@@ -608,7 +626,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @val=r2
 @cnt=r4
 @keybuff=$100
-@sec=$100
+@valbuff=$100
 	; get address to store new segment name to
 	lda numsegments
 	asl			; *2
@@ -680,8 +698,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	lda @cmdshi,x
 	sta zp::jmpvec+1
 
-	; get the section ID from the value (string)
-	; first, read the section name into a temp buffer
+	; read the value that the key is assigned into a temp buffer
 	ldy #$00
 :	lda (zp::line),y
 	beq @get_section
@@ -689,13 +706,13 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	beq @get_section
 	jsr is_ws
 	beq @get_section
-	sta @sec,y
+	sta @valbuff,y
 	iny
 	bne :-
 
 @get_section:
 	lda #$00
-	sta @sec,y	; terminate the section name buffer
+	sta @valbuff,y	; terminate the section name buffer
 
 	; update line pointer to after the name that was read
 	tya
@@ -705,18 +722,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	bcc :+
 	inc zp::line+1
 
-:	; get the section ID
-	ldxy #@sec
-	jsr get_section_by_name
-	bcs @ret		; section not found -> rts
-
-	; .A = .XY = section ID
-	tax
-	ldy #$00
-
-	; run the handler for the given key
+:	; run the handler for the given key
 	jsr zp::jmpaddr
-	jmp @getprops	; repeat (get next key if there is one)
+	bcc @getprops		; repeat (get next key if there is one)
+	jcs log_error
 
 @next:	; move zp::str2 to the next key to check
 	ldy #$00
@@ -734,32 +743,88 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; sec (unknown key)
 @ret:	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; handler for the "run" key in SEGMENT
 @runvec:
-	; set the run section for the segment
-	ldx numsegments
-	sta segments_load,x
+	; get the section ID
+	ldxy #@valbuff
+	jsr get_section_by_name
+	bcc :+
+	lda #ERR_UNKNOWN_SEGMENT	; section not found -> rts
 	rts
 
-;--------------------------------------
-; handler for the "load" key in SEGMENT
-@loadvec:
-	; set the load section for the segment
+:	; set the run section for the segment
 	ldx numsegments
 	sta segments_run,x
+	RETURN_OK
+
+;-------------------------------------------------------------------------------
+; handler for the "load" key in SEGMENT
+@loadvec:
+	; get the section ID
+	ldxy #@valbuff
+	jsr get_section_by_name
+	bcc :+
+	lda #ERR_UNKNOWN_SEGMENT	; section not found -> rts
 	rts
 
-;--------------------------------------
-; keys table
-@numkeys=2
-@keys:
-@load:     .byte "load",0
-@run:      .byte "run",0
+:	; set the load section for the segment
+	ldx numsegments
+	sta segments_load,x
+	RETURN_OK
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
+; handler for the "type" key in SEGMENT
+@typevec:
+@chkrw: lda @valbuff
+	cmp #'r'
+	bne @chkbss
+	lda @valbuff+1
+	cmp #'w'
+	bne @chkbss
+	lda #TYPE_RW
+	jmp @typefound
+
+@chkbss:
+	lda @valbuff
+	cmp #'b'
+	bne @chkzp
+	lda @valbuff+1
+	cmp #'s'
+	bne @chkzp
+	lda @valbuff+2
+	cmp #'s'
+	bne @chkzp
+	lda #TYPE_BSS
+	jmp @typefound
+
+@chkzp:	lda @valbuff
+	cmp #'z'
+	bne @unknown_type
+	lda @valbuff+1
+	cmp #'p'
+	bne @unknown_type
+
+@typefound:
+	; set the TYPE attribute for the segment
+	ldx numsegments
+	sta segments_type,x
+	RETURN_OK
+
+@unknown_type:
+	RETURN_ERR ERR_UNKNOWN_TYPE
+
+;-------------------------------------------------------------------------------
+; keys table
+@numkeys=3
+@keys:
+@load: .byte "load",0
+@run:  .byte "run",0
+@type: .byte "type",0
+
+;-------------------------------------------------------------------------------
 ; keys table handler vectors
-.define seg_cmds @runvec, @loadvec
+.define seg_cmds @loadvec, @runvec, @typevec
 @cmdslo: .lobytes seg_cmds
 @cmdshi: .hibytes seg_cmds
 
@@ -837,6 +902,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	; -2 so that id #1 *2 points to start of our list
 	; -16 because object file ids are also 1-based
+	;clc
 	adc #<(file_segments_start-2-(MAX_SEGMENTS*2))
 	tax
 	lda @msb
@@ -994,13 +1060,11 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jsr obj::load_headers	; get section sizes and add global labels
 	pla			; restore file handle
 	php			; save .C (error)
-
 	CALLMAIN file::close	; close the object file
 	plp			; restore load_headers error
-	bcc :+
-	rts			; return err
+	jcs log_error
 
-:	; store the current base addresses for each SEGMENT for the object file
+	; store the current base addresses for each SEGMENT for the object file
 	lda activeobj
 	jsr get_file_segment_table
 	stxy @tab
@@ -1038,10 +1102,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @rel:	; get the id of the segment by its name
 	ldxy @segname			; address of segment name
 	jsr get_segment_by_name		; get its ID
-	bcc :+
-	rts				; error
+	jcs log_error
 
-:	tax				; .X=segment index (global context)
+	tax				; .X=segment index (global context)
 	ldy @i				; .Y=segment index (object file)
 
 	; update the size of the segment: segment_size += section_size
@@ -1096,7 +1159,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; resolve symbols now that we know the base address of each SEGMENT
 	; in each object file
 	jsr resolve_symbols
-	bcs @done
+	jcs log_error
 
 @validate:
 	; make sure SEGMENT base+size is less than the top of the SEGMENT
@@ -1125,7 +1188,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	ldxy @objfile
 	jsr link_object		; link the object file
-	bcs @done		; if .C set, return with error
+	bcs log_error		; if .C set, return with error
 
 	; update filename pointer to next filename
 	ldy #$0
@@ -1164,6 +1227,20 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @done:	rts
 
 @pass1_seg_msg: .byte "$", ESCAPE_VALUE, 0
+.endproc
+
+;*******************************************************************************
+; LOG ERROR
+; Logs the error given
+; IN:
+;   - .A: error code to log
+.proc log_error
+	pha
+	CALLMAIN err::get
+	CALLMAIN log::out
+	pla
+	sec
+	rts			; return err
 .endproc
 
 ;*******************************************************************************
@@ -1358,10 +1435,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ;   - .A:      global (linker) segment id to get the base address of
 ;   - objfile: file to find the section's base address for
 ; OUT:
+;   - .A:  the TYPE byte (BSS, RW, ZP, or ABS)
 ;   - .XY: the base address for the requested segment within objfile
 .export __link_segaddr_for_file_by_id
 .proc __link_segaddr_for_file_by_id
-@segname=r0
 @tab=r2
 	pha
 
@@ -1370,7 +1447,12 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jsr get_file_segment_table	; get the table of addresses for file
 	stxy @tab
 
-	pla				; restore SEGMENT id
+	pla
+	tay
+	lda segments_type,y		; get TYPE
+	pha
+
+	tya
 	asl				; *2 (records are 1 word each)
 	tay
 	lda (@tab),y			; get LSB
@@ -1378,6 +1460,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	iny
 	lda (@tab),y			; get MSB
 	tay
+	pla				; restore TYPE byte
 	rts
 .endproc
 

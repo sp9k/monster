@@ -78,12 +78,14 @@ ERR_TOO_MANY_SEGMENTS    = 52
 ERR_SECTION_TOO_SMALL    = 53
 ERR_ADDRMODE_MISMATCH    = 55
 ERR_ALREADY_EXPORTED     = 56
+ERR_UNKNOWN_TYPE         = 57
+ERR_UNEXPECTED_TYPE      = 58
 
 ;******************************************************************************
 ; general errors
-ERR_OOM                  = 57
-ERR_CTX_FULL             = 58
-ERR_NO_MATCHING_SCOPE    = 59
+ERR_OOM                  = 59
+ERR_CTX_FULL             = 60
+ERR_NO_MATCHING_SCOPE    = 61
 
 .import __err_get
 
