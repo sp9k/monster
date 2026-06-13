@@ -134,7 +134,7 @@ __gui_reenter = __gui_activate
 	bne :-
 	beq @cont		; not found
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; GUI is already in stack, reload it
 @already_active:
 	stx @tmp
@@ -218,7 +218,7 @@ __gui_reenter = __gui_activate
 	stxy @stack
 	bne draw_gui	; continue to redraw
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; GUI isn't already in stack, load it as new
 @cont:	lda guisp
 	ldy guisp+1
@@ -233,7 +233,7 @@ __gui_reenter = __gui_activate
 
 :	inc stackdepth
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; copy the menu definition to the GUI stack
 @copyvars:
 	sta @stack
@@ -368,14 +368,14 @@ __gui_reenter = __gui_activate
 	dec scroll
 	bpl @loop		; redraw the scrolled display
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @getch: jsr @keycallback
 	bcs @quit
 	jsr savevars
 	jsr __gui_refresh
 	jmp draw_gui
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @keycallback:
 	; get the item index
 	pha
@@ -466,7 +466,7 @@ exit:	rts				; no GUI to draw
 	inc @i
 	bne @dloop
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @highlight_selection:
 	lda num
 	beq exit

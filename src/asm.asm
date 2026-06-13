@@ -572,7 +572,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	jsr line::process_ws
 	beq noasm			; empty line -> done
 
-;---------------------------------------
+;-------------------------------------------------------------------------------
 ; check if we're in an .IF (FALSE) and if we are, return
 @checkifs:
 	lda ifstacksp
@@ -877,7 +877,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bcc @finishline	 ; treat like ,X for encoding if LDX ,Y or STX ,Y
 	inc indexed	 ; if NOT LDX y-indexed, inc twice for Y-indexed
 
-;------------------------------------------------------------------------------
+;-------------------------------------------------------------------------------
 ; finish the line by checking for whitespace and/or a comment
 @finishline:
 	jsr line::incptr		; next char
@@ -890,7 +890,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 @unexpected_char2:
 	RETURN_ERR ERR_UNEXPECTED_CHAR
 
-;------------------------------------------------------------------------------
+;-------------------------------------------------------------------------------
 ; done, create the assembled result based upon the opcode, operand, and addr mode
 @done:	lda resulttype
 	cmp #ASM_OPCODE
@@ -1041,11 +1041,11 @@ __asm_tokenize_pass1 = __asm_tokenize
 @store_done:
 	bcs @opdone		; if error, return
 
-;------------------
+;-------------------------------------------------------------------------------
 ; store debug info if enabled
 @dbg:	jsr storedebuginfo
 
-;------------------
+;-------------------------------------------------------------------------------
 ; update virtualpc and asmresult by (1 + operand size)
 @updatepc:
 	ldx operandsz
@@ -1066,7 +1066,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 @opdone:
 	rts
 
-;------------------
+;-------------------------------------------------------------------------------
 ; check that the BBB and CC combination we have is valid
 @validate_cc:
 	ldy cc		; are CC bits 0?
@@ -1294,7 +1294,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	beq @zp
 @err:   RETURN_ERR ERR_OVERSIZED_OPERAND
 
-;------------------
+;-------------------------------------------------------------------------------
 @zp:	lda immediate
 	bne @imm
 	ldx indexed
@@ -1313,7 +1313,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	adc #ZEROPAGE
 @ok:	RETURN_OK
 
-;------------------
+;-------------------------------------------------------------------------------
 @abs:   lda immediate
 	bne @oversized	; error- immediate abs illegal (operand too large)
 	lda indirect_hint
@@ -1337,7 +1337,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 @impl:	;lda #IMPLIED (0)
 @done:	RETURN_OK
 
-;-------------------
+;-------------------------------------------------------------------------------
 @oversized:
 	jsr pass1
 	beq @done
@@ -1625,7 +1625,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	ldxy #@itername
 	jsr ctx::getparams
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; define a label with the value of the iteration
 @l0:	jsr ctx::rewind
 
@@ -1648,7 +1648,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 @set:	jsr lbl::set		; successive iterations- set (replace)
 	bcs @err
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; assemble all lines for the iteration
 @l1:	incw __asm_linenum
 	jsr ctx::getline	; get a line to assemble
@@ -1701,7 +1701,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	lda ctx::open		; is context open?
 	bne @write_ctx		; if yes, write it to the context buffer
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; context is open, reduce the current iterator to its constant value
 ; and write it to the parent context's buffer
 @buff=$100+LINESIZE
@@ -2814,7 +2814,7 @@ __asm_include:
 	ldx @modes		; .X = address modes
 	RETURN_OK
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; APPEND CH
 ; Appends a character to the disassembled instruction
 @appendch:
@@ -3325,7 +3325,7 @@ __asm_include:
 
 @done:	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; WRITE HEX
 ; helper to convert/write a hex value to buffer
 @write_hex:
