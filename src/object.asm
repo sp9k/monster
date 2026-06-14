@@ -14,7 +14,7 @@
 ;  SIZE  [$b:$c] ; bytes used in segment
 ; IMPORTS[]
 ;   NAME[...]
-;   INDEX                  ; object-local id for the import
+;   MODE[1]
 ; EXPORTS[]
 ;   NAME[...]
 ;   SEGMENT ID[1]
@@ -500,6 +500,7 @@ __obj_close_section = close_section
 .proc __obj_add_export
 	CALLMAIN lbl::find		; look up the label by name
 	bcs @ret			; not found -> err
+
 	txa
 	ldx numexports
 	sta export_label_idslo,x	; get LSB of index for symbol
@@ -789,7 +790,7 @@ __obj_close_section = close_section
 	ldx @i
 	ldy import_label_idshi,x	; get MSB of index for symbol
 	sty @idx+1
-	lda import_label_idslo,y	; get LSB of index for symbol
+	lda import_label_idslo,x	; get LSB of index for symbol
 	sta @idx
 	tax
 	CALLMAIN lbl::getname
@@ -937,10 +938,10 @@ __obj_close_section = close_section
 	ldx numexports
 	beq @notexport
 
-@l1:	lda @id
+@l1:	lda @id+1
 	cmp export_label_idshi-1,x	; get LSB of index for symbol
 	bne :+
-	lda @id+1
+	lda @id
 	cmp export_label_idslo-1,x	; get MSB of index for symbol
 	beq @isexport_done
 :	dex
@@ -1564,11 +1565,11 @@ __obj_close_section = close_section
 	jsr load_import
 	bcs @ret
 
-	; eat object-local ID for the import
+	; write object-local ID for the import
 	ldy @i
-	jsr krn::chrin
+	tya
 	sta import_label_idslo,y
-	jsr krn::chrin
+	lda #$00
 	sta import_label_idshi,y
 
 	inc @i
@@ -1643,8 +1644,7 @@ __obj_close_section = close_section
 	iny
 	bne :-
 
-@cont:
-	jsr krn::chrin				; get info byte (address mode)
+@cont:	jsr krn::chrin				; get info byte (address mode)
 	sta zp::label_mode
 
 	ldxy #@namebuff
@@ -1662,8 +1662,8 @@ __obj_close_section = close_section
 @add:	lda #SEG_UNDEF
 	sta zp::label_segmentid
 	JUMPMAIN lbl::add
-@ok:	clc
-@ret:	rts
+
+@ok:	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -1711,11 +1711,13 @@ __obj_close_section = close_section
 	; if not, error (only 1 EXPORT is allowed per symbol)
 	CALLMAIN lbl::getsegment
 	cmp #SEG_UNDEF
-	beq @ok
+	beq @set
+
 	lda #ERR_ALREADY_EXPORTED		; multiple exports
+	sec
 @ret:	rts
 
-@ok:	; overwrite symbol with the new (corrected) segment id
+@set:	; overwrite symbol with the new (corrected) segment id
 	; TODO: this is pretty heavy. make a label util to overwrite info
 	ldxy #@namebuff
 	JUMPMAIN lbl::set
@@ -1829,6 +1831,7 @@ __obj_close_section = close_section
 	; look up the import's fully resolved address by its name
 	ldxy #@namebuff
 	CALLMAIN lbl::find	; find label ID by name
+	bcs @ret
 
 	; store the resolved (GLOBAL) id for this symbol's index (LOCAL id)
 	tya
@@ -1896,7 +1899,7 @@ __obj_close_section = close_section
 
 	; log the SEGMENT name and table sizes for it
 	ldx seg_idx
-	inx
+	inx				; +1 (SEGMENTs are 1-based)
 	txa
 	jsr __obj_get_segment_name_by_id
 	jsr log_msg

@@ -3191,7 +3191,7 @@ __asm_include:
 	ldy @savey
 :				; <- write_reloc
 @ok:	clc
-:	rts
+:	rts			; <- writeb_with_reloc
 .endproc
 
 ;*******************************************************************************

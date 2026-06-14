@@ -16,13 +16,13 @@
 - [ ] Save/restore raster position while debugging
 
 ### TODO V1
-- [ ] Fix .IMPORT
 - [ ] Support .REP and .MAC in monitor
 - [ ] Fix crash on boot if key is being pressed (Vic20?)
 - [?] Fix unstable file mappings in debug info
 - [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
 - [ ] get disk access working from BASIC
 - [ ] fix linking/object code generation for C64
+- [x] Fix .IMPORT
 - [x] fix linking/object code generation for Ultimem
 - [x] fix indirect jmp assembly
 - [x] fix debug-info line mapping for .REP
