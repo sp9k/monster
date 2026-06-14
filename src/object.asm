@@ -1817,6 +1817,7 @@ __obj_close_section = close_section
 ; read IMPORTs and map them to their object-local ids
 	lda #$00
 	sta @i
+	sta @i+1
 @load_imports:
 	; get the name of a symbol
 	ldy #$00

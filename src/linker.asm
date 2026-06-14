@@ -1250,7 +1250,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ;   - .XY: address of the object filename to link
 .proc link_object
 @sec_idx=zp::tmp10
-@obj_file_handle=zp::tmp12
+@err=r0
 	CALLMAIN file::open_r
 	pha			; save file ID
 
@@ -1258,10 +1258,12 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jsr krn::chkin		; CHKIN
 	jsr obj::load		; load the object file with the given index
 
+	sta @err
 	pla			; restore file ID
 	php			; save error flag
 	CALLMAIN file::close
 	plp			; restore error flag
+	lda @err		; restore error code (if any)
 	rts
 .endproc
 
