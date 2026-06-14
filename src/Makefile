@@ -2,8 +2,8 @@ TARGET ?= vic20
 REGION ?= NTSC
 
 # for Vic-20, which expansion to use
-# Valid values: fe3, ultimem
-EXPANSION ?= fe3
+# Valid values: ultimem
+EXPANSION ?= ultimem
 
 # default device # (for cart image)
 DEFAULT_DEVICE=8
@@ -51,7 +51,6 @@ ifeq ($(TARGET),c64)
 endif
 
 
-FE3BIN=fe3vice.bin
 CART_IMAGE=monster.bin	# name of cart binary to produce
 TEST_IMAGE=test.bin	# name of test suite cart binary to produce
 PYTHON=python3
@@ -147,10 +146,6 @@ ifeq ($(TARGET),c64)
 	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write monster-disk.prg $(addprefix -write , $(TEST_FILES))
 endif
 
-install.d81: installer.prg $(CART_IMAGE)
-	# create the FE3 installer image
-	$(C1541) -format install,1 d81 install.d81 -attach install.d81 -write installer.prg -write $(CART_IMAGE)
-
 start-cart: $(CART_IMAGE) test.d81
 	$(C1541) -format disk,1 d81 empty.d81
 	$(XVIC) -default -kernal $(KERNAL) +warp -sound -cartfe $(CART_IMAGE) -memory all $(EMU_REGION) -dos1581 JiffyDOS_1581.bin -drive8type 1581 -8 test.d81 -moncommands moncommands
@@ -159,12 +154,6 @@ start-cart-jiffy: $(CART_IMAGE) test.d81
 	$(C1541) -format disk,1 d81 empty.d81
 	$(XVIC) +warp -kernal $(KERNAL_JIFFY) -sound -cartfe $(CART_IMAGE) -memory all $(EMU_REGION) -drive8type 1581 -8 test.d81 -dos1581 JiffyDOS_1581.bin -8 empty.d81 -moncommands moncommands
 
-start-disk: test.d81
-	$(XVIC) -default $(EMU_REGION) -kernal kernal.901486-06.bin -memory all -cartfe $(FE3BIN) -sound +warp -drive8type 1581 -8 test.d81 -moncommands moncommands
-
-
-start-disk-jiffy20: test.d81
-	$(XVIC) +warp -kernal JiffyDOS_VIC-20_6.01_NTSC.bin -sound -cartfe $(FE3BIN) -memory all $(EMU_REGION) -drive8type 1581 -dos1581 JiffyDOS_1581.bin -8 test.d81 -moncommands moncommands
 
 start-disk-jiffy64: test.d81
 	$(X64) -default +warp -kernal JiffyDOS_C64.bin -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384  -moncommands moncommands -8 test.d81
@@ -178,13 +167,9 @@ start-install: install.d81
 start-test: $(TEST_IMAGE) test.d81
 	$(XVIC) +warp -sound -cartfe $(TEST_IMAGE) -memory all $(EMU_REGION) -drive8type 1581 -8 test.d81 -moncommands moncommands
 
-vstart:
-	$(XVIC) +warp -default -cartfe $(FE3BIN) -memory all $(EMU_REGION) +drive8truedrive -virtualdev10 -8 test.d81
-
 clean:
 	rm -f *.prg *.o test.d81 $(CART_IMAGE) monster.d81
 	rm -rf vic20/*.o
-	rm -rf vic20/fe3/*.o
 	rm -rf vic20/ultimem/*.o
 	rm -rf vic20/hard8x8.o/*.o
 	rm -rf vic20/soft4x8.o/*.o

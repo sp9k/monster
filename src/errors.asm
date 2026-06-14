@@ -16,11 +16,7 @@
 .include "vic20/ultimem/banks.inc"
 .endif
 
-.ifdef fe3
-.RODATA
-.else
 .segment "ERRORS"
-.endif
 ;*******************************************************************************
 err_no_err:
 	.byte 0

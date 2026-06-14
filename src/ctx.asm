@@ -102,24 +102,7 @@ __ctx_numparams = numparams
 .endproc
 
 ;*******************************************************************************
-; Flat memory procedure mappings (FE3 only)
-.if .defined(vic20) && .defined(fe3)
-__ctx_push         = push
-__ctx_rewind       = rewind
-__ctx_pop          = pop
-__ctx_getline      = getline
-__ctx_getparams    = getparams
-__ctx_getdata      = getdata
-__ctx_write_parent = write_parent
-__ctx_write        = write
-__ctx_end          = end
-__ctx_addparam     = addparam
-
-is_whitespace = util::is_whitespace
-
-;*******************************************************************************
 ; Banked memory mappings
-.else
 __ctx_push:         JUMP FINAL_BANK_CTX, push
 __ctx_rewind:       JUMP FINAL_BANK_CTX, rewind
 __ctx_pop:          JUMP FINAL_BANK_CTX, pop
@@ -142,7 +125,6 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 .proc is_whitespace
 	.include "inline/is_ws.asm"
 .endproc
-.endif
 
 ;*******************************************************************************
 ; PUSH

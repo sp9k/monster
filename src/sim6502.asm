@@ -36,8 +36,6 @@ MAPPED_ZP = prog00
 ; The effective address and "msave" value are used to save/restore internal
 ; memory state.
 ; The following platforms handle this in various ways:
-;  - vic 20 (FE3): this segment is in the "MAIN" bank and is banked out when
-;                  executing a step
 ;  - vic 20 (Ultimem): this segment is in the I/O 2/3 2/3 space, which is
 ;                      considered "dangerous" and the simulator will prohibit
 ;                      clobbering.
@@ -217,7 +215,6 @@ msave: .byte 0
 	jsr ultim::reset_blk5
 .endif
 	; unable to complete STEP (e.g. JAM or BRK), return with .C set
-	sec
 	rts
 
 @ok:	; check if opcode uses indexed/indrect addressing
@@ -336,7 +333,7 @@ msave: .byte 0
 	sta @operand
 	sta __sim_operand
 
-	; operand operand MSB
+	; operand MSB
 	ldxy @op
 	lda #$02
 	jsr vmem::load_off
@@ -349,7 +346,6 @@ msave: .byte 0
 	lda __sim_affected
 	and #OP_STORE
 	beq @chkjam
-	ldxy __sim_effective_addr
 	jsr is_write_safe
 	bcc @chkjam
 	ldxy __sim_pc		; return original PC (processor jammed)
@@ -915,7 +911,7 @@ msave: .byte 0
 
 @err:	; an important memory location will be clobbered
 	inc __sim_vital_addr_clobbered
-	sec
+	;sec
 	rts
 
 .ifndef ultimem
