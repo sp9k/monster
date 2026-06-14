@@ -16,6 +16,8 @@
 - [ ] Save/restore raster position while debugging
 
 ### TODO V1
+- [ ] Finish .BSS segment support (don't emit obj/relocation code for these)
+- [ ] Fix segtion -> segment mapping in linker (SEGEMNTS are currently not considering if they are part of same SECTION)
 - [ ] Support .REP and .MAC in monitor
 - [ ] Fix crash on boot if key is being pressed (Vic20?)
 - [?] Fix unstable file mappings in debug info

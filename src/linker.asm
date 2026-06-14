@@ -563,7 +563,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; sec (unknown key)
 @ret:	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; handler for the "start" key in config file
 @startvec:
 	; set the start address for the segment
@@ -574,7 +574,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	sta sections_starthi,x
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; handler for the "stop" key in config file
 @endvec:
 	; set the end address for the segment
@@ -585,7 +585,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	sta sections_stophi,x
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; handler for the "fill" key in config file
 @fillvec:
 	ldx numsections
@@ -593,7 +593,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	sta sections_flags,x
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; keys table
 @keys:
 @numkeys=3
@@ -601,7 +601,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @end:	.byte "end",0
 @fill:	.byte "fill",0
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; keys table handler vectors
 .define sec_cmds @startvec, @endvec, @fillvec
 @cmdslo: .lobytes sec_cmds
