@@ -280,22 +280,6 @@ main:	jsr key::getch
 .endproc
 
 ;*******************************************************************************
-; COMMAND_GO
-; :g <symbol>
-; Begins execution at the address of the given symbol.
-; If no label is given (a 0-length string is given) then begins execution at
-; the program's origin.
-; IN:
-;  - .XY: the address of the label to start debugging at
-.proc command_go
-	jsr label_addr_or_org
-	bcc :+
-	rts			; address not found
-:	stxy zp::jmpvec
-	jmp (zp::jmpvec)
-.endproc
-
-;*******************************************************************************
 ; COMMAND_DEBUG
 ; Starts the debugger at the address specified by the given label.
 ; If no label is given (a 0-length string is given) then begins debugging at
@@ -3047,7 +3031,6 @@ goto_buffer:
 .PUSHSEG
 .RODATA
 @ex_commands:
-	.byte $67	; g - go
 	.byte $64	; d - debug
 	.byte $65	; e - open file
 	.byte $72	; r - rename
@@ -3063,7 +3046,7 @@ goto_buffer:
 @num_ex_commands=*-@ex_commands
 
 .linecont +
-.define ex_command_vecs command_go, command_debug, \
+.define ex_command_vecs command_debug, \
 	__edit_load, command_rename, command_save, command_saveall, \
 	command_scratch, command_assemble_file, \
 	command_savebin, command_saveprg, command_savedbg, command_loaddbg, \
