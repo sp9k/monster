@@ -373,7 +373,7 @@ __obj_close_section = close_section
 
 	lda @info
 	cmp #TYPE_ABS
-	beq @abs	; if ABS, continue to create a new segment
+	beq @abs		; if ABS, continue to create a new segment
 
 	; is there already a SEGMENT by this name?
 	ldxy #@name
@@ -1081,6 +1081,7 @@ __obj_close_section = close_section
 
 	; write the INFO byte
 	lda segments_type,x
+	pha
 	jsr krn::chrout
 
 	; write the size of the SEGMENT
@@ -1088,6 +1089,12 @@ __obj_close_section = close_section
 	jsr krn::chrout
 	lda __obj_segments_sizehi,x
 	jsr krn::chrout
+
+	; check if this is a BSS segment. We don't emit object/relocation code
+	; for segments of this TYPE
+	pla
+	cmp #TYPE_BSS
+	jeq @nextseg			; if BSS -> skip
 
 	; write the size of the relocation table
 	lda segments_relocsizelo,x
@@ -1887,6 +1894,7 @@ __obj_close_section = close_section
 
 @load_segment:
 	jsr krn::chrin			; get "info" byte for SEGMENT
+	pha
 
 	; read the table sizes for this SEGMENT
 	ldy seg_idx
@@ -1937,6 +1945,11 @@ __obj_close_section = close_section
 	ldxy #@obj_log
 	jsr log_msg
 
+	; check segment TYPE, if it is BSS, no obj/relocation code to load
+	pla			; restore TYPE byte
+	cmp #TYPE_BSS
+	beq @done
+
 @objcode:
 	; finally, load the object code for the segment to vmem
 	jsr krn::chrin
@@ -1965,22 +1978,7 @@ __obj_close_section = close_section
 	CALL FINAL_BANK_DEBUG, dbgi::load	; load debug info
 
 ;-------------------------------------------------------------------------------
-@done:	clc
-	rts
-
-;-------------------------------------------------------------------------------
-; "eats" one symbol by reading and discarding its name and metadata
-@eatsym:
-	jsr krn::chrin
-	cmp #$00		; did we read terminating 0 for symbol's name?
-	bne @eatsym		; loop til we found it
-
-	; now "eat" the metadata
-	ldy #3			; sizeof(info+segment_idx+address)
-:	jsr krn::chrin
-	dey
-	bne :-
-	rts
+@done:	RETURN_OK
 
 ;-------------------------------------------------------------------------------
 ; object code: $xxxx-$xxxx

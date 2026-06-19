@@ -5,6 +5,9 @@ A:
 B:
  START=$1100
  END=$1200;
+C:
+ START=$1200
+ END=$1300;
 ]
 
 SEGMENTS [
@@ -14,4 +17,7 @@ SEGMENTS [
  DATA:
   LOAD=B
   RUN=B;
+ BSS:
+  LOAD=BSS
+  TYPE=BSS
 ]
