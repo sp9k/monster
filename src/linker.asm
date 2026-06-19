@@ -1178,9 +1178,6 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	php			; save error flag
 	CALLMAIN file::close
 
-	; update GLOBAL segments by the usage of the file that was loaded
-	jsr update_segments
-
 	plp			; restore error flag
 	lda @err		; restore error code (if any)
 	rts
