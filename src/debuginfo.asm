@@ -1650,7 +1650,7 @@ get_filename = get_filename_addr
 	sta seg_id
 
 	; look up the address offset for this SEGMENT
-	CALL FINAL_BANK_LINKER, link::segaddr_for_file_by_id
+	CALL FINAL_BANK_LINKER, link::segaddr_by_id
 	stxy @offset
 
 	; add the offset for the SEGMENT to the value from the header

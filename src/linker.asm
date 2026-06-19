@@ -134,8 +134,8 @@ section_names:    .res MAX_SECTIONS*MAX_SECTION_NAME_LEN
 ;  .byte    LOAD SEGMENT id
 ;  .byte    RUN SEGMENT id
 ;  .byte    flags
-segments_load:   .res MAX_SEGMENTS	; id of section to load to
-segments_run:    .res MAX_SEGMENTS	; id of section to run at
+segments_load:   .res MAX_SEGMENTS	; id of SECTION to load to
+segments_run:    .res MAX_SEGMENTS	; id of SECTION to run at
 segments_flags:  .res MAX_SEGMENTS
 segments_sizelo: .res MAX_SEGMENTS
 segments_sizehi: .res MAX_SEGMENTS
@@ -153,10 +153,6 @@ segment_names: .res MAX_SEGMENT_NAME_LEN*MAX_SEGMENTS
 .export segments_sizelo
 .export segments_sizehi
 .export segment_names
-
-; base addresses for each segment per file
-.export file_segments_start
-file_segments_start: .res MAX_OBJS*MAX_SEGMENTS*2
 
 ;*******************************************************************************
 ; OBJECT CODE overview
@@ -882,111 +878,103 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 .endproc
 
 ;*******************************************************************************
-; GET FILE SEGMENT TABLE
-; Returns the segment address table for the given object file.
-; Each word in this table is the address for its corresponding SEGMENT
-; IN:
-;   - .A: the object file id to get the table for
-; OUT
-;   - .XY: the table of SEGMENT offsets for the given symbol's file
-.proc get_file_segment_table
-@msb=r0
-	ldx #$00
-	stx @msb
-	asl				; *16
-	asl
-	asl
-	rol @msb
-	asl
-	rol @msb
-
-	; -2 so that id #1 *2 points to start of our list
-	; -16 because object file ids are also 1-based
-	;clc
-	adc #<(file_segments_start-2-(MAX_SEGMENTS*2))
-	tax
-	lda @msb
-	adc #>(file_segments_start-2-(MAX_SEGMENTS*2))
-	tay
-	rts
-.endproc
-
-;*******************************************************************************
-; RESOLVE SYMBOLS
-; Calculates the addresses for each symbol that was extracted from the object
-; file headers in the linker's first pass
-; Symbols includes EXPORTS, IMPORTS, and LOCALS
+; VALIDATE SYMBOLS
+; Validates that all symbols are resolved
 ; OUT:
 ;   - .C: set on error
-.proc resolve_symbols
+.proc validate_symbols
 @i=zp::tmp10
 @seg_id=zp::tmp12
 @obj_seg_offsets=zp::tmp14
 @namebuff=$100
 	iszero lbl::num
-	bne :+
-	RETURN_OK				; no globals
+	beq @ok
 
-:	; iterate through all labels
+	; iterate through all labels
 	lda #$00
 	sta @i
 	sta @i+1
 
-@l0:	; get the address of the segment table for file containing the symbol
-	ldxy #@namebuff
-	stxy r0
-	ldxy @i
-	CALLMAIN lbl::getname			; look up the label's name
-	ldxy #@namebuff
-
-	ldxy @i
-	CALLMAIN lbl::get_line			; get file ID of the label
-	jsr get_file_segment_table		; get offset table for file
-	stxy @obj_seg_offsets			; save the SEGMENT offsets addr
-
-	; look up the segment ID for the symbol
-	ldxy @i
+@l0:	ldxy @i
 	CALLMAIN lbl::getsegment		; get segment ID
-	cmp #SEG_ABS				; is segment ABSOLUTE?
-	beq @next				; if so, already resolved
 	cmp #SEG_UNDEF				; is segment UNDEFINED?
 	beq @err				; if so, error
-	sta @seg_id				; save segment ID
-
-	; look up the segment-offset (address) for the symbol
-	ldxy @i
-	CALLMAIN lbl::getaddr			; look up the symbol's offset
-	tya
-	pha					; save MSB
-	clc
-
-	lda @seg_id				; restore segment ID
-	asl					; *2 (each record in table is word-sized)
-	tay
-
-	txa
-	adc (@obj_seg_offsets),y		; add file offset to resolve
-	sta zp::label_value
-	pla					; restore MSB
-	iny
-	adc (@obj_seg_offsets),y
-	sta zp::label_value+1
-
-	; store the resolved address
-	ldxy @i					; restore symbol ID to update
-	CALLMAIN lbl::setaddr	; store the resolved address
-
-@next:	incw @i
+	incw @i
 	ldxy @i
 	cmpw lbl::num
+	bne @l0
+
+@ok:	RETURN_OK
+@err:	RETURN_ERR ERR_LABEL_UNDEFINED
+.endproc
+
+;*******************************************************************************
+; CALC SEG ORIGINS
+; Calculates the start address for each global SEGMENT
+; OUT:
+;   - .C: set on error
+.proc calc_seg_origins
+@secid=r0
+@segid=r1
+@secoff=r2
+	lda #$00
+	sta @secid
+	cmp numsegments
 	beq @done
-	jmp @l0					; repeat for all globals
+
+; iterate over all SECTIONS
+@l0:	; init offset to the START location of the SECTION
+	ldx @secid
+	lda sections_startlo,x
+	sta @secoff
+	lda sections_starthi,x
+	sta @secoff+1
+
+	lda #$01
+	sta @segid
+
+; iterate over all SEGMENTS to find the ones that LOAD to this SECTION
+@l1:	ldx @segid
+	lda @secid
+	cmp segments_load-1,x	; does this SEGMENT load to SECTION?
+	bne @nextseg
+
+	; SEGMENT is in SECTION, update offset for SEGMENT by size of SECTION
+	; up to this point
+	; segment.addr = segment.addr + secoff
+	lda @secoff
+	clc
+	adc segments_addrlo-1,x
+	sta segments_addrlo-1,x
+	lda @secoff+1
+	adc segments_addrhi-1,x
+	sta segments_addrhi-1,x
+
+	; secoff += segment.size
+	lda @secoff
+	clc
+	adc segments_sizelo-1,x
+	sta @secoff
+	lda @secoff+1
+	adc segments_sizehi-1,x
+	sta @secoff+1
+
+@nextseg:
+	lda @segid
+	cmp numsegments
+	beq @nextsec
+
+	inc @segid
+	bne @l1			; repeat for all SEGMENTS
+
+@nextsec:
+	; update the start offset for SEGMENT by secoff
+	inc @secid		; move to next SECTION
+	lda @secid
+	cmp numsections
+	bcc @l0
 
 @done:	RETURN_OK
-
-@err:	;sec
-	lda #ERR_LABEL_UNDEFINED
-	rts
 .endproc
 
 ;*******************************************************************************
@@ -1007,7 +995,6 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; (parsed from the LINK file prior to calling this procedured)
 	ldx numsegments
 	bne @init
-
 	sec		; no segments defined; return error
 @ret:	rts
 
@@ -1017,17 +1004,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	CALLMAIN lbl::clr
 	CALLMAIN dbgi::init
 
-@initsegments:
-	; set the start address for each SECTION to the SEGMENT
-	; load address parsed from the LINK file
-	ldx numsegments
-@l0:	ldy segments_load-1,x
-	lda sections_startlo,y
-	sta segments_addrlo-1,x
-	lda sections_starthi,y
-	sta segments_addrhi-1,x
-	dex
-	bne @l0
+	jsr init_segments
 
 	; init obj pointer to start of object list
 	ldxy #__link_objfiles
@@ -1064,72 +1041,11 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	plp			; restore load_headers error
 	jcs log_error
 
-	; store the current base addresses for each SEGMENT for the object file
-	lda activeobj
-	jsr get_file_segment_table
-	stxy @tab
+	jsr update_segments
 
-	ldx #$00
-	ldy #$02		; +2 because get_file_segment_table uses 1 base
-:	lda segments_addrlo,x
-	adc segments_sizelo,x
-	sta (@tab),y
-	incw @tab
-	lda segments_addrhi,x
-	adc segments_sizehi,x
-	sta (@tab),y
-	incw @tab
-	inx
-	cpx numsegments
-	bne :-
-
-	lda #$00
-	sta @i
-	ldxy #obj::segments
-	stxy @segname
-
-; get the new size of each SEGMENT by adding the number of bytes used in the
-; object file for that SEGMENT
-@calc_segment_sizes:
-	lda @i
-	cmp obj::numsegments
-	beq @nextfile			; if no sections used, continue
-
-	ldy #$00
-	lda (@segname),y
-	beq @nextseg	; absolute SEGMENT, not stored in global table, skip
-
-@rel:	; get the id of the segment by its name
-	ldxy @segname			; address of segment name
-	jsr get_segment_by_name		; get its ID
-	jcs log_error
-
-	tax				; .X=segment index (global context)
-	ldy @i				; .Y=segment index (object file)
-
-	; update the size of the segment: segment_size += section_size
-	lda obj::segments_sizelo,y
-	pha				; push LSB of segment usage for logging
-	clc
-	adc segments_sizelo-1,x
-	sta segments_sizelo-1,x
-	lda obj::segments_sizehi,y
-	pha				; push MSB for logging
-	adc segments_sizehi-1,x
-	sta segments_sizehi-1,x
-	ldxy #@pass1_seg_msg
-	jsr log_msg
-
-@nextseg:
-	; move to next segment name
-	lda @segname
-	clc
-	adc #MAX_SEGMENT_NAME_LEN
-	sta @segname
-	bcc :+
-	inc @segname+1
-:	inc @i				; next SEGMENT
-	bne @calc_segment_sizes		; repeat for all SEGMENTS in file
+	; TODO: logging
+	;ldxy #@pass1_seg_msg
+	;jsr log_msg
 
 @nextfile:
 	; next file; update filename pointer to next filename
@@ -1156,12 +1072,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ;-------------------------------------------------------------------------------
 
 @pass1done:
-	; resolve symbols now that we know the base address of each SEGMENT
-	; in each object file
-	jsr resolve_symbols
+	jsr calc_seg_origins
 	jcs log_error
 
-@validate:
 	; make sure SEGMENT base+size is less than the top of the SEGMENT
 	; TODO:
 	; RETURN_ERR ERR_SECTION_TOO_SMALL
@@ -1182,8 +1095,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ; PASS2
 ; iterate over each object file again, but this time link it to to produce the
 ; final binary.
-@pass2:
-	ldxy @objfile
+@pass2: ldxy @objfile
 	CALLMAIN log::out
 
 	ldxy @objfile
@@ -1220,6 +1132,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	stxy asm::origin
 	jsr segmax
 	stxy asm::top
+
+	jsr validate_symbols
+	jcs log_error
 
 	jsr generate_map	; produce the map file
 	jmp validate_segments	; validate segments and return error if needed
@@ -1262,9 +1177,51 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	pla			; restore file ID
 	php			; save error flag
 	CALLMAIN file::close
+
+	; update GLOBAL segments by the usage of the file that was loaded
+	jsr update_segments
+
 	plp			; restore error flag
 	lda @err		; restore error code (if any)
 	rts
+.endproc
+
+;*******************************************************************************
+; INIT SEGMENTS
+; Initializes segment addresses to 0
+.proc init_segments
+	ldx numsegments
+	lda #$00
+@l0:	sta segments_addrlo-1,x
+	sta segments_addrhi-1,x
+	dex
+	bne @l0
+	rts
+.endproc
+
+;*******************************************************************************
+; UPDATE SEGMENTS
+; Add SEGMENT usage in the object file that was just read to running sum for
+; each global SEGMENT
+.proc update_segments
+	; add usage in object file to running sum for each SEGMENT
+	ldx #$00
+	cpx obj::numsegments
+	beq @done
+
+:	ldy obj::segment_ids,x		; get GLOBAL SEGMENT id from local one
+	lda obj::segments_sizelo,x
+	clc
+	adc segments_sizelo-1,y
+	sta segments_sizelo-1,y
+	lda obj::segments_sizehi,x
+	adc segments_sizehi-1,y
+	sta segments_sizehi-1,y
+
+	inx
+	cpx obj::numsegments
+	bne :-
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1413,57 +1370,41 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 ;******************************************************************************
 ; SEGADDR FOR FILE BY NAME
-; Returns the base address for the given segment name within the given object
-; file. This is only valid in pass 2 after the linker has finished laying out
-; the final program.
+; Returns the (current) base address for the given SEGMENT by its name
 ; IN:
 ;   - .XY:     the segment name to get the base address of
 ;   - objfile: the file to find the section's base address for
 ; OUT:
 ;   - .XY: the base address for the requested segment within objfile
-.export __link_segaddr_for_file_by_name
-.proc __link_segaddr_for_file_by_name
+.export __link_segaddr_by_name
+.proc __link_segaddr_by_name
 	jsr get_segment_by_name		; get id of the SEGMENT
+	bcc @ok
+	rts
 
-	; fall through
+@ok:	; fall through
 .endproc
 
 ;******************************************************************************
-; SEGADDR FOR FILE BY ID
-; Returns the base address for the given segment name within the given object
-; file. This is only valid in pass 2 after the linker has finished laying out
-; the final program.
+; SEGADDR BY ID
+; Returns the (current) base address for the given SEGMENT id.
 ; IN:
-;   - .A:      global (linker) segment id to get the base address of
-;   - objfile: file to find the section's base address for
+;   - .A: global (linker) segment id to get the base address of
 ; OUT:
 ;   - .A:  the TYPE byte (BSS, RW, ZP, or ABS)
 ;   - .XY: the base address for the requested segment within objfile
-.export __link_segaddr_for_file_by_id
-.proc __link_segaddr_for_file_by_id
+.export __link_segaddr_by_id
+.proc __link_segaddr_by_id
 @tab=r2
-	pha
-
 	; get the segment-address table for the file
-	lda activeobj			; current file being linked
-	jsr get_file_segment_table	; get the table of addresses for file
-	stxy @tab
-
-	pla
 	tay
 	lda segments_type,y		; get TYPE
 	pha
-
-	tya
-	asl				; *2 (records are 1 word each)
-	tay
-	lda (@tab),y			; get LSB
-	tax
-	iny
-	lda (@tab),y			; get MSB
+	ldx segments_addrlo-1,y
+	lda segments_addrhi-1,y
 	tay
 	pla				; restore TYPE byte
-	rts
+	RETURN_OK
 .endproc
 
 ;******************************************************************************
@@ -1507,6 +1448,7 @@ __link_get_segment_by_name:
 @found: lda @cnt
 	clc
 	adc #$01		; get 1-based id
+	;clc
 	rts
 .endproc
 

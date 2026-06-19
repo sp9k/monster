@@ -17,6 +17,7 @@
 .import __obj_num_exports
 .import __obj_num_imports
 .import __obj_numsegments
+.import __obj_segment_ids
 .import __obj_segments_sizelo
 .import __obj_segments_sizehi
 
@@ -40,6 +41,7 @@
 	sections_sizelo        = __obj_sections_sizelo
 	sections_sizehi        = __obj_sections_sizehi
 	segments               = __obj_segments
+	segment_ids            = __obj_segment_ids
 	segments_sizelo        = __obj_segments_sizelo
 	segments_sizehi        = __obj_segments_sizehi
 .endscope
