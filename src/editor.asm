@@ -381,18 +381,23 @@ main:	jsr key::getch
 
 	; parse the LINK file to setup the linking context
 	CALL FINAL_BANK_LINKER, link::parse
-	bcs @done				; error
+	bcs @err				; error
 
 	; get all object files on disk
 	lda #$4f				; 'O'
 	ldxy #link::objfiles
 	jsr dir::get_by_type
-	bcs @done
+	bcs @err
 
 	; link all object files that were found
 	CALL FINAL_BANK_LINKER, link::link
+	bcs @err
 
 @done:	jsr log::close
+	jsr lbl::index
+	jmp unblank
+
+@err:	jsr report_typein_error
 	jmp unblank
 .endproc
 
@@ -3342,9 +3347,8 @@ goto_buffer:
 	jsr file::close		; CLOSE file
 	jsr krn::clrchn
 
-@ok:	;jsr text::clrinfo	; erase SAVING message
-	;lda #$00
-	;jsr src::setflags	; clear flags on the source buffer and return
+@ok:	lda #$00
+	jsr src::setflags	; clear flags on the source buffer and return
 	jmp unblank
 
 @err:	pha

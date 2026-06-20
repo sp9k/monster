@@ -29,6 +29,7 @@
 .import __str_loading
 .import __str_noname
 .import __str_no_file
+.import __str_newl
 .import __str_null
 .import __str_macros
 .import __str_memory
@@ -82,6 +83,7 @@
 	loading                 = __str_loading
 	macros                  = __str_macros
 	memview_title           = __str_memview_title
+	newl                    = __str_newl
 	nofile                  = __str_no_file
 	noname                  = __str_noname
 	null                    = __str_null

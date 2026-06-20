@@ -1048,6 +1048,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	;jsr log_msg
 
 @nextfile:
+	jsr log_newl
+
 	; next file; update filename pointer to next filename
 	ldy #$01		; start search at 2nd character of filename
 :	lda (@objfile),y	; get a char
@@ -1101,6 +1103,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	ldxy @objfile
 	jsr link_object		; link the object file
 	bcs log_error		; if .C set, return with error
+
+	jsr log_newl
 
 	; update filename pointer to next filename
 	ldy #$0
@@ -1899,12 +1903,14 @@ __link_get_segment_by_name:
 ;   - .C: set if any two segments overlap
 .proc validate_segments
 @i=r0
+@j=r1
 @addr0_start = r2
 @addr0_stop  = r4
 @addr1_start = r6
 @addr1_stop  = r8
 	lda #$00
 	sta @i
+	sta @j
 
 @l0:	ldx @i
 	lda segments_addrlo,x
@@ -1914,15 +1920,17 @@ __link_get_segment_by_name:
 	clc
 	adc segments_sizelo,x
 	sta @addr0_stop
-	lda @addr0_start+1
+	tya
 	adc segments_sizehi,x
-	sta @addr0_stop
+	sta @addr0_stop+1
 
-@l1:	inc @i
 	ldx @i
+	inx
+	stx @j
 	cpx numsegments
 	bcs @ok
 
+@l1:	ldx @j
 	lda segments_addrlo,x
 	sta @addr1_start
 	ldy segments_addrhi,x
@@ -1930,33 +1938,54 @@ __link_get_segment_by_name:
 	clc
 	adc segments_sizelo,x
 	sta @addr1_stop
-	lda @addr1_start+1
+	tya
 	adc segments_sizehi,x
-	sta @addr1_stop
+	sta @addr1_stop+1
 
 	jsr @validate_segments
-	bcc @l1
-	lda #ERR_OVERLAPPING_SEGMENTS
-	rts				; overlap found
+	bcs @overlap
 
+	inc @j
+	lda @j
+	cmp numsegments
+	bcc @l1
+
+	inc @i
+	lda @i
+	cmp numsegments
+	bcc @l0
 @ok:	RETURN_OK
+
+@overlap:
+	RETURN_ERR ERR_OVERLAPPING_SEGMENTS
 
 ;-------------------------------------------------------------------------------
 @validate_segments:
-	; if addr1.stop < addr0.start, no overlap
+	; if addr1.stop <= addr0.start, no overlap
+	;  [   addr1   ]
+	;                  [  addr0  ]
+	;  [   addr1   ]
+	;              [   addr0   ]
 	lda @addr1_stop+1
 	cmp @addr0_start+1
-	bcc :+
+	bcc @ret
 	lda @addr1_stop
 	cmp @addr0_start
-	bcs @ret
+	beq @no_overlap
 
-:	; if addr0.stop < addr1.start, no overlap
+	; if addr0.stop <= addr1.start, no overlap
+	;  [   addr0   ]
+	;                  [  addr1  ]
+	;  [   addr0   ]
+	;              [   addr1   ]
 	lda @addr0_stop+1
 	cmp @addr1_start+1
-	bcc :+
+	bne @ret
 	lda @addr0_stop
 	cmp @addr1_start
+	bne @ret
+@no_overlap:
+	clc			; if stop == start, consider non-overlapping
 
 @ret:	rts
 .endproc
@@ -2036,6 +2065,14 @@ __link_get_segment_by_name:
 	bne :-
 
 @done:	rts
+.endproc
+
+;******************************************************************************
+; LOG NEWL
+; Logs a newline
+.proc log_newl
+	ldxy #strings::null
+	JUMPMAIN log::out
 .endproc
 
 ;******************************************************************************

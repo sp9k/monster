@@ -67,6 +67,9 @@ __str_edit_file_delete_failed: .byte "delete error $", ESCAPE_BYTE, 0
 .export __str_file_open_failed
 __str_file_open_failed: .byte "open error $", ESCAPE_BYTE, 0
 
+.export __str_newl
+__str_newl: .byte $0d,0
+
 .export __str_no_file
 __str_no_file: .byte "no input file specified", 0
 
