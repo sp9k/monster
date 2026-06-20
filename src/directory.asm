@@ -97,6 +97,7 @@ HEIGHT = SCREEN_HEIGHT-2
 
 @ok:	lda @cnt
 	ldxy @resultptr
+	clc
 @ret:	rts
 .endproc
 

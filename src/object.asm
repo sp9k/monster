@@ -1521,11 +1521,10 @@ __obj_close_section = close_section
 	; get the current GLOBAL offset for the SEGMENT
 	jsr link::segaddr_by_id
 	bcs @ret
-	pha				; save TYPE byte
-	tya
-	pha
 
 	; add the LOCAL offset to the current GLOBAL base of the SEGMENT
+	tya
+	pha
 	ldy @i
 	txa
 	clc
@@ -1534,12 +1533,7 @@ __obj_close_section = close_section
 	pla
 	adc segments_starthi,y		; get MSB of SEGMENT base
 	sta segments_starthi,y		; store MSB of SEGMENT base
-
-	; validate that LINK file and declaration have same TYPE
-	pla				; restore TYPE byte
-	cmp segments_type,y
-	beq @next
-	RETURN_ERR ERR_UNEXPECTED_TYPE
+	jmp @next
 
 @abs:	ldy @i
 	lda #SEG_ABS
@@ -1896,8 +1890,17 @@ __obj_close_section = close_section
 	jsr krn::chrin			; get "info" byte for SEGMENT
 	pha
 
-	; read the table sizes for this SEGMENT
+	; validate that LINK file and declaration have same TYPE
 	ldy seg_idx
+	ldx __obj_segment_ids,y
+	jsr link::segaddr_by_id
+	cmp segments_type,x
+	beq :+
+	RETURN_ERR ERR_UNEXPECTED_TYPE
+
+:	ldy seg_idx
+
+	; read the table sizes for this SEGMENT
 	jsr krn::chrin			; get code size LSB
 	sta segments_sizelo,y
 	sta @sz

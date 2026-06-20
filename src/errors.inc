@@ -64,28 +64,28 @@ ERR_LABEL_ALREADY_DEFINED = 43
 ERR_TOO_MANY_LABELS       = 44
 ERR_LABEL_NOT_KNOWN_PASS1 = 45
 
-ERR_INVALID_COMMAND = 47
+ERR_INVALID_COMMAND = 46
 
-ERR_COPY_TOO_BIG = 48
+ERR_COPY_TOO_BIG = 47
 
-ERR_BUFFER_NAME_EXISTS   = 49
-ERR_BUFFER_FULL          = 50
+ERR_BUFFER_NAME_EXISTS   = 48
+ERR_BUFFER_FULL          = 49
 
 ;******************************************************************************
 ; linker errors
-ERR_TOO_MANY_GLOBAL_REFS = 51
-ERR_TOO_MANY_SEGMENTS    = 52
-ERR_SECTION_TOO_SMALL    = 53
-ERR_ADDRMODE_MISMATCH    = 55
-ERR_ALREADY_EXPORTED     = 56
-ERR_UNKNOWN_TYPE         = 57
-ERR_UNEXPECTED_TYPE      = 58
+ERR_TOO_MANY_GLOBAL_REFS = 50
+ERR_TOO_MANY_SEGMENTS    = 51
+ERR_SECTION_TOO_SMALL    = 52
+ERR_ADDRMODE_MISMATCH    = 53
+ERR_ALREADY_EXPORTED     = 54
+ERR_UNKNOWN_TYPE         = 55
+ERR_UNEXPECTED_TYPE      = 56
 
 ;******************************************************************************
 ; general errors
-ERR_OOM                  = 59
-ERR_CTX_FULL             = 60
-ERR_NO_MATCHING_SCOPE    = 61
+ERR_OOM                  = 57
+ERR_CTX_FULL             = 58
+ERR_NO_MATCHING_SCOPE    = 59
 
 .import __err_get
 

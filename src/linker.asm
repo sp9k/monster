@@ -82,13 +82,10 @@ __link_objfiles=mem::spare
 ;*******************************************************************************
 .segment "LINKER_VARS"
 
-numobjects:  .byte 0
 numsegments: .byte 0
 numsections: .byte 0
-numfiles:    .byte 0
 
 activeobj: .byte 0	; the current OBJECT (id) being linked
-activeseg: .byte 0	; the current SEGMENT (id) being written
 
 ;*******************************************************************************
 ; OBJECT STATE
@@ -244,6 +241,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	cmpw #__LINKER_BSS_LOAD__+__LINKER_BSS_SIZE__
 	bne @l0
 
+	lda #$00
+	sta numsegments
+	sta numsections
+
 	rts
 .endproc
 
@@ -281,7 +282,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @sections_declared=r9
 @buff=ra
 @errcode=r0
-	; set default values
+	; set default TYPE attribute (all segments as RW)
 	ldy #MAX_SEGMENTS
 	lda #TYPE_RW
 :	sta segments_type-1,y
@@ -1399,7 +1400,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @tab=r2
 	; get the segment-address table for the file
 	tay
-	lda segments_type,y		; get TYPE
+	lda segments_type-1,y		; get TYPE
 	pha
 	ldx segments_addrlo-1,y
 	lda segments_addrhi-1,y
