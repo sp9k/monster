@@ -303,6 +303,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @readfile:
 	jsr krn::chrin
 	ldy #$00
+	jsr capitalize			; uppercase the input
 	sta (@buff),y
 	incw @buff
 	jsr krn::readst
@@ -2110,4 +2111,20 @@ __link_get_segment_by_name:
 	lda @ret
 	pha
 	rts
+.endproc
+
+;*******************************************************************************
+; CAPITALIZE
+; Capitalizes the input character
+; IN:
+;   - .A: character to capitalize
+; OUT:
+;   - .A: capitalized version of input character
+.proc capitalize
+	cmp #$61
+	bcc @done
+	cmp #$7a+1
+	bcs @done
+	eor #$20	; to upper
+@done:	rts
 .endproc
