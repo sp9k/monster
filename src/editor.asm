@@ -1226,11 +1226,7 @@ cancel = enter_command
 ; END_OF_WORD
 ; Moves the cursor to the end of the current "word"
 .proc endofword
-	jsr ccright
-	bcs @done
-	jsr ccright
-	bcs @done
-
+	jsr advance_whitespace
 @l0:	jsr ccright
 	bcs @done
 	jsr src::after_cursor
@@ -1299,16 +1295,18 @@ cancel = enter_command
 
 ;*******************************************************************************
 ; BEGINWORD
+; Moves to the beginning of the current "word" if the cursor is in the middle
+; of one or the previous "word" if the cursor is between "words" or at the
+; beginning of one.
 .proc beginword
+	jsr retreat_whitespace
 @l0:	jsr ccleft
 	bcs @done
-
 	jsr src::atcursor
 	jsr util::isalphanum
 	bcc @l0
 @done:	rts
 .endproc
-
 
 ;*******************************************************************************
 ; NEWL
@@ -2005,6 +2003,9 @@ cancel = enter_command
 .endproc
 
 ;*******************************************************************************
+; COMMENT OUT
+; Prompts for a key and generates a banner comment above/below based on that
+; input.
 .proc comment_out
 	jsr key::waitch	; get a key to decide what to comment out
 
@@ -2050,6 +2051,8 @@ cancel = enter_command
 .endproc
 
 ;*******************************************************************************
+; WORD ADVANCE
+; Advances the cursor/source to the next word
 .proc word_advance
 	jsr src::end
 	beq @done
@@ -2058,7 +2061,32 @@ cancel = enter_command
 	jsr src::after_cursor
 	jsr util::isseparator
 	bne @l0
-	jsr ccright	; move after separator
+
+	jsr advance_whitespace
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; RETREAT WHITESPACE
+; Moves the cursor backwards over any whitespace
+.proc retreat_whitespace
+@l0:	jsr ccleft
+	bcs @done
+	jsr src::atcursor
+	jsr util::is_whitespace
+	beq @l0
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; ADVANCE WHITESPACE
+; Moves the cursor over whitespace
+.proc advance_whitespace
+@l0:	jsr ccright		; move after separator
+	bcs @done
+	jsr src::after_cursor
+	jsr util::is_whitespace
+	beq @l0
 @done:	rts
 .endproc
 
@@ -5300,6 +5328,8 @@ __edit_gotoline:
 	lda @i
 	bne :-
 @done:	rts
+
+;-------------------------------------------------------------------------------
 @files: .byte ESCAPE_SPACING,16,"files",0
 .endproc
 
