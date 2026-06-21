@@ -2142,15 +2142,36 @@ __obj_close_section = close_section
 @i    = zp::link
 @buff = r0
 @name = $100
+@numrel = zp::tmp10
+@numabs = zp::tmp12
 	CALLMAIN log::banner
+
+	; count number of ABS and number of REL segments
+	ldx numsegments
+	bne @cont
+	rts
+
+@cont:	lda #$00
+	sta @numrel
+	sta @numabs
+
+@count:	lda segments_type-1,x
+	cmp #TYPE_ABS		; is this an ABS segment?
+	bne :+			; if not, skip it
+	inc @numabs
+	bne :++
+:	inc @numrel
+:	dex
+	bne @count
+
+	lda @numabs
+	beq @rel
 
 	; output all absolute segments
 	ldxy #@abs_title
 	CALLMAIN log::out
-
 	lda #$00
 	sta @i
-
 @abs:	ldx @i
 	lda segments_type,x
 	cmp #TYPE_ABS		; is this an ABS segment?
@@ -2179,10 +2200,12 @@ __obj_close_section = close_section
 	cmp numsegments
 	bne @abs
 
+	lda @numrel
+	beq @done
+
 	; output all REL segments
 	ldxy #@rel_title
 	CALLMAIN log::out
-
 	lda #$00
 	sta @i
 @rel:	ldx @i
@@ -2227,13 +2250,13 @@ __obj_close_section = close_section
 	cmp numsegments
 	bne @rel
 
-	JUMPMAIN log::banner
+@done:	JUMPMAIN log::banner
 
 .PUSHSEG
 .RODATA
-@abs_title: .byte "absolute segments",0
+@abs_title: .byte "absolute segments:",0
 @abs_seg:   .byte "$", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
-@rel_title: .byte "relative segments",0
+@rel_title: .byte "relative segments:",0
 @rel_seg:   .byte ESCAPE_STRING, ": ", ESCAPE_VALUE, 0
 .POPSEG
 .endproc
