@@ -5285,7 +5285,9 @@ __edit_gotoline:
 	ldxy #strings::newl
 	jsr log::out
 	jsr log::banner
-	ldxy #strings::files
+
+	ldxy #@files
+	jsr text::render
 	jsr log::out
 
 	lda #$00
@@ -5298,6 +5300,7 @@ __edit_gotoline:
 	lda @i
 	bne :-
 @done:	rts
+@files: .byte ESCAPE_SPACING,16,"files",0
 .endproc
 
 ;*******************************************************************************

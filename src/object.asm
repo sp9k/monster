@@ -2139,19 +2139,32 @@ __obj_close_section = close_section
 ; assembly, etc.
 .export __obj_log_state
 .proc __obj_log_state
+	CALLMAIN log::banner
+
+	jsr log_segments
+	jsr log_symbols
+
+	rts
+.endproc
+
+;*******************************************************************************
+; LOG SEGMENTS
+; Logs the relative and absolute segments in the current object state
+.proc log_segments
 @i    = zp::link
 @buff = r0
 @name = $100
 @numrel = zp::tmp10
 @numabs = zp::tmp12
-	CALLMAIN log::banner
-
 	; count number of ABS and number of REL segments
 	ldx numsegments
 	bne @cont
 	rts
 
-@cont:	lda #$00
+@cont:	ldxy #@segments
+	jsr log_msg
+
+	lda #$00
 	sta @numrel
 	sta @numabs
 
@@ -2169,7 +2182,8 @@ __obj_close_section = close_section
 
 	; output all absolute segments
 	ldxy #@abs_title
-	CALLMAIN log::out
+	jsr log_msg
+
 	lda #$00
 	sta @i
 @abs:	ldx @i
@@ -2190,10 +2204,7 @@ __obj_close_section = close_section
 	lda sections_starthi,x
 	pha
 	ldxy #@abs_seg
-.ifdef vic20
-	CALLMAIN text::render_ind
-.endif
-	CALLMAIN log::out	; write section range to log
+	jsr log_msg		; write section range to log
 
 :	inc @i
 	lda @i
@@ -2205,7 +2216,8 @@ __obj_close_section = close_section
 
 	; output all REL segments
 	ldxy #@rel_title
-	CALLMAIN log::out
+	jsr log_msg
+
 	lda #$00
 	sta @i
 @rel:	ldx @i
@@ -2240,10 +2252,7 @@ __obj_close_section = close_section
 	pha
 
 	ldxy #@rel_seg
-.ifdef vic20
-	CALLMAIN text::render_ind
-.endif
-	CALLMAIN log::out	; write section range to log
+	jsr log_msg		; write section range to log
 
 @next:	inc @i
 	lda @i
@@ -2252,13 +2261,49 @@ __obj_close_section = close_section
 
 @done:	JUMPMAIN log::banner
 
-.PUSHSEG
-.RODATA
+@segments:  .byte ESCAPE_SPACING,15, "segments",0
 @abs_title: .byte "absolute segments:",0
 @abs_seg:   .byte "$", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
 @rel_title: .byte "relative segments:",0
 @rel_seg:   .byte ESCAPE_STRING, ": ", ESCAPE_VALUE, 0
-.POPSEG
+.endproc
+
+;*******************************************************************************
+; LOG SYMBOLS
+; Logs the number of LOCAL, IMPORT, and EXPORT symbols in the active object
+; state.
+.proc log_symbols
+	ldxy #@symbols
+	jsr log_msg
+
+	lda numlocals
+	pha
+	lda numlocals+1
+	pha
+	ldxy #@locals
+	jsr log_msg
+
+	lda numimports
+	pha
+	lda numimports+1
+	pha
+	ldxy #@imports
+	jsr log_msg
+
+	lda numexports
+	pha
+	lda #$00
+	pha
+	ldxy #@exports
+	jsr log_msg
+
+	JUMPMAIN log::banner
+
+;-------------------------------------------------------------------------------
+@symbols: .byte ESCAPE_SPACING, 15, "symbols",0
+@locals:  .byte "locals:  ", ESCAPE_VALUE_DEC,0
+@imports: .byte "imports: ", ESCAPE_VALUE_DEC,0
+@exports: .byte "exports: ", ESCAPE_VALUE_DEC,0
 .endproc
 
 ;******************************************************************************

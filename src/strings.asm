@@ -68,7 +68,7 @@ __str_edit_file_load_failed: .byte "load error $",ESCAPE_BYTE,0
 __str_edit_file_delete_failed: .byte "delete error $", ESCAPE_BYTE, 0
 
 .export __str_files
-__str_files: .byte "files:",0
+__str_files: .byte "files",0
 
 .export __str_file_open_failed
 __str_file_open_failed: .byte "open error $", ESCAPE_BYTE, 0
