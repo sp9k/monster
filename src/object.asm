@@ -2227,9 +2227,7 @@ __obj_close_section = close_section
 	cmp numsegments
 	bne @rel
 
-	CALLMAIN log::banner
-
-	rts
+	JUMPMAIN log::banner
 
 .PUSHSEG
 .RODATA

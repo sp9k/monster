@@ -173,9 +173,6 @@ blockaddresseshi: .res MAX_FILES
 ; INITONCE
 ; Clears state that should only be cleared on boot (file table)
 .proc initonce
-	lda #$00
-	sta numfiles
-
 	; fall through to init
 .endproc
 
@@ -196,6 +193,7 @@ blockaddresseshi: .res MAX_FILES
 	sta blocksp
 	sta numblocks
 	sta block_open
+	sta numfiles
 	rts
 .endproc
 

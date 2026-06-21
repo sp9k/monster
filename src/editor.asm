@@ -588,6 +588,8 @@ main:	jsr key::getch
 	jsr text::restorebuff	; restore the linebuffer
 	jsr sync_cur		; resync cursor
 
+	jsr log_asm_result
+
 	; fall through to display_result
 .endproc
 
@@ -625,7 +627,7 @@ main:	jsr key::getch
 	jmp @waitch
 
 :	; get the size of the assembled program and print it
-	ldxy #@success0
+	ldxy #strings::done
 	lda asm::pcset		; did this program assemble > 0 bytes?
 	beq @print 		; if not, print a simple "done"
 
@@ -670,7 +672,6 @@ main:	jsr key::getch
 .PUSHSEG
 .RODATA
 @success_msg: .byte "done. from $", $fe, "-$", $fe, " ($", $fe, " bytes)", 0
-@success0:    .byte "done.",0
 .POPSEG
 .endproc
 
@@ -2958,20 +2959,25 @@ goto_buffer:
 ;  - .XY: the command parameter (the name to give to the buffer)
 .proc command_rename
 @file=zp::editortmp
+	; check if the name is already taken in the active debug info mapping
 	stxy @file
 	jsr dbgi::getfileid			; .A = id of the file
 	bcs @ok
 	RETURN_ERR ERR_BUFFER_NAME_EXISTS	; the chosen name is taken
 
-@ok:	jsr src::filename	; check if there is already a name
-	bcs @new		; no debug ID for current file, create one
+@ok:	; now get the ID of the buffer we are renaming
+	jsr src::filename	; check if there is already a name
+	bcs @new		; no existing ID, continue with generated one
 
 @rename:
-	; ID exists for the current buffer, rename it
-	jsr dbgi::getfileid	; get the ID from the existing name
-@new:	ldxy @file		; restore new file name
-	jsr dbgi::setfile	; replace existing name for this ID
-	ldxy @file		; restore new file name
+	; update the active debug-info mapping to support renaming files
+	; without requiring a full reassembly
+	jsr dbgi::getfileid	; get the ID to update from its mapped name
+
+@new:	ldxy @file		; restore NEW file name
+	jsr dbgi::setfile	; replace EXISTING debuginfo mapping for this ID
+
+	ldxy @file		; restore NEW file name
 	jmp src::name		; rename to the "source" name to string in .XY
 .endproc
 
@@ -5267,6 +5273,32 @@ __edit_gotoline:
 .endproc
 
 .RODATA
+
+;*******************************************************************************
+; LOG ASM RESULT
+; Logs information about the assembly after it is complete.
+.proc log_asm_result
+@i=zp::editortmp
+	jsr log::banner
+	ldxy #strings::done
+	jsr log::out
+	ldxy #strings::newl
+	jsr log::out
+	jsr log::banner
+	ldxy #strings::files
+	jsr log::out
+
+	lda #$00
+	sta @i
+:	cmp dbgi::numfiles
+	beq @done
+	jsr dbgi::get_filename
+	jsr log::out
+	inc @i
+	lda @i
+	bne :-
+@done:	rts
+.endproc
 
 ;*******************************************************************************
 ; SRC2SCREEN

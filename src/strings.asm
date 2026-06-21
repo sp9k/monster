@@ -55,6 +55,9 @@ __str_debug_stop_debugging: .byte "stop debugging? y/n",0
 .export __str_device_not_present
 __str_device_not_present: .byte "device not present",0
 
+.export __str_done
+__str_done: .byte "done",0
+
 .export __str_edit_line_err
 __str_edit_line_err: .byte ESCAPE_STRING, " l", ESCAPE_VALUE_DEC,":", ESCAPE_STRING,0
 
@@ -63,6 +66,9 @@ __str_edit_file_load_failed: .byte "load error $",ESCAPE_BYTE,0
 
 .export __str_edit_file_delete_failed
 __str_edit_file_delete_failed: .byte "delete error $", ESCAPE_BYTE, 0
+
+.export __str_files
+__str_files: .byte "files:",0
 
 .export __str_file_open_failed
 __str_file_open_failed: .byte "open error $", ESCAPE_BYTE, 0

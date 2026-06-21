@@ -12,6 +12,7 @@
 .import __str_deleting
 .import __str_device_not_present
 .import __str_dir
+.import __str_done
 .import __str_dumping
 .import __str_edit_file_delete_failed
 .import __str_edit_file_load_failed
@@ -20,6 +21,7 @@
 .import __str_endrep
 .import __str_errors
 .import __str_file_open_failed
+.import __str_files
 .import __str_invalid_command
 .import __str_illegal_detected
 .import __str_jam_detected
@@ -68,6 +70,7 @@
 	deleting                = __str_deleting
 	device_not_present      = __str_device_not_present
 	dir                     = __str_dir
+	done                    = __str_done
 	dumping                 = __str_dumping
 	edit_file_load_failed   = __str_edit_file_load_failed
 	edit_file_delete_failed = __str_edit_file_delete_failed
@@ -75,6 +78,7 @@
 	edit_line_err           = __str_edit_line_err
 	endrep                  = __str_endrep
 	errors                  = __str_errors
+	files                   = __str_files
 	illegal_detected        = __str_illegal_detected
 	invalid_command         = __str_invalid_command
 	file_open_failed        = __str_file_open_failed

@@ -63,7 +63,7 @@ __log_written: .byte 0
 ; Writes a banner to the log
 .export __log_banner
 .proc __log_banner
-@cnt=r0
+@cnt=zp::util
 	lda src::activebuff
 	pha
 
