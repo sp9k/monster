@@ -669,6 +669,8 @@ main:	jsr key::getch
 
 	jsr log::close
 	RETURN_OK
+
+;-------------------------------------------------------------------------------
 .PUSHSEG
 .RODATA
 @success_msg: .byte "done. from $", $fe, "-$", $fe, " ($", $fe, " bytes)", 0
@@ -5712,6 +5714,8 @@ unblank = scr::unblank
 .endproc
 
 ;******************************************************************************
+; COMMANDS
+; Table of commands and their corresponding handler vectors
 commands:
 ; these commands are only handled while in RW mode (NOT in the debugger)
 rw_commands:
