@@ -18,11 +18,11 @@
 ### TODO V1
 - [ ] Finish .BSS segment support (don't emit obj/relocation code for these)
 - [ ] Support .REP and .MAC in monitor
-- [ ] Fix crash on boot if key is being pressed (Vic20?)
 - [?] Fix unstable file mappings in debug info
 - [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
 - [ ] get disk access working from BASIC
 - [ ] fix linking/object code generation for C64
+- [x] Fix crash on boot if key is being pressed (Vic20?)
 - [x] upper-case input when parsing LINK files
 - [x] Fix segtion -> segment mapping in linker (SEGEMNTS are currently not considering if they are part of same SECTION)
 - [x] Fix .IMPORT

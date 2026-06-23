@@ -5319,6 +5319,7 @@ __edit_gotoline:
 	ldxy #@files
 	jsr text::render
 	jsr log::out
+	jsr log::banner
 
 	lda #$00
 	sta @i
@@ -5405,7 +5406,7 @@ __edit_gotoline:
 .endproc
 
 ;******************************************************************************
-; SET INSERT CURSOR
+; USE INSERT CURSOR
 ; Sets the cursor to display to 'INSERT' (used in INSERT mode).
 .proc use_insert_cursor
 	lda #TEXT_INSERT
@@ -5647,8 +5648,11 @@ unblank = scr::unblank
 	jsr log::new
 	bcc :+
 @err:	rts
-:	ldxy #strings::pass1
-	jmp log::out
+:	jsr log::banner
+	ldxy #strings::pass1
+	jsr text::render
+	jsr log::out
+	jmp log::banner
 .endproc
 
 ;*******************************************************************************
@@ -5657,7 +5661,9 @@ unblank = scr::unblank
 .proc log_pass2
 	jsr log::banner
 	ldxy #strings::pass2
-	jmp log::out
+	jsr text::render
+	jsr log::out
+	jmp log::banner
 .endproc
 
 ;*******************************************************************************

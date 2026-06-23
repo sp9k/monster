@@ -1023,6 +1023,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ; Also define labels for the globals (IMPORT/EXPORT blocks) defined in each
 ; object file.
 	ldxy #strings::pass1
+	jsr text::render
 	CALLMAIN log::out
 
 @pass1: ; log the filename being assembled
@@ -1086,6 +1087,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @start_pass2:
 	CALLMAIN log::banner
 	ldxy #strings::pass2
+	jsr text::render
 	CALLMAIN log::out
 
 	; reset obj pointer to start of object list

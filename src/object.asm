@@ -2139,8 +2139,6 @@ __obj_close_section = close_section
 ; assembly, etc.
 .export __obj_log_state
 .proc __obj_log_state
-	CALLMAIN log::banner
-
 	jsr log_segments
 	jsr log_symbols
 
@@ -2161,8 +2159,10 @@ __obj_close_section = close_section
 	bne @cont
 	rts
 
-@cont:	ldxy #@segments
+@cont:	jsr log_banner
+	ldxy #@segments
 	jsr log_msg
+	jsr log_banner
 
 	lda #$00
 	sta @numrel
@@ -2258,8 +2258,7 @@ __obj_close_section = close_section
 	lda @i
 	cmp numsegments
 	bne @rel
-
-@done:	JUMPMAIN log::banner
+@done:	rts
 
 @segments:  .byte ESCAPE_SPACING,15, "segments",0
 @abs_title: .byte "absolute segments:",0
@@ -2273,8 +2272,10 @@ __obj_close_section = close_section
 ; Logs the number of LOCAL, IMPORT, and EXPORT symbols in the active object
 ; state.
 .proc log_symbols
+	jsr log_banner
 	ldxy #@symbols
 	jsr log_msg
+	jsr log_banner
 
 	lda numlocals
 	pha
@@ -2296,14 +2297,20 @@ __obj_close_section = close_section
 	pha
 	ldxy #@exports
 	jsr log_msg
-
-	JUMPMAIN log::banner
+	jmp log_banner
 
 ;-------------------------------------------------------------------------------
 @symbols: .byte ESCAPE_SPACING, 15, "symbols",0
 @locals:  .byte "locals:  ", ESCAPE_VALUE_DEC,0
 @imports: .byte "imports: ", ESCAPE_VALUE_DEC,0
 @exports: .byte "exports: ", ESCAPE_VALUE_DEC,0
+.endproc
+
+;******************************************************************************
+; LOG BANNER
+; Logs a '*' banner
+.proc log_banner
+	JUMPMAIN log::banner
 .endproc
 
 ;******************************************************************************

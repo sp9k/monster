@@ -165,11 +165,11 @@ __str_watch_triggered:
 
 .export __str_pass1
 __str_pass1:
-.byte "pass 1",0
+.byte ESCAPE_SPACING, 15, "pass 1",0
 
 .export __str_pass2
 __str_pass2:
-.byte "pass 2",0
+.byte ESCAPE_SPACING, 15, "pass 2",0
 
 .export __str_watches_line
 ;   $1000 : $10
