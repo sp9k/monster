@@ -1022,9 +1022,11 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ; block of the .O file.
 ; Also define labels for the globals (IMPORT/EXPORT blocks) defined in each
 ; object file.
+	jsr log_banner
 	ldxy #strings::pass1
-	jsr text::render
+	CALLMAIN text::render_ind
 	CALLMAIN log::out
+	jsr log_banner
 
 @pass1: ; log the filename being assembled
 	ldxy @objfile
@@ -1085,10 +1087,11 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; RETURN_ERR ERR_SECTION_TOO_SMALL
 
 @start_pass2:
-	CALLMAIN log::banner
+	jsr log_banner
 	ldxy #strings::pass2
-	jsr text::render
+	CALLMAIN text::render_ind
 	CALLMAIN log::out
+	jsr log_banner
 
 	; reset obj pointer to start of object list
 	ldxy #__link_objfiles
@@ -2113,6 +2116,13 @@ __link_get_segment_by_name:
 	lda @ret
 	pha
 	rts
+.endproc
+
+;******************************************************************************
+; LOG BANNER
+; Logs a '*' banner
+.proc log_banner
+	JUMPMAIN log::banner
 .endproc
 
 ;*******************************************************************************
