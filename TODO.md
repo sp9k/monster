@@ -16,6 +16,7 @@
 - [ ] Save/restore raster position while debugging
 
 ### TODO V1
+- [ ] Show visual dot indicator in file buff view (F5) if buffer contains breakpoints
 - [ ] Finish .BSS segment support (don't emit obj/relocation code for these)
 - [ ] Support .REP and .MAC in monitor
 - [?] Fix unstable file mappings in debug info

@@ -470,7 +470,8 @@ main:	jsr key::getch
 	rts
 
 :	; ensure that the buffer we are assembling has a name
-	jsr __edit_current_file
+	lda src::activebuff
+	jsr src::filename
 	bcc :+
 	lda #ERR_UNNAMED_BUFFER
 	jmp report_typein_error
@@ -5280,6 +5281,8 @@ __edit_gotoline:
 	rts
 .endproc
 
+.RODATA
+
 ;*******************************************************************************
 ; REPORT DRIVE ERROR
 ; Reports the error that was last read from the drive (iec::readerr)
@@ -5301,8 +5304,6 @@ __edit_gotoline:
 	jsr text::info
 	jmp beep::short
 .endproc
-
-.RODATA
 
 ;*******************************************************************************
 ; LOG ASM RESULT

@@ -51,7 +51,7 @@ data: .res BUFFER_SIZE
 	lda #>(data+GAPSIZE)
 	sta end+1
 	sta poststartzp+1
-	rts
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************

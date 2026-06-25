@@ -98,6 +98,7 @@ __src_bank:
 bank:	    .byte 0
 buffs_curx: .res MAX_SOURCES	; cursor X positions for each inactive buffer
 buffs_cury: .res MAX_SOURCES	; cursor Y positions for each inactive buffer
+.export banks
 banks:      .res MAX_SOURCES	; the corresponding bank for each buffer
 flags:      .res MAX_SOURCES	; flags for each source buffer
 
@@ -214,13 +215,32 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .endproc
 
 ;*******************************************************************************
-; GET BANK
-; Returns the "bank" that corresponds to the given source ID.
+; GET FREE BANK
+; Returns an available "bank" for a new source buffer.
 ; NOTE: this is quite platform specific. What defines a "bank" varies
 ; a lot between platforms.
 ; OUT:
 ;  - .A: the "bank" for the ID
-.proc get_bank
+.proc get_free_bank
+	ldy #$00
+@find:	tya
+	jsr @get_bank
+	ldx numsrcs
+	beq @ok
+:	cmp banks-1,x
+	beq @next
+	dex
+	bne :-
+
+@ok:	; bank in .A is not taken, return it
+	rts
+
+@next:	iny
+	bne @find			; branch always
+
+;-------------------------------------------------------------------------------
+; return the bank corresponding to the index in .A
+@get_bank:
 .ifdef ultimem
 @tmp=r0
 	; *3 (each bank is 3 "blocks" on Ultimem)
@@ -228,11 +248,11 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	asl
 	;clc
 	adc @tmp
-	adc #FINAL_BANK_SOURCE0+MAX_SOURCES
+	adc #FINAL_BANK_SOURCE0
 	rts
 .else
 	clc
-	adc #FINAL_BANK_SOURCE0+MAX_SOURCES
+	adc #FINAL_BANK_SOURCE0
 	rts
 .endif
 .endproc
@@ -328,8 +348,8 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	inc line
 	inc lines
 
-	tya
-	jsr get_bank
+	; find a free bank to store this buffer in
+	jsr get_free_bank
 	sta bank
 
 	jmp __src_init_buff
@@ -512,10 +532,10 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	sec		; flag that a new buffer was created/initialized
 	rts
 
-@close:
-	; get the number of buffers to shift (numsrcs - activesrc - 1)
+@close: ; get the number of buffers to shift (numsrcs - activesrc - 1)
 	lda numsrcs
-	sbc #$01	; .C is set
+	;sec
+	sbc #$01
 	sbc activesrc
 	beq @cont	; if this was the last buffer, skip shifting
 	sta @cnt
@@ -547,7 +567,8 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	sta buffs_cury-1,x
 	inx
 	cpx numsrcs
-	bne @l1
+	bcc @l1
+	beq @l1
 
 	; copy the names down
 	lda activesrc
