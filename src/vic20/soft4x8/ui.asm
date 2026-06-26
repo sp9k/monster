@@ -129,9 +129,9 @@ STATUS_COL=0		; start column for status line
 	stxy @filename
 	jsr str::len
 	tay
-	dey
 	beq @drive
 	ldx #39
+	dey
 :	lda (@filename),y
 	sta mem::statusline,x
 	dex

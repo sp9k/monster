@@ -282,10 +282,9 @@ COLMEM_ADDR=$9400
 	stxy @filename
 	jsr str::len
 	tay
-	dey
 	beq @drive
-
 	ldx #SCREEN_WIDTH-1
+	dey
 :	lda (@filename),y
 	sta mem::statusline,x
 	dex
