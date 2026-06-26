@@ -2950,12 +2950,20 @@ goto_buffer:
 	adc #$01	; display buffer ID as 1-based
 	pha
 
+	; check if the buffer contains breakpoints
+	lda src::activebuff
+	jsr brkpt::anyinbuff
+	lda #' '
+	bcc :+
+	lda #BREAKPOINT_CHAR
+:	pha
+
 	; print the buffer name at its corresponding row
 	ldxy #@buffer_line
 	jsr text::render
 	rts
 
-@buffer_line:  .byte ESCAPE_BYTE," :",ESCAPE_CHAR, ESCAPE_STRING, 0
+@buffer_line:  .byte ESCAPE_CHAR, ESCAPE_BYTE," :",ESCAPE_CHAR, ESCAPE_STRING, 0
 
 ;--------------------------------------
 @getkey:
@@ -5212,6 +5220,8 @@ __edit_gotoline:
 	jmp sync_cur		; re-sync cursor column
 .endproc
 
+.RODATA
+
 ;*******************************************************************************
 ; HIGHLIGHT
 ; If the row that should be highlighted is visible, highlight it
@@ -5279,8 +5289,6 @@ __edit_gotoline:
 	bne highlight
 	rts
 .endproc
-
-.RODATA
 
 ;*******************************************************************************
 ; REPORT DRIVE ERROR

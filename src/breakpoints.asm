@@ -139,3 +139,25 @@ BREAKPOINT_ENABLED = 1
 	sec		; not found
 @done:	rts
 .endproc
+
+;*******************************************************************************
+; ANY IN BUFF
+; Checks if the provided source buffer ID has any breakpoints mapped to it.
+; IN:
+;   - .A: the buffer ID to check
+; OUT:
+;   - .C: set if the buffer is mapped to at least 1 breakpoint
+.export __brkpt_anyinbuff
+.proc  __brkpt_anyinbuff
+	ldx dbg::numbreakpoints
+	beq @no
+:	cmp dbg::breakpoint_fileids-1,x
+	beq @yes
+	dex
+	bpl :-
+@no:	clc
+	rts
+
+@yes:	;sec
+	rts
+.endproc
