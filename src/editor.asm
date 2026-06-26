@@ -2591,8 +2591,7 @@ cancel = enter_command
 
 	; if there was no buffer to switch to, reset cursor and clear screen
 	; (create a new empty buffer)
-
-	; fall through to clear
+	; fall through to home_refresh
 .endproc
 
 ;*******************************************************************************
@@ -2660,8 +2659,8 @@ __edit_refresh:
 	inc zp::cury
 	lda zp::cury
 	cmp height
-	beq @l0
 	bcc @l0
+	beq @l0
 
 @clr:	; clear the rest of the lines (including highlights)
 	ldx zp::cury

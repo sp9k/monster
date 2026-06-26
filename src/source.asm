@@ -176,7 +176,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .endproc
 
 ;*******************************************************************************
-; FORCE SET LOG
+; FORCE SET
 ; Entrypoint for src::set that bypasses the "numsrcs" check
 .export __src_force_set
 .proc __src_force_set
@@ -187,7 +187,20 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	; set the pointers to those of the source we're switching to
 	pla
 	tax
-	sta activesrc
+
+	; fall through to set_no_save
+.endproc
+
+;*******************************************************************************
+; SET NO SAVE
+; Entrypoint for src::set that bypasses saving the current source buffer state.
+; Used when closing a buffer because we don't need to save anything since the
+; buffer we're closing is gone
+; IN:
+;   - .X: buffer to set
+.proc set_no_save
+	stx activesrc
+	lda activesrc
 	jsr mul_state_size
 	tay
 
@@ -519,7 +532,6 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .export __src_close
 .proc __src_close
 @cnt=r0
-; get number of last byte to move (num_buffers)*2
 	lda numsrcs
 	beq @ok		; no buffer to close
 
@@ -558,25 +570,17 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 	; copy cursor data and banks down
 	ldx activesrc
-	inx
-@l1:	lda banks,x
-	sta banks-1,x
-	lda buffs_curx,x
-	sta buffs_curx-1,x
-	lda buffs_cury,x
-	sta buffs_cury-1,x
+@l1:	lda banks+1,x
+	sta banks,x
+	lda buffs_curx+1,x
+	sta buffs_curx,x
+	lda buffs_cury+1,x
+	sta buffs_cury,x
 	inx
 	cpx numsrcs
 	bcc @l1
-	beq @l1
-
 	; copy the names down
-	lda activesrc
-	asl		; *2
-	asl		; *4
-	asl		; *8
-	asl		; *16
-	tax
+	jsr active_times_16	; .X=activesrc * 16
 
 	pla
 	sta @cnt
@@ -592,12 +596,16 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 @cont:	; if there is no next buffer, open the previous
 	dec numsrcs
-	lda activesrc
-	cmp numsrcs
+	ldx activesrc
+	cpx numsrcs
 	bcc :+
+
 	dec activesrc
-:	lda activesrc
-	jsr __src_set
+	dex
+
+:	lda banks,x
+	jsr set_no_save
+
 @ok:	RETURN_OK
 .endproc
 
@@ -610,12 +618,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .proc __src_name
 @name=r0
 	stxy @name
-	lda activesrc
-	asl
-	asl
-	asl
-	asl			; *16
-	tax
+	jsr active_times_16	; .X=activesrc * 16
 
 	ldy #$00
 @l0:	lda (@name),y
@@ -1339,5 +1342,21 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	adc @tmp	; *5
 	asl		; *10
 	adc @tmp	; *11
+	rts
+.endproc
+
+;*******************************************************************************
+; ACTIVE TIMES 16
+; Multiplies the active source id by 16
+; OUT:
+;   - .A: activesrc * 16
+;   - .X: activesrc * 16
+.proc active_times_16
+	lda activesrc
+	asl
+	asl
+	asl
+	asl
+	tax
 	rts
 .endproc
