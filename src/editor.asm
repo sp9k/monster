@@ -1435,10 +1435,8 @@ cancel = enter_command
 ; Deletes everything from the character under the cursor to the end of the line
 .proc delete_to_end
 	jsr buff::clear
-
 @l0:	jsr delch
 	bcc @l0
-
 	jsr buff::reverse
 	jmp redraw_to_end_of_line
 .endproc
@@ -3995,24 +3993,17 @@ goto_buffer:
 ; OUT:
 ;  - .C: set if no character could be deleted.
 .proc delch
-	lda mem::linebuffer
-	beq @nodel		; if nothing to delete -> return
+	jsr src::before_newl
+	beq @nodel
 
-	pha			; save char to delete
 	jsr src::delete
-	pla			; restore char to delete
 	bcc @ok
 @nodel:	sec
 	rts			; can't delete anything -> exit
 
 @ok:	; buffer the character that was deleted
 	jsr buff::putch
-
-	jsr src::before_newl
-	bne :+
-	jsr src::left
-
-:	lda #MODE_VISUAL
+	lda #MODE_VISUAL
 	sta selection_type
 	RETURN_OK
 .endproc
