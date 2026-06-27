@@ -1437,6 +1437,7 @@ cancel = enter_command
 	jsr buff::clear
 @l0:	jsr delch
 	bcc @l0
+	jsr src::after_cursor
 	jsr buff::reverse
 	jmp redraw_to_end_of_line
 .endproc
@@ -3995,13 +3996,15 @@ goto_buffer:
 .proc delch
 	jsr src::before_newl
 	beq @nodel
-
 	jsr src::delete
 	bcc @ok
-@nodel:	sec
+
+@nodel:	jsr src::left
+	sec
 	rts			; can't delete anything -> exit
 
 @ok:	; buffer the character that was deleted
+	jsr sync_cur
 	jsr buff::putch
 	lda #MODE_VISUAL
 	sta selection_type

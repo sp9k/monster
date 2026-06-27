@@ -1062,8 +1062,11 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ;  - .C: set if there is no character after the cursor
 .export __src_after_cursor
 .proc __src_after_cursor
+@xsave=r0
 	jsr __src_end
 	beq @end
+	lda srcx
+	sta @xsave
 	jsr __src_next
 	pha
 	jsr __src_prev
