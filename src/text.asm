@@ -52,7 +52,7 @@ NUM_ESCAPE_CODES = 8
 STATUS_FORMAT_DEFAULT = 0	; display x, line/total lines
 STATUS_FORMAT_XY      = 1	; display x,y position of cursor
 
-VIS_WS_CHAR       = 133		; character to render for visual whitespace
+VIS_WS_CHAR = 131		; character to render for visual whitespace
 
 .BSS
 ;*******************************************************************************

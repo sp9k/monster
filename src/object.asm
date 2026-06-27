@@ -1989,7 +1989,7 @@ __obj_close_section = close_section
 @obj_log: .byte "  object code: $", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
 
 ; relocation: $xxxx bytes"
-@reloc_log: .byte "  relocation: $", ESCAPE_VALUE, " bytes",0
+@reloc_log: .byte "  relocation:  $", ESCAPE_VALUE, " bytes",0
 .endproc
 
 ;******************************************************************************

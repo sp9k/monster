@@ -297,8 +297,8 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	sta cur
 	bcc :+
 	inc cur+1
-:	ldxy #@out
-	tya		; restore # of bytes read
+:	tya		; restore # of bytes read
+	ldxy #@out
 @ok:	RETURN_OK
 .endproc
 
@@ -308,7 +308,7 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 ; IN:
 ;  - .XY: address of buffer to store params in
 ; OUT:
-;  - .A: the number of parameters
+;  - .A:    number of parameters
 ;  - (.XY): the updated buffer filled with 0-separated params
 .proc getparams
 @buff=r0

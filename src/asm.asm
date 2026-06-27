@@ -2429,11 +2429,9 @@ __asm_include:
 
 	jsr ctx::rewind
 
-	; fill $100 with param data
-	ldxy #$100
-	jsr ctx::getparams
-
 	; create the macro
+	ldxy #$100
+	jsr ctx::getparams	; get the parameters for the macro
 	ldxy #$100
 	stxy r0
 	CALL FINAL_BANK_MACROS, mac::add

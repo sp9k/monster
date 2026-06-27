@@ -136,23 +136,28 @@ macros: .res $6000 - (MAX_MACROS*2)
 
 ; copy the macro definition byte-by-byte til we get to terminating 0,0
 @paramsdone:
+	; handle the case of an empty macro
+	CALLMAIN ctx::getline	; read a line of the macro definition
+	cmp #$00
+	bne :+
+	lda #$00
+	tay
+	STOREB_Y @dst		; store first of 2 terminating 0's
+	jmp @done		; continue to store the 2nd
+
 @l0:	CALLMAIN ctx::getline	; read a line of the macro definition
-	stxy @src
+	cmp #$00		; were any bytes read?
+	beq @done		; if not, we're done
+:	stxy @src
 
 	ldy #$00
-	lda (@src),y
-	beq @done		; if line is empty, we've read all of them
-
 @l1:	lda (@src),y
 	STOREB_Y @dst		; store character for the macro
 	incw @src
 	incw @dst
-	cmp #$00
-	beq @l0
-
-	cmp #$00
-	bne @l1			; branch always
-	beq @l0
+	cmp #$00		; at end of line?
+	bne @l1			; if not, keep processing line
+	beq @l0			; if so, loop to get another line
 
 @done:  ; 0,0 terminate the macro definition
 	lda #$00
