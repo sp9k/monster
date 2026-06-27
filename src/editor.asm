@@ -158,7 +158,6 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	stx fmt::enable		; enable formatting
 	stx autoindent		; enable auto-indent
 
-	jsr edit		; initialize size/mode/etc.
 	jsr enter_command
 
 	; rewind source and get the first line's contents in textbuffer
@@ -173,11 +172,9 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 
 	; reset assembly state
 	jsr asm::reset
-
 	jsr file::init_drive
 	jsr scr::unblank
-
-	jsr refresh
+	jsr edit		; initialize size/mode/etc.
 
 	; fall through to __edit_run
 .endproc
@@ -2640,7 +2637,6 @@ __edit_refresh:
 	ldy #$00
 	sty highlight_status	; disable highlight
 	sty zp::cury		; go to top row
-
 	jsr src::upn		; move source to top line on screen
 
 	; redraw the visible lines
@@ -2680,6 +2676,8 @@ __edit_refresh:
 @done:	lda #COLOR_RVS
 	ldx #STATUS_ROW
 	jsr draw::hline		; re-init status row's color
+	lda #$01
+	sta mem::coloron	; enable color
 
 	; restore source position
 	jsr src::popgoto
@@ -3119,7 +3117,6 @@ goto_buffer:
 .endif
 
 	jsr use_insert_cursor
-
 	jsr reset_size
 
 	ldx #$00

@@ -265,8 +265,7 @@ cart_start:
 	bne @recover
 .endif
 
-@init:
-	jsr src::init
+@init:	jsr src::init
 	jsr src::new
 	jsr dbgi::initonce
 	jsr asm::reset
@@ -301,14 +300,9 @@ cart_start:
 	lda #$04
 	sta $028b	; set repeat timer
 
-	; initialize the status row reverse
-	ldx #23
-	jsr draw::hiline
-
 	; load default preferences
 	; jsr gprefs::load
 
-        jsr irq::on
 	jmp edit::init
 .else
 	.import testsuite

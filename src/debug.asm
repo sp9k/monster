@@ -1226,7 +1226,6 @@ __debug_remove_breakpoint:
 ;*******************************************************************************
 ; SHIFT BREAKPOINTS D
 ; Shifts the line numbers for all breakpoints on lines below the current one
-; IN:
 ;  - .XY: the line number to shift
 ;  - .A:  the offset to shift
 ;  - r0:  the file ID of the file to shift

@@ -32,6 +32,7 @@ STATUS_COL=0		; start column for status line
 @filename=zp::text
 @tmp=zp::text
 @leftend=zp::text+2
+@buffnamed=zp::text+3
 @columnstart = STATUS_COL+3
 @linestart   = STATUS_COL+6
 @sizestart   = STATUS_COL+13
@@ -48,6 +49,7 @@ STATUS_COL=0		; start column for status line
 
 	; display the column
 	ldy #$00
+	sty @buffnamed
 	cpx #'0'
 	beq :+
 	stx mem::statusline+@columnstart
@@ -127,6 +129,8 @@ STATUS_COL=0		; start column for status line
 	lda src::activebuff
 	jsr src::filename
 	stxy @filename
+	php			; save .C (does buffer have name)
+
 	jsr str::len
 	tay
 	beq @drive
@@ -139,9 +143,18 @@ STATUS_COL=0		; start column for status line
 	bpl :-
 
 ; display a '*' if the file is dirty
+	plp
+	bcs @index		; if buffer unnamed, never display '*'
 	jsr src::isdirty
-	beq @drive
+	beq @index
 	lda #'*'
+	sta mem::statusline,x
+
+@index: ; display the buffer index
+	lda src::activebuff
+	clc
+	adc #'1'
+	dex
 	sta mem::statusline,x
 
 ; display the drive name followed by a colon to the left of the filename

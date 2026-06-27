@@ -1921,6 +1921,7 @@ __obj_close_section = close_section
 	txa
 	jsr __obj_get_segment_name_by_id
 	jsr log_msg
+
 	ldxy #@reloc_log
 	jsr log_msg
 
@@ -1985,10 +1986,10 @@ __obj_close_section = close_section
 
 ;-------------------------------------------------------------------------------
 ; object code: $xxxx-$xxxx
-@obj_log: .byte "object code: $", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
+@obj_log: .byte "  object code: $", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
 
 ; relocation: $xxxx bytes"
-@reloc_log: .byte "relocation: $", ESCAPE_VALUE, " bytes",0
+@reloc_log: .byte "  relocation: $", ESCAPE_VALUE, " bytes",0
 .endproc
 
 ;******************************************************************************

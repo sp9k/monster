@@ -65,8 +65,7 @@ COLOR_SELECT  = 6
 	bne @done
 	dex
 	bne :-
-@done:	stx mem::coloron	; (en/dis)able color
-	ldy @savey
+@done:	ldy @savey
 	rts
 .endproc
 
