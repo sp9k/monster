@@ -5,11 +5,7 @@
 
 ;******************************************************************************
 ; CONSTANTS
-UNSHIFTED_KEY_TABLE = $ec5e
-SHIFTED_KEY_TABLE   = $ec9f
-CBM_KEY_TABLE       = $ece0
-CTRL_KEY_TABLE      = $eda3
-CURSOR_LR_MASK      = 2
+CURSOR_LR_MASK = 2
 
 .CODE
 

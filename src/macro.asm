@@ -603,6 +603,8 @@ MODE_DEF  = 1
 @refresh:
 	lda #$00
 	sta @i
+	cmp @cnt
+	beq @refresh_done
 
 :	; print the macro name or line of the macro def (mode dependent)
 	lda @i
@@ -625,7 +627,7 @@ MODE_DEF  = 1
 @refresh_done:
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; loads @namebuff with either:
 ;   1. macro name at the given index (ID) - if in macros view
 ;   2. given line of macro definition  - if in macro definition view
@@ -660,7 +662,7 @@ MODE_DEF  = 1
 	ldxy #@namebuff
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; open a fullscreen view of the macro's definition
 @show_macro_def:
 @macro=r0
@@ -725,6 +727,7 @@ MODE_DEF  = 1
 	dec @numparams
 	bne @copyargs
 
+	incw @macro
 	lda #$00
 	sta @namebuff,x
 
@@ -732,6 +735,7 @@ MODE_DEF  = 1
 	ldx #$00
 	ldy #$00
 @line:	LOADB_Y @macro		; are we at the end of the definition?
+	cmp #$00
 	beq @end		; if so, we're done
 
 	lda @macro
@@ -746,7 +750,8 @@ MODE_DEF  = 1
 	incw @macro
 	inx
 	bne @line		; branch always
-@end:	stx @cnt
+@end:
+	stx @cnt
 
 	; clear the screen, set the current mode to DEF, and return
 	CALLMAIN scr::clr
