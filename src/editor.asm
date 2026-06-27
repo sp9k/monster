@@ -2586,7 +2586,9 @@ cancel = enter_command
 	; if we're on the special LOG buffer, toggle it off
 	jmp show_log
 
-:	jsr src::close
+:	jsr brkpt::delinbuff
+	lda src::activebuff
+	jsr src::close
 	bcc refresh
 
 	; if there was no buffer to switch to, reset cursor and clear screen

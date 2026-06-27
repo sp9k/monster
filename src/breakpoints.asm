@@ -146,6 +146,7 @@ BREAKPOINT_ENABLED = 1
 ; IN:
 ;   - .A: the buffer ID to check
 ; OUT:
+;   - .X: index of first breakpoint found that matches the given ID (if any)
 ;   - .C: set if the buffer is mapped to at least 1 breakpoint
 .export __brkpt_anyinbuff
 .proc  __brkpt_anyinbuff
@@ -159,5 +160,25 @@ BREAKPOINT_ENABLED = 1
 	rts
 
 @yes:	;sec
+	dex
 	rts
+.endproc
+
+;*******************************************************************************
+; DELETE IN BUFF
+; Deletes all breakpoints in the buffer of the given ID
+; IN:
+;   - .A: id of buffer to delete breakpoints in
+.export __brkpt_delete_in_buff
+.proc __brkpt_delete_in_buff
+@id=r0
+	sta @id
+
+@l0:	; remove all breakpoints that match the buffer we're looking for
+	lda @id
+	jsr __brkpt_anyinbuff
+	bcc @done
+	jsr dbg::removebreakpointbyid	; remove breakpoint .X
+	jmp @l0
+@done:	rts
 .endproc
