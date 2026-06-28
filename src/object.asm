@@ -1095,7 +1095,7 @@ __obj_close_section = close_section
 	; check if this is a BSS segment. We don't emit object/relocation code
 	; for segments of this TYPE
 	pla
-	cmp #TYPE_BSS
+	jsr is_bss
 	jeq @nextseg			; if BSS -> skip
 
 	; write the size of the relocation table
@@ -1908,13 +1908,6 @@ __obj_close_section = close_section
 	sta segments_sizehi,y
 	sta @sz+1
 
-	jsr krn::chrin
-	pha
-	sta segments_relocsizelo,y	; get relocation table size LSB
-	jsr krn::chrin
-	pha
-	sta segments_relocsizehi,y	; get relocation table size MSB
-
 	; log the SEGMENT name and table sizes for it
 	ldx seg_idx
 	inx				; +1 (SEGMENTs are 1-based)
@@ -1922,10 +1915,26 @@ __obj_close_section = close_section
 	jsr __obj_get_segment_name_by_id
 	jsr log_msg
 
+	pla
+	pha
+	jsr is_bss
+	bne :+
+	ldxy #@reloc_na
+	jsr log_msg
+	jmp @obj
+
+:	jsr krn::chrin
+	pha
+	ldy seg_idx
+	sta segments_relocsizelo,y	; get relocation table size LSB
+	jsr krn::chrin
+	pha
+	sta segments_relocsizehi,y	; get relocation table size MSB
+
 	ldxy #@reloc_log
 	jsr log_msg
 
-	; get the address to write the object code to
+@obj:	; get the address to write the object code to
 	ldx seg_idx
 	inx			; get in base 1
 	txa
@@ -1990,6 +1999,9 @@ __obj_close_section = close_section
 
 ; relocation: $xxxx bytes"
 @reloc_log: .byte "  relocation:  $", ESCAPE_VALUE, " bytes",0
+
+; n/a (used for relocation for BSS segments)
+@reloc_na: .byte "  relocation:  n/a",0
 .endproc
 
 ;******************************************************************************
@@ -2131,6 +2143,20 @@ __obj_close_section = close_section
 	pla
 	tax
 	rts
+.endproc
+
+;******************************************************************************
+; IS BSS
+; Checks if the given TYPE represents a BSS segment (BSS or BSSZP)
+; IN:
+;   - .A: type byte to check
+; OUT:
+;   - .Z: set if the given segment is a BSS one
+.proc is_bss
+	cmp #TYPE_BSS
+	beq @done
+	cmp #TYPE_BSSZP
+@done:	rts
 .endproc
 
 ;******************************************************************************
