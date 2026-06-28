@@ -4890,6 +4890,8 @@ goto_buffer:
 @done:	jmp unblank
 .endproc
 
+.RODATA
+
 ;*******************************************************************************
 ; GOTO END
 ; Goes to the the last line in the buffer
@@ -5212,8 +5214,6 @@ __edit_gotoline:
 @renderdone:
 	jmp sync_cur		; re-sync cursor column
 .endproc
-
-.RODATA
 
 ;*******************************************************************************
 ; HIGHLIGHT

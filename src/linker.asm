@@ -51,13 +51,6 @@ SYM_ABS_EXPORT_BYTE = 5
 SYM_ABS_EXPORT_WORD = 6
 
 ;*******************************************************************************
-; Type flags for SEGMENT
-TYPE_ZP  = 0
-TYPE_RW  = 1
-TYPE_BSS = 2
-TYPE_ABS = $ff
-
-;*******************************************************************************
 ; SECTION flags
 SECTION_FILL = $01	; flag to pad section's unused bytes with 0
 
@@ -282,9 +275,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @sections_declared=r9
 @buff=ra
 @errcode=r0
-	; set default TYPE attribute (all segments as RW)
+	; set default TYPE attribute (all segments as UNDEF)
 	ldy #MAX_SEGMENTS
-	lda #TYPE_RW
+	lda #TYPE_UNDEF
 :	sta segments_type-1,y
 	dey
 	bne :-
@@ -770,59 +763,16 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	ldx numsegments
 	sta segments_load,x
 	RETURN_OK
-
-;-------------------------------------------------------------------------------
-; handler for the "type" key in SEGMENT
-@typevec:
-@chkrw: lda @valbuff
-	cmp #'r'
-	bne @chkbss
-	lda @valbuff+1
-	cmp #'w'
-	bne @chkbss
-	lda #TYPE_RW
-	jmp @typefound
-
-@chkbss:
-	lda @valbuff
-	cmp #'b'
-	bne @chkzp
-	lda @valbuff+1
-	cmp #'s'
-	bne @chkzp
-	lda @valbuff+2
-	cmp #'s'
-	bne @chkzp
-	lda #TYPE_BSS
-	jmp @typefound
-
-@chkzp:	lda @valbuff
-	cmp #'z'
-	bne @unknown_type
-	lda @valbuff+1
-	cmp #'p'
-	bne @unknown_type
-
-@typefound:
-	; set the TYPE attribute for the segment
-	ldx numsegments
-	sta segments_type,x
-	RETURN_OK
-
-@unknown_type:
-	RETURN_ERR ERR_UNKNOWN_TYPE
-
 ;-------------------------------------------------------------------------------
 ; keys table
 @numkeys=3
 @keys:
 @load: .byte "load",0
 @run:  .byte "run",0
-@type: .byte "type",0
 
 ;-------------------------------------------------------------------------------
 ; keys table handler vectors
-.define seg_cmds @loadvec, @runvec, @typevec
+.define seg_cmds @loadvec, @runvec
 @cmdslo: .lobytes seg_cmds
 @cmdshi: .hibytes seg_cmds
 
@@ -1413,6 +1363,29 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	tay
 	pla				; restore TYPE byte
 	RETURN_OK
+.endproc
+
+;******************************************************************************
+; SET SEGMENT TYPE
+; Sets the type for the segment of the given ID.
+; IN:
+;   - .A: type to set
+;   - .X: id of segment to set type for
+; OUT:
+;   - .C: set on error (segment is defined with conflicting type)
+.export __link_set_segment_type
+.proc __link_set_segment_type
+	ldy segments_type-1,x
+	cpy #SEG_UNDEF		; is segment still undefined?
+	beq @set		; if so, continue
+
+	; segment exists, validate that its TYPE matches
+	cmp segments_type-1,x
+	beq @done
+	RETURN_ERR ERR_CONFLICTING_SEGMENTS
+
+@set:	cmp segments_type-1,x
+@done:	RETURN_OK
 .endproc
 
 ;******************************************************************************

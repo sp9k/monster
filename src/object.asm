@@ -83,10 +83,12 @@ reloc = zp::link	; when linking, pointer to current relocation
 
 ;*******************************************************************************
 ; Type flags for SEGMENT
-TYPE_ZP  = 0
-TYPE_RW  = 1
-TYPE_BSS = 2
-TYPE_ABS = $ff
+TYPE_UNDEF = 0		; undefined (initial state during linking only)
+TYPE_SEGZP = 1		; zeropage (code/data)
+TYPE_SEG   = 2		; absolute (code/data)
+TYPE_BSS   = 3		; absolute (uninitialized)
+TYPE_BSSZP = 4		; zeropage (uninitialized)
+TYPE_ABS   = $ff	; constants, etc.
 
 ;*******************************************************************************
 ; SYMBOL INDEX MAP
@@ -1040,7 +1042,7 @@ __obj_close_section = close_section
 	lda segments_starthi,x
 	jsr krn::chrout
 
-	; write TYPE (ZP, RW, BSS)
+	; write TYPE byte (SEGZP, SEG, BSS, etc.)
 	lda segments_type,x
 	jsr krn::chrout
 
@@ -1494,7 +1496,7 @@ __obj_close_section = close_section
 	jsr krn::chrin
 	sta segments_starthi,y
 
-	; read TYPE and ensure it matches the corresponding one read from LINK
+	; read TYPE byte
 	jsr krn::chrin
 	sta segments_type,y
 
@@ -1517,6 +1519,13 @@ __obj_close_section = close_section
 	bcs @ret
 	ldy @i
 	sta __obj_segment_ids,y		; store GLOBAL id for this SEGMENT
+
+	; set the global TYPE for the segment (if not alaready set)
+	pha
+	ldx segments_type,y
+	jsr link::set_segtype		; set type for the segment
+	pla
+	bcs @ret			; if conflicts with existing seg -> rts
 
 	; get the current GLOBAL offset for the SEGMENT
 	jsr link::segaddr_by_id
@@ -1659,9 +1668,9 @@ __obj_close_section = close_section
 	beq @cont				; if ABS, no need to resolve
 
 	; find the global segment id from the object-local one
-	; NOTE: ZP, RW, and ABS correspond to the label modes
 	tax
 	lda segments_type-1,x
+	jsr type_to_mode
 	sta zp::label_mode			; set address mode for label
 	lda __obj_segment_ids-1,x		; get GLOBAL segment id
 @cont:	sta zp::label_segmentid			; and store with the symbol
@@ -1887,20 +1896,11 @@ __obj_close_section = close_section
 	jeq @done
 
 @load_segment:
-	jsr krn::chrin			; get "info" byte for SEGMENT
+	jsr krn::chrin			; eat "info" byte for SEGMENT
 	pha
 
-	; validate that LINK file and declaration have same TYPE
-	ldy seg_idx
-	ldx __obj_segment_ids,y
-	jsr link::segaddr_by_id
-	cmp segments_type,x
-	beq :+
-	RETURN_ERR ERR_UNEXPECTED_TYPE
-
-:	ldy seg_idx
-
 	; read the table sizes for this SEGMENT
+	ldy seg_idx
 	jsr krn::chrin			; get code size LSB
 	sta segments_sizelo,y
 	sta @sz
@@ -2130,6 +2130,24 @@ __obj_close_section = close_section
 	tay
 	pla
 	tax
+	rts
+.endproc
+
+;******************************************************************************
+; TYPE TO MODE
+; Returns the label address mode that corresponds to the given TYPE
+; IN:
+;   - .A: the segment TYPE to get the address mode for (e.g. TYPE_BSS)
+; OUT:
+;   - .A: the corresponding MODE (*ZP=0, others=1)
+.proc type_to_mode
+	cmp #TYPE_SEGZP
+	beq @zp
+	cmp #TYPE_BSSZP
+	beq @zp
+@abs:	lda #$01
+	rts
+@zp:	lda #$00
 	rts
 .endproc
 

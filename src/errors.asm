@@ -237,6 +237,14 @@ err_unexpected_type:
 ; "unexpected type"
 .byte $ab,$85,$c4,$5,$1d,$5,$26,$d4,$cc,$5,$0
 
+err_conflicting_segments:
+; "conflicting segment types"
+.byte $1b,$ce,$33,$9,$1d,$9,$71,$db,$99,$47,$69,$4e,$a6,$d4,$cc,$5,$98,$0
+
+err_data_in_bss:
+; "bss segment contains nonzero data"
+.byte $14,$d3,$dc,$c5,$3b,$45,$75,$1b,$1b,$ce,$a0,$49,$74,$db,$73,$ce,$d1,$52,$7e,$c4,$d,$1,$0
+
 err_oom:
 ; "out of memory"
 .byte $7d,$54,$db,$c6,$db,$45,$6b,$d2,$c8,$0
@@ -309,6 +317,8 @@ err_no_matching_scope:
 	err_already_exported, \
 	err_unknown_type, \
 	err_unexpected_type, \
+	err_conflicting_segments, \
+	err_data_in_bss, \
 	err_oom, \
 	err_ctx_full, \
 	err_no_matching_scope

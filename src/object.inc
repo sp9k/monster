@@ -45,3 +45,12 @@
 	segments_sizelo        = __obj_segments_sizelo
 	segments_sizehi        = __obj_segments_sizehi
 .endscope
+
+;*******************************************************************************
+; Type flags for SEGMENT
+TYPE_UNDEF = 0		; undefined (initial state during linking only)
+TYPE_SEGZP = 1		; zeropage (code/data)
+TYPE_SEG   = 2		; absolute (code/data)
+TYPE_BSS   = 3		; absolute (uninitialized)
+TYPE_BSSZP = 4		; zeropage (uninitialized)
+TYPE_ABS   = $ff	; constants, etc.

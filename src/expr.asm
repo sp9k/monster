@@ -16,6 +16,7 @@
 .include "labels.inc"
 .include "macros.inc"
 .include "math.inc"
+.include "object.inc"
 .include "ram.inc"
 .include "target.inc"
 .include "util.inc"
@@ -219,7 +220,8 @@ operands: .res $100
 
 @seg_result:
 	; same segment, no need to lookup symbol
-	lda asm::segmode	; get the size of segment for result size
+	lda asm::segtype	; get the size of segment for result size
+	jsr type_to_mode
 	clc
 	adc #$01		; add 1 to get # of bytes
 	bcc @rel_done		; and continue to finish up building result
@@ -1345,6 +1347,25 @@ operands: .res $100
 ; CHTOHEX
 .proc chtohex
 	JUMPMAIN util::chtohex
+.endproc
+
+;******************************************************************************
+; TYPE TO MODE
+; Returns the label address mode that corresponds to the given TYPE
+; IN:
+;   - .A: the segment TYPE to get the address mode for (e.g. TYPE_BSS)
+; OUT:
+;   - .A: the corresponding MODE (*ZP=0, others=1)
+.export type_to_mode
+.proc type_to_mode
+	cmp #TYPE_SEGZP
+	beq @zp
+	cmp #TYPE_BSSZP
+	beq @zp
+@abs:	lda #$01
+	rts
+@zp:	lda #$00
+	rts
 .endproc
 
 ;*******************************************************************************

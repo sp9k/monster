@@ -145,12 +145,13 @@ pcset: .byte 0
 __asm_linenum: .word 0
 
 ;*******************************************************************************
-; SEGMODE
+; SEGTYPE
 ; When assembling to object code (asm::mode != 0)
-; this contains the size of labels defined in that segment
-; 0=ZP, 1=ABS (anything but ZP), $FF means no segment is defined
-.export __asm_segmode
-__asm_segmode: .byte 0
+; this contains the mode for the emitted local SEGMENT. This also affects the
+; size of labels defined in the segment.
+; See object.inc for enumerated values.
+.export __asm_segtype
+__asm_segtype: .byte 0
 
 .export __asm_segmentid
 __asm_segmentid: .byte 0	; The current SEGMENT id (set by .SEG/.SEGZP)
@@ -291,6 +292,8 @@ directives:
 	.byte "res",0
 	.byte "seg",0
 	.byte "segzp",0
+	.byte "bss",0
+	.byte "bsszp",0
 	.byte "align",0
 directives_len=*-directives
 
@@ -299,7 +302,8 @@ directives_len=*-directives
 .define directive_vectors definebyte, defineconst, defineword, includefile, \
 defineorg, define_psuedo_org, repeat, macro, do_if, do_else, do_endif, \
 do_ifdef, create_macro, handle_repeat, incbinfile, import, export, \
-directive_res, directive_seg, directive_segzp, directive_align
+directive_res, directive_seg, directive_segzp, directive_bss, directive_bsszp, \
+directive_align
 .linecont -
 
 directive_vectorslo: .lobytes directive_vectors
@@ -427,8 +431,8 @@ num_illegals = *-illegal_opcodes
 ; Resets the internal assembly context (labels and pointer to target)
 .export __asm_reset
 .proc __asm_reset
-	lda #$ff
-	sta __asm_segmode		; no .SEG set
+	lda #TYPE_UNDEF
+	sta __asm_segtype
 
 	; empty CONTEXT and IF stacks
 	lda #$00
@@ -1895,15 +1899,36 @@ __asm_tokenize_pass1 = __asm_tokenize
 .endproc
 
 ;*******************************************************************************
+; DIRECTIVE BSS ZP
+; Handles the `.BSSZP` directive
+; This directive is only valid when assembling to object. It creates a new
+; SECTION in the object file, closing the current one (if one exists)
+.proc directive_bsszp
+	lda #TYPE_BSSZP
+	skw
+	; fall through to directive_seg
+.endproc
+
+;*******************************************************************************
+; DIRECTIVE BSS
+; Handles the `.BSS` directive
+; This directive is only valid when assembling to object. It creates a new
+; SECTION in the object file, closing the current one (if one exists)
+.proc directive_bss
+	lda #TYPE_BSS
+	skw
+	; fall through to directive_seg
+.endproc
+
+;*******************************************************************************
 ; DIRECTIVE SEG ZP
 ; Handles the `.SEGZP` directive
 ; This directive is only valid when assembling to object. It creates a new
 ; SECTION in the object file, closing the current one (if one exists)
 ; The section created must be placed into the zeropage by the linker
 .proc directive_segzp
-	lda #$00		; zeropage addressing
+	lda #TYPE_SEGZP
 	skw
-
 	; fall through to directive_seg
 .endproc
 
@@ -1914,8 +1939,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; SECTION in the object file, closing the current one (if one exists)
 .proc directive_seg
 @name=$100
-	lda #$01		; absolute addressing
-	sta __asm_segmode
+	lda #TYPE_SEG		; absolute addressing
+	sta __asm_segtype
 
 	; get the name of the segment
 	jsr util::parse_enquoted_line
@@ -1932,7 +1957,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	jsr obj::close_section
 
 	; create a new SECTION for the parsed SEGMENT name
-	lda __asm_segmode
+	lda __asm_segtype
 	CALL FINAL_BANK_LINKER, obj::add_section
 
 	; set PC to base of this SECTION (0 if new, or where we left off
@@ -2225,8 +2250,8 @@ __asm_include:
 
 	tya			; .Y == 0?
 	beq :+
-	ldy #$01		; absolute
-:	sty __asm_segmode	; set segment mode
+	ldy #TYPE_ABS		; absolute
+:	sty __asm_segtype	; set segment mode
 
 @done:	; close the current section (if any)
 	jsr obj::close_section
@@ -3081,8 +3106,9 @@ __asm_include:
 	bne @add	; if size is not inferred, just add the label
 
 @seg:	; if .SEG is defined, use its mode
-	lda __asm_segmode	; 0=ZP, 1=ABS
-	bpl @add		; branch always
+	lda __asm_segtype
+	jsr __asm_type_to_mode
+	jmp @add
 
 @direct:
 	; .ORG
@@ -3094,6 +3120,25 @@ __asm_include:
 	lda __asm_segmentid
 	sta zp::label_segmentid
 	jmp lbl::add
+.endproc
+
+;******************************************************************************
+; TYPE TO MODE
+; Returns the label address mode that corresponds to the given TYPE
+; IN:
+;   - .A: the segment TYPE to get the address mode for (e.g. TYPE_BSS)
+; OUT:
+;   - .A: the corresponding MODE (*ZP=0, others=1)
+.export __asm_type_to_mode
+.proc __asm_type_to_mode
+	cmp #TYPE_SEGZP
+	beq @zp
+	cmp #TYPE_BSSZP
+	beq @zp
+@abs:	lda #$01
+	rts
+@zp:	lda #$00
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -3169,7 +3214,16 @@ __asm_include:
 	lda zp::verify
 	bne @ok			; if just verifying, don't write
 
-	lda pcset
+	cmp #$00
+	beq :+
+	lda __asm_segtype
+	cmp #TYPE_BSS
+	bne :+
+	cmp #TYPE_BSSZP
+	bne :+
+	RETURN_ERR ERR_DATA_IN_BSS
+
+:	lda pcset
 	bne :+
 	RETURN_ERR ERR_NO_ORIGIN
 

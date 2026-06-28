@@ -80,12 +80,14 @@ ERR_ADDRMODE_MISMATCH    = 53
 ERR_ALREADY_EXPORTED     = 54
 ERR_UNKNOWN_TYPE         = 55
 ERR_UNEXPECTED_TYPE      = 56
+ERR_CONFLICTING_SEGMENTS = 57
+ERR_DATA_IN_BSS          = 58
 
 ;******************************************************************************
 ; general errors
-ERR_OOM                  = 57
-ERR_CTX_FULL             = 58
-ERR_NO_MATCHING_SCOPE    = 59
+ERR_OOM                  = 59
+ERR_CTX_FULL             = 60
+ERR_NO_MATCHING_SCOPE    = 61
 
 .import __err_get
 
