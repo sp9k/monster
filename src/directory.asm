@@ -125,6 +125,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	bcc :+
 	jsr scr::unblank
 	jmp scr::restore
+
 :	sta @file
 
 	; reset the screen so that we can print the file names normally
@@ -415,9 +416,6 @@ HEIGHT = SCREEN_HEIGHT-2
 ; OPEN DIR
 ; Opens the directory "file" for loading
 .proc open_dir
-	ldxy #strings::dir
-	jsr file::exists
-	bcs :+
 	ldxy #strings::dir
 	jsr file::open_r_prg
 	bcs :+

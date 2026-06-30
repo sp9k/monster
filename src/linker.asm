@@ -998,10 +998,6 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	jsr update_segments
 
-	; TODO: logging
-	;ldxy #@pass1_seg_msg
-	;jsr log_msg
-
 @nextfile:
 	jsr log_newl
 
@@ -1101,8 +1097,6 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jmp validate_segments	; validate segments and return error if needed
 
 @done:	rts
-
-@pass1_seg_msg: .byte "$", ESCAPE_VALUE, 0
 .endproc
 
 ;*******************************************************************************

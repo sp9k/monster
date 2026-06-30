@@ -84,5 +84,6 @@
 	beq @done
 	iny
 	bne :-
-@done:	rts
+@done:	sec
+	rts
 .endproc
