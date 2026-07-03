@@ -498,6 +498,13 @@ main:	jsr key::getch
 	jsr src::current_filename
 	jsr log::out
 
+	; get active filename (r0 = name)
+	jsr src::current_filename
+	bcc :+
+	jsr errlog::log
+	jmp @done		; can't get buffer name is fatal, go to end
+:	jsr dbgi::setfile
+
 ;-------------------------------------------------------------------------------
 ; Pass 1
 ; do a pass on the source to simply get labels and basic debug info
@@ -509,13 +516,6 @@ main:	jsr key::getch
 @pass1loop:
 	jsr src::currline
 	stxy asm::linenum
-
-	; get active filename (r0 = name)
-	jsr src::current_filename
-	bcc :+
-	jsr errlog::log
-	jmp @done		; can't get buffer name is fatal, go to end
-:	jsr dbgi::setfile
 
 	; check if user interrupted assembly
 	lda __edit_sigint
