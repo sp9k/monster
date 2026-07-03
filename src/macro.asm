@@ -881,15 +881,16 @@ MODE_DEF  = 1
 	clc
 	adc zp::line
 	sta zp::line
-	bcc :+
+	bcc @paramloop
 	inc zp::line+1
-:	jsr @process_ws
+@paramloop:
+	jsr @process_ws
 	ldy #$00
 	lda (zp::line),y
 	jsr @is_end_of_line
 	beq @ok
-	CALLMAIN expr::eval
-	bcs @done
+	CALL FINAL_BANK_UDGEDIT, expr::parse
+	bcs @perr
 
 	; if there is another arg, it must be separated by comma
 	jsr @process_ws
@@ -898,11 +899,11 @@ MODE_DEF  = 1
 	jsr @is_end_of_line
 	beq @ok			; no more args -> done
 	cmp #','
-	bne :+			; no comma -> err
+	bne @perr		; no comma -> err
 	incw zp::line
-	bne :-			; comma found, check next param
+	bne @paramloop		; comma found, check next param
 
-:	sec
+@perr:	sec
 	skb			; return error
 @ok:	clc
 @done:	; restore zp::line

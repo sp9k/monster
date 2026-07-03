@@ -763,7 +763,8 @@ operands: .res $100
 ; IN:
 ;   - zp::line: pointer to the expression to parse
 ; OUT:
-;   - expr::rpnlist a list of tokens for evaluation (in RPN format)
+;   - .C:            set on error
+;   - expr::rpnlist: a list of tokens for evaluation (in RPN format)
 .export __expr_parse
 .proc __expr_parse
 @i=zp::expr+2
@@ -894,7 +895,7 @@ operands: .res $100
 	sec
 @ret:	rts
 
-;------------------
+;-------------------------------------------------------------------------------
 ; isterminator returns .Z set if the character in .A is
 ; one that should end the evaluation of the expression
 @isterminator:
@@ -907,14 +908,14 @@ operands: .res $100
 	cmp #','
 :	rts
 
-;------------------
+;-------------------------------------------------------------------------------
 @popop:
 	dec @num_operators
 	ldx @num_operators
 	lda @operators,x
 	rts
 
-;------------------
+;-------------------------------------------------------------------------------
 @pushop:
 	ldx @num_operators
 	cpx #MAX_OPERATORS
@@ -927,7 +928,7 @@ operands: .res $100
 	inc @num_operators
 	rts
 
-;------------------
+;-------------------------------------------------------------------------------
 @priority:
 	ldy #@num_prios
 :	cmp @priochars-1,y
@@ -944,7 +945,7 @@ operands: .res $100
 @prios:	    .byte  1,   1,   2,   2,   3,   4,   5,   3,   3
 @num_prios=*-@prios
 
-;------------------
+;-------------------------------------------------------------------------------
 ; appends the operands involved in the evaluation followed by the operation
 ; to the RPN result
 ; returns the evaluation of the operator in .A on the operands @val1 and @val2
@@ -974,7 +975,7 @@ operands: .res $100
 @evaldone:
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; append .XY (token type in .A) to the RPN list result
 @appendval:
 	cmp #TOK_PC
@@ -1027,14 +1028,16 @@ operands: .res $100
 	CALLMAIN lbl::find
 	bcc :+
 
-	; failed to lookup symbol ID, check if pass 1
+	; failed to lookup symbol ID, check if verifying or pass 1
+	ldx zp::verify
+	bne @dummy
 	ldx zp::pass
 	cpx #$02
 	bcs @done
 
-	ldx #$01
+@dummy:	ldx #$01
 	stx @mode	; default to ABS mode
-	bcc @updateline	; proceed with dummy ID
+	bne @updateline	; proceed with dummy ID
 
 :	stxy @id
 	CALLMAIN lbl::addrmode
