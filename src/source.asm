@@ -403,12 +403,13 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	php
 	lda @names
 	clc
-	adc #16
+	adc #MAX_BUFFER_NAME_LEN
 	sta @names
 	bcc :+
 	inc @names+1
 :	plp
 	bne @l0
+
 	lda @cnt
 	clc		; flag as FOUND
 @notfound:

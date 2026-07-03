@@ -82,9 +82,9 @@ numerrs: .byte 0
 
 	lda errfileids,x
 	jsr dbg::loadfile	; load the file containing the error
+	pla			; restore index
 	bcs :+			; if failed to load file -> continue
 
-	pla			; restore index
 	tax
 
 	ldy errlineshi,x

@@ -543,7 +543,7 @@ blank   = scr::blank
 	jmp @enter_iface
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LOAD_FILE
 ; Loads the file (in the editor) for the given filename
 ; IN:
@@ -553,10 +553,12 @@ blank   = scr::blank
 .export __debug_load_file
 .proc __debug_load_file
 	jsr dbgi::get_filename
-	jmp edit::load
+	bcc :+
+	rts
+:	jmp edit::load
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GOTO PC
 ; Navigates the editor to the line that corresponds to the address where the
 ; debugger is currently at in the user program.
@@ -566,7 +568,7 @@ blank   = scr::blank
 
 	; fall through to __debug_gotoaddr
 
-;******************************************************************************
+;*******************************************************************************
 ; GOTOADDR
 ; Navigates the editor to the file/line associated with the give address
 ; IN:
@@ -592,7 +594,7 @@ blank   = scr::blank
 :	rts			; <- __debug_go
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GO
 ; Runs the user program until the next breakpoint or an NMI occurs
 .export __debug_go
@@ -608,7 +610,7 @@ blank   = scr::blank
 	jmp run::go
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; JUMP
 ; Runs the user program at the line the cursor is currently on
 .proc jump
@@ -621,7 +623,7 @@ blank   = scr::blank
 	jmp edit::sethighlight
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; STEP OUT
 ; Runs the user program until the next RTS is executed
 ; OUT:
@@ -657,7 +659,7 @@ blank   = scr::blank
 @done:	jmp reenable_irq
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; TRACE
 ; Puts the debugger into TRACE mode and traces until interrupted (breakpoint
 ; or user interrupt)
@@ -691,7 +693,7 @@ blank   = scr::blank
 	jmp reenable_irq
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; QUIT
 ; Prompts the user for confirmation to quit then exits the debugger upon
 ; receiving it
@@ -721,7 +723,7 @@ blank   = scr::blank
 @abort:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; EDIT SOURCE
 ; Disable all views and reenable (almost) fullscreen editing
 .proc edit_source
@@ -731,7 +733,7 @@ blank   = scr::blank
 	jmp edit::resize
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; EDIT MEM
 ; Transfers control to the memory viewer/editor until the user exits it
 .proc edit_mem
@@ -749,7 +751,7 @@ blank   = scr::blank
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; EDIT BREAKPOINTS
 ; Transfers control to the breakpoint viewer/editor until the user exits it
 .proc edit_breakpoints
@@ -761,7 +763,7 @@ blank   = scr::blank
 	jmp brkpt::edit
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; EDIT WATCHES
 ; Transfers control to the watch viewer/editor until the user exits it
 .export __debug_edit_watches
@@ -773,7 +775,7 @@ blank   = scr::blank
 	jmp watch::edit
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SWAP USER MEM
 ; Command that swaps in the user program memory, waits for a keypress, and
 ; returns with the debugger's memory swapped back in
@@ -812,7 +814,7 @@ blank   = scr::blank
 	jmp unblank
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; PRINT TRACING
 ; Prints the "tracing" info
 .proc print_tracing
@@ -826,7 +828,7 @@ blank   = scr::blank
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; STEP OVER
 ; Runs the next instruction from the .PC and returns to the debug prompt.
 ; Unlike STEP, if the next instruction is a JSR, execution will continue
@@ -845,7 +847,7 @@ blank   = scr::blank
 @done:	jmp reenable_irq
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; STEP
 ; Runs the step command
 .export __debug_step
@@ -858,7 +860,7 @@ blank   = scr::blank
 	; fall through to reenable_irq
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; REENABLE IRQ
 ; Reenables the IRQ
 ; Flags are preserved (except .I, which is cleared)
@@ -870,7 +872,7 @@ blank   = scr::blank
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; STEP
 ; Runs the next instruction from the .PC and returns to the debug prompt.
 ; This works by inserting a BRK instruction after
@@ -893,7 +895,7 @@ blank   = scr::blank
 	ldxy sim::pc			; address of instruction
 	jsr sim::get_side_effects	; get state that will be clobbered/used
 
-;---------------------------------------
+;-------------------------------------------------------------------------------
 ; update watch values and mark them as no longer dirty
 	ldx watch::num
 	beq @step
@@ -918,7 +920,7 @@ blank   = scr::blank
 	dex
 	bne @l0
 
-;---------------------------------------
+;-------------------------------------------------------------------------------
 ; perform the step
 @step:
 .ifdef vic20
