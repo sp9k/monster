@@ -2830,7 +2830,6 @@ __edit_set_breakpoint:
 @update:
 	jsr home
 	jsr delete_to_end
-	jsr enter_insert
 
 @write: ; write .udg to the source buffer
 	jsr text::bufferon
@@ -2847,23 +2846,27 @@ __edit_set_breakpoint:
 	sta @cnt
 
 @l0:	lda #'$'
-	jsr insert
+	jsr src::insert
 
+	ldx @cnt
 	lda @udg,x
 	jsr util::hextostr
+	stx @save
 	tya
-	jsr insert
+	jsr src::insert
 	lda @save
-	jsr insert
+	jsr src::insert
 
-	cpx #$07
+	inc @cnt
+	lda @cnt
+	cmp #$08
 	beq @done
 	lda #','
-	jsr insert
-	inx
-	bpl @l0		; branch always
+	jsr src::insert
+	jmp @l0
 
 @done:	jsr text::bufferoff
+	jsr refresh_line
 	jmp draw_active_line
 @ret:	rts
 .PUSHSEG

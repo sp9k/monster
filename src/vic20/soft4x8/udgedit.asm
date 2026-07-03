@@ -796,7 +796,7 @@ plot3:	lda #$03
 ;  - .A: the binary value
 ;  - .C: set if no value could be parsed (.X/.Y contains invalid hex digit)
 .proc parsehex
-@byte=r4
+@byte=zp::util
 	tya
 	jsr @tohex
 	asl
@@ -966,7 +966,7 @@ plot3:	lda #$03
 .proc init_mc
 @color=r0
 	; enable multicolor for all cells (including border (the -1))
-	ldxy #(COLMEM_ADDR + (((CANVAS_Y-1)/16)*((BITMAP_WIDTH+8)/8) + (CANVAS_X/8)-1))
+	ldxy #COLMEM_ADDR+((CANVAS_Y-1)/16)*((BITMAP_WIDTH+8)/8)+(CANVAS_X/8)-1
 	stxy @color
 
 	ldx #(CANVAS_HEIGHT/16)+2
