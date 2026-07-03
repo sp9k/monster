@@ -3501,7 +3501,6 @@ goto_buffer:
 	rts
 .endproc
 
-
 ;******************************************************************************
 ; FMT LINE
 ; Attempts to compile the line entered in (mem::linebuffer)

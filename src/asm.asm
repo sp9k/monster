@@ -685,11 +685,18 @@ __asm_tokenize_pass1 = __asm_tokenize
 	stx opcode	; save the opcode
 	lda #ASM_OPCODE
 	sta resulttype
-	bne @getopws	; branch always
+	jne @getopws	; branch always
 
 ; check if the line contains a macro
 @macro:	ldxy zp::line
-	CALL FINAL_BANK_MACROS, mac::get
+	lda zp::verify
+	beq :+
+	; if verifying, check if the line looks like a macro invocation
+	CALL FINAL_BANK_MACROS, mac::isvalid
+	bcs @chklabels
+	rts			; if line looks like a valid macro, allow it
+
+:	CALL FINAL_BANK_MACROS, mac::get
 	bcs @chklabels		; if not macro, skip
 
 	pha			; save macro id

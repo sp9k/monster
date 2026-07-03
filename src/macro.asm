@@ -1,8 +1,10 @@
 .include "asm.inc"
+.include "codes.inc"
 .include "config.inc"
 .include "ctx.inc"
 .include "draw.inc"
 .include "errors.inc"
+.include "expr.inc"
 .include "key.inc"
 .include "keycodes.inc"
 .include "labels.inc"
@@ -22,6 +24,8 @@
 .export macros
 
 .import __MACROBSS_LOAD__
+
+MAX_MACRO_NAME_LEN = 16
 
 ;*******************************************************************************
 .segment "SHAREBSS"
@@ -815,5 +819,155 @@ MODE_DEF  = 1
 	cmp #$6a	; 'j'
 	beq :+
 	cmp #K_DOWN
+:	rts
+.endproc
+
+;*******************************************************************************
+; IS VALID
+; Checks if the given string is a valid macro name
+; IN:
+;  - .XY: the address of the label
+; OUT:
+;  - .C: set if the label is NOT valid
+.export __mac_isvalid
+.proc __mac_isvalid
+	lda zp::line
+	pha
+	lda zp::line+1
+	pha
+	stxy zp::line
+	ldy #$00
+
+; first character must be a letter or '@'
+@l0:	lda (zp::line),y
+	iny
+	jsr @iswhitespace
+	beq @l0
+
+	; check first non whitespace char
+	cmp #'@'
+	beq @cont
+	cmp #'a'
+	bcc @err
+	cmp #'Z'+1
+	bcs @err
+
+	; make sure string is not an opcode (opcodes are not valid macros)
+	CALLMAIN asm::isopcode
+	bcc @err
+
+	; following characters must be between '0' and 'Z'
+@cont:	ldx #$00
+@l1:	inx
+	cpx #(MAX_MACRO_NAME_LEN/2)+1
+	bcs @toolong
+	lda (zp::line),y
+	jsr @is_separator
+	beq @params
+	cmp #'0'
+	bcc @err
+	cmp #'Z'+1
+	iny
+	bcc @l1
+@err:	lda #ERR_ILLEGAL_LABEL
+	skw
+@toolong:
+	lda #ERR_LABEL_TOO_LONG
+	bcs @done		; branch always
+
+@params:
+	; now validate that the operand(s) are all valid
+	tya
+	clc
+	adc zp::line
+	sta zp::line
+	bcc :+
+	inc zp::line+1
+:	jsr @process_ws
+	ldy #$00
+	lda (zp::line),y
+	jsr @is_end_of_line
+	beq @ok
+	CALLMAIN expr::eval
+	bcs @done
+
+	; if there is another arg, it must be separated by comma
+	jsr @process_ws
+	ldy #$00
+	lda (zp::line),y
+	jsr @is_end_of_line
+	beq @ok			; no more args -> done
+	cmp #','
+	bne :+			; no comma -> err
+	incw zp::line
+	bne :-			; comma found, check next param
+
+:	sec
+	skb			; return error
+@ok:	clc
+@done:	; restore zp::line
+	pla
+	sta zp::line+1
+	pla
+	sta zp::line
+	lda #ASM_MACRO
+	rts
+
+;-------------------------------------------------------------------------------
+@process_ws:
+	ldy #$00
+@l2:	lda (zp::line),y
+	beq :+			; if end of line, we're done
+	bmi @skip		; skip non-printing chars
+	jsr @iswhitespace
+	bne :+			; if not space, we're done
+@skip:	incw zp::line
+	bne @l2
+:	rts
+
+;-------------------------------------------------------------------------------
+@is_end_of_line:
+	cmp #';'
+	beq :+
+	cmp #$0d
+	beq :+
+	cmp #$00
+:	rts
+
+;-------------------------------------------------------------------------------
+@is_separator:
+@xsave=zp::util+2
+	stx @xsave
+	cmp #':'
+	beq @yes
+	jsr @is_null_return_space_comma_closingparen_newline
+	bne :+
+@yes:	rts
+
+:	ldx #@numops-1
+:	cmp @ops,x
+	beq @end
+	dex
+	bpl :-
+@end:	php
+	ldx @xsave
+	plp
+	rts
+@ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', '<', '>'
+@numops=*-@ops
+
+;-------------------------------------------------------------------------------
+@iswhitespace:
+	.include "inline/is_ws.asm"
+
+;-------------------------------------------------------------------------------
+@is_null_return_space_comma_closingparen_newline:
+	cmp #$00
+	beq @done
+	jsr @iswhitespace
+	beq :+
+	cmp #','
+	beq :+
+	cmp #')'
 :	rts
 .endproc
