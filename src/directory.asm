@@ -108,6 +108,9 @@ HEIGHT = SCREEN_HEIGHT-2
 ; The max supported by the 1541 is 144 and this routine could easily be
 ; modified to support as many.
 ; It could also easily be modified to support more (e.g. for the 1581)
+; OUT:
+;   - .C: set on error
+;   - .A: error code (on error)
 .export __dir_view
 .proc __dir_view
 @line=r8
@@ -228,7 +231,8 @@ HEIGHT = SCREEN_HEIGHT-2
 @key:	jsr key::waitch
 	cmp #K_QUIT
 	bne @checkdown
-@exit:  jmp scr::restore
+@exit:  jsr scr::restore
+	RETURN_OK
 
 ; check the arrow keys (used to select a file)
 @checkdown:

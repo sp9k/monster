@@ -5421,7 +5421,10 @@ __edit_gotoline:
 .proc dirview
 	jsr scr::save
 	jsr scr::blank
-	jmp dir::view
+	jsr dir::view
+	bcc :+
+	jmp report_drive_error
+:	rts
 .endproc
 
 ;*******************************************************************************
