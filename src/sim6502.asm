@@ -185,6 +185,8 @@ msave: .byte 0
 ;*******************************************************************************
 ; STEP
 ; Runs the next instruction
+; NOTE: sim::get_side_effects MUST be called before calling this function
+;       to cache __sim_op/__sim_operand
 ; IN:
 ;  - .XY: the address of the current instruction
 ;  - .A:  the size of the current instruction
@@ -320,25 +322,13 @@ msave: .byte 0
 	sta __sim_at_brk		; clear BRK flag
 	sta __sim_vital_addr_clobbered	; clear dangerous write flag
 
-	; get the opcode
-	ldxy @op
-	jsr vmem::load
+	; set @opcode and @operand from cached value (from get_side_effects)
+	lda __sim_op
 	sta @opcode
-	sta __sim_op
-
-	; get the operand (LSB)
-	ldxy @op
-	lda #$01
-	jsr vmem::load_off
+	lda __sim_operand
 	sta @operand
-	sta __sim_operand
-
-	; operand MSB
-	ldxy @op
-	lda #$02
-	jsr vmem::load_off
+	lda __sim_operand+1
 	sta @operand+1
-	sta __sim_operand+1
 
 ;------------------
 ; if we're writing, check if it is safe to do so to the effective addr
@@ -609,10 +599,11 @@ msave: .byte 0
 ;  - .A:          the size of the instruction
 ;  - sim::opmode: the address modes for the instruction (see asm::disassemble)
 ; OUT:
-;  - __sim_effective_addr: holds the address of the byte that will be
-;                          loaded/stored
-;  - __sim_affected:       stores the flags with the CPU/mem state the operation
-;                          affects
+;  - __sim_effective_addr:   holds address of the byte that will be
+;                            loaded/stored
+;  - __sim_affected:         stores the flags with the CPU/mem state the
+;                            operation affects
+;  - __sim_op/__sim_operand: cached opcode/operand bytes
 .export __sim_get_side_effects
 .proc __sim_get_side_effects
 @instruction=r2
@@ -627,6 +618,7 @@ msave: .byte 0
 	ldxy @instruction
 	jsr vmem::load			; opcode
 	sta @opcode
+	sta __sim_op			; cache for sim::step
 
 	; if 0 byte opcode (no operand), either BRK, PHA, PHP or
 	; instruction doesn't write to RAM
@@ -673,6 +665,7 @@ msave: .byte 0
 	ldxy @instruction
 	jsr vmem::load			; operand (1st byte)
 	sta @target
+	sta __sim_operand		; cache for sim::step
 
 	lda #$00
 	ldx @opsz
@@ -682,6 +675,7 @@ msave: .byte 0
 	ldxy @instruction
 	jsr vmem::load			; operand (2nd byte)
 :	sta @target+1
+	sta __sim_operand+1		; cache for sim::step
 
 @get_affected:
 	; get the side-effects for this operation
@@ -888,7 +882,7 @@ msave: .byte 0
 ;   - .C: set if the address is not safe to write to
 .proc is_write_safe
 .ifdef vic20
-	; on C64, disallow writes to IO2/3 ($9800-$9fff)
+	; on Vic-20, disallow writes to IO2/3 ($9800-$9fff)
 	cpy #$98
 	bcc :+
 	cpy #$a0
