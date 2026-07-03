@@ -168,6 +168,7 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	lda #$00
 	sta asm::mode
 	sta zp::cury
+	sta text::statusfmt
 	jsr gotoindex
 
 	; reset assembly state
@@ -2802,11 +2803,11 @@ __edit_set_breakpoint:
 ; UDG_EDIT
 ; Activates the UDG character editor module
 .proc udgedit
+.ifdef vic20
 @cnt=zp::editortmp
 @save=zp::editortmp+1
 @result=r7
-@udg=r8
-.ifdef vic20
+@udg=r8			; written to by udg::edit
 	pushcur
 	jsr scr::save
 	inc text::statusfmt

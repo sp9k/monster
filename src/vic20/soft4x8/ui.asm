@@ -44,7 +44,11 @@ STATUS_COL=0		; start column for status line
 	dex
 	bpl @clr
 
-	lda zp::srcx
+	lda text::statusfmt
+	beq @srcx
+@scrx:	lda zp::curx
+	skw
+@srcx:	lda zp::srcx
 	jsr util::todec8
 
 	; display the column
