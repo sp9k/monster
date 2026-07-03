@@ -966,11 +966,11 @@ plot3:	lda #$03
 .proc init_mc
 @color=r0
 	; enable multicolor for all cells (including border (the -1))
-	ldxy #(COLMEM_ADDR + ((CANVAS_Y/16 - 1)*(BITMAP_WIDTH/8) + (CANVAS_X/8)-1))
+	ldxy #(COLMEM_ADDR + (((CANVAS_Y-1)/16)*((BITMAP_WIDTH+8)/8) + (CANVAS_X/8)-1))
 	stxy @color
 
 	ldx #(CANVAS_HEIGHT/16)+2
-@l0:	ldy #(CANVAS_WIDTH/8)-1+2	; +1 for border
+@l0:	ldy #(CANVAS_WIDTH/8)+2		; +1 for border
 @l1:	lda (@color),y
 	eor #$08
 	sta (@color),y
@@ -978,7 +978,7 @@ plot3:	lda #$03
 	bpl @l1
 	lda @color
 	clc
-	adc #(BITMAP_WIDTH/8)
+	adc #((BITMAP_WIDTH+8)/8)
 	sta @color
 	bcc :+
 	inc @color+1
