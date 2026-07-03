@@ -681,7 +681,7 @@ blank   = scr::blank
 	lda stop_tracing	; check if user interrupted trace
 	bne @done
 
-	jsr step	; run the next STEP
+	jsr step		; run the next STEP
 	bcs @done
 
 	TRACE_ON		; reinstall user interrupt
@@ -892,7 +892,6 @@ blank   = scr::blank
 	inc sim::illegal	; flag that we couldn't disassemble the instruction
 
 @ok:	pha				; save instruction size
-	ldxy sim::pc			; address of instruction
 	jsr sim::get_side_effects	; get state that will be clobbered/used
 
 ;-------------------------------------------------------------------------------

@@ -16,6 +16,8 @@
 .import __asm_linenum
 .import __asm_is_opcode
 .import __asm_type_to_mode
+.import __asm_raw_opcode
+.import __asm_raw_operand
 
 .scope asm
 	disassemble    = __asm_disassemble
@@ -24,6 +26,8 @@
 	linenum        = __asm_linenum
 	mode           = __asm_mode
 	origin         = __asm_origin
+	opcode         = __asm_raw_opcode
+	operand        = __asm_raw_operand
 	pcset          = __asm_pcset
 	reset          = __asm_reset
 	setpc          = __asm_set_pc

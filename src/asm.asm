@@ -113,6 +113,13 @@ SEG_BSS  = 2	; flag for BSS segment (all data must be 0, PC not updated)
 ifstack:   .res MAX_IFS	; contains TRUE/FALSE values for the active IF blocks
 ifstacksp: .byte 0	; stack pointer to "if" stack
 
+; Opcode/operand values captured when asm::disassemble is called.
+; These are cached here for the simulator to avoid refetching unnecessarily.
+.export __asm_raw_opcode
+.export __asm_raw_operand
+__asm_raw_opcode:  .byte 0
+__asm_raw_operand: .word 0
+
 .segment "SHAREBSS"
 
 ;*******************************************************************************
@@ -2519,14 +2526,17 @@ __asm_include:
 	stxy @opaddr		; opcode
 	jsr vmem::load
 	sta opcode
+	sta __asm_raw_opcode
 	ldxy @opaddr		; operand
 	lda #$01
 	jsr vmem::load_off
 	sta operand
+	sta __asm_raw_operand
 	ldxy @opaddr		; operand byte 2
 	lda #$02
 	jsr vmem::load_off
 	sta operand+1
+	sta __asm_raw_operand+1
 	pla			; restore nostr flag
 
 	; fall through to disasm
@@ -2591,12 +2601,9 @@ __asm_include:
 	cmp #$20	; JSR
 	bne @implied_
 
-	lda #' '
-	jsr @appendch
-
 	lda #MODE_ABS
 	sta @modes
-	jmp @absolute
+	jmp @cont
 
 @implied_:
 	lda #$00
@@ -2643,6 +2650,19 @@ __asm_include:
 	bpl :-
 
 @get_branch_target:
+	lda #MODE_ABS
+	sta @modes
+
+	lda @nostr
+	beq @render_target	; if rendering, continue
+
+	; if not redering, no need to compute branch target -> return
+	ldx @modes
+	lda #$02
+	clc
+	rts
+
+@render_target:
 	; calculate target address PC+2+operand
 	; sign extend the operand
 	lda @operand
@@ -2667,8 +2687,6 @@ __asm_include:
 	lda @operand+1
 	adc #$00
 	sta @operand+1
-	lda #MODE_ABS
-	sta @modes
 	jsr @cont 	; @operand now contains absolute address, render it
 	lda #$02	; size is 2
 	rts
@@ -2749,7 +2767,10 @@ __asm_include:
 	ldx @modes
 	RETURN_OK
 
-@cont:  ; add a space before operand
+@cont:	lda @nostr
+	jne @done
+
+	; add a space before operand
 	lda #' '
 	jsr @appendch
 

@@ -6,6 +6,7 @@
 ; next instruction that will be executed as.
 ;*******************************************************************************
 
+.include "asm.inc"
 .include "asmflags.inc"
 .include "errors.inc"
 .include "macros.inc"
@@ -322,7 +323,7 @@ msave: .byte 0
 	sta __sim_at_brk		; clear BRK flag
 	sta __sim_vital_addr_clobbered	; clear dangerous write flag
 
-	; set @opcode and @operand from cached value (from get_side_effects)
+	; set @opcode and @operand from the cached values (from get_side_effects)
 	lda __sim_op
 	sta @opcode
 	lda __sim_operand
@@ -330,7 +331,7 @@ msave: .byte 0
 	lda __sim_operand+1
 	sta @operand+1
 
-;------------------
+;-------------------------------------------------------------------------------
 ; if we're writing, check if it is safe to do so to the effective addr
 @chkaddr:
 	lda __sim_affected
@@ -342,7 +343,7 @@ msave: .byte 0
 	sec			; flag error
 	rts
 
-;------------------
+;-------------------------------------------------------------------------------
 ; check if opcode to execute will JAM the CPU
 @chkjam:
 	lda @opcode
@@ -551,7 +552,7 @@ msave: .byte 0
 	adc #$00
 	sta __sim_pc+1
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @step_handled:
 	; eat return address
 	pla
@@ -564,7 +565,7 @@ msave: .byte 0
 	clc
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; IN:  - .A: the opcode to check if JAM
 ; OUT: - .Z: set if the instruction is a JAM
 @isjam:
@@ -595,9 +596,11 @@ msave: .byte 0
 ; This essentially involves checking if the instruction accesses any RAM and,
 ; if it does, settting __sim_effective_addr to the address that will be affected
 ; IN:
-;  - .XY:         address of the binary instruction
 ;  - .A:          the size of the instruction
 ;  - sim::opmode: the address modes for the instruction (see asm::disassemble)
+;  - asm::opcode/asm::operand: opcode/operand bytes of the instruction, as
+;    fetched by the asm::disassemble call that MUST have already run for
+;    this same instruction (see debug.asm::step)
 ; OUT:
 ;  - __sim_effective_addr:   holds address of the byte that will be
 ;                            loaded/stored
@@ -606,17 +609,12 @@ msave: .byte 0
 ;  - __sim_op/__sim_operand: cached opcode/operand bytes
 .export __sim_get_side_effects
 .proc __sim_get_side_effects
-@instruction=r2
 @opsz=r4
 @target=r5
 @opcode=r7
-@offset=zp::bankval
-	stxy @instruction
 	sta @opsz
-	pha
 
-	ldxy @instruction
-	jsr vmem::load			; opcode
+	lda asm::opcode
 	sta @opcode
 	sta __sim_op			; cache for sim::step
 
@@ -625,8 +623,8 @@ msave: .byte 0
 	; We don't emulate BRK because it is used by the debugger to
 	; maintain control of the program (it is implicitly
 	; treated as an instruction written for and by the debugger)
-	pla			; restore instruction size
-	cmp #$02		; if there's an operand
+	lda @opsz		; if there's an operand
+	cmp #$02
 	bcs @cont		; continue
 
 @check_pha_php:
@@ -659,11 +657,8 @@ msave: .byte 0
 	sta __sim_affected
 	rts			; done
 
-	; save the debugger's contents at the @instruction address
-@cont:	; get the instruction opcode/operand at the @instruction address
-	incw @instruction
-	ldxy @instruction
-	jsr vmem::load			; operand (1st byte)
+@cont:	; read the operand (already fetched by asm::disassemble)
+	lda asm::operand
 	sta @target
 	sta __sim_operand		; cache for sim::step
 
@@ -671,9 +666,7 @@ msave: .byte 0
 	ldx @opsz
 	cpx #$03
 	bcc :+
-	incw @instruction
-	ldxy @instruction
-	jsr vmem::load			; operand (2nd byte)
+	lda asm::operand+1
 :	sta @target+1
 	sta __sim_operand+1		; cache for sim::step
 
@@ -948,7 +941,7 @@ side_effects_tab:
 .byte $00			; ---
 .byte OP_STACK|OP_STORE		; $08 PHP
 .byte OP_REG_A|OP_FLAG		; $09 ORA #
-.byte OP_REG_A|OP_FLAG		; ASL A
+.byte OP_REG_A|OP_FLAG		; $0a ASL A
 .byte $00			; ---
 .byte $00			; ---
 .byte OP_LOAD|OP_REG_A|OP_FLAG	; $0d ORA abs
@@ -1019,8 +1012,8 @@ side_effects_tab:
 .byte OP_LOAD|OP_STORE|OP_FLAG 		; $46 LSR zpg
 .byte $00				; ---
 .byte OP_STACK|OP_STORE			; $48 PHA
-.byte OP_REG_A				; $49 EOR #
-.byte OP_REG_A                  	; $4a LSR A
+.byte OP_REG_A|OP_FLAG			; $49 EOR #
+.byte OP_REG_A|OP_FLAG          	; $4a LSR A
 .byte $00				; ---
 .byte OP_PC				; $4c JMP abs
 .byte OP_LOAD|OP_REG_A|OP_FLAG		; $4d EOR abs
@@ -1058,9 +1051,9 @@ side_effects_tab:
 .byte OP_REG_A|OP_FLAG		; $69 ADC #
 .byte OP_REG_A|OP_FLAG          ; $6a ROR A
 .byte $00			; ---
-.byte OP_PC|OP_LOAD		; $4c JMP (ind)
-.byte OP_LOAD|OP_REG_A|OP_FLAG	; $4d ADC abs
-.byte OP_LOAD|OP_STORE|OP_FLAG  ; $4e ROR abs
+.byte OP_PC|OP_LOAD		; $6c JMP (ind)
+.byte OP_LOAD|OP_REG_A|OP_FLAG	; $6d ADC abs
+.byte OP_LOAD|OP_STORE|OP_FLAG  ; $6e ROR abs
 .byte $00			; ---
 
 ; $7-
@@ -1148,7 +1141,7 @@ side_effects_tab:
 .byte OP_REG_A|OP_LOAD|OP_FLAG	; $b9 LDA abs,y
 .byte OP_REG_X|OP_FLAG          ; $ba TSX
 .byte $00			; ---
-.byte OP_LOAD|OP_REG_Y|OP_FLAG	; $bc LDY abs,y
+.byte OP_LOAD|OP_REG_Y|OP_FLAG	; $bc LDY abs,x
 .byte OP_LOAD|OP_REG_A|OP_FLAG	; $bd LDA abs,x
 .byte OP_LOAD|OP_REG_X|OP_FLAG	; $be LDX abs,y
 .byte $00			; ---
@@ -1181,12 +1174,12 @@ side_effects_tab:
 .byte OP_LOAD|OP_STORE|OP_FLAG  ; $d6 DEC zpg,x
 .byte $00			; ---
 .byte OP_FLAG               	; $d8 CLD
-.byte OP_REG_A|OP_STORE|OP_FLAG	; $d9 CMP abs,y
+.byte OP_LOAD|OP_FLAG		; $d9 CMP abs,y
 .byte $00			; ---
 .byte $00			; ---
 .byte $00			; ---
 .byte OP_LOAD|OP_FLAG		; $dd CMP abs,x
-.byte OP_LOAD|OP_STORE|OP_FLAG	; $de DEC abs,y
+.byte OP_LOAD|OP_STORE|OP_FLAG	; $de DEC abs,x
 .byte $00			; ---
 
 ; $E-
@@ -1209,7 +1202,7 @@ side_effects_tab:
 
 ; $F-
 .byte OP_PC                     ; $f0 BEQ rel
-.byte OP_LOAD|OP_FLAG|OP_FLAG	; $f1 SBC ind,y
+.byte OP_LOAD|OP_REG_A|OP_FLAG	; $f1 SBC ind,y
 .byte $00			; ---
 .byte $00			; ---
 .byte $00			; ---
