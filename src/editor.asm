@@ -509,8 +509,7 @@ main:	jsr key::getch
 ; Pass 1
 ; do a pass on the source to simply get labels and basic debug info
 ; (# of lines and # of segments/file)
-@pass1:
-	lda #$01
+@pass1: lda #$01
 	jsr asm::startpass
 
 @pass1loop:

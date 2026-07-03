@@ -18,8 +18,8 @@
 ### TODO V1
 - [ ] Support .REP and .MAC in monitor
 - [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
-- [ ] get disk access working from BASIC
 - [ ] fix linking/object code generation for C64
+- [x] get disk access working from BASIC
 - [x] Fix unstable file mappings in debug info
 - [x] Don't generate errors for undefined macros
 - [x] Finish .BSS segment support (don't emit obj/relocation code for these)
