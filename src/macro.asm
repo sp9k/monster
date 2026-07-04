@@ -889,7 +889,10 @@ MODE_DEF  = 1
 	lda (zp::line),y
 	jsr @is_end_of_line
 	beq @ok
-	CALL FINAL_BANK_UDGEDIT, expr::parse
+	cmp #'#'
+	bne :+
+	incw zp::line		; skip '#' (macro params may be immediate)
+:	CALL FINAL_BANK_UDGEDIT, expr::parse
 	bcs @perr
 
 	; if there is another arg, it must be separated by comma

@@ -442,10 +442,9 @@ ENDOSPROC
 OSPROC __file_exists
 @file=r0
 	jsr __file_open_r
-	bcc :+
-	rts
+	bcs @ret
 
-:	sta @file
+	sta @file
 	tax
 	jsr krn::chkin		; CHKIN (file in .X now used as input)
 	jsr __file_readb	; read one byte
@@ -461,7 +460,8 @@ OSPROC __file_exists
 
 	pla
 	bne @done
-	RETURN_OK
+	clc			; ok
+@ret:	rts
 
 @done:	jmp __file_geterr
 ENDOSPROC
