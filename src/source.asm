@@ -752,8 +752,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ; BACKSPACE
 ; Deletes the character immediately before the current cursor position.
 ;
-; NOTE: srcx is updated but will NOT be correct if a newline has been deleted.
-; The caller must resynchronize the cursor in this case (see sync_x).
+; NOTE: srcx is resynchronized (via sync_x) if a newline is deleted.
 ;
 ; OUT:
 ;  - .A: the character that was deleted
@@ -815,11 +814,14 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 
 	jmp __src_backspace	; at end of buffer, BACKSPACE instead of DELETE
 
-@cont:	jsr __src_before_newl
+@cont:	jsr __src_before_newl	; .A = char that will be deleted
 	bne :+
 	jsr on_line_deleted
-:	incw poststartzp
+	lda #$0d		; deleted char was a newline
+:	pha
+	incw poststartzp
 	jsr __src_mark_dirty
+	pla			; restore deleted char
 	clc
 	rts
 
@@ -1020,6 +1022,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .proc __src_replace
 	pha
 	jsr __src_after_cursor
+	bcs :+			; if at end of buffer -> nothing to replace
 	cmp #$0d
 	beq :+
 	jsr __src_delete
@@ -1063,7 +1066,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ;  - .C: set if there is no character after the cursor
 .export __src_after_cursor
 .proc __src_after_cursor
-@xsave=r0
+@xsave=zp::util
 	jsr __src_end
 	beq @end
 	lda srcx
@@ -1071,10 +1074,13 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	jsr __src_next
 	pha
 	jsr __src_prev
+	lda @xsave	; restore srcx (clobbered if next/prev crossed a newline)
+	sta srcx
 	pla
 	RETURN_OK
 
-@end:	sec		; end of buffer
+@end:	lda #$00	; no character, return 0
+	sec		; end of buffer
 	rts
 .endproc
 

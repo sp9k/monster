@@ -1392,6 +1392,9 @@ cancel = enter_command
 	jsr refresh_line	; refresh linebuffer with new line's contents
 
 	; move cursor to first column on the new line
+	; src::home matters when the last line was deleted: the source cursor
+	; is left at the END of the previous line in that case
+	jsr src::home
 	jsr gotoindex0
 
 	lda #MODE_VISUAL_LINE
@@ -1516,7 +1519,6 @@ cancel = enter_command
 	jsr buff::lines_copied
 	bcs :+
 	jmp redraw_to_end_of_line
-	jmp src::left
 
 	; paste_buff will assume cursor should be moved to the end of the line
 	; where the paste ended, but VISUAL LINE pastes leave the source cursor
@@ -1544,7 +1546,7 @@ cancel = enter_command
 
 	jsr buff::lines_copied
 	bcs :+
-	jmp src::left
+	jmp @leftsync	; call src::left and re-sync physical cursor
 
 	; paste_buff will assume cursor should be moved to the end of the line
 	; where the paste ended, but VISUAL LINE pastes leave the source cursor
@@ -1557,7 +1559,9 @@ cancel = enter_command
 	jsr paste_buff
 	jsr buff::lines_copied
 	bcs @ret
-	jmp src::left
+@leftsync:
+	jsr src::left
+	jmp sync_cur		; re-sync physical cursor after src::left
 .endproc
 
 ;*******************************************************************************
@@ -1871,16 +1875,20 @@ cancel = enter_command
 	jsr buff::clear
 
 	; go to the end of the line and copy everything to the start of it
+	jsr src::pushp		; save source position to restore when done
 	jsr src::lineend
 
 ;--------------------------------------
 ; yy (yank line)
 @yankline:
+	lda #MODE_VISUAL_LINE
+	sta selection_type
 	jsr src::left
 	bcs @yydone
 	jsr buff::putch
 	bcc @yankline
 @yydone:
+	jsr src::popgoto	; restore source position (cursor is unmoved)
 	RETURN_OK
 
 ;--------------------------------------
@@ -2874,7 +2882,8 @@ __edit_set_breakpoint:
 
 @done:	jsr text::bufferoff
 	jsr refresh_line
-	jmp draw_active_line
+	jsr draw_active_line
+	jmp sync_cur
 @ret:	rts
 .PUSHSEG
 .RODATA
@@ -4013,7 +4022,9 @@ goto_buffer:
 	rts			; can't delete anything -> exit
 
 @ok:	; buffer the character that was deleted
+	pha			; save the deleted char
 	jsr sync_cur
+	pla			; restore deleted char
 	jsr buff::putch
 	lda #MODE_VISUAL
 	sta selection_type
