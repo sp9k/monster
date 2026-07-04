@@ -457,27 +457,35 @@ ret:     .word 0
 ; WRITE STEP
 ; Writes a step to the "step buffer" for execution
 ; IN:
-;   sim::op[0:2]: the instruction to write
+;   - sim::op[0:2]: the instruction to write
+;   - .X:           size of instruction to write
 ; OUT:
-;   STEP_EXEC_BUFFER: contains the instruction
+;   - STEP_EXEC_BUFFER: contains the instruction
 .export write_step
 .proc write_step
-@write_instruction:
-@sz=r2
-@cnt=r3
-	stx @sz
 
-	; copy the instruction to the execution buffer, appending
-	; NOPs as needed to fill the 3 byte space
-	ldx #$00
-@l0:	lda sim::op,x
-	cpx @sz
+	lda sim::op+0
+	sta STEP_EXEC_BUFFER+0
+	cpx #2
+	bcs :+
+	; if op size is 1, pad 2 bytes of NOPs
+	lda #$ea
+	sta STEP_EXEC_BUFFER+1
+	sta STEP_EXEC_BUFFER+2
+	rts
+
+:	lda sim::op+1
+	sta STEP_EXEC_BUFFER+1
+	cpx #3
 	bcc :+
-	lda #$ea		; NOP
-:	sta STEP_EXEC_BUFFER,x
-	inx
-	cpx #$03
-	bne @l0
+	; if op size is 3, fill out rest of buffer with operand
+	lda sim::op+2
+	sta STEP_EXEC_BUFFER+2
+	rts
+
+:	; else op size is 2, pad 1 extra NOP
+	lda #$ea
+	sta STEP_EXEC_BUFFER+2
 	rts
 .endproc
 

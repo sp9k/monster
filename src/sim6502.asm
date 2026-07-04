@@ -172,7 +172,6 @@ msave: .byte 0
 
 :	ldx save_sp
 	txs
-
 .ifdef ultimem
 	jsr ultim::reset_blk5
 .endif
@@ -323,7 +322,7 @@ msave: .byte 0
 	sta __sim_at_brk		; clear BRK flag
 	sta __sim_vital_addr_clobbered	; clear dangerous write flag
 
-	; set @opcode and @operand from the cached values (from get_side_effects)
+	; set @opcode and @operand to cached values (from get_side_effects)
 	lda __sim_op
 	sta @opcode
 	lda __sim_operand
@@ -348,7 +347,8 @@ msave: .byte 0
 @chkjam:
 	lda @opcode
 	jsr @isjam
-	bne @nojam
+	lda @opcode
+	bcc @nojam
 @jam:	inc __sim_jammed
 	ldxy __sim_pc		; return original PC (processor jammed)
 	sec			; flag error
@@ -367,8 +367,8 @@ msave: .byte 0
 	lda __sim_pc+1
 	adc #$00
 	sta MAPPED_ZP+$100,y	; store MSB of return address
-	decw __sim_reg_sp	; SP -= 2
-	decw __sim_reg_sp
+	dec __sim_reg_sp	; SP -= 2
+	dec __sim_reg_sp
 	lda @operand
 	sta __sim_pc
 	lda @operand+1
@@ -567,26 +567,20 @@ msave: .byte 0
 
 ;-------------------------------------------------------------------------------
 ; IN:  - .A: the opcode to check if JAM
-; OUT: - .Z: set if the instruction is a JAM
-@isjam:
-	ldx #@numjams-1
-:	cmp @jamops,x
-	beq @done	; if JAM, return (.Z is set)
-	dex
-	bpl :-
-	; .X=$ff (.Z=0)
-@done:	rts
-
-.ifndef ultimem
-.PUSHSEG
-.RODATA
-.endif
-@jamops:
-.byte $02, $12, $22, $32, $42, $52, $62, $72, $92, $B2, $D2, $F2
-@numjams=*-@jamops
-.ifndef ultimem
-.POPSEG
-.endif
+; OUT: - .C: set if the instruction is a JAM
+@isjam: and #$0f
+	cmp #$02
+	bne @not_jam		; lower nybble != 2 -> not JAM
+	lda @opcode
+	bpl @is_jam		; low nybble == 2 AND bit7=0 -> JAM
+	and #$10		; bit7=1: check bit4 ($92/$B2/$D2/$F2 are JAMs)
+	beq @not_jam		; bit4=0 ($82/$A2/$C2/$E2) not JAM
+@is_jam:
+	sec
+	rts
+@not_jam:
+	clc
+	rts
 .endproc
 
 ;*******************************************************************************

@@ -2004,7 +2004,7 @@ __obj_close_section = close_section
 @reloc_na: .byte "  relocation:  n/a",0
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GET SEGMENT NAME BY ID
 ; Returns the (object-local) name of the segment from its id
 ; IN:
@@ -2031,7 +2031,7 @@ __obj_close_section = close_section
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GET SEGMENT BY NAME
 ; Returns the ID of the segment from its name
 ; IN:
@@ -2145,7 +2145,7 @@ __obj_close_section = close_section
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; IS BSS
 ; Checks if the given TYPE represents a BSS segment (BSS or BSSZP)
 ; IN:
