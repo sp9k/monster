@@ -53,7 +53,6 @@
 ; CONSTANTS (see limits.inc for others)
 MAX_SECTIONS         = 8	; max number of memory sections per OBJ file
 MAX_OBJS             = 16	; max number of object files that may be used
-MAX_SECTION_NAME_LEN = 8	; max length of a single section name
 MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
 
 MAX_SYMBOL_INDEXES = $200	; max number of symbols that may be referenced
@@ -1486,7 +1485,7 @@ __obj_close_section = close_section
 	jsr krn::chrin
 	sta (@name),y
 	iny
-	cpy #MAX_SECTION_NAME_LEN
+	cpy #MAX_SEGMENT_NAME_LEN
 	bne @segname
 
 	; read OFFSET (or literal start address if ABS) for SEGMENT
@@ -1551,7 +1550,7 @@ __obj_close_section = close_section
 @next:	; move name pointer to next location
 	lda @name
 	clc
-	adc #MAX_SECTION_NAME_LEN
+	adc #MAX_SEGMENT_NAME_LEN
 	sta @name
 	bcc :+
 	inc @name+1

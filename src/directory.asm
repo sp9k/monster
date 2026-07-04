@@ -423,6 +423,9 @@ HEIGHT = SCREEN_HEIGHT-2
 	ldxy #strings::dir
 	jsr file::open_r_prg
 	bcs :+
+	ldxy #strings::dir
+	jsr file::exists
+	bcs :+
 	tax
 	pha
 	jsr krn::chkin
