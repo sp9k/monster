@@ -19,6 +19,9 @@ __str_noname: .byte "[no name]",0
 .export __str_nolabels
 __str_nolabels: .byte "no labels",0
 
+.export __str_nolog
+__str_nolog: .byte "no log",0
+
 .export __str_nomacros
 __str_nomacros: .byte "no macros",0
 

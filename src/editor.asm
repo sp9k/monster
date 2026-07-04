@@ -2342,7 +2342,8 @@ cancel = enter_command
 .proc show_log
 	lda log::written
 	bne :+
-	rts			; no log
+	ldxy #strings::nolog
+	jmp report_error
 
 :	lda #LOG_BUFFER
 	cmp src::activebuff	; is log already open?
