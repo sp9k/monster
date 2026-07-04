@@ -215,12 +215,12 @@ numerrs: .byte 0
 @found=r2
 @matchfile=r3
 @fileid=r4
+	jsr edit::currentfile
+	sta @fileid
+
 	ldxy #$ffff
 	stxy @min
 	stx @matchfile
-
-	jsr edit::currentfile
-	sta @fileid
 
 	ldx #$00
 	stx @found

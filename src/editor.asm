@@ -5403,7 +5403,7 @@ __edit_gotoline:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SYNC CUR
 ; Syncs the physical cursor with the source one
 .export sync_cur
@@ -5414,7 +5414,7 @@ __edit_gotoline:
 	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SET REPLACE CURSOR
 ; Sets the cursor to display to 'REPLACE' (used in a variety of modes).
 ; This cursor doesn't just affect how the cursor looks, it also affects where
@@ -5426,7 +5426,7 @@ __edit_gotoline:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; USE INSERT CURSOR
 ; Sets the cursor to display to 'INSERT' (used in INSERT mode).
 .proc use_insert_cursor

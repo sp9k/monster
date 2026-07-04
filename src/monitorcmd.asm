@@ -156,11 +156,7 @@ __mon_default_start_set: .byte 0
 ; IN:
 ;  - .XY: the parameters for the command
 .proc add_watch
-@addr=r8
-@mode=ra
-	lda #WATCH_LOAD|WATCH_STORE
-	sta @mode
-
+@addr=zp::debuggertmp
 	; evaluate the expression to get start address
 	jsr eval
 	bcs @err
@@ -179,7 +175,7 @@ __mon_default_start_set: .byte 0
 	stxy r0
 
 @set:	ldxy @addr
-	lda @mode
+	lda #WATCH_LOAD|WATCH_STORE
 	CALLMAIN watch::add		; add the watch
 	clc
 @err:	rts

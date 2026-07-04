@@ -56,12 +56,8 @@ offset = r7
 	beq @done
 	sta @cnt
 
-@l0:	lda text::insertmode
-	beq :+
-	jsr src::right
-	jmp @cont
-:	jsr src::right_rep
-@cont:	bcs @done
+@l0:	jsr src::right
+	bcs @done
 	dec @cnt
 	bne @l0
 	rts

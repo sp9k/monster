@@ -65,8 +65,8 @@ maxy: .byte 0
 ;  - .Y: the signed number of rows to move
 .export __cur_move
 .proc __cur_move
-@xdst=r2
-@ydst=r3
+@xdst=zp::util
+@ydst=zp::util+1
 	stx @xdst
 	sty @ydst
 	lda __cur_mode
@@ -102,6 +102,8 @@ maxy: .byte 0
 ;  .Y: the row to set the cursor to
 .export __cur_set
 .proc __cur_set
+@x=zp::util
+@y=zp::util+1
 	cpx maxx
 	bcc :+
 	ldx maxx
@@ -109,7 +111,7 @@ maxy: .byte 0
 :	cpx minx
 	bcs :+
 	ldx minx
-:	stx r2
+:	stx @x
 
 	cpy maxy
 	bcc :+
@@ -118,12 +120,11 @@ maxy: .byte 0
 :	cpy miny
 	bcs :+
 	ldy miny
-:	sty r3
+:	sty @y
 
 	jsr __cur_off
-
-	ldx r2
-	ldy r3
+	ldx @x
+	ldy @y
 	stx zp::curx
 	sty zp::cury
 	rts
