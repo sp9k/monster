@@ -29,6 +29,8 @@
 .import __str_linking
 .import __str_load
 .import __str_loading
+.import __str_nolabels
+.import __str_nomacros
 .import __str_noname
 .import __str_no_file
 .import __str_newl
@@ -89,6 +91,8 @@
 	memview_title           = __str_memview_title
 	newl                    = __str_newl
 	nofile                  = __str_no_file
+	nolabels                = __str_nolabels
+	nomacros                = __str_nomacros
 	noname                  = __str_noname
 	null                    = __str_null
 	pass1                   = __str_pass1

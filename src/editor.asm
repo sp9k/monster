@@ -2313,10 +2313,25 @@ cancel = enter_command
 .endproc
 
 ;*******************************************************************************
+; VIEW SYMBOLS
+; Enters the symbol viewer
+.proc view_symbols
+	lda lbl::num
+	bne :+
+	ldxy #strings::nolabels
+	jmp report_error
+:	jmp symview::enter
+.endproc
+
+;*******************************************************************************
 ; VIEW MACROS
 ; Enters the macro viewer
 .proc view_macros
-	JUMP FINAL_BANK_MACROS, mac::view
+	lda mac::num
+	bne :+
+	ldxy #strings::nomacros
+	jmp report_error
+:	JUMP FINAL_BANK_MACROS, mac::view
 .endproc
 
 ;*******************************************************************************
@@ -2419,7 +2434,7 @@ cancel = enter_command
 .define specialvecs ccleft, ccright, ccup, ccdown, \
 	home, \
 	command_asmdbg, show_buffers, refresh, \
-	symview::enter, view_macros, show_log, command_link, \
+	view_symbols, view_macros, show_log, command_link, \
 	close_buffer, new_buffer, set_breakpoint, jumpback, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
 	next_buffer, prev_buffer, udgedit, fmt_and_enter_command, go_basic, \
@@ -5308,6 +5323,16 @@ __edit_gotoline:
 ; Reports the error that was last read from the drive (iec::readerr)
 .proc report_drive_error
 	ldxy #mem::drive_err
+
+	; fall through to report_error
+.endproc
+
+;*******************************************************************************
+; REPORT ERROR
+; Reports a general error and wait for a keypress to erase it
+; IN:
+;   - .XY: address of string to report
+.proc report_error
 	jsr print_info
 	jmp key::waitch
 .endproc
