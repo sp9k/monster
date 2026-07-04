@@ -174,7 +174,7 @@ segments_sizelo:   .res MAX_SECTIONS
 __obj_segments_sizehi:
 segments_sizehi:   .res MAX_SECTIONS
 .export segments_type
-segments_type:    .res MAX_SECTIONS
+segments_type:     .res MAX_SECTIONS
 
 __obj_segments:
 segments: .res MAX_SEGMENT_NAME_LEN*MAX_SECTIONS ; name of target SEG
@@ -2196,7 +2196,7 @@ __obj_close_section = close_section
 .proc log_segments
 @i    = zp::link
 @buff = r0
-@name = $100
+@name = $110
 @numrel = zp::tmp10
 @numabs = zp::tmp12
 	; count number of ABS and number of REL segments
@@ -2277,7 +2277,7 @@ __obj_close_section = close_section
 	jsr __obj_get_segment_name_by_id
 	stxy @buff
 
-	ldy #MAX_SECTION_NAME_LEN-1
+	ldy #MAX_SEGMENT_NAME_LEN-1
 :	lda (@buff),y
 	sta @name,y
 	dey
@@ -2305,6 +2305,7 @@ __obj_close_section = close_section
 	bne @rel
 @done:	rts
 
+;-------------------------------------------------------------------------------
 @segments:  .byte ESCAPE_SPACING,15, "segments",0
 @abs_title: .byte "absolute segments:",0
 @abs_seg:   .byte "$", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
