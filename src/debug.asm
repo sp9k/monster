@@ -253,8 +253,10 @@ blank   = scr::blank
 	tax
 	pla
 	jsr dbgi::line2addr	; get address of breakpoint
+	bcc :+
+	ldxy #$ffff		; can't resolve line; flag with invalid address
 
-	; store the address for the breakpoint
+:	; store the address for the breakpoint
 	txa
 	ldx @cnt
 	sta __debug_breakpointslo-1,x
@@ -293,6 +295,8 @@ blank   = scr::blank
 	sta @brkaddr
 	lda breakpointshi,x
 	sta @brkaddr+1
+	cmp #$ff		; unresolved address (see init_breakpoints)?
+	beq @next		; if so, don't install
 
 	; get the opcode to save before we overwrite it with a BRK
 	ldxy @brkaddr
@@ -334,6 +338,8 @@ blank   = scr::blank
 	sta @addr
 	lda breakpointshi-1,x
 	sta @addr+1
+	cmp #$ff		; unresolved address (never installed)?
+	beq @next		; if so, skip it
 
 	; restore the opcode we replaced with a BRK
 	lda breaksave-1,x
@@ -674,7 +680,6 @@ blank   = scr::blank
 	rts
 
 :	jsr install_breakpoints
-	jsr print_tracing
 
 .ifdef ultimem
 	; swap user's memory in so that it is visible during the trace

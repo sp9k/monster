@@ -816,12 +816,12 @@ blockaddresseshi: .res MAX_FILES
 	bcs @next
 
 @checkstart:
-	lda addr+1
+	lda @line+1
 	cmp blocklinebase+1
 	bcc @next	; line < linebase, skip to the next block
 	beq :+
 	bcs @findaddr	; linebase <= line < (linebase+numlines), find address
-:	lda addr
+:	lda @line
 	cmp blocklinebase
 	bcs @findaddr	; linebase <= line < (linebase+numlines), find address
 

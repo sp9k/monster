@@ -2200,18 +2200,18 @@ h_jmp_abs:
 	lda #MODE_ABS
 	sta __sim_op_mode
 	lda #1
-	jsr read_pc                    ; read lo byte while __sim_pc still intact
+	jsr read_pc		; read lo byte while __sim_pc still intact
 	sta __sim_operand
-	sta r4                      ; stash lo in r4 - do NOT touch __sim_pc yet
+	sta r4			; stash lo in r4 - do NOT touch __sim_pc yet
 	lda #2
-	jsr read_pc			; read hi byte (uses original __sim_pc + 2)
+	jsr read_pc		; read hi byte (uses original __sim_pc + 2)
 	sta __sim_operand+1
 	sta __sim_pc+1
 	lda r4
 	sta __sim_pc
 	rts
 
-h_jmp_ind:                      ; 6502 page-boundary bug emulated
+h_jmp_ind:			; 6502 page-boundary bug emulated
 	lda #1
 	jsr read_pc
 	sta __sim_operand
@@ -2223,7 +2223,7 @@ h_jmp_ind:                      ; 6502 page-boundary bug emulated
 	ldxy r4
 	jsr vmem_load
 	sta __sim_pc
-	inc r4                      ; wraps to $00 if r4 was $FF (hardware bug)
+	inc r4			; wraps to $00 if r4 was $FF (hardware bug)
 	ldxy r4
 	jsr vmem_load
 	sta __sim_pc+1
@@ -2236,18 +2236,18 @@ h_jsr:
 	sta __sim_op_mode
 	lda #1
 	jsr read_pc
-	sta r4                      ; target lo
+	sta r4				; target lo
 	lda #2
 	jsr read_pc
-	sta r5                      ; target hi
+	sta r5				; target hi
 	; push return address (PC+2) - hi byte first
 	lda __sim_pc
 	clc
 	adc #2
-	sta r2                      ; (PC+2) lo
+	sta r2				; (PC+2) lo
 	lda __sim_pc+1
 	adc #0
-	sta r3                      ; (PC+2) hi
+	sta r3				; (PC+2) hi
 	lda r3
 	jsr vpush
 	lda r2
@@ -2280,12 +2280,12 @@ h_rts:
 h_rti:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
-	jsr vpull                   ; P
-	ora #$30                    ; bit5 (UNUSED) always 1; bit4 (BRK) == 1
+	jsr vpull			; P
+	ora #$30			; bit5 (UNUSED) always 1; bit4 (BRK) == 1
 	sta __sim_reg_p
-	jsr vpull                   ; PC lo
+	jsr vpull			; PC lo
 	sta __sim_pc
-	jsr vpull                   ; PC hi
+	jsr vpull			; PC hi
 	sta __sim_pc+1
 	rts
 
