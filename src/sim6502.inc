@@ -1,6 +1,4 @@
 .import __sim_affected
-.import __sim_count_cycles
-.import __sim_get_side_effects
 .import __sim_illegal
 .import __sim_next_pc
 .import __sim_step
@@ -20,6 +18,8 @@
 .import __sim_effective_addr
 .import __sim_stopwatch
 .import __sim_at_brk
+.import __sim_trace
+.import __sim_tracing
 .import __sim_via2
 .import __sim_vital_addr_clobbered
 
@@ -27,8 +27,6 @@
 	affected         = __sim_affected
 	at_brk           = __sim_at_brk
 	branch_taken     = __sim_branch_taken
-	count_cycles     = __sim_count_cycles
-	get_side_effects = __sim_get_side_effects
 	illegal          = __sim_illegal
 	jammed           = __sim_jammed
 	next_pc          = __sim_next_pc
@@ -36,6 +34,8 @@
 	operand          = __sim_operand
 	op_mode          = __sim_op_mode
 	step             = __sim_step
+	trace            = __sim_trace
+	tracing          = __sim_tracing
 
 	stopwatch      = __sim_stopwatch
 	effective_addr = __sim_effective_addr

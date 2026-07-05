@@ -90,9 +90,8 @@ saveblk1 = zp::banktmp+2
 	lda saveblk1
 	sta $9ff8
 
-	pla
-
 	ldy savey
+	pla
 	rts
 .endproc
 
@@ -127,7 +126,7 @@ BASE=$2000
 	ldy #$00
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; TRANSLATE
 ; returns the translated address based at BLK1 in .XY and its bank in .A
 ; bank0: $00-$0400, $1000-$2000, $9000-$9800 (internal)
@@ -167,7 +166,12 @@ BASE=$2000
 
 	cpy #>$9800
 	bcs :+
-@9000:	add16 #prog9000-$9000	; $9000-$9800 -> I/O
+	cpy #>$9400
+	bcs @9400
+@9000:	add16 #prog9000-$9000	; $9000-$93FF -> VIC/VIA I/O
+	lda #VMEM_IO_BANK
+	rts
+@9400:	add16 #prog9400-$9400	; $9400-$97FF -> color RAM
 	lda #VMEM_IO_BANK
 	rts
 
@@ -180,14 +184,23 @@ BASE=$2000
 	rts
 
 :	cpy #$c0		; in ROM?
-	bcc @expansion
+	bcs @rom
+
+@blk5:	; $a000-$bfff: BLK5 (bank 39)
+	tya
+	and #$1f		; offset within 8KB bank
+	clc
+	adc #$20		; add BLK1 base ($2000)
+	tay
+	lda #VMEM_BLK5_BANK
+	rts
 
 @rom:	; ROM doesn't need to be translated and will be read directly
 	lda #SIMRAM_00_BANK	; any bank (doesn't really matter)
 	rts
 
 @expansion:
-	; get most significant 3 bits to get the bank to use (BLK 1,2,3, or 5)
+	; get most significant 3 bits to get the bank to use (BLK 1,2,3)
 	tya
 	lsr
 	lsr

@@ -42,12 +42,7 @@
 
 BRK_HANDLER_TOP  = $8000
 
-.export STEP_HANDLER_ADDR
-.export STEP_EXEC_BUFFER
 .export TRAMPOLINE_ADDR
-.export STEP_HANDLER_ADDR
-
-STEP_HANDLER_ADDR = step_handler
 
 .segment "SHAREBSS"
 save_sp: .byte 0
@@ -454,42 +449,6 @@ ret:     .word 0
 .endproc
 
 ;******************************************************************************
-; WRITE STEP
-; Writes a step to the "step buffer" for execution
-; IN:
-;   - sim::op[0:2]: the instruction to write
-;   - .X:           size of instruction to write
-; OUT:
-;   - STEP_EXEC_BUFFER: contains the instruction
-.export write_step
-.proc write_step
-
-	lda sim::op+0
-	sta STEP_EXEC_BUFFER+0
-	cpx #2
-	bcs :+
-	; if op size is 1, pad 2 bytes of NOPs
-	lda #$ea
-	sta STEP_EXEC_BUFFER+1
-	sta STEP_EXEC_BUFFER+2
-	rts
-
-:	lda sim::op+1
-	sta STEP_EXEC_BUFFER+1
-	cpx #3
-	bcc :+
-	; if op size is 3, fill out rest of buffer with operand
-	lda sim::op+2
-	sta STEP_EXEC_BUFFER+2
-	rts
-
-:	; else op size is 2, pad 1 extra NOP
-	lda #$ea
-	sta STEP_EXEC_BUFFER+2
-	rts
-.endproc
-
-;******************************************************************************
 ; INTERRUPT HANDLERS
 .segment "INTS"
 interrupt_handlers:
@@ -518,67 +477,6 @@ brk_handler:
 	jmp dbg::reenter	; jmp nmi_edit (when installed for editor)
 brk_handler_size=*-brk_handler
 nmi_handler_size=*-nmi_handler
-
-;******************************************************************************
-; STEPHANDLER
-; The step handler runs a single instruction and returns to the
-; debugger.
-.import step_done
-step_handler:
-	; switch to USER bank
-	lda #VMEM_BLK1_BANK
-	sta $9ff8		; BLK1
-	lda #VMEM_BLK2_BANK
-	sta $9ffa		; BLK2
-	lda #VMEM_BLK3_BANK
-	sta $9ffc		; BLK3
-	lda #VMEM_BLK5_BANK
-	sta $9ffe		; BLK5
-
-	; set RAM123 and IO2/3 to RAM (r/w)
-	lda #VMEM_RAM123_BANK
-	sta $9ff4
-
-	; set BLK 1,2,3, and 5 to RAM (r/w)
-	lda #$ff
-	sta $9ff2
-
-	pla
-	sta @restore_a
-
-	pla			; get status flags
-	ora #$04		; set I flag
-	pha			; push altered status
-
-@restore_a=*+1
-	lda #$00		; SMC - restore A
-	plp			; restore altered status flags
-
-	; run the instruction
-STEP_EXEC_BUFFER:
-	nop
-	nop
-	nop
-
-	php			; save new status register
-	pha			; save .A
-
-	; switch back to DEBUGGER bank
-	lda #$00
-	sta $9ff4
-	lda #$01
-	sta $9ff8		; BLK1
-	lda #$02
-	sta $9ffa		; BLK2
-	lda #$03
-	sta $9ffc		; BLK3
-	lda #$04
-	sta $9ffe		; BLK5
-	lda #$55
-	sta $9ff2
-
-	pla			; restore .A
-	jmp step_done		; continue to finish up step
 
 ;******************************************************************************
 ; TRAMPOLINE

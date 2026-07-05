@@ -676,20 +676,20 @@ blank   = scr::blank
 :	jsr install_breakpoints
 	jsr print_tracing
 
+.ifdef ultimem
+	; swap user's memory in so that it is visible during the trace
+	jsr __debug_swap_in
+.endif
+
 @trace: ; step until a watch/breakpoint triggers or the user interrupts the
 	; trace
-	lda stop_tracing	; check if user interrupted trace
-	bne @done
+	TRACE_ON		; enable tracing to catch user interrupt
+	jsr sim::trace
 
-	jsr step		; run the next STEP
-	bcs @done
-
-	TRACE_ON		; reinstall user interrupt
-
-	lda sim::at_brk		; check if at a BRKpoint
-	beq @trace		; if not, continue tracing
-
-@done:  jsr uninstall_breakpoints
+.ifdef ultimem
+	jsr trace_done		; swap the user's memory back out
+.endif
+	jsr uninstall_breakpoints
 	jmp reenable_irq
 .endproc
 
@@ -881,19 +881,6 @@ blank   = scr::blank
 ;   - .C: set if we should stop tracing (e.g. if a watch was activated)
 .proc step
 @cnt=r0
-	lda #$00
-	sta sim::illegal
-
-	ldxy sim::pc		; get address of next instruction
-	lda #$01		; don't disassemble to string
-	jsr asm::disassemble	; disassemble it to get its size (BRK offset)
-	stx sim::op_mode
-	bcc @ok
-	inc sim::illegal	; flag that we couldn't disassemble the instruction
-
-@ok:	pha				; save instruction size
-	jsr sim::get_side_effects	; get state that will be clobbered/used
-
 ;-------------------------------------------------------------------------------
 ; update watch values and mark them as no longer dirty
 	ldx watch::num
@@ -925,27 +912,13 @@ blank   = scr::blank
 .ifdef vic20
 	sei
 .endif
-	pla			; get instruction size
-	ldxy sim::pc		; and address of instruction to-be-executed
-
 	jsr sim::step		; execute the STEP
-	bcc @countcycles	; if ok, continue
+	bcc @check_watches	; if ok, continue
 
 	; display the error explaining why we couldn't STEP
 	jsr safety_check
 	sec			; flag that traces should stop
 	rts
-
-@countcycles:
-	; count the number of cycles that the next instruction will take
-	jsr sim::count_cycles	; get the # of cycles for the instruction
-	clc
-	adc sim::stopwatch
-	sta sim::stopwatch
-	bcc @check_watches
-	inc sim::stopwatch+1
-	bne @check_watches
-	inc sim::stopwatch+2
 
 @check_watches:
 	lda sim::affected
@@ -1003,6 +976,9 @@ blank   = scr::blank
 ; This procedure is called when STEP (via step, trace, etc.) reads/writes to a
 ; memory location that is being watched
 .proc watch_triggered
+.ifdef ultimem
+	jsr trace_done		; if user memory is swapped in, swap it out
+.endif
 	; display the watch that was triggered
 	jsr ui::render_watch
 
@@ -1015,6 +991,9 @@ blank   = scr::blank
 ; IN:
 ;   - .XY: the message to print
 .proc print_msg
+.ifdef ultimem
+	jsr trace_done		; if user memory is swapped in, swap it out
+.endif
 	lda __debug_interface
 	beq @gui
 
@@ -1053,6 +1032,34 @@ blank   = scr::blank
 	jsr bsp::save_debug_state
 	jmp bsp::restore_prog_state
 .endproc
+
+;*******************************************************************************
+; TRACE DONE
+; If a TRACE is active (the user's memory is swapped in via __debug_trace),
+; swaps the user's memory back out, restores the debugger's screen state, and
+; reinitializes the debugger's IRQ (swap_in clobbers the VIA config).
+.ifdef ultimem
+.proc trace_done
+	pha
+	lda sim::tracing
+	beq @done		; no trace active; nothing to swap out
+
+	txa
+	pha
+	tya
+	pha
+
+	jsr __debug_swap_out	; save user state, restore debugger's
+	jsr irq::on		; restore the debugger's IRQ
+
+	pla
+	tay
+	pla
+	tax
+@done:	pla
+	rts
+.endproc
+.endif
 
 ;******************************************************************************
 ; SWAPOUT

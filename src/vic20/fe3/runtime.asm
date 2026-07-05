@@ -38,17 +38,9 @@ NMI_HANDLER_ADDR = BRK_HANDLER_TOP-brkhandler1_size
 BRK_HANDLER_ADDR = BRK_HANDLER_TOP-brkhandler1_size+5-1 ; 5 = sizeof NMI portion
 RTI_ADDR         = BRK_HANDLER_ADDR+3
 
-.export STEP_HANDLER_ADDR
-.export STEP_EXEC_BUFFER
-STEP_HANDLER_ADDR = NMI_HANDLER_ADDR-stephandler_size
-
-STEP_EXEC_BUFFER  = STEP_HANDLER_ADDR+16
-STEP_RESTORE_A    = STEP_EXEC_BUFFER-2
-
-TRAMPOLINE = STEP_HANDLER_ADDR - trampoline_size
+TRAMPOLINE = NMI_HANDLER_ADDR - trampoline_size
 TRAMPOLINE_ADDR = TRAMPOLINE+13
 .export TRAMPOLINE_ADDR
-.export STEP_HANDLER_ADDR
 
 .segment "NMI_HANDLER"
 .res 17 ;brkhandler1_size
@@ -158,7 +150,6 @@ TRAMPOLINE_ADDR = TRAMPOLINE+13
 .export __run_init
 .proc __run_init
 	jsr install_brk		; install the BRK/NMI handler
-	jsr install_step	; install the STEP handler
 	jmp install_trampoline
 .endproc
 
@@ -532,42 +523,6 @@ brkhandler2:
 brkhandler2_size=*-brkhandler2
 
 ;******************************************************************************
-; STEPHANDLER
-; The step handler runs a single instruction and returns to the
-; debugger.
-.import step_done
-stephandler:
-	; switch to USER bank
-	lda #FINAL_BANK_USER
-	SELECT_BANK_A
-	pla
-	sta STEP_RESTORE_A
-
-	pla			; get status flags
-	ora #$04		; set I flag
-	pha			; push altered status
-
-	lda #$00		; SMC - restore A
-	plp			; restore altered status flags
-
-	; run the instruction
-step_buffer:
-	nop
-	nop
-	nop
-
-	php
-	pha
-	sei			; disable IRQs
-
-	; switch back to DEBUGGER bank
-	lda #FINAL_BANK_MAIN
-	SELECT_BANK_A
-	pla
-	jmp step_done
-stephandler_size=*-stephandler
-
-;******************************************************************************
 ; TRAMPOLINE
 trampoline:
 	lda #FINAL_BANK_USER
@@ -581,66 +536,3 @@ trampoline:
 trampoline_size=*-trampoline
 
 .POPSEG
-
-;******************************************************************************
-; INSTALL STEP
-; Installs the STEP code at the top of the user and debug RAM
-; This code includes a buffer that switches to the user RAM, executes an
-; instruction there, switches back to the debugger RAM, and jumps back to the
-; debugger's "return from step" function to capture any changes that took place.
-.proc install_step
-@cnt=r0
-@dst=r2
-	ldxy #STEP_HANDLER_ADDR
-	stxy @dst
-	lda #stephandler_size-1
-	sta @cnt
-; copy the STEP handler to the user program and our RAM
-@l0:	ldy @cnt
-	lda stephandler,y
-	sta STEP_HANDLER_ADDR,y
-	sta zp::bankval
-	sty zp::bankoffset
-	ldxy @dst
-	lda #FINAL_BANK_USER
-	jsr ram::store_off
-	dec @cnt
-	bpl @l0
-
-	rts
-.endproc
-
-.segment "DEBUGGER"
-;*******************************************************************************
-; WRITE STEP
-; Writes a step to the "step buffer" for execution
-; IN:
-;   sim::op[0:2]: the instruction to write
-; OUT:
-;   STEP_EXEC_BUFFER: contains the instruction
-.export write_step
-.proc write_step
-@write_instruction:
-@sz=r2
-@cnt=r3
-	stx @sz
-
-	; copy the instruction to the execution buffer, appending
-	; NOPs as needed to fill the 3 byte space
-	lda #$00
-	sta @cnt
-@l0:	ldx @cnt
-	lda sim::op,x
-	cpx @sz
-	bcc :+
-	lda #$ea		; NOP
-:	sta zp::bankval
-	ldxy #STEP_EXEC_BUFFER
-	lda @cnt
-	jsr vmem::store_off	; write the instruction to the buffer
-	inc @cnt
-	lda @cnt
-	cmp #$03
-	bne @l0
-	rts
-.endproc

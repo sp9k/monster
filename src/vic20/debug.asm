@@ -7,8 +7,6 @@
 .include "../sim6502.inc"
 .include "../vmem.inc"
 
-.import STEP_EXEC_BUFFER
-
 ; stop_tracing flag- set to tell debugger to halt a trace
 .export stop_tracing
 

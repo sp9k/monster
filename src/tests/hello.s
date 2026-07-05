@@ -1,4 +1,4 @@
-.seg "code"
+.org $1000
 main:
 	;jsr $e5b5	; INIT VIC
 	;jsr $e55f	; CLRSCR

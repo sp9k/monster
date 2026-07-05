@@ -41,7 +41,7 @@ prog9110: .res $20		; $9110-$9130
 .ifdef ultimem
 .res $9400-$9130		; padding between VIAs and color RAM
 .endif
-prog9400: .res $100		; $9400-$9500
+prog9400: .res $400		; $9400-$9800
 
 ;******************************************************************************
 ; DBG
@@ -255,11 +255,23 @@ save_debug_visual:
 	cmp #$20		; at $2000 yet?
 	bne :-			; loop until we are
 
-; restore $9400-$9500
-:	lda prog9400,y
-	sta $9400,y
+; restore $9400-$9800
+	lda #>prog9400
+	sta @src+1
+	lda #<prog9400
+	sta @src
+	lda #$94
+	sta @dst+1
+@restorecolor:
+	lda (@src),y
+	sta (@dst),y
 	dey
-	bne :-
+	bne @restorecolor
+	inc @src+1
+	inc @dst+1
+	lda @dst+1
+	cmp #$98
+	bne @restorecolor
 	rts
 .endproc
 
@@ -295,11 +307,22 @@ save_debug_visual:
 	cmp #$20		; at $2000 yet?
 	bne :-			; loop until we are
 
-; save $9400-$9500
+; save $9400-$9800
+	lda #$94
+	sta @src+1
+	lda #>prog9400
+	sta @dst+1
+	lda #<prog9400
+	sta @dst
 @savecolor:
-	lda $9400,y
-	sta @colorsave,y
+	lda (@src),y
+	sta (@dst),y
 	dey
+	bne @savecolor
+	inc @src+1
+	inc @dst+1
+	lda @src+1
+	cmp #$98
 	bne @savecolor
 
 	; fall through to save_vic_state

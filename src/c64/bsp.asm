@@ -9,7 +9,6 @@
 .include "reu.inc"
 
 .export stop_tracing
-.import STEP_EXEC_BUFFER
 
 .DATA
 ; Stop tracing state/NMI
@@ -223,30 +222,4 @@ PROGRAM_STACK_START = $1e0
 	jsr reu::store_delayed
 
 	jmp __bsp_save_prog_visual
-.endproc
-
-;******************************************************************************
-; WRITE STEP
-; Writes a step to the "step buffer" for execution
-; IN:
-;   sim::op[0:2]: the instruction to write
-; OUT:
-;   STEP_EXEC_BUFFER: contains the instruction
-.export write_step
-.proc write_step
-@sz=r2
-	; copy the instruction to the execution buffer, appending
-	; NOPs as needed to fill the 3 byte space
-	stx @sz
-	ldx #$00
-
-@l0:	lda sim::op,x
-	cpx @sz
-	bcc :+
-	lda #$ea		; NOP
-:	sta STEP_EXEC_BUFFER,x
-	inx
-	cpx #$03
-	bne @l0
-	rts
 .endproc
