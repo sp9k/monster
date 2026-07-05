@@ -11,7 +11,7 @@
 .include "zeropage.inc"
 
 .ifdef ultimem
-.include "vic20/expansion.inc"  ; FINAL_BANK_SIM, FINAL_BANK_FASTCOPY
+.include "vic20/expansion.inc"	; FINAL_BANK_SIM, FINAL_BANK_FASTCOPY
 .endif
 
 .BSS
@@ -584,14 +584,14 @@ cycles_tab:
 	tax
 	lda affected_tab,x
 	sta __sim_affected
-	lda cycles_tab,x            ; base cycles (0 for variable-cycle opcodes)
-	jsr add_cycles              ; X is preserved
+	lda cycles_tab,x		; base cycles (0 for variable-cycle opcodes)
+	jsr add_cycles			; X is preserved
 	lda htab_lo,x
 	sta r0
 	lda htab_hi,x
 	sta r1
 
-	jsr @go                     ; execute the handler
+	jsr @go				; execute the handler
 
 	; .C set if the step failed (BRK or JAM encountered)
 	lda __sim_at_brk
@@ -626,10 +626,10 @@ cycles_tab:
 .proc update_nz
 	php
 	pla
-	and #$82                ; N(bit7) + Z(bit1)
+	and #$82		; N(bit7) + Z(bit1)
 	sta r2
 	lda __sim_reg_p
-	and #$7d                ; clear N and Z
+	and #$7d		; clear N and Z
 	ora r2
 	sta __sim_reg_p
 	rts
@@ -641,7 +641,7 @@ cycles_tab:
 .proc update_nzc
 	php
 	pla
-	and #$83                ; N(7) + Z(1) + C(0)
+	and #$83		; N(7) + Z(1) + C(0)
 	sta r2
 	lda __sim_reg_p
 	and #$7c
@@ -656,7 +656,7 @@ cycles_tab:
 .proc update_nzvc
 	php
 	pla
-	and #$c3                ; N(7) + V(6) + Z(1) + C(0)
+	and #$c3		; N(7) + V(6) + Z(1) + C(0)
 	sta r2
 	lda __sim_reg_p
 	and #$3c
@@ -851,7 +851,7 @@ cycles_tab:
 	adc __sim_reg_x
 	sta __sim_effective_addr
 	lda #0
-	rol                         ; A = page-cross flag (0 or 1)
+	rol				; A = page-cross flag (0 or 1)
 	sta r3
 	lda #2
 	jsr read_pc
@@ -862,7 +862,7 @@ cycles_tab:
 	lda #MODE_ABS|MODE_X_INDEXED
 	sta __sim_op_mode
 	jsr advance3
-	lsr r3                      ; .C = page cross
+	lsr r3				; .C = page cross
 	rts
 .endproc
 
@@ -899,21 +899,21 @@ cycles_tab:
 ; (ZP),X mode address resolver
 .proc am_indx
 	lda #1
-	jsr read_pc                    ; A = ZP base byte
+	jsr read_pc			; A = ZP base byte
 	sta __sim_operand
 	lda #0
 	sta __sim_operand+1
 	clc
 	lda __sim_operand
-	adc __sim_reg_x             ; + X, wraps in ZP
-	sta r4                      ; r4 = ZP index
-	ldy #0                      ; hi byte of ZP addr = $00
+	adc __sim_reg_x			; + X, wraps in ZP
+	sta r4				; r4 = ZP index
+	ldy #0				; hi byte of ZP addr = $00
 	ldx r4
-	jsr vmem::load              ; A = virtual ZP[r4]
+	jsr vmem::load			; A = virtual ZP[r4]
 	sta __sim_effective_addr
 	inc r4
-	ldx r4                      ; .Y restored to 0 by vmem::load
-	jsr vmem::load              ; A = virtual ZP[r4+1]
+	ldx r4				; .Y restored to 0 by vmem::load
+	jsr vmem::load			; A = virtual ZP[r4+1]
 	sta __sim_effective_addr+1
 	lda #MODE_ZP|MODE_X_INDEXED|MODE_INDIRECT
 	sta __sim_op_mode
@@ -927,45 +927,45 @@ cycles_tab:
 ;   - .C: set if page boundary crossed
 .proc am_indy
 	lda #1
-	jsr read_pc                    ; A = ZP pointer byte
+	jsr read_pc			; A = ZP pointer byte
 	sta __sim_operand
 	lda #0
 	sta __sim_operand+1
 	lda __sim_operand
-	sta r4                      ; r4 = ZP pointer address
+	sta r4				; r4 = ZP pointer address
 	ldy #0
 	ldx r4
-	jsr vmem::load              ; A = virtual ZP[r4] = base addr lo
+	jsr vmem::load			; A = virtual ZP[r4] = base addr lo
 	clc
 	adc __sim_reg_y
 	sta __sim_effective_addr
 	lda #0
-	rol                         ; page-cross flag
+	rol				; page-cross flag
 	sta r3
 	inc r4
-	ldx r4                      ; .Y restored to 0 by vmem::load
-	jsr vmem::load              ; A = virtual ZP[r4+1] = base addr hi
+	ldx r4				; .Y restored to 0 by vmem::load
+	jsr vmem::load			; A = virtual ZP[r4+1] = base addr hi
 	clc
 	adc r3
 	sta __sim_effective_addr+1
 	lda #MODE_ZP|MODE_Y_INDEXED|MODE_INDIRECT
 	sta __sim_op_mode
 	jsr advance2
-	lsr r3                      ; .C = page cross
+	lsr r3				; .C = page cross
 	rts
 .endproc
 
 ;******************************************************************************
 ; VIRTUAL STACK HELPERS - use vmem::store/load so BLK5 (SIM bank) is untouched
 ;******************************************************************************
-vpush:                          ; push .A onto virtual stack at $01SP, dec SP
-	ldy #1                      ; stack page hi = $01
+vpush:				; push .A onto virtual stack at $01SP, dec SP
+	ldy #1				; stack page hi = $01
 	ldx __sim_reg_sp
-	jsr vmem::store             ; .A preserved by vmem::store; ldy/ldx don't touch .A
+	jsr vmem::store			; .A preserved by vmem::store; ldy/ldx don't touch .A
 	dec __sim_reg_sp
 	rts
 
-vpull:                          ; inc SP, pull byte from virtual stack into .A
+vpull:				; inc SP, pull byte from virtual stack into .A
 	inc __sim_reg_sp
 	ldy #1
 	ldx __sim_reg_sp
@@ -986,16 +986,16 @@ do_branch:
 	adc #0
 	sta __sim_next_pc+1
 	lda #1
-	jsr read_pc                    ; signed offset byte
+	jsr read_pc			; signed offset byte
 	sta r2
-	lda r2                      ; reload: vmem_done's ldy savey clobbers N flag
+	lda r2				; reload: vmem_done's ldy savey clobbers N flag
 	bpl @pos
 	lda #$ff
 	bne @ext
 @pos:
 	lda #0
 @ext:
-	sta r3                      ; sign extension byte
+	sta r3				; sign extension byte
 	lda __sim_next_pc
 	clc
 	adc r2
@@ -1082,7 +1082,7 @@ h_ora_zpx:
 h_ora_absx:
 	jsr am_absx
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	ora __sim_reg_a
@@ -1092,7 +1092,7 @@ h_ora_absx:
 h_ora_absy:
 	jsr am_absy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	ora __sim_reg_a
@@ -1102,7 +1102,7 @@ h_ora_absy:
 h_ora_indy:
 	jsr am_indy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	ora __sim_reg_a
@@ -1150,7 +1150,7 @@ h_and_zpx:
 h_and_absx:
 	jsr am_absx
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	and __sim_reg_a
@@ -1160,7 +1160,7 @@ h_and_absx:
 h_and_absy:
 	jsr am_absy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	and __sim_reg_a
@@ -1170,7 +1170,7 @@ h_and_absy:
 h_and_indy:
 	jsr am_indy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	and __sim_reg_a
@@ -1218,7 +1218,7 @@ h_eor_zpx:
 h_eor_absx:
 	jsr am_absx
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	eor __sim_reg_a
@@ -1228,7 +1228,7 @@ h_eor_absx:
 h_eor_absy:
 	jsr am_absy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	eor __sim_reg_a
@@ -1238,7 +1238,7 @@ h_eor_absy:
 h_eor_indy:
 	jsr am_indy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	eor __sim_reg_a
@@ -1276,7 +1276,7 @@ h_adc_zpx:
 h_adc_absx:
 	jsr am_absx
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	jmp do_adc
@@ -1284,7 +1284,7 @@ h_adc_absx:
 h_adc_absy:
 	jsr am_absy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	jmp do_adc
@@ -1292,7 +1292,7 @@ h_adc_absy:
 h_adc_indy:
 	jsr am_indy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	jmp do_adc
@@ -1300,7 +1300,7 @@ h_adc_indy:
 do_adc:
 	sta r4
 	lda __sim_reg_p
-	ora #$24                    ; force I=1 before plp
+	ora #$24			; force I=1 before plp
 	pha
 	lda __sim_reg_a
 	plp
@@ -1342,7 +1342,7 @@ h_sbc_zpx:
 h_sbc_absx:
 	jsr am_absx
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	jmp do_sbc
@@ -1350,7 +1350,7 @@ h_sbc_absx:
 h_sbc_absy:
 	jsr am_absy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	jmp do_sbc
@@ -1358,7 +1358,7 @@ h_sbc_absy:
 h_sbc_indy:
 	jsr am_indy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	jmp do_sbc
@@ -1408,7 +1408,7 @@ h_cmp_zpx:
 h_cmp_absx:
 	jsr am_absx
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	jmp do_cmp_a
@@ -1416,7 +1416,7 @@ h_cmp_absx:
 h_cmp_absy:
 	jsr am_absy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	jmp do_cmp_a
@@ -1424,7 +1424,7 @@ h_cmp_absy:
 h_cmp_indy:
 	jsr am_indy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	jmp do_cmp_a
@@ -1519,7 +1519,7 @@ h_lda_zpx:
 h_lda_absx:
 	jsr am_absx
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	sta __sim_reg_a
@@ -1528,7 +1528,7 @@ h_lda_absx:
 h_lda_absy:
 	jsr am_absy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	sta __sim_reg_a
@@ -1537,7 +1537,7 @@ h_lda_absy:
 h_lda_indy:
 	jsr am_indy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	sta __sim_reg_a
@@ -1573,7 +1573,7 @@ h_ldx_zpy:
 h_ldx_absy:
 	jsr am_absy
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	sta __sim_reg_x
@@ -1609,7 +1609,7 @@ h_ldy_zpx:
 h_ldy_absx:
 	jsr am_absx
 	lda #0
-	adc #0                      ; +1 cycle if page crossed
+	adc #0				; +1 cycle if page crossed
 	jsr add_cycles
 	jsr fetch_ea
 	sta __sim_reg_y
@@ -1976,10 +1976,10 @@ h_bit_zp:
 	jsr fetch_ea
 	sta r4
 	lda __sim_reg_a
-	bit r4                      ; BIT $f4 - reads ZP[$f4]=r4, sets N,V,Z
+	bit r4				; BIT $f4 - reads ZP[$f4]=r4, sets N,V,Z
 	php
 	pla
-	and #$c2                    ; N(7) + V(6) + Z(1)
+	and #$c2			; N(7) + V(6) + Z(1)
 	sta r2
 	lda __sim_reg_p
 	and #$3d
@@ -2038,7 +2038,7 @@ h_tya:
 	jsr update_nz
 	jmp advance1
 
-h_txs:                          ; does NOT affect flags
+h_txs:				; does NOT affect flags
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	lda __sim_reg_x
@@ -2134,7 +2134,7 @@ h_php:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	lda __sim_reg_p
-	ora #$30                    ; set B and unused bits on push
+	ora #$30			; set B and unused bits on push
 	jsr vpush
 	jmp advance1
 
@@ -2142,7 +2142,7 @@ h_plp:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	jsr vpull
-	ora #$30                    ; bit5 (UNUSED) always 1; bit4 (BREAK) reads as 1
+	ora #$30			; bit5 (UNUSED) always 1; bit4 (BREAK) reads as 1
 	sta __sim_reg_p
 	jmp advance1
 
@@ -2152,7 +2152,7 @@ h_plp:
 h_bpl:
 	lda __sim_reg_p
 	and #$80
-	eor #$80                    ; nonzero when N=0 (branch taken)
+	eor #$80			; nonzero when N=0 (branch taken)
 	jmp do_branch
 
 h_bmi:
@@ -2264,9 +2264,9 @@ h_jsr:
 h_rts:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
-	jsr vpull                   ; lo byte
+	jsr vpull			; lo byte
 	sta r2
-	jsr vpull                   ; hi byte
+	jsr vpull			; hi byte
 	sta r3
 	lda r2
 	clc
