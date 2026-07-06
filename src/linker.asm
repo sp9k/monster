@@ -79,6 +79,7 @@ numsegments: .byte 0
 numsections: .byte 0
 
 activeobj: .byte 0	; the current OBJECT (id) being linked
+objerr:    .byte 0	; error code from linking an object (see link_object)
 
 ;*******************************************************************************
 ; OBJECT STATE
@@ -258,7 +259,6 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ; SEGMENTS [
 ;  SEGA: load = SECTIONA
 ;  run = SECTIONB
-;  type = [BSS, RO, RW]
 ; ]
 ; ```
 ;
@@ -357,6 +357,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @err:	sec
 	rts
 
+@too_many:
+	RETURN_ERR ERR_TOO_MANY_SEGMENTS
+
 ;-------------------------------------------------------------------------------
 @parse_sections:
 	; make sure we haven't already declared sections
@@ -378,7 +381,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; read the section into the section definitions table
 :	incw zp::line		; move beyond the '['
 	jsr process_ws
-@l0:	jsr parse_section
+@l0:	lda numsections
+	cmp #MAX_SECTIONS	; is there room for another SECTION?
+	bcs @too_many
+	jsr parse_section
 	bcs @err		; -> rts
 	inc numsections		; SECTION was successfully parsed
 
@@ -407,7 +413,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; read the section into the section definitions table
 :	incw zp::line		; move beyond the '['
 	jsr process_ws
-@l1:	jsr parse_segment
+@l1:	lda numsegments
+	cmp #MAX_SEGMENTS	; is there room for another SEGMENT?
+	bcs @too_many
+	jsr parse_segment
 	bcs @err		; -> rts
 	inc numsegments		; SEGMENT was successfully parsed
 	jsr @get_closing_brace
@@ -763,9 +772,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	ldx numsegments
 	sta segments_load,x
 	RETURN_OK
+
 ;-------------------------------------------------------------------------------
 ; keys table
-@numkeys=3
+@numkeys=2
 @keys:
 @load: .byte "load",0
 @run:  .byte "run",0
@@ -861,6 +871,64 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 .endproc
 
 ;*******************************************************************************
+; RESOLVE SYMBOLS
+; Finalizes the values of the relocatable symbols registered during pass 1 by
+; adding the (now known) origin of their SEGMENT to their segment-relative
+; values.
+; ABS symbols and (still) UNDEFINED symbols are unaffected.
+; This must be called after calc_seg_origins and before pass 2.
+.proc resolve_symbols
+@i=zp::tmp10
+@seg=zp::tmp12
+@mode=zp::tmp13
+	iszero lbl::num
+	beq @done
+
+	lda #$00
+	sta @i
+	sta @i+1
+
+@l0:	ldxy @i
+	CALLMAIN lbl::getsegment	; get the label's segment ID
+	cmp #SEG_UNDEF			; undefined? (import nobody exported)
+	beq @next			; leave it (caught by validation later)
+	cmp #SEG_ABS			; absolute?
+	beq @next			; if so, the value is already final
+	sta @seg
+
+	ldxy @i
+	CALLMAIN lbl::addrmode		; get the address mode
+	sta @mode			; (keep it unchanged)
+
+	ldxy @i
+	CALLMAIN lbl::getaddr		; .XY = segment-relative value
+
+	; value = segment origin + segment-relative value
+	txa
+	ldx @seg
+	clc
+	adc segments_addrlo-1,x
+	sta zp::label_value
+	tya
+	adc segments_addrhi-1,x
+	sta zp::label_value+1
+	lda @seg
+	sta zp::label_segmentid
+	lda @mode
+	sta zp::label_mode
+
+	ldxy @i
+	CALLMAIN lbl::setaddr		; write back the finalized value
+
+@next:	incw @i
+	ldxy @i
+	cmpw lbl::num
+	bne @l0
+
+@done:	RETURN_OK
+.endproc
+
+;*******************************************************************************
 ; CALC SEG ORIGINS
 ; Calculates the start address for each global SEGMENT
 ; OUT:
@@ -872,6 +940,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	lda #$00
 	sta @secid
 	cmp numsegments
+	beq @done
+	cmp numsections
 	beq @done
 
 ; iterate over all SECTIONS
@@ -986,6 +1056,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	ldxy @objfile
 	stxy obj::filename
 	CALLMAIN file::open_r
+	jcs log_error			; failed to open object file -> error
 	pha				; save file handle
 	tax
 	jsr krn::chkin			; CHKIN
@@ -1028,6 +1099,11 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jsr calc_seg_origins
 	jcs log_error
 
+	; now that SEGMENT origins are known, finalize the values of the
+	; symbols that were registered (segment-relative) during pass 1
+	jsr resolve_symbols
+	jcs log_error
+
 	; make sure SEGMENT base+size is less than the top of the SEGMENT
 	; TODO:
 	; RETURN_ERR ERR_SECTION_TOO_SMALL
@@ -1057,6 +1133,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jsr link_object		; link the object file
 	bcs log_error		; if .C set, return with error
 
+	; move the segment pointers past this object's contributions so the
+	; next object's code is placed after this object's
+	jsr advance_segments
+
 	jsr log_newl
 
 	; update filename pointer to next filename
@@ -1084,6 +1164,11 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 ;-------------------------------------------------------------------------------
 @pass2done:
+	; restore the SEGMENT addresses to their origins (they were advanced
+	; past each object's code during pass 2)
+	jsr init_segments
+	jsr calc_seg_origins
+
 	; calculate ORIGIN and TOP of linked program
 	jsr segmin
 	stxy asm::origin
@@ -1119,11 +1204,11 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ; IN:
 ;   - .XY: address of the object filename to link
 .proc link_object
-@sec_idx=zp::tmp10
-@err=r0
+@err=objerr	; NOTE: must survive file::close (which may clobber r0-r15)
 	CALLMAIN file::open_r
-	pha			; save file ID
+	bcs @ret		; failed to open the object file -> error
 
+	pha			; save file ID
 	tax
 	jsr krn::chkin		; CHKIN
 	jsr obj::load		; load the object file with the given index
@@ -1135,7 +1220,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	plp			; restore error flag
 	lda @err		; restore error code (if any)
-	rts
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1162,6 +1247,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	beq @done
 
 :	ldy obj::segment_ids,x		; get GLOBAL SEGMENT id from local one
+	cpy #SEG_ABS			; ABS segments have no global SEGMENT
+	beq @next			; if ABS, skip it
 	lda obj::segments_sizelo,x
 	clc
 	adc segments_sizelo-1,y
@@ -1170,7 +1257,34 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	adc segments_sizehi-1,y
 	sta segments_sizehi-1,y
 
-	inx
+@next:	inx
+	cpx obj::numsegments
+	bne :-
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; ADVANCE SEGMENTS
+; Advances the address of each SEGMENT by the usage of the object file that
+; was just linked so that the next object file's contribution begins where
+; this one's ended.  This is the pass 2 counterpart of update_segments.
+.proc advance_segments
+	ldx #$00
+	cpx obj::numsegments
+	beq @done
+
+:	ldy obj::segment_ids,x		; get GLOBAL SEGMENT id from local one
+	cpy #SEG_ABS			; ABS segments have no global SEGMENT
+	beq @next			; if ABS, skip it
+	lda obj::segments_sizelo,x
+	clc
+	adc segments_addrlo-1,y
+	sta segments_addrlo-1,y
+	lda obj::segments_sizehi,x
+	adc segments_addrhi-1,y
+	sta segments_addrhi-1,y
+
+@next:	inx
 	cpx obj::numsegments
 	bne :-
 @done:	rts
@@ -1360,6 +1474,25 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 .endproc
 
 ;******************************************************************************
+; SEGSIZE BY ID
+; Returns the accumulated size of the given SEGMENT.
+; During pass 1 this is the sum of the given SEGMENT's usage by the object
+; files processed so far, which is the offset within the SEGMENT at which the
+; object file being processed will begin.
+; IN:
+;   - .A: global (linker) segment id to get the accumulated size of
+; OUT:
+;   - .XY: the accumulated size of the segment
+.export __link_segsize_by_id
+.proc __link_segsize_by_id
+	tay
+	ldx segments_sizelo-1,y
+	lda segments_sizehi-1,y
+	tay
+	RETURN_OK
+.endproc
+
+;******************************************************************************
 ; SET SEGMENT TYPE
 ; Sets the type for the segment of the given ID.
 ; IN:
@@ -1378,7 +1511,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	beq @done
 	RETURN_ERR ERR_CONFLICTING_SEGMENTS
 
-@set:	cmp segments_type-1,x
+@set:	sta segments_type-1,x
 @done:	RETURN_OK
 .endproc
 
@@ -1828,7 +1961,7 @@ __link_get_segment_by_name:
 	ldxy #@symbuff
 	jsr puts
 
-	; write 32-len(labelname) spaces
+	; write 32-len(labelname)+1 spaces
 	sty @tmp
 	lda #32
 	sec
@@ -1837,7 +1970,7 @@ __link_get_segment_by_name:
 	lda #' '
 :	jsr krn::chrout
 	dey
-	bne :-
+	bpl :-
 
 	; write the label's address
 	ldxy @i
@@ -1882,11 +2015,18 @@ __link_get_segment_by_name:
 @addr0_stop  = r4
 @addr1_start = r6
 @addr1_stop  = r8
+	lda numsegments
+	beq @ok			; no segments -> ok
+
 	lda #$00
 	sta @i
-	sta @j
 
 @l0:	ldx @i
+	; skip empty segments (they can't overlap anything)
+	lda segments_sizelo,x
+	ora segments_sizehi,x
+	beq @nexti
+
 	lda segments_addrlo,x
 	sta @addr0_start
 	ldy segments_addrhi,x
@@ -1899,12 +2039,18 @@ __link_get_segment_by_name:
 	sta @addr0_stop+1
 
 	ldx @i
-	inx
 	stx @j
-	cpx numsegments
-	bcs @ok
 
-@l1:	ldx @j
+@l1:	inc @j
+	ldx @j
+	cpx numsegments
+	bcs @nexti
+
+	; skip empty segments
+	lda segments_sizelo,x
+	ora segments_sizehi,x
+	beq @l1
+
 	lda segments_addrlo,x
 	sta @addr1_start
 	ldy segments_addrhi,x
@@ -1916,15 +2062,11 @@ __link_get_segment_by_name:
 	adc segments_sizehi,x
 	sta @addr1_stop+1
 
-	jsr @validate_segments
+	jsr @check_overlap
 	bcs @overlap
+	bcc @l1			; branch always
 
-	inc @j
-	lda @j
-	cmp numsegments
-	bcc @l1
-
-	inc @i
+@nexti:	inc @i
 	lda @i
 	cmp numsegments
 	bcc @l0
@@ -1934,34 +2076,31 @@ __link_get_segment_by_name:
 	RETURN_ERR ERR_OVERLAPPING_SEGMENTS
 
 ;-------------------------------------------------------------------------------
-@validate_segments:
-	; if addr1.stop <= addr0.start, no overlap
-	;  [   addr1   ]
-	;                  [  addr0  ]
-	;  [   addr1   ]
-	;              [   addr0   ]
-	lda @addr1_stop+1
-	cmp @addr0_start+1
-	bcc @ret
-	lda @addr1_stop
-	cmp @addr0_start
-	beq @no_overlap
+; checks if [addr0_start, addr0_stop) overlaps [addr1_start, addr1_stop)
+; overlap iff addr0.start < addr1.stop AND addr1.start < addr0.stop
+; OUT:
+;   - .C: set if the ranges overlap
+@check_overlap:
+	; if addr0.start >= addr1.stop, no overlap
+	lda @addr0_start
+	cmp @addr1_stop
+	lda @addr0_start+1
+	sbc @addr1_stop+1
+	bcs @no_overlap
 
-	; if addr0.stop <= addr1.start, no overlap
-	;  [   addr0   ]
-	;                  [  addr1  ]
-	;  [   addr0   ]
-	;              [   addr1   ]
-	lda @addr0_stop+1
-	cmp @addr1_start+1
-	bne @ret
-	lda @addr0_stop
-	cmp @addr1_start
-	bne @ret
+	; if addr1.start >= addr0.stop, no overlap
+	lda @addr1_start
+	cmp @addr0_stop
+	lda @addr1_start+1
+	sbc @addr0_stop+1
+	bcs @no_overlap
+
+	sec			; overlap
+	rts
+
 @no_overlap:
-	clc			; if stop == start, consider non-overlapping
-
-@ret:	rts
+	clc
+	rts
 .endproc
 
 ;*******************************************************************************

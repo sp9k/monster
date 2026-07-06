@@ -90,15 +90,6 @@ TYPE_BSSZP = 4		; zeropage (uninitialized)
 TYPE_ABS   = $ff	; constants, etc.
 
 ;*******************************************************************************
-; SYMBOL INDEX MAP
-; Each entry in this array contains the index that we will map the corresponding
-; label to (see labels.asm)
-; This lets us emit a more compact list of only symbols that are used
-; If the symbol is unused, we store $ff
-; The indexes in this array represent the id of the symbol at assembly time
-symbol_index_map: .res MAX_LABELS*2
-
-;*******************************************************************************
 ; SEG IDX, SEG CNT
 ; Variables used during object file loading
 seg_idx: .byte 0
@@ -148,14 +139,8 @@ numsections: .byte 0	; number of sections in obj file being written/read
 .export __obj_filename
 __obj_filename: .word 0	; pointer to name of object file being loaded
 
-import_label_idshi:   .res MAX_IMPORTS	; MSBs for index (in symbol_index_map)
-import_label_idslo:   .res MAX_IMPORTS	; LSBs for index (in symbol_index_map)
-
-;*******************************************************************************
-; NUM SYMBOLS MAPPED
-; The number of symbols to store to the symbol table.
-; Also the index that the next mapped symbol will be stored at
-num_symbols_mapped: .word 0
+import_label_idshi:   .res MAX_IMPORTS	; MSBs of label IDs for imports
+import_label_idslo:   .res MAX_IMPORTS	; LSBs of label IDs for imports
 
 num_reloctables_mapped: .byte 0
 
@@ -240,8 +225,6 @@ __obj_close_section = close_section
 	sta numexports
 	sta numlocals
 	sta numlocals+1
-	sta num_symbols_mapped
-	sta num_symbols_mapped+1
 	sta num_reloctables_mapped
 
 	; clear arrays
@@ -274,7 +257,15 @@ __obj_close_section = close_section
 @dst=r2
 	stxy @name
 
+	; make sure there is room for another SEGMENT
 	lda numsegments
+	cmp #MAX_SEGMENTS
+	bcc :+
+	;sec
+	lda #ERR_TOO_MANY_SEGMENTS
+	rts
+
+:	lda numsegments
 	asl
 	asl
 	asl			; * MAX_SEGMENT_NAME_LEN
@@ -300,14 +291,7 @@ __obj_close_section = close_section
 	cpy #MAX_SEGMENT_NAME_LEN
 	bcc @l1
 
-@ok:	lda numsegments
-	cmp #MAX_SEGMENTS
-	bcc :+
-	;sec
-	lda #ERR_TOO_MANY_SEGMENTS
-	rts
-
-:	inc numsegments
+@ok:	inc numsegments
 	lda numsegments		; get 1-based section ID
 	clc			; ok
 
@@ -425,7 +409,7 @@ __obj_close_section = close_section
 	; init SEGMENT SIZE and START (unless ABS) to 0
 	lda #$00
 	sta segments_sizelo-1,x
-	sta sections_sizehi-1,x
+	sta segments_sizehi-1,x
 
 	; store TYPE byte (ZP/BSS/etc) for the SEGMENT
 	lda @info
@@ -500,6 +484,11 @@ __obj_close_section = close_section
 ;   - .C: set on error
 .export __obj_add_export
 .proc __obj_add_export
+	; make sure there is room for another EXPORT
+	lda numexports
+	cmp #MAX_EXPORTS
+	bcs @toomany
+
 	CALLMAIN lbl::find		; look up the label by name
 	bcs @ret			; not found -> err
 
@@ -511,6 +500,9 @@ __obj_close_section = close_section
 	inc numexports
 	clc				; ok
 @ret:	rts
+
+@toomany:
+	RETURN_ERR ERR_TOO_MANY_LABELS
 .endproc
 
 ;*******************************************************************************
@@ -522,6 +514,13 @@ __obj_close_section = close_section
 ;   - .C: set on error
 .export __obj_add_import
 .proc __obj_add_import
+	; make sure there is room for another IMPORT
+	lda numimports+1
+	bne @toomany
+	lda numimports
+	cmp #MAX_IMPORTS
+	bcs @toomany
+
 	; define a label for the import so that references to it succeed
 	lda #SEG_UNDEF			; UNDEF (external)
 	sta zp::label_segmentid
@@ -541,6 +540,9 @@ __obj_close_section = close_section
 	incw numimports
 	clc				; ok
 @ret:	rts
+
+@toomany:
+	RETURN_ERR ERR_TOO_MANY_LABELS
 .endproc
 
 ;*******************************************************************************
@@ -562,11 +564,12 @@ __obj_close_section = close_section
 
 	lda expr::kind
 	cmp #VAL_REL
-	bne @ok		; expression doesn't require relocation
+	jne @ok		; expression doesn't require relocation
 
 	ldxy reloctop
-	cmpw #(reloc_tables_end-4)
-	bcc :+
+	cmpw #(reloc_tables_end-6)	; room for the largest (6 byte) record?
+	bcc :+				; below max -> ok
+	beq :+				; at max -> still fits
 	RETURN_ERR ERR_OOM
 
 :	stxy @rel
@@ -623,6 +626,7 @@ __obj_close_section = close_section
 @sym_based:
 	ldxy expr::symbol
 	jsr get_import_id	; look up object-local ID for symbol
+	bcs @err		; not an IMPORT -> return error
 	ldy #$03
 	txa
 	STOREB_Y @rel		; write local symbol-id LSB
@@ -630,7 +634,16 @@ __obj_close_section = close_section
 	lda #$00		; MSB (always 0 for now)
 	STOREB_Y @rel		; write local symbol-id MSB
 
-@done:  ; update reloctop
+@done:  ; if post-processing is used, write the MSB of the addend
+	; (the LSB is stored in the object code at the target offset)
+	lda expr::postproc
+	beq @advance		; no post-processing -> 5 byte record
+	ldy #$05
+	lda expr::value+1	; MSB of the evaluated expression
+	STOREB_Y @rel
+
+@advance:
+	; update reloctop
 	lda expr::postproc
 	cmp #$01		; set .C if post-processing is used
 	lda #$05
@@ -639,6 +652,8 @@ __obj_close_section = close_section
 	bcc @ok
 	inc reloctop+1
 @ok:	RETURN_OK
+
+@err:	rts			; return error from get_import_id
 .endproc
 
 ;*******************************************************************************
@@ -651,7 +666,7 @@ __obj_close_section = close_section
 ;   - .A: local ID (index into import_label_idslo/hi)
 ;   - .C: set if the ID is not found (wasn't marked as an IMPORT)
 .proc get_import_id
-@id=r0
+@id=r4
 	stxy @id
 
 	ldx #$00
@@ -670,102 +685,6 @@ __obj_close_section = close_section
 
 @found:	txa
 	RETURN_OK
-.endproc
-
-;*******************************************************************************
-; BUILD SYMBOL INDEX MAP
-; Constructs the map of symbols to the index to store for them in the symbol
-; table.  Also replaces the ID's in the relocation table with the indices with
-; the indices in the IMPORTS table.
-.proc build_symbol_index_map
-@idx=r0
-@symtab=r2
-@reltab=r4
-	; walk the relocation tables to determine which symbols are referenced
-	; in relocations. only these will be emitted.
-	ldxy #reloc_tables
-	stxy @reltab
-	cmpw reloctop
-	bne :+
-	rts		; no relocations
-
-:	; initialize symbol index map to all $ff's (unmapped)
-	ldxy #symbol_index_map
-	stxy @symtab
-
-	lda #$ff
-@init:	ldy #$00
-	sty @idx
-	sty @idx+1
-	STOREB_Y @symtab
-	incw @symtab
-	ldxy @symtab
-	cmpw #symbol_index_map+(MAX_LABELS*2)
-	bcc @init
-
-@l0:	ldy #$00
-	sty @symtab+1
-	LOADB_Y @reltab
-	pha			; save info byte
-
-	and #$02		; mask mode bit
-	bne @next		; if 1-> not a symbol-based relocation
-
-	; get position of symbol (symbol_index_map + id*2)
-	LOADB_Y @reltab		; get symbol ID (LSB)
-	asl
-	rol @symtab+1
-	adc #<symbol_index_map
-	sta @symtab
-	iny
-	LOADB_Y @reltab		; symbol ID (MSB)
-	adc #>symbol_index_map
-	sta @symtab+1
-
-	; check if symbol is already mapped
-	ldy #$00
-	LOADB_Y @symtab
-	cmp #$ff
-	bne @update_rel		; not $ffff (already mapped) -> update table
-	iny
-	LOADB_Y @symtab
-	cmp #$ff
-	bne @update_rel		; not $ffff (already mapped) -> update table
-
-	; not mapped, assign this symbol the next available index
-	lda @idx
-	dey			; .Y=0
-	STOREB_Y @symtab
-	iny
-	lda @idx+1
-	STOREB_Y @symtab
-	incw @idx
-	incw num_symbols_mapped
-
-@update_rel:
-	; rewrite the relocation table's stored index with the mapped index
-	ldy #$00
-	LOADB_Y @symtab
-	ldy #$03
-	STOREB_Y @reltab
-	ldy #$01
-	LOADB_Y @symtab
-	ldy #$04
-	STOREB_Y @reltab
-
-@next:	pla			; restore info byte
-	and #$0c		; mask postproc bits (2, 3)
-	cmp #$01		; set .C if post-processing is used
-	lda @reltab
-	adc #$05		; +5 (no post-proc), +6 (post-proc)
-	tax
-	sta @reltab
-	bcc :+
-	inc @reltab+1
-:	ldy @reltab+1
-	cmpw reloctop
-	jcc @l0
-@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -807,6 +726,7 @@ __obj_close_section = close_section
 	bne :-
 
 @cont:	; write the address mode for the IMPORT (ZP or ABS)
+	ldxy @idx			; restore the label ID
 	CALLMAIN lbl::addrmode
 	jsr krn::chrout
 
@@ -979,21 +899,20 @@ __obj_close_section = close_section
 	bne :-
 
 ;-------------------------------------------------------------------------------
-; compute the size of each SEGMENT (sum of all SECTIONS that use it) and size
-; of all relocation tables
+; compute the size of each SEGMENT's relocation table (the sum of the
+; relocation tables of all SECTIONS that use it)
 @l0:	lda #$00
 	sta @sec_idx
+	inc @seg_idx			; next SEGMENT id (1-based)
 
 ; iterate over all SECTIONS and check if they're in this SEGMENT
-@l1:	inc @seg_idx
-	lda @seg_idx			; get current SEGMENT
-	clc
+@l1:	lda @seg_idx			; get current SEGMENT
 	ldx @sec_idx
 	cmp __obj_segment_ids,x		; is this SECTION in this SEGMENT?
 	bne :+				; if not, continue
 
 	tay				; .Y=segment_id for section
-	lda sections_relocsizelo,x	; get size of code for section
+	lda sections_relocsizelo,x	; get reloc table size for section
 	clc
 	adc segments_relocsizelo-1,y	; add with current SEGMENT size
 	sta segments_relocsizelo-1,y
@@ -1007,7 +926,6 @@ __obj_close_section = close_section
 	bne @l1
 
 	lda @seg_idx
-	inc @seg_idx
 	cmp numsegments
 	bne @l0
 
@@ -1164,12 +1082,6 @@ __obj_close_section = close_section
 	cmp __obj_segment_ids,x		; is our SECTION part of the SEGMENT?
 	bne @reloc_next			; not our SEGMENT, try next SECTION
 
-	; get start address of SECTION to dump
-	lda sections_startlo,x
-	sta @sec
-	lda sections_starthi,x
-	sta @sec+1
-
 @reloc:	; dump the relocation table
 	ldx @sec_idx
 	lda sections_relocstartlo,x
@@ -1223,8 +1135,6 @@ __obj_close_section = close_section
 @src=r0
 @cnt=r2
 	; write the main OBJ header
-	jsr build_symbol_index_map
-
 	lda numsegments			; # of segments
 	jsr krn::chrout
 	lda numexports			; # of EXPORTS
@@ -1473,6 +1383,27 @@ __obj_close_section = close_section
 	jsr krn::chrin
 	sta numlocals+1
 
+	; validate the symbol counts
+	lda numimports+1
+	bne @toomany
+	lda numimports
+	cmp #MAX_IMPORTS+1
+	bcs @toomany
+	lda numexports
+	cmp #MAX_EXPORTS+1
+	bcc @counts_ok
+@toomany:
+	RETURN_ERR ERR_TOO_MANY_LABELS
+
+@counts_ok:
+	; validate the SEGMENT count
+	lda numsegments
+	jeq @segments_done	; no SEGMENTS -> done
+	cmp #MAX_SEGMENTS+1
+	bcc @segments_ok
+	RETURN_ERR ERR_TOO_MANY_SEGMENTS
+
+@segments_ok:
 ;-------------------------------------------------------------------------------
 ; read the SEGMENTS used in the object file (names and sizes)
 	lda #$00
@@ -1508,7 +1439,7 @@ __obj_close_section = close_section
 	; if ABS segment, directly set the SEGMENT start address
 	ldy #$00
 	lda (@name),y			; is name empty?
-	beq @next			; if so (ABS), already know start addr
+	beq @abs			; if so (ABS), already know start addr
 
 @rel:	; for REL segments, get the base address of this SEGMENT in the linker
 	; NOTE: this will be garbage in pass 1
@@ -1519,14 +1450,15 @@ __obj_close_section = close_section
 	ldy @i
 	sta __obj_segment_ids,y		; store GLOBAL id for this SEGMENT
 
-	; set the global TYPE for the segment (if not alaready set)
-	pha
-	ldx segments_type,y
+	; set the global TYPE for the segment (if not already set)
+	tax				; .X = global segment id
+	lda segments_type,y		; .A = TYPE from this object file
 	jsr link::set_segtype		; set type for the segment
-	pla
 	bcs @ret			; if conflicts with existing seg -> rts
 
 	; get the current GLOBAL offset for the SEGMENT
+	ldy @i
+	lda __obj_segment_ids,y		; restore global segment id
 	jsr link::segaddr_by_id
 	bcs @ret
 
@@ -1561,6 +1493,7 @@ __obj_close_section = close_section
 	cpy numsegments
 	jne @load_segments
 
+@segments_done:
 	clc				; ok
 @ret:	rts
 .endproc
@@ -1576,29 +1509,73 @@ __obj_close_section = close_section
 @i=zp::tmp10
 @namebuff=$100
 	jsr load_info
+	bcs @ret
 
-; read the IMPORTS and EXPORTS and add them to the global symbol table
+; add the IMPORTS to the global symbol table (as placeholders if the
+; symbols are not yet defined)
 @imports:
 	lda #$00
 	sta @i
 	cmp numimports
-	beq @ok
+	beq @exports
 
 @import_loop:
 	jsr load_import
 	bcs @ret
 
-	; write object-local ID for the import
-	ldy @i
-	tya
-	sta import_label_idslo,y
-	lda #$00
-	sta import_label_idshi,y
-
 	inc @i
 	lda @i
 	cmp numimports
 	bne @import_loop
+
+;-------------------------------------------------------------------------------
+; add EXPORTS to the global symbol table.  Their values are segment-relative
+; until resolve_symbols finalizes them (after all objects have been processed
+; and the segment origins are known)
+@exports:
+	lda #$00
+	sta @i
+	cmp numexports
+	beq @locals
+
+@export_loop:
+	jsr load_export
+	bcs @ret
+
+	inc @i
+	lda @i
+	cmp numexports
+	bne @export_loop
+
+;-------------------------------------------------------------------------------
+; add the LOCAL symbols to the global symbol table (also segment-relative),
+; scoped to the filename of this object file
+@locals:
+	; copy the filename to shared RAM and set it as the scope
+	ldxy __obj_filename
+	stxy @name
+	ldy #$00
+:	lda (@name),y
+	sta @namebuff,y
+	beq :+
+	iny
+	bne :-
+
+:	ldxy #@namebuff
+	CALLMAIN lbl::setscope
+
+	ldxy numlocals
+	stxy @i			; 16-bit counter for LOCALs
+@local_loop:
+	iszero @i
+	beq @locals_done
+	jsr load_local
+	jcs @ret
+	decw @i
+	jmp @local_loop
+
+@locals_done:
+	CALLMAIN lbl::popscope
 
 @ok:	clc
 @ret:	rts
@@ -1615,8 +1592,8 @@ __obj_close_section = close_section
 @namebuff=$120
 	; get the name of a symbol
 	ldy #$00
-	stx zp::label_value
-	stx zp::label_value+1
+	sty zp::label_value	; dummy value (0)
+	sty zp::label_value+1
 :	jsr krn::chrin
 	sta @namebuff,y
 	beq @cont
@@ -1647,7 +1624,11 @@ __obj_close_section = close_section
 
 ;*******************************************************************************
 ; LOAD EXPORT
-; Adds the next EXPORT in the open OBJECT file to the global symbol table
+; Adds the next EXPORT in the open OBJECT file to the global symbol table.
+; This is called during pass 1: the value stored is relative to the symbol's
+; SEGMENT (this object's offset within the SEGMENT plus the symbol's offset
+; within the object).  The final value is produced by link's resolve_symbols
+; once all objects have been processed and the SEGMENT origins are known.
 ; OUT:
 ;   - .C: set on error
 .proc load_export
@@ -1663,21 +1644,29 @@ __obj_close_section = close_section
 
 @addexport:
 	jsr krn::chrin				; get SEGMENT id for EXPORT
-	cmp #TYPE_ABS				; is ID $FF (ABS)?
-	beq @cont				; if ABS, no need to resolve
+	cmp #SEG_ABS				; is ID $FF (ABS)?
+	bne @rel				; if not, resolve segment base
 
-	; find the global segment id from the object-local one
+	; ABS symbols have no segment base; their value is absolute
+	sta zp::label_segmentid
+	lda #$01				; absolute address mode
+	sta zp::label_mode
+	lda #$00
+	sta @offset
+	sta @offset+1
+	beq @value				; branch always
+
+@rel:	; find the global segment id from the object-local one
 	tax
 	lda segments_type-1,x
 	jsr type_to_mode
 	sta zp::label_mode			; set address mode for label
 	lda __obj_segment_ids-1,x		; get GLOBAL segment id
-@cont:	sta zp::label_segmentid			; and store with the symbol
-	jsr link::segaddr_by_id			; look up current base of seg
-	bcs @ret
+	sta zp::label_segmentid			; and store with the symbol
+	jsr link::segsize_by_id			; get this obj's offset in seg
 	stxy @offset
 
-	; resolve the symbol (seg.addr + offset)
+@value:	; store the segment-relative value (obj offset in seg + offset)
 	jsr krn::chrin				; get LSB of symbol offset
 	clc
 	adc @offset
@@ -1713,8 +1702,11 @@ __obj_close_section = close_section
 
 ;*******************************************************************************
 ; LOAD LOCAL
-; Adds the next LOCAL symbol in the open OBJECT file to the global symbol table
-; The current file ID is mapped to
+; Adds the next LOCAL symbol in the open OBJECT file to the global symbol
+; table.
+; This is called during pass 1: the value stored is relative to the symbol's
+; SEGMENT (see load_export).  The final value is produced by link's
+; resolve_symbols once the SEGMENT origins are known.
 ; OUT:
 ;   - .C: set on error
 .proc load_local
@@ -1732,21 +1724,29 @@ __obj_close_section = close_section
 	bne :-
 
 @cont:	jsr krn::chrin				; get SEGMENT id
-	cmp #TYPE_ABS
-	beq @add				; if ABS, no need to do lookup
+	cmp #SEG_ABS
+	bne @rel				; if not ABS, resolve seg base
 
-	; find the global segment id from the object-local one
-	; NOTE: ZP, RW, and ABS correspond to the label modes
+	; ABS symbols have no segment base; their value is absolute
+	sta zp::label_segmentid
+	lda #$01				; absolute address mode
+	sta zp::label_mode
+	lda #$00
+	sta @offset
+	sta @offset+1
+	beq @value				; branch always
+
+@rel:	; find the global segment id from the object-local one
 	tax
 	lda segments_type-1,x
+	jsr type_to_mode
 	sta zp::label_mode			; set address mode for label
 	lda __obj_segment_ids-1,x		; get GLOBAL segment id
 	sta zp::label_segmentid			; and store with the symbol
-	jsr link::segaddr_by_id			; look up current base of seg
+	jsr link::segsize_by_id			; get this obj's offset in seg
 	stxy @offset
 
-@add:	sta zp::label_segmentid			; and store with the symbol
-	jsr krn::chrin				; get LSB of symbol offset
+@value:	jsr krn::chrin				; get LSB of symbol offset
 	clc
 	adc @offset
 	sta zp::label_value
@@ -1754,6 +1754,7 @@ __obj_close_section = close_section
 	jsr krn::chrin				; get MSB of symbol offset
 	plp
 	adc @offset+1
+	sta zp::label_value+1
 
 	ldxy #@namebuff
 	JUMPMAIN lbl::add
@@ -1795,6 +1796,7 @@ __obj_close_section = close_section
 @seg=re
 @namebuff=$100
 @i=zp::tmp10
+@symid=zp::tmp12
 	jsr load_info
 	bcc :+
 @ret:	rts
@@ -1822,12 +1824,18 @@ __obj_close_section = close_section
 	ldxy #@namebuff
 	CALLMAIN lbl::find	; find label ID by name
 	bcs @ret
+	stxy @symid		; save the label id
+
+	; make sure the symbol was defined (EXPORTed by some object file)
+	CALLMAIN lbl::getsegment
+	cmp #SEG_UNDEF		; still undefined?
+	jeq @undef		; if so -> error
 
 	; store the resolved (GLOBAL) id for this symbol's index (LOCAL id)
-	tya
 	ldy @i
+	lda @symid+1
 	sta import_label_idshi,y
-	txa
+	lda @symid
 	sta import_label_idslo,y
 
 	jsr krn::chrin		; eat info byte
@@ -1838,51 +1846,30 @@ __obj_close_section = close_section
 	bne @load_imports	; repeat for all IMPORTS
 
 ;-------------------------------------------------------------------------------
-; load all the EXPORTS
+; skip over the EXPORTS and LOCALS (these were loaded in pass 1 by
+; load_headers and finalized by the linker's resolve_symbols)
 @exports:
-	lda numexports
-	beq @load_locals
-
-	; copy name to shared RAM
-	ldxy __obj_filename
-	stxy @name
-	ldy #$00
-:	lda (@name),y
-	sta @namebuff,y
-	beq :+
-	iny
-	bne :-
-
-:	lda #$00
+	lda #$00
 	sta @i
 	cmp numexports
-	beq @load_locals
+	beq @locals
 
-@export_loop:
-	jsr load_export
-	bcs @ret
+@skip_export:
+	jsr @eat_symbol		; skip name, segment id, and offset
 	inc @i
 	lda @i
 	cmp numexports
-	bne @export_loop
+	bne @skip_export
 
-;-------------------------------------------------------------------------------
-; load LOCAL symbols
-@load_locals:
-	; prepend the filename as scope
-	ldxy #@namebuff
-	CALLMAIN lbl::setscope
-
+@locals:
 	ldxy numlocals
-	stxy @i
-:	iszero @i
-	beq @ok
-	jsr load_local
-	jcs @ret
+	stxy @i			; 16-bit counter for LOCALs
+@skip_local:
+	iszero @i
+	beq @load_segments
+	jsr @eat_symbol		; skip name, segment id, and offset
 	decw @i
-	jmp :-
-
-@ok:	CALLMAIN lbl::popscope
+	jmp @skip_local
 
 ;-------------------------------------------------------------------------------
 ; done with symbols, now load all the SEGMENT information to get the sizes
@@ -1892,7 +1879,7 @@ __obj_close_section = close_section
 	sta seg_idx
 	lda numsegments
 	sta seg_cnt
-	jeq @done
+	jeq @dbginfo		; no segments; continue to the debug info
 
 @load_segment:
 	jsr krn::chrin			; eat "info" byte for SEGMENT
@@ -1959,8 +1946,12 @@ __obj_close_section = close_section
 
 	; check segment TYPE, if it is BSS, no obj/relocation code to load
 	pla			; restore TYPE byte
-	cmp #TYPE_BSS
-	beq @done
+	jsr is_bss		; BSS or BSSZP?
+	beq @next_seg		; if so, skip to the next SEGMENT
+
+	; if the segment is empty, there is no object code to load
+	iszero @sz
+	beq @reltab
 
 @objcode:
 	; finally, load the object code for the segment to vmem
@@ -1980,17 +1971,32 @@ __obj_close_section = close_section
 @reltab:
 	lda seg_idx
 	jsr apply_relocation		; load/apply relocation table
-	lda #$01			; flag for dbgi::load (apply relocation)
+
+@next_seg:
 	inc seg_idx
 	dec seg_cnt			; decrement segment counter
 	jne @load_segment		; repeat for all segments
 
 ;-------------------------------------------------------------------------------
 ; finally, link the debug information for the object file
+@dbginfo:
+	lda #$01			; flag for dbgi::load (apply relocation)
 	CALL FINAL_BANK_DEBUG, dbgi::load	; load debug info
 
 ;-------------------------------------------------------------------------------
 @done:	RETURN_OK
+
+@undef:	RETURN_ERR ERR_IMPORT_UNDEFINED
+
+;-------------------------------------------------------------------------------
+; reads past a symbol record (0-terminated name, segment id, 16-bit offset)
+@eat_symbol:
+:	jsr krn::chrin		; read past the name
+	cmp #$00
+	bne :-
+	jsr krn::chrin		; skip the segment id
+	jsr krn::chrin		; skip the offset LSB
+	jmp krn::chrin		; skip the offset MSB (and return)
 
 ;-------------------------------------------------------------------------------
 ; object code: $xxxx-$xxxx
@@ -2125,26 +2131,6 @@ __obj_close_section = close_section
 .endif
 
 ;*******************************************************************************
-; SECTION STOP
-; Gets the stop address for the given SECTION
-; IN:
-;   - .X: the index of the SECTION to get the address for
-; OUT:
-;   - .XY: stop address of the SECTION
-.proc get_section_stop
-	lda sections_startlo,x
-	clc
-	adc sections_sizelo,x
-	pha
-	lda sections_starthi,x
-	adc sections_sizehi,x
-	tay
-	pla
-	tax
-	rts
-.endproc
-
-;*******************************************************************************
 ; IS BSS
 ; Checks if the given TYPE represents a BSS segment (BSS or BSSZP)
 ; IN:
@@ -2235,20 +2221,21 @@ __obj_close_section = close_section
 	cmp #TYPE_ABS		; is this an ABS segment?
 	bne :+			; if not, skip it
 
-	; push stop address then start address
-	jsr get_section_stop
-	txa
+	; push stop address (start + size) then start address
+	lda segments_startlo,x
+	clc
+	adc segments_sizelo,x
 	pha
-	tya
+	lda segments_starthi,x
+	adc segments_sizehi,x
 	pha
 
-	ldx @i
-	lda sections_startlo,x
+	lda segments_startlo,x
 	pha
-	lda sections_starthi,x
+	lda segments_starthi,x
 	pha
 	ldxy #@abs_seg
-	jsr log_msg		; write section range to log
+	jsr log_msg		; write segment range to log
 
 :	inc @i
 	lda @i
@@ -2282,11 +2269,11 @@ __obj_close_section = close_section
 	dey
 	bpl :-
 
-	; push the size of this SECTION
+	; push the size of this SEGMENT
 	ldx @i
-	lda sections_sizelo,x
+	lda segments_sizelo,x
 	pha
-	lda sections_sizehi,x
+	lda segments_sizehi,x
 	pha
 
 	; push address of name

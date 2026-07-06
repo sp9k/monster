@@ -11,8 +11,6 @@
 .import __debug_numfiles
 .import __debug_set_file
 .import __debug_store_line
-.import __debug_push_block
-.import __debug_pop_block
 
 .import __debuginfo_dump
 .import __debuginfo_load
@@ -47,7 +45,5 @@ SIZEOF_BLOCK_HEADER  = 14
 	set_seg_id   = __debuginfo_set_seg_id
 	srcline      = __debug_src_line
 	storeline    = __debug_store_line
-	pop_block    = __debug_pop_block
-	push_block   = __debug_push_block
 	top          = __debuginfo_top
 .endscope

@@ -257,6 +257,10 @@ err_no_matching_scope:
 ; .byte "no matching scope",0
 .byte $73,$db,$68,$54,$1a,$9,$71,$db,$98,$cf,$81,$40
 
+err_filename_too_long:
+; .byte "filename too long",0
+.byte $32,$4c,$2b,$81,$69,$5b,$a3,$cf,$db,$f,$71,$c0
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -321,7 +325,8 @@ err_no_matching_scope:
 	err_data_in_bss, \
 	err_oom, \
 	err_ctx_full, \
-	err_no_matching_scope
+	err_no_matching_scope, \
+	err_filename_too_long
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

@@ -423,11 +423,13 @@ HEIGHT = SCREEN_HEIGHT-2
 	ldxy #strings::dir
 	jsr file::open_r_prg
 	bcs :+
+	pha
 	ldxy #strings::dir
 	jsr file::exists
 	bcs :+
-	tax
+	pla
 	pha
+	tax
 	jsr krn::chkin
 	pla
 	clc			; ok

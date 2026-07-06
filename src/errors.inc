@@ -88,6 +88,7 @@ ERR_DATA_IN_BSS          = 58
 ERR_OOM                  = 59
 ERR_CTX_FULL             = 60
 ERR_NO_MATCHING_SCOPE    = 61
+ERR_FILENAME_TOO_LONG    = 62
 
 .import __err_get
 

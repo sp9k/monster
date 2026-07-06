@@ -5,6 +5,7 @@
 .import __link_parse
 .import __link_segaddr_by_id
 .import __link_segaddr_by_name
+.import __link_segsize_by_id
 .import __link_set_segment_type
 
 .scope link
@@ -15,5 +16,6 @@
 	segaddr_by_id            = __link_segaddr_by_id
 	segaddr_by_name          = __link_segaddr_by_name
 	segid_by_name            = __link_get_segment_by_name
+	segsize_by_id            = __link_segsize_by_id
 	set_segtype              = __link_set_segment_type
 .endscope

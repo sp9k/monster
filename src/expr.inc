@@ -8,6 +8,7 @@
 .import __expr_rpnlistlen
 .import __expr_segment
 .import __expr_symbol
+.import __expr_value
 
 VAL_ABS = 0
 VAL_REL = 1
@@ -27,4 +28,5 @@ POSTPROC_MSB  = 2
 	segment    = __expr_segment
 	symbol     = __expr_symbol
 	postproc   = __expr_postproc
+	value      = __expr_value
 .endscope

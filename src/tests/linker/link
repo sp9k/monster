@@ -18,6 +18,6 @@ SEGMENTS [
   LOAD=B
   RUN=B;
  BSS:
-  LOAD=BSS
-  TYPE=BSS
+  LOAD=C
+  RUN=C;
 ]

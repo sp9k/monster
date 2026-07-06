@@ -80,6 +80,9 @@ __expr_symbol: .word 0
 .export __expr_postproc
 __expr_postproc: .byte 0
 
+.export __expr_value
+__expr_value: .word 0	; the (full 16-bit) result of the last evaluation
+
 .segment "EXPR_BSS"
 operands: .res $100
 
@@ -184,7 +187,7 @@ operands: .res $100
 @evalloop:
 	ldx @i
 	lda __expr_rpnlist,x
-	bpl @cont
+	jpl @cont
 
 @done:	jsr @popval		; read result (should be only value on stack)
 	bcs @ret
@@ -257,6 +260,7 @@ operands: .res $100
 	beq @ok			; no postproc -> continue with current size
 	lda #$01		; force 1 byte size if we are taking '>' or '<'
 @ok:	ldxy @val1
+	stxy __expr_value	; save full result (e.g. for relocation addend)
 	clc			; ok
 @ret:	rts
 
