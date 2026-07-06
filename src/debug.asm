@@ -214,6 +214,8 @@ blank   = scr::blank
 
 	jsr reset_stopwatch
 
+	jsr sim::init		; init VIA shadows/timer emulation state
+
 	jsr run::init
 
 	jsr init_breakpoints

@@ -14,6 +14,18 @@
 .include "vic20/expansion.inc"	; FINAL_BANK_SIM, FINAL_BANK_FASTCOPY
 .endif
 
+;*******************************************************************************
+; VIA REGISTER OFFSETS
+via_t1cl = $4	; T1 counter lo (read: ack T1 IRQ, write: set T1 latch lo)
+via_t1ch = $5	; T1 counter hi (write: load counter from latch, ack T1 IRQ)
+via_t1ll = $6	; T1 latch lo
+via_t1lh = $7	; T1 latch hi (write: also ack T1 IRQ)
+via_t2cl = $8	; T2 counter lo (read: ack T2 IRQ, write: set T2 latch lo)
+via_t2ch = $9	; T2 counter hi (write: load counter, ack T2 IRQ)
+via_acr  = $b	; auxiliary control register
+via_ifr  = $d	; interrupt flag register
+via_ier  = $e	; interrupt enable register
+
 .BSS
 
 .export __sim_register_state
@@ -80,8 +92,36 @@ __sim_effective_addr: .word 0
 .export __sim_stopwatch
 __sim_stopwatch: .res 3
 
+;*******************************************************************************
+; shadow registers for the user's VIA1 ($9110) and VIA2 ($9120)
+; the simulator redirects the user's loads/stores in this range to these
+; shadows so that the timers can be emulated (see via_read/via_write)
+; NOTE: the two blocks must be contiguous (they are indexed as one array)
+.export __sim_via1
 .export __sim_via2
+vias:
+__sim_via1: .res $10
 __sim_via2: .res $10
+
+; T2 lo-order latches; a write to T2CL is buffered here and only transferred
+; to the counter when T2CH is written (index 0 = VIA1, 1 = VIA2)
+via_t2_latch: .res 2
+
+; timer "armed" flags: if !0, the corresponding timer sets its interrupt flag
+; when it underflows.  T1 stays armed in free-run mode; a one-shot timer is
+; disarmed when it fires until its counter hi byte is rewritten
+; (index 0 = VIA1, 1 = VIA2)
+via_t1_armed: .res 2
+via_t2_armed: .res 2
+
+; cycles executed by the current STEP (amount to tick the VIA timers down by)
+step_cycles: .byte 0
+
+; previous level of the virtual NMI line (VIA1); NMIs are edge-triggered
+nmi_prev: .byte 0
+
+; temp storage for via_read/via_write
+viatmp: .byte 0
 
 ; if !0, we're executing a TRACE (not STEP).  The debugger sets/clears this
 ; flag (see debug.asm); it must only ever hold 0 or 1 (see vmem_load).
@@ -94,6 +134,55 @@ tracing: .byte 0
 
 ;******************************************************************************
 .segment "DEBUGGER"
+
+;******************************************************************************
+; INIT
+; Initializes the simulator state for a new debug session.
+; Copies the user's saved VIA registers to the VIA shadows and resets the
+; timer state used to generate simulated IRQ/NMIs
+.export __sim_init
+.proc __sim_init
+	lda #$00
+	sta step_cycles
+	sta nmi_prev
+
+.ifdef vic20
+	; copy the user's saved VIA registers ($9110-$912f) to the shadows
+	ldx #$00
+@copy:	txa
+	pha
+	clc
+	adc #<$9110
+	tax
+	ldy #>$9110
+	jsr vmem::load
+	sta viatmp
+	pla
+	tax
+	lda viatmp
+	sta vias,x
+	inx
+	cpx #$20
+	bne @copy
+
+	; begin with no interrupts pending and both timers on each VIA armed
+	lda #$00
+	sta __sim_via1+via_ifr
+	sta __sim_via2+via_ifr
+	lda #$01
+	sta via_t1_armed
+	sta via_t1_armed+1
+	sta via_t2_armed
+	sta via_t2_armed+1
+
+	; best guess for the (write-only) T2 latches: the current counter value
+	lda __sim_via1+via_t2cl
+	sta via_t2_latch
+	lda __sim_via2+via_t2cl
+	sta via_t2_latch+1
+.endif
+	rts
+.endproc
 
 ;******************************************************************************
 ; STEP
@@ -577,6 +666,7 @@ cycles_tab:
 	sta __sim_at_brk
 	sta __sim_vital_addr_clobbered
 	sta __sim_illegal
+	sta step_cycles
 
 	ldxy __sim_pc
 	jsr vmem_load
@@ -598,6 +688,12 @@ cycles_tab:
 	ora __sim_jammed
 	ora __sim_vital_addr_clobbered
 	cmp #$01
+.ifdef vic20
+	bcs @done			; step failed; skip VIA update
+	jsr update_vias			; tick timers, dispatch IRQ/NMI
+	clc
+@done:
+.endif
 	rts
 
 @go:
@@ -610,6 +706,11 @@ cycles_tab:
 ; IN:
 ;   - .A: amount to add to the stopwatch
 .proc add_cycles
+	pha
+	clc
+	adc step_cycles
+	sta step_cycles		; update the current STEP's cycle count
+	pla
 	clc
 	adc __sim_stopwatch
 	sta __sim_stopwatch
@@ -2289,6 +2390,372 @@ h_rti:
 	sta __sim_pc+1
 	rts
 
+.ifdef vic20
+;******************************************************************************
+; VIA EMULATION
+; The VIA registers ($9110-$912f) are shadowed by the simulator so that the
+; timers can be emulated.  Each STEP ticks the timers down by the number of
+; cycles that the executed instruction took.  When an enabled timer interrupt
+; is flagged, the simulator dispatches an NMI (VIA1) or IRQ (VIA2) exactly as
+; the 6502 would.
+;******************************************************************************
+
+;******************************************************************************
+; VIA READ
+; Reads one of the shadowed VIA registers, applying any side effect defined
+; by the 6522 for the read (e.g. acknowledging a timer interrupt)
+; IN:
+;   - .X: LSB of the register address ($10-$2f)
+;   - .Y: MSB of the register address ($91)
+; OUT:
+;   - .A: the register value
+;   - .X, .Y: preserved
+.proc via_read
+	txa
+	pha			; save address LSB
+	and #$1f
+	tax			; .X = offset into the shadow registers
+	and #$0f		; .A = register number
+	cmp #via_t1cl
+	beq @t1cl
+	cmp #via_t2cl
+	beq @t2cl
+	cmp #via_ifr
+	beq @ifr
+	cmp #via_ier
+	beq @ier
+	lda vias,x		; no side effects; return the shadow value
+	jmp @done
+
+@t1cl:	; reading the T1 counter lo byte acknowledges the T1 interrupt
+	lda vias+(via_ifr-via_t1cl),x
+	and #$ff-$40
+	sta vias+(via_ifr-via_t1cl),x
+	lda vias,x
+	jmp @done
+
+@t2cl:	; reading the T2 counter lo byte acknowledges the T2 interrupt
+	lda vias+(via_ifr-via_t2cl),x
+	and #$ff-$20
+	sta vias+(via_ifr-via_t2cl),x
+	lda vias,x
+	jmp @done
+
+@ier:	lda vias,x
+	ora #$80		; IER bit 7 always reads back as set
+	jmp @done
+
+@ifr:	; IFR bit 7 reads as set if any enabled interrupt is flagged
+	lda vias+(via_ier-via_ifr),x
+	and vias,x
+	and #$7f
+	beq :+
+	lda vias,x
+	ora #$80
+	bne @done		; branch always
+:	lda vias,x
+	and #$7f
+
+@done:	sta viatmp
+	pla
+	tax			; restore address LSB
+	ldy #>$9100		; restore address MSB
+	lda viatmp
+	rts
+.endproc
+
+;******************************************************************************
+; VIA WRITE
+; Applies a write to one of the shadowed VIA registers, handling the side
+; effects defined by the 6522 (timer loads, interrupt acks, etc.)
+; The caller must also perform the store to virtual memory (the shadows are
+; only authoritative while the simulator is running)
+; IN:
+;   - .A: the value to write
+;   - .X: LSB of the register address ($10-$2f)
+;   - .Y: MSB of the register address ($91)
+; OUT:
+;   - .A, .X, .Y: preserved
+.proc via_write
+	sta viatmp		; save the value to write
+	txa
+	pha			; save address LSB
+	and #$1f
+	tax			; .X = offset into the shadow registers
+	and #$0f		; .A = register number
+	cmp #via_t1cl
+	beq @t1cl
+	cmp #via_t1ch
+	beq @t1ch
+	cmp #via_t1ll
+	beq @t1ll
+	cmp #via_t1lh
+	beq @t1lh
+	cmp #via_t2cl
+	bne :+
+	jmp @t2cl
+:	cmp #via_t2ch
+	bne :+
+	jmp @t2ch
+:	cmp #via_ifr
+	bne :+
+	jmp @ifr
+:	cmp #via_ier
+	bne :+
+	jmp @ier
+
+:	; ordinary register: just store the value to the shadow
+	lda viatmp
+	sta vias,x
+	jmp @done
+
+@t1cl:	; a write to the T1 counter lo byte is redirected to the lo latch
+	lda viatmp
+	sta vias+(via_t1ll-via_t1cl),x
+	jmp @done
+
+@t1ll:	lda viatmp
+	sta vias,x
+	jmp @done
+
+@t1lh:	; writing the T1 latch hi byte also acknowledges the T1 interrupt
+	lda viatmp
+	sta vias,x
+	lda vias+(via_ifr-via_t1lh),x
+	and #$ff-$40
+	sta vias+(via_ifr-via_t1lh),x
+	jmp @done
+
+@t1ch:	; write the hi latch, transfer the latch to the counter, acknowledge
+	; the T1 interrupt, and (re)arm the timer
+	lda viatmp
+	sta vias+(via_t1lh-via_t1ch),x
+	sta vias,x
+	lda vias+(via_t1ll-via_t1ch),x
+	sta vias+(via_t1cl-via_t1ch),x
+	lda vias+(via_ifr-via_t1ch),x
+	and #$ff-$40
+	sta vias+(via_ifr-via_t1ch),x
+	jsr via_idx
+	lda #$01
+	sta via_t1_armed,y
+	jmp @done
+
+@t2cl:	; a write to the T2 counter lo byte is buffered in the T2 latch
+	jsr via_idx
+	lda viatmp
+	sta via_t2_latch,y
+	jmp @done
+
+@t2ch:	; load the counter, acknowledge the T2 interrupt, and arm the timer
+	lda viatmp
+	sta vias,x
+	jsr via_idx
+	lda via_t2_latch,y
+	sta vias+(via_t2cl-via_t2ch),x
+	lda #$01
+	sta via_t2_armed,y
+	lda vias+(via_ifr-via_t2ch),x
+	and #$ff-$20
+	sta vias+(via_ifr-via_t2ch),x
+	jmp @done
+
+@ifr:	; writing a 1 to an interrupt flag clears it
+	lda viatmp
+	and #$7f
+	eor #$ff
+	and vias,x
+	sta vias,x
+	jmp @done
+
+@ier:	; bit 7 selects whether the written bits are set (1) or cleared (0)
+	bit viatmp
+	bpl @ierclr
+	lda viatmp
+	and #$7f
+	ora vias,x
+	sta vias,x
+	jmp @done
+@ierclr:
+	lda viatmp
+	and #$7f
+	eor #$ff
+	and vias,x
+	sta vias,x
+
+@done:	pla
+	tax			; restore address LSB
+	ldy #>$9100		; restore address MSB
+	lda viatmp		; restore the stored value
+	rts
+.endproc
+
+;******************************************************************************
+; VIA IDX
+; Returns the index for the per-VIA state arrays (via_t1_armed etc.)
+; IN:
+;   - .X: offset into the shadow registers ($00-$1f)
+; OUT:
+;   - .Y: 0 for VIA1, 1 for VIA2
+.proc via_idx
+	txa
+	and #$10
+	beq :+
+	lda #$01
+:	tay
+	rts
+.endproc
+
+;******************************************************************************
+; UPDATE VIAS
+; Ticks both VIAs' timers down by the number of cycles that the instruction
+; just executed took and, if any enabled interrupt is flagged, dispatches an
+; NMI (VIA1) or IRQ (VIA2)
+.proc update_vias
+	ldx #$00		; VIA1
+	jsr tick_via
+	ldx #$10		; VIA2
+	jsr tick_via
+
+	; check for an NMI (VIA1): edge-triggered on the line going active
+	lda __sim_via1+via_ifr
+	and __sim_via1+via_ier
+	and #$7f
+	beq @nonmi
+	lda nmi_prev
+	bne @chkirq		; NMI line was already active; no new edge
+	inc nmi_prev
+	ldxy #$fffa		; NMI vector
+	jmp do_interrupt	; dispatch the NMI (any IRQ remains pending)
+
+@nonmi:	lda #$00
+	sta nmi_prev
+
+@chkirq:
+	; check for an IRQ (VIA2): level-triggered, masked by the I flag
+	lda __sim_reg_p
+	and #$04
+	bne @done		; I flag set; IRQs are masked
+	lda __sim_via2+via_ifr
+	and __sim_via2+via_ier
+	and #$7f
+	beq @done
+	ldxy #$fffe		; IRQ vector
+	jmp do_interrupt
+@done:	rts
+.endproc
+
+;******************************************************************************
+; TICK VIA
+; Counts the given VIA's timers down by the current STEP's cycle count and
+; flags any timer interrupt that occurs
+; IN:
+;   - .X: offset of the VIA to update ($00 = VIA1, $10 = VIA2)
+.proc tick_via
+	jsr via_idx		; .Y = index for the per-VIA state arrays
+
+	; count T1 down by the number of cycles the instruction took
+	lda vias+via_t1cl,x
+	sec
+	sbc step_cycles
+	sta vias+via_t1cl,x
+	lda vias+via_t1ch,x
+	sbc #$00
+	sta vias+via_t1ch,x
+	bcs @t2			; no underflow
+
+	; T1 underflowed
+	lda vias+via_acr,x
+	and #$40		; free-run mode?
+	beq @oneshot
+
+	; free-run: reload the counter from the latch and flag the interrupt
+	lda vias+via_t1cl,x
+	clc
+	adc vias+via_t1ll,x
+	sta vias+via_t1cl,x
+	lda vias+via_t1ch,x
+	adc vias+via_t1lh,x
+	sta vias+via_t1ch,x
+	jmp @t1flag
+
+@oneshot:
+	; one-shot: only flag the interrupt the first time the timer expires
+	lda via_t1_armed,y
+	beq @t2
+	lda #$00
+	sta via_t1_armed,y
+
+@t1flag:
+	lda vias+via_ifr,x
+	ora #$40
+	sta vias+via_ifr,x
+
+@t2:	; T2 only counts cycles in one-shot mode (ACR bit 5 clear)
+	lda vias+via_acr,x
+	and #$20
+	bne @done		; T2 counts PB6 pulses; not emulated
+
+	lda vias+via_t2cl,x
+	sec
+	sbc step_cycles
+	sta vias+via_t2cl,x
+	lda vias+via_t2ch,x
+	sbc #$00
+	sta vias+via_t2ch,x
+	bcs @done		; no underflow
+
+	; T2 underflowed: flag the interrupt if it hasn't fired yet
+	lda via_t2_armed,y
+	beq @done
+	lda #$00
+	sta via_t2_armed,y
+	lda vias+via_ifr,x
+	ora #$20
+	sta vias+via_ifr,x
+@done:	rts
+.endproc
+
+;******************************************************************************
+; DO INTERRUPT
+; Performs the 6502's interrupt sequence: pushes the PC and status (with the
+; BREAK flag clear), sets the I flag, and loads the PC from the given vector.
+; Takes 7 cycles, which are added to the stopwatch.
+; IN:
+;   - .XY: address of the vector to jump through ($fffa or $fffe)
+.proc do_interrupt
+@vec=r2
+	stxy @vec
+
+	; push the return PC and the status
+	lda __sim_pc+1
+	jsr vpush
+	lda __sim_pc
+	jsr vpush
+	lda __sim_reg_p
+	and #$ef		; BRK flag is pushed clear
+	ora #$20		; unused bit is pushed set
+	jsr vpush
+
+	; mask interrupts while in the handler
+	lda __sim_reg_p
+	ora #$04
+	sta __sim_reg_p
+
+	; load the PC from the interrupt vector
+	ldxy @vec
+	jsr vmem_load
+	sta __sim_pc
+	incw @vec
+	ldxy @vec
+	jsr vmem_load
+	sta __sim_pc+1
+
+	lda #7			; the interrupt sequence takes 7 cycles
+	jmp add_cycles
+.endproc
+.endif	; vic20
+
 ;******************************************************************************
 ; VMEM LOAD
 ; Loads a byte from virtual memory.  If we are tracing, this may be the
@@ -2299,6 +2766,17 @@ h_rti:
 ;   - .A: byte loaded from the requested address
 .proc vmem_load
 @target=r0
+.ifdef vic20
+	; redirect reads of the VIA registers ($9110-$912f) to their shadows
+	cpy #>$9100
+	bne @notvia
+	cpx #$10
+	bcc @notvia
+	cpx #$30
+	bcs @notvia
+	jmp via_read
+@notvia:
+.endif
 .ifdef ultimem
 	lsr tracing
 	bcc @v			; not tracing, always use virtual mem
@@ -2309,9 +2787,15 @@ h_rti:
 	; can see what's happening and for a bit of a speed bonus)
 	cpy #>$1000
 	bcc @v
-	cpy #>$8000
+	cpy #>$9000
 	bcc @phy		; [$1000, $7fff]
-	cpy #>$9400
+	bne :+
+
+	; check VIC range ($9000-$9010)
+	cpx #<$9010
+	bcc @phy
+
+:	cpy #>$9400
 	bcc @v
 	cpy #>$9800
 	bcs @v
@@ -2338,6 +2822,19 @@ h_rti:
 ;   - .A:  byte to store
 .proc vmem_store
 @target=r0
+.ifdef vic20
+	; mirror writes to the VIA registers ($9110-$912f) into their shadows
+	; to update the simulated timer state; the write then falls through to
+	; virtual memory as usual so the stored value is also visible there
+	cpy #>$9100
+	bne @notvia
+	cpx #$10
+	bcc @notvia
+	cpx #$30
+	bcs @notvia
+	jsr via_write		; .A, .X, .Y are preserved
+@notvia:
+.endif
 .ifdef ultimem
 	; check if target address is ok
 	; writes to IO2/3 ($9800-$9fff) and $316-$319 are not allowed
@@ -2364,13 +2861,19 @@ h_rti:
 	bcc @v			; not tracing, always use virtual mem
 	rol tracing		; reset tracing flag
 
-	; check if address is in $1000-$8000 or $9400-$9800, store directly if
-	; so (so that the change is visible on screen and for speed)
+	; check if address is in $1000-$8000, $9000-$9010, $9400-$9800,
+	; store directly if so (faster and change is visible on screen)
 	cpy #>$1000
 	bcc @v
-	cpy #>$8000
+	cpy #>$9000
 	bcc @phy		; [$1000, $7fff]
-	cpy #>$9400
+	bne :+
+
+	; check VIC range ($9000-$9010)
+	cpx #<$9010
+	bcc @phy
+
+:	cpy #>$9400
 	bcc @v
 	cpy #>$9800
 	bcs @v
