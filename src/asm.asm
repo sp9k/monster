@@ -110,7 +110,8 @@ SEG_BSS  = 2	; flag for BSS segment (all data must be 0, PC not updated)
 .segment "BSS_NOINIT"
 ;*******************************************************************************
 .export ifstack
-ifstack:   .res MAX_IFS	; contains TRUE/FALSE values for the active IF blocks
+ifstack:   .res MAX_IFS	; TRUE/FALSE values for the active IF blocks
+			; (referenced as ifstack-1,x; x in [1, ifstacksp])
 ifstacksp: .byte 0	; stack pointer to "if" stack
 
 ; Opcode/operand values captured when asm::disassemble is called.
@@ -276,8 +277,10 @@ num_opcode_singles=*-opcode_singles
 
 ;*******************************************************************************
 ; DIRECTIVES
-DIRECTIVE_ELSE = 9
+DIRECTIVE_IF    = 8
+DIRECTIVE_ELSE  = 9
 DIRECTIVE_ENDIF = 10
+DIRECTIVE_IFDEF = 11
 directives:
 	.byte "db",0
 	.byte "eq",0
@@ -590,14 +593,14 @@ __asm_tokenize_pass1 = __asm_tokenize
 	beq assemble_with_ctx	; no active .IF
 	ldx #$00
 :	inx
-	lda ifstack,x
+	lda ifstack-1,x
 	beq @if_false
 	cpx ifstacksp
 	beq assemble_with_ctx
 	bne :-
 
 @if_false:
-	; asm is off, check for ENDIF or ELSE
+	; asm is off, check for ENDIF, ELSE, or a nested IF/IFDEF
 	; anything else: return without assembling
 	jsr is_directive
 	bcs noasm		; if not directive continue
@@ -609,8 +612,26 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne :+
 	jmp do_endif		; handle .ENDIF
 :	cmp #DIRECTIVE_ELSE
-	bne noasm
+	bne :+
 	jmp do_else		; handle .ELSE
+:	cmp #DIRECTIVE_IF
+	beq @skipped_if
+	cmp #DIRECTIVE_IFDEF
+	bne noasm
+
+@skipped_if:
+	; push a FALSE entry for a .IF/.IFDEF within a disabled block so that
+	; its .ELSE/.ENDIF don't affect the enclosing .IF
+	lda ifstacksp
+	cmp #MAX_IFS
+	bcc :+
+	RETURN_ERR ERR_STACK_OVERFLOW
+:	inc ifstacksp
+	ldx ifstacksp
+	lda #$00
+	sta ifstack-1,x
+	lda #ASM_DIRECTIVE
+	RETURN_OK
 @ret:	rts
 .endproc
 
@@ -682,6 +703,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	sty indexed
 	sty operandsz
 	sty immediate
+	sty resulttype		; ASM_NONE
 
 ; check if the line contains an instruction
 @opcode:
@@ -724,9 +746,11 @@ __asm_tokenize_pass1 = __asm_tokenize
 @anonlabel:
 	jsr line::incptr
 	lda (zp::line),y
+	jsr islineterminator	; end of line or comment?
 	beq :+
 	jsr util::is_whitespace	; anon label must be followed by whitespace
-	bne @retlabel		; if not whitespace, go on
+	beq :+
+	RETURN_ERR ERR_UNEXPECTED_CHAR
 :	lda zp::verify
 	bne @label_done		; if verifying, don't add a label
 	ldxy zp::virtualpc
@@ -937,7 +961,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne @err
 	lda #$6c
 	sta opcode		; fix the opcode variable
-	bne @noerr		; branch always
+	jne @noerr		; branch always
 
 @jmpabs:
 	cpx #ZEROPAGE
@@ -982,12 +1006,12 @@ __asm_tokenize_pass1 = __asm_tokenize
 	cpx #ABS	; only ABS/ZP supported for branches
 	bne @err
 
-:	; convert operand to relative address (operand - zp::asmresult)
-	lda zp::asmresult
+:	; convert operand to relative address (operand - (zp::virtualpc+2))
+	lda zp::virtualpc
 	clc
 	adc #$02
 	sta @tmp
-	lda zp::asmresult+1
+	lda zp::virtualpc+1
 	adc #$00
 	sta @tmp+1
 
@@ -998,14 +1022,24 @@ __asm_tokenize_pass1 = __asm_tokenize
 	tax
 	lda operand+1		; MSB of operand
 	sbc @tmp+1		; MSB - >PC
-	beq @store_offset	; $00xx might be in range
-	cmp #$ff		; $ffxx might be in range
-	beq @store_offset	; continue
+	beq @chkfwd		; $00xx: in range if xx < $80
+	cmp #$ff		; $ffxx: in range if xx >= $80
+	bne @rangeerr		; not $00xx or $ffxx: out of range
 
+@chkbwd:
+	cpx #$80
+	bcs @store_offset	; -128 to -1: ok
+	bcc @rangeerr		; out of range
+
+@chkfwd:
+	cpx #$80
+	bcc @store_offset	; 0 to 127: ok
+
+@rangeerr:
 	jsr pass1
 	beq @store_offset	; on pass 1, offset might not be correct: allow
 	lda #ERR_BRANCH_OUT_OF_RANGE
-	;sec
+	sec
 	rts
 
 @verifyimm:
@@ -1022,6 +1056,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	tay		; .Y = 1 (offset to operand)
 	txa		; .A = relative offset (operand)
 	jsr writeb	; write the offset (no relocation)
+	bcs @opdone	; if error, return
 
 	; write the opcode for the branch
 	lda opcode
@@ -1317,19 +1352,33 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne @imm
 	ldx indexed
 	lda indirect_hint
-	beq :+
+	beq @zpdirect
 	dex
-	bpl :+
-
-	; error- indirect zeropage not a valid addressing mode
-@illegalmode:
-	RETURN_ERR ERR_ILLEGAL_ADDRMODE
-:	txa
+	bmi @zpind	; indirect and not indexed -> promote to (abs)
+	txa
 	clc
 	adc indirect_hint
 	adc indirect_hint
 	adc #ZEROPAGE
-@ok:	RETURN_OK
+	RETURN_OK
+
+@zpind:	; (zp): treat as absolute indirect (e.g. JMP ($00f0))
+	inc operandsz	; increase operand size to 2 bytes
+	lda #ABS_IND
+	RETURN_OK
+
+@zpdirect:
+	cpx #$02	; ,Y indexed?
+	bne :+
+	; there is no "zp, y" indexed; force to "abs, y"
+	inc operandsz	; force operand size to 2 bytes
+	lda #ABS_Y	; and mode to absolute, y indexed
+	RETURN_OK
+
+:	txa
+	clc
+	adc #ZEROPAGE
+	RETURN_OK
 
 ;-------------------------------------------------------------------------------
 @abs:   lda immediate
@@ -1337,7 +1386,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	lda indirect_hint
 	beq :+
 	lda indexed
-	bne @err 	; error- indirect absolute doesn't support indexing
+	bne @illegalmode ; error- indirect absolute doesn't support indexing
 	lda #ABS_IND
 	RETURN_OK
 :	lda indexed
@@ -1351,6 +1400,9 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne @illegalmode ; error- immediate doesn't support indexing
 	lda #IMMEDIATE
 	RETURN_OK
+
+@illegalmode:
+	RETURN_ERR ERR_ILLEGAL_ADDRMODE
 
 @impl:	;lda #IMPLIED (0)
 @done:	RETURN_OK
@@ -1588,9 +1640,13 @@ __asm_tokenize_pass1 = __asm_tokenize
 @l2:	lda directives,x
 	inx
 	cmp #$00
-	beq @l0
+	beq :+
 	cpx #directives_len
 	bcc @l2
+	RETURN_ERR ERR_INVALID_DIRECTIVE
+
+:	cpx #directives_len			; end of the table?
+	bcc @l0					; if not, check next directive
 	RETURN_ERR ERR_INVALID_DIRECTIVE
 
 @found: ; make sure there are no trailing characters
@@ -1822,6 +1878,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	tya				; .A=MSB
 	ldy #$00
 	jsr writew_with_reloc
+	bcs @ret			; return err
 
 	lda #$02
 	jsr addpc
@@ -1855,16 +1912,17 @@ __asm_tokenize_pass1 = __asm_tokenize
 	lda #ERR_SYNTAX_ERROR
 @err:	rts
 
-@fill:	lda #$00
+@fill:	iszero @cnt
+	beq @done
+	lda #$00
 	tay
 	jsr writeb
 	bcs @err
 	jsr incpc
 	decw @cnt
-	iszero @cnt
-	bne @fill
+	jmp @fill
 
-	RETURN_OK
+@done:	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -2007,6 +2065,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 @offset=r0
 @size=r0
 @size_specified=r2
+@errcode=r3
 	lda zp::verify
 	beq @cont
 
@@ -2055,13 +2114,15 @@ __asm_tokenize_pass1 = __asm_tokenize
 	stxy @offset
 
 	; read @offset many bytes and throw them away
-:	jsr file::readb
+@skip:	iszero @offset
+	beq @sizeparam
+	jsr file::readb
 	bcs @err
 	decw @offset
-	iszero @offset
-	bne :-
+	jmp @skip
 
 	; get the optional size parameter
+@sizeparam:
 	jsr line::process_ws
 	;lda (zp::line),y
 	beq @l0			; end of line -> continue
@@ -2096,11 +2157,14 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne @l0
 
 @eof:	clc			; return without err
-@err:	pla			; restore file handle
+@err:	sta @errcode		; save the error code (if any)
+	pla			; restore file handle
 	php			; save success status flag
 	jsr file::close		; cleanup (close the file)
 	plp			; restore success flag
-	lda #ASM_DIRECTIVE
+	lda #ASM_DIRECTIVE	; format type (if no error)
+	bcc @ret
+	lda @errcode		; error: return the error code
 @ret:	rts
 .endproc
 
@@ -2124,7 +2188,6 @@ __asm_tokenize_pass1 = __asm_tokenize
 .export __asm_include
 __asm_include:
 @fname=rc
-@err=savereg
 @readfile:
 	stxy @fname
 	jsr log::out		; log the name of file being assembled
@@ -2135,9 +2198,7 @@ __asm_include:
 	clc			; don't include a file when verifying
 :	rts
 
-@inc:	sta @err		; @err = 0
-
-	; save current file
+@inc:	; save current file
 	lda dbgi::file
 	pha
 
@@ -2185,9 +2246,9 @@ __asm_include:
 	jsr file::getline	; read a line from the file
 	bcc @asm
 	ldx file::eof
-	bne @close		; failed to get a line and not at end of file
-	sta @err
-	bne @close		; branch always
+	bne @close		; at end of file -> done
+	jsr errlog::log		; log the read error
+	jmp @close		; and stop assembling this file
 
 ; assemble the line
 @asm:	ldxy #mem::spare
@@ -2197,9 +2258,7 @@ __asm_include:
 	lda #FINAL_BANK_MAIN	; any bank that is valid (low mem is used)
 	jsr __asm_tokenize_pass
 	bcc @ok
-	jsr errlog::log
-	bcc @ok
-@fatal:	sta @err		; too many errors or fatal error
+	jsr errlog::log		; log the error (.C stays set if fatal/too many)
 
 @ok:	pla			; restore the file ID we included from
 	sta zp::file		; and temporarily store it
@@ -2758,6 +2817,27 @@ __asm_include:
 
 	lda bbb_modes,x
 	sta @modes
+
+	; for LDX/STX the ,X encodings (bbb=101/111) actually mean ,Y
+	lda @cc
+	cmp #$02
+	bne @chkimplied
+	lda @modes
+	and #MODE_X_INDEXED
+	beq @chkimplied
+	lda @op
+	and #$e0	; get aaa
+	cmp #$80	; STX?
+	beq @swapxy
+	cmp #$a0	; LDX?
+	bne @chkimplied
+@swapxy:
+	lda @modes
+	eor #MODE_X_INDEXED|MODE_Y_INDEXED	; swap ,X -> ,Y
+	sta @modes
+
+@chkimplied:
+	lda @modes
 	and #MODE_IMPLIED
 	beq @cont	; if not implied, go on
 @implied:
@@ -2892,17 +2972,13 @@ __asm_include:
 	ldx #$fe	; -2
 
 	; read all the parameters for the macro
-@l0:	ldy #$00
+@l0:	inx
 	inx
-	inx
-@l1:	lda (zp::line),y
-	beq @done
-	iny
-	jsr util::is_whitespace
-	bne @l1
+	jsr line::process_ws	; move to the next parameter (if any)
+	jsr islineterminator	; end of line (or comment)?
+	beq @done		; if so, no more parameters
 
 	stx @cnt
-	jsr line::process_ws
 	jsr expr::eval
 	bcc @setparam
 	rts		; return err
@@ -2957,7 +3033,7 @@ __asm_include:
 	txa
 	inc ifstacksp
 	ldx ifstacksp
-	sta ifstack,x
+	sta ifstack-1,x
 	lda #ASM_DIRECTIVE
 	clc			; ok
 @done:	rts
@@ -2981,9 +3057,12 @@ __asm_include:
 ; handles .ELSE during assembly
 .proc do_else
 	ldx ifstacksp
-	lda #$01
-	eor ifstack,x
-	sta ifstack,x
+	bne :+
+	RETURN_ERR ERR_UNMATCHED_ENDIF	; no .IF is active
+
+:	lda #$01
+	eor ifstack-1,x
+	sta ifstack-1,x
 	lda #ASM_DIRECTIVE
 	RETURN_OK
 .endproc
@@ -3007,7 +3086,7 @@ __asm_include:
 :	; store TRUE/FALSE to the if stack
 	inc ifstacksp
 	ldx ifstacksp
-	sta ifstack,x
+	sta ifstack-1,x
 @done:
 	jsr line::process_word
 	lda #ASM_DIRECTIVE
@@ -3133,13 +3212,16 @@ __asm_include:
 	cmp #$ff
 	bne @add	; if size is not inferred, just add the label
 
-@seg:	; if .SEG is defined, use its mode
+	lda __asm_mode
+	beq @direct	; if assembling directly (.ORG), infer mode from PC
+
+@seg:	; assembling to object: use the segment's mode
 	lda __asm_segtype
 	jsr __asm_type_to_mode
 	jmp @add
 
 @direct:
-	; .ORG
+	; .ORG: labels in the zeropage are ZP (0), everything else ABS
 	lda zp::virtualpc+1
 	beq @add
 	lda #$01		; ABS
@@ -3242,13 +3324,14 @@ __asm_include:
 	lda zp::verify
 	bne @ok			; if just verifying, don't write
 
-	cmp #$00
-	beq :+
+	lda zp::bankval		; writing a non-zero byte?
+	beq :+			; zeroes are allowed anywhere
 	lda __asm_segtype
 	cmp #TYPE_BSS
-	bne :+
+	beq @bsserr
 	cmp #TYPE_BSSZP
 	bne :+
+@bsserr:
 	RETURN_ERR ERR_DATA_IN_BSS
 
 :	lda pcset
@@ -3463,8 +3546,13 @@ __asm_include:
 @check:	; check if we're now pointing to the label
 	lda @len
 	jsr str::compare
-	beq @found
+	bne @skiptoken
+	ldy @len		; look at the character after the match
+	lda (@line),y
+	jsr util::isseparator
+	beq @found		; if match ends on a separator -> found
 
+@skiptoken:
 	; read until we ARE on a separator
 	ldy #$00
 @l1:	lda (@line),y
