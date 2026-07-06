@@ -146,7 +146,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	; highlight disk name row
 	jsr draw::hiline
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; parse the name of the disk
 @getdiskname:
 	ldx #@dirmsglen
@@ -164,7 +164,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	lda #$00
 	jsr text::print
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; parse filenames and render initial view
 @getfilenames:
 	ldx @cnt
@@ -198,12 +198,11 @@ HEIGHT = SCREEN_HEIGHT-2
 	bmi @exit		; only 127 files allowed
 				; TODO: report this error better
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; init viewer
 @cont:	lda @file
 	jsr file::close
 	jsr scr::unblank
-
 	; and the bottom (status) row
 	ldx @row
 	jsr draw::hiline
@@ -226,7 +225,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	; highlight the first item
 	jsr highlight_selection
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; main viewer loop
 @key:	jsr key::waitch
 	cmp #K_QUIT
@@ -273,8 +272,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	jsr key::isup
 	bne @checkret
 
-@rowup:
-	jsr unhighlight_selection
+@rowup: jsr unhighlight_selection
 	dec @select
 	bpl @hiselection
 	inc @select		; lowest valid select value is 0
@@ -356,7 +354,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	tax
 	jmp edit::load		; load the file
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; refresh (redraw) all visible rows
 @refresh:
 @i=r8
@@ -423,15 +421,8 @@ HEIGHT = SCREEN_HEIGHT-2
 	ldxy #strings::dir
 	jsr file::open_r_prg
 	bcs :+
-	pha
-	ldxy #strings::dir
-	jsr file::exists
-	bcs :+
-	pla
-	pha
 	tax
 	jsr krn::chkin
-	pla
 	clc			; ok
 :	rts
 .endproc
@@ -516,9 +507,8 @@ HEIGHT = SCREEN_HEIGHT-2
 	tya
 	RETURN_OK
 
-;--------------------------------------
-getb:
-        jsr krn::readst	; call READST
+;-------------------------------------------------------------------------------
+getb:	jsr krn::readst	; call READST
         bne @eof       	; read error or end of file
         jmp krn::chrin	; call chrin (read byte from directory)
 @eof:	pla
