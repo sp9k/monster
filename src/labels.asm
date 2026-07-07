@@ -1292,9 +1292,9 @@ labelvars_size=*-labelvars
 	lda #>label_addresses_sorted
 	sta @arr+1
 
-	lda #<name_comparator
+	lda #<addr_comparator
 	sta @comparator
-	lda #>name_comparator
+	lda #>addr_comparator
 	sta @comparator+1
 
 	jmp find_sorted
