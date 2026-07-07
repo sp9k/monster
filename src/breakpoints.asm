@@ -155,7 +155,7 @@ BREAKPOINT_ENABLED = 1
 :	cmp dbg::breakpoint_fileids-1,x
 	beq @yes
 	dex
-	bpl :-
+	bne :-
 @no:	clc
 	rts
 

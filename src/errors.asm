@@ -261,6 +261,14 @@ err_filename_too_long:
 ; .byte "filename too long",0
 .byte $32,$4c,$2b,$81,$69,$5b,$a3,$cf,$db,$f,$71,$c0
 
+err_too_many_watches:
+; .byte "too many watches",0
+.byte $a3,$cf,$db,$41,$76,$5b,$b8,$54,$1a,$5,$98,$0
+
+err_too_many_breakpoints:
+; .byte "too many breakpoints",0
+.byte $a3,$cf,$db,$41,$76,$5b,$14,$85,$a,$d0,$7a,$4e,$a4,$c0
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -326,7 +334,9 @@ err_filename_too_long:
 	err_oom, \
 	err_ctx_full, \
 	err_no_matching_scope, \
-	err_filename_too_long
+	err_filename_too_long, \
+	err_too_many_watches, \
+	err_too_many_breakpoints
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

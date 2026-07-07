@@ -58,7 +58,7 @@
 ;  - r2: the divisor
 ;  - r0: the dividend
 ; OUT:
-;  - ra: the remainder
+;  - r4: the remainder
 ;  - r0: the quotient
 .export __math_div16
 .proc __math_div16

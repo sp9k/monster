@@ -86,7 +86,6 @@
 
 ;*******************************************************************************
 MAX_IFS      = 4 ; max nesting depth for .if/.endif
-MAX_CONTEXTS = 3 ; max nesting depth for contexts (activated by .MAC, .REP, etc)
 
 ;*******************************************************************************
 ; ASM INFORMATION
@@ -668,6 +667,35 @@ __asm_tokenize_pass1 = __asm_tokenize
 	jsr getdirective
 	bcs @ret		; return error
 
+	; if a context is capturing lines (an open .MAC/.REP body or a
+	; nested context), directives are part of the body: store them
+	; instead of executing them.  the context-control directives
+	; (.mac/.endmac/.rep/.endrep) always execute to manage the capture
+	lda ctx::active
+	beq @exec_directive	; no active context -> execute
+	cmp #$02
+	bcs @chkctl		; nested context -> body line
+	lda ctx::open
+	beq @exec_directive	; top-level context closed -> execute
+
+@chkctl:
+	cpx #<macro
+	bne :+
+	cpy #>macro
+	beq @exec_directive
+:	cpx #<create_macro
+	bne :+
+	cpy #>create_macro
+	beq @exec_directive
+:	cpx #<repeat
+	bne :+
+	cpy #>repeat
+	beq @exec_directive
+:	cpx #<handle_repeat
+	bne :+
+	cpy #>handle_repeat
+:	bne @ctx		; not context-control: store in the body
+
 @exec_directive:
 	lda #ASM_DIRECTIVE
 	sta resulttype
@@ -768,6 +796,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	cmpw zp::virtualpc
 	beq @label_done
 	lda #ERR_LABEL_NOT_KNOWN_PASS1
+	sec			; phase error
 :	rts
 
 @label:	jsr is_label
@@ -777,6 +806,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 
 @label_done:
 	jsr storedebuginfo	; store debug info for label
+	bcs @ret0		; return error (debug info full)
 	jsr line::process_word	; read past the label name
 	ldxy zp::line
 	jsr assemble_with_ctx	; assemble the rest of the line
@@ -1097,6 +1127,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 ;-------------------------------------------------------------------------------
 ; store debug info if enabled
 @dbg:	jsr storedebuginfo
+	bcs @opdone		; if error (debug info full), return
 
 ;-------------------------------------------------------------------------------
 ; update virtualpc and asmresult by (1 + operand size)
@@ -1211,7 +1242,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 @ok:	RETURN_OK
 
 @err:	lda #ERR_LABEL_NOT_KNOWN_PASS1
-	;sec
+	sec			; phase error
 @ret:	rts
 .endproc
 
@@ -1320,7 +1351,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 
 	lda zp::gendebuginfo
 	bne @gen
-@skip:	rts
+@skip:	clc			; nothing to store; OK
+	rts
 
 @gen:	ldxy zp::virtualpc	; current PC (address)
 	stxy r0
@@ -1703,6 +1735,9 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; define a label with the value of the iteration
 @l0:	jsr ctx::rewind
 
+	lda zp::ctx+repctx::numparams	; was an iterator given?
+	beq @l1				; if not, just assemble the lines
+
 	; iteration 0: add a symbol for the iterator
 	;              this will error if the symbol is already defined
 	; iteration n: "set" (replace) the iterator's value
@@ -1776,15 +1811,18 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bne @write_ctx		; if yes, write it to the context buffer
 
 ;-------------------------------------------------------------------------------
-; context is open, reduce the current iterator to its constant value
+; context is closed, reduce the current iterator to its constant value
 ; and write it to the parent context's buffer
 @buff=$100+LINESIZE
+	lda zp::ctx+repctx::numparams
+	beq @nosub		; no iterator -> write the line unmodified
+
 	ldxy #@buff
 	jsr ctx::getparams	; get the active iterator's name
 	ldxy #@buff
 	jsr sub_label		; and replace uses with its value in asmbuffer
-	ldxy #mem::asmbuffer
 
+@nosub:	ldxy #mem::asmbuffer
 	jsr ctx::write_parent	; write disassembled line to PARENT's ctx buff
 	jmp @ctx_done		; errcheck and return
 
@@ -2045,7 +2083,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 	; end current BLOCK of debug info (if one is open)
 	ldxy zp::virtualpc	; current address
 	jsr dbgi::endblock	; end the current block
-	jsr dbgi::set_seg_id	; and set it for debug info too
+	lda __asm_segmentid
+	jsr dbgi::set_seg_id	; set segment ID for debug info
 
 	; create a new BLOCK of debug info at zp::virtualpc
 	ldxy zp::virtualpc
@@ -2405,6 +2444,7 @@ __asm_include:
 
 :	lda #CTX_REPEAT
 	jsr ctx::push		; push a new context
+	bcs @err		; too many contexts
 
 	jsr expr::eval  	; get the number of times to repeat the code
 	bcs @ret		; error evaluating # of reps expression
@@ -2422,6 +2462,8 @@ __asm_include:
 
 	cmp #','
 	beq @getparam
+	jsr islineterminator
+	beq @done		; no iterator given (allowed)
 	RETURN_ERR ERR_UNEXPECTED_CHAR ; comma must follow the # of reps
 
 @getparam:
@@ -2533,6 +2575,12 @@ __asm_include:
 	ldxy #$100
 	stxy r0
 	CALL FINAL_BANK_MACROS, mac::add
+	bcc @done
+	pha			; save error code (too many macros/OOM)
+	jsr ctx::pop		; cleanup; pop the context
+	pla			; restore error code
+	sec
+	rts
 
 @done:	; done with this context, disable it
 	jsr ctx::pop		; cleanup; pop the context
@@ -2978,7 +3026,11 @@ __asm_include:
 	jsr islineterminator	; end of line (or comment)?
 	beq @done		; if so, no more parameters
 
-	stx @cnt
+	cpx #MAX_PARAMS*2	; more args than a macro may have?
+	bcc :+
+	RETURN_ERR ERR_INVALID_MACRO_ARGS
+
+:	stx @cnt
 	jsr expr::eval
 	bcc @setparam
 	rts		; return err
@@ -2993,9 +3045,9 @@ __asm_include:
 	ldy #$00
 @nextparam:
 	lda (zp::line),y 	; read until comma or endline
-	beq @done		; 0 (end of line) we're done, assemble
+	beq @lastarg		; 0 (end of line) we're done, assemble
 	cmp #';'		; ';' (comment) - also done
-	beq @done
+	beq @lastarg
 	jsr line::incptr
 	cmp #','
 	beq @l0
@@ -3003,7 +3055,13 @@ __asm_include:
 	beq @nextparam
 	RETURN_ERR ERR_INVALID_MACRO_ARGS
 
+@lastarg:
+	ldx @cnt		; .X = 2*(number of args read)
+	inx
+	inx
+
 @done:	lda @id
+	; .X = 2*(number of args); mac::asm leaves unpassed params undefined
 	JUMP FINAL_BANK_MACROS, mac::asm
 .endproc
 

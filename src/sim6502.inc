@@ -16,6 +16,7 @@
 .import __sim_reg_sp
 .import __sim_reg_p
 .import __sim_effective_addr
+.import __sim_rti_irq
 .import __sim_stopwatch
 .import __sim_at_brk
 .import __sim_init
@@ -42,6 +43,7 @@
 
 	stopwatch      = __sim_stopwatch
 	effective_addr = __sim_effective_addr
+	rti_irq        = __sim_rti_irq
 	register_state = __sim_register_state
 	pc             = __sim_pc
 	reg_a          = __sim_reg_a

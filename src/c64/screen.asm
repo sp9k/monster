@@ -249,6 +249,7 @@
 	sta (@scr),y
 	dey
 	bne :-
+	inc @scr+1	; next page of screen memory
 	dex
 	bne :-
 

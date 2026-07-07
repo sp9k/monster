@@ -53,10 +53,10 @@ start:
 	iny
 	bne :+
 	inc r0+1
-:	cpy #<(__BSS_LOAD__+__BSS_SIZE__-1)
+:	cpy #<(__BSS_LOAD__+__BSS_SIZE__)
 	bne @zerobss
 	ldx r0+1
-	cpx #>(__BSS_LOAD__+__BSS_SIZE__-1)
+	cpx #>(__BSS_LOAD__+__BSS_SIZE__)
 	bne @zerobss
 
 	sta zp::banksp		; zero out bank stack pointer

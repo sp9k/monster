@@ -8,6 +8,9 @@ B:
 C:
  START=$1200
  END=$1300;
+D:
+ START=$13E0
+ END=$1500;
 ]
 
 SEGMENTS [
@@ -20,4 +23,7 @@ SEGMENTS [
  BSS:
   LOAD=C
   RUN=C;
+ HIDATA:
+  LOAD=D
+  RUN=D;
 ]

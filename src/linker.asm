@@ -294,6 +294,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	ldxy #@filebuff
 	stxy @buff
 @readfile:
+	ldxy @buff
+	cmpw #@filebuff_end		; is the buffer full?
+	bcs @toobig
 	jsr krn::chrin
 	ldy #$00
 	jsr capitalize			; uppercase the input
@@ -302,6 +305,10 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jsr krn::readst
 	cmp #$00
 	beq @readfile
+	bne @parse
+
+@toobig:
+	lda #$00			; not EOF (fail with I/O error below)
 
 ;-------------------------------------------------------------------------------
 @parse: sta @errcode
@@ -1991,6 +1998,7 @@ __link_get_segment_by_name:
 @done:	pla					; restore file handle
 	JUMPMAIN file::close
 
+;-------------------------------------------------------------------------------
 @seglist_title:  .byte "segments",$0d,0
 @seglist_header: .byte "name     addr   size",$0d,0
 @symbols_title:  .byte "symbols",$0d,0

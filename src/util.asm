@@ -106,6 +106,11 @@
 	lda (@str),y
 	bne @l0
 
+	cpy #$00
+	beq @err		; empty string
+	cpy #$05
+	bcs @err		; too many digits for a 16-bit value
+
 	dey			; go back to the last character (the LSB)
 	ldx #$00
 @l1:	lda (@str),y
@@ -130,6 +135,9 @@
 @ok:	clc
 	ldxy @result
 @done:	rts
+
+@err:	sec
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -164,6 +172,8 @@
 	bne :-
 @endfound:
 	sty @offset
+	cpy #$00
+	beq @unexpectedchar	; no digits given
 	dey
 
 	ldx #$ff

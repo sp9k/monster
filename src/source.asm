@@ -313,7 +313,6 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .proc __src_new
 	ldx numsrcs
 	beq @cont
-	inx
 	cpx #MAX_SOURCES-1	; -1 because last source is reserved for LOG
 	bcc @saveold
 	rts			; err, too many sources
@@ -346,8 +345,8 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	lda #$00
 	sta names,x
 
-	; clear the state for the new buffer
-	ldx #SAVESTATE_SIZE-1
+	; clear the state for the new buffer (all SAVESTATE_SIZE bytes)
+	ldx #SAVESTATE_SIZE
 	;lda #$00
 :	sta buffstate-1,x
 	dex
@@ -1124,17 +1123,29 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 :	cmp #$00
 	beq @done
 	inc @cnt
+	bne @chkend
+	dec @cnt		; saturate the count for very long lines
+@chkend:
 	jsr __src_end
 	bne @l0
-@eof:	; go back a character; read last byte and null terminate if end of source
+@eof:	; end of source: null terminate at the line length (or buffer cap)
 	ldx @cnt
-	lda #$00
+	cpx #LINESIZE
+	bcc :+
+	ldx #LINESIZE		; clamp: line was truncated at the buffer size
+	stx @cnt
+:	lda #$00
 	sta mem::linebuffer,x
 @eofdone:
 	lda @cnt
 	sec
 	rts
-@done:	txa
+@done:	cpx #LINESIZE
+	bcc :+
+	lda #$00		; a full-length line still needs termination
+	sta mem::linebuffer+LINESIZE
+	ldx #LINESIZE		; return the truncated length
+:	txa
 	clc
 	rts
 .endproc
@@ -1226,7 +1237,13 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 @lastline:
 	ldxy end
 	sub16 poststartzp	; bytes to copy
+	tya			; more than 255 bytes on the line?
+	bne @clamp
 	txa
+	cmp #LINESIZE+1
+	bcc @golast
+@clamp:	lda #LINESIZE		; clamp to the size of the line buffer
+@golast:
 	tay			; .Y = bytes to copy
 	beq @done		; if no bytes to copy, return
 	pha

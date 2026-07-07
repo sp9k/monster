@@ -1,4 +1,5 @@
 .include "config.inc"
+.include "errors.inc"
 .include "kernal.inc"
 .include "layout.inc"
 .include "macros.inc"
@@ -50,7 +51,7 @@
 	beq @eof
 	ldx @ch
 	cpx #LINESIZE	; cap size of string
-	bcs @done
+	bcs @eof	; if full, truncate and 0-terminate at the cap
 	sta mem::drive_err,x
 	inc @ch
 	bne @loop	; next byte
@@ -83,7 +84,12 @@
 	sta mem::drive_err,y
 	beq @done
 	iny
-	bne :-
+	cpy #LINESIZE
+	bcc :-
+
+	lda #$00
+	sta mem::drive_err,y		; truncate 0-terminate message
+
 @done:	sec
 	rts
 .endproc

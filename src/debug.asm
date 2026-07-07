@@ -408,13 +408,12 @@ blank   = scr::blank
 	bcs @enter
 	cmp #$7f
 	bcc @enter
-	tax
-	lda sim::reg_p
-	pha
+	lda sim::pc+1
+	pha			; push return PCH
 	lda sim::pc
-	pha
-	txa
-	pha
+	pha			; push return PCL
+	lda sim::reg_p
+	pha			; push status
 	ldx sim::reg_x
 	ldy sim::reg_y
 	lda sim::reg_a
@@ -657,10 +656,13 @@ blank   = scr::blank
 	bne :+
 	inc step_out_depth	; if we called another subroutine, inc depth
 :	cmp #$60		; did we RTS?
-	beq :+
+	beq @dec_depth
 	cmp #$40		; or RTI?
 	bne @trace		; if not loop
-:	dec step_out_depth
+	lda sim::rti_irq	; RTI from a simulated IRQ/NMI?
+	bne @trace		; if so, it doesn't end a subroutine
+@dec_depth:
+	dec step_out_depth
 	bpl @trace		; continue trace until depth is negative
 	clc			; ok
 
@@ -692,6 +694,10 @@ blank   = scr::blank
 	; trace
 	TRACE_ON		; enable tracing to catch user interrupt
 	jsr sim::trace
+
+	; watches are not checked per-instruction while tracing; do so now so
+	; any that changed are marked dirty ('!')
+	jsr watch::update
 
 .ifdef ultimem
 	jsr trace_done		; swap the user's memory back out
@@ -726,7 +732,7 @@ blank   = scr::blank
 
 	jsr scr::clrcolor
 
-	jmp edit::init		; re-init the editor
+	jmp edit::run		; re-enter the editor
 @abort:	rts
 .endproc
 
@@ -954,7 +960,7 @@ blank   = scr::blank
 
 	; does the next instruction write to memory?
 	lda sim::vital_addr_clobbered
-	beq @ok
+	beq @chkillegal
 
 	; an important memory location will be clobbered, print error
 	lda sim::effective_addr
@@ -964,6 +970,10 @@ blank   = scr::blank
 	ldx #<strings::vital_addr_clobber
 	ldy #>strings::vital_addr_clobber
 	bne print_msg
+
+@chkillegal:
+	lda sim::illegal	; did we hit an undocumented opcode?
+	bne illegal_detected
 
 @ok:	RETURN_OK
 .endproc
@@ -1103,9 +1113,12 @@ blank   = scr::blank
 
 	; does the breakpoint already exist?
 	jsr brkpt::getbyline		; get breakpoint # in .X
-	bcc @done			; there's already a breakpoint here
+	bcs :+				; if no existing breakpoint, continue
+	pla				; clean up saved file ID
+	clc				; there's already a breakpoint here
+	rts
 
-	; store the line #
+:	; store the line #
 	ldx __debug_numbreakpoints
 	pla				; restore file ID
 	cpx #MAX_BREAKPOINTS
@@ -1132,8 +1145,14 @@ blank   = scr::blank
 ; even if they don't correspond to a line or file
 ; IN:
 ;  - .XY: the address to set the breakpoint at
+; OUT:
+;  - .C: set if there are too many breakpoints to add a new one
 .export __debug_setbrkataddr
 .proc __debug_setbrkataddr
+	lda __debug_numbreakpoints
+	cmp #MAX_BREAKPOINTS
+	bcs @done			; too many breakpoints
+
 	txa
 	ldx __debug_numbreakpoints
 	sta breakpointslo,x
@@ -1148,7 +1167,8 @@ blank   = scr::blank
 	sta __debug_breakpoint_fileids,x
 
 	inc __debug_numbreakpoints
-	rts
+	clc
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1328,6 +1348,7 @@ __debug_remove_breakpoint:
 	stxy @addr
 	ldx __debug_numbreakpoints
 	beq @notfound
+	dex			; last valid index is numbreakpoints-1
 @l0:	lda @addr
 	cmp breakpointslo,x
 	bne @next
@@ -1767,9 +1788,9 @@ __debug_remove_breakpoint:
 	bne :-
 
 	; copy around the NMI vector
-	ldx #$100-$1a-1
-:	lda dbg00+$31a,x
-	sta $31a,x
+	ldx #$100-$1a
+:	lda dbg00+$31a-1,x
+	sta $31a-1,x
 	dex
 	bne :-
 

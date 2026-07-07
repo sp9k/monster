@@ -105,6 +105,7 @@ reloc_tables:
 .ifdef vic20
 	.res $3000
 .else
+	.res $1000	; TODO:
 .endif
 reloc_tables_end=*
 
@@ -149,6 +150,12 @@ num_reloctables_mapped: .byte 0
 ; These variables contain the data for the sections
 sections_startlo:  .res MAX_SECTIONS
 sections_starthi:  .res MAX_SECTIONS
+
+; segment-relative base of each SECTION (0 for the first SECTION of a
+; SEGMENT; the SEGMENT's accumulated size for SECTIONS that re-open it).
+; sections_start* always holds the PHYSICAL address of the section's code.
+sections_baselo:   .res MAX_SECTIONS
+sections_basehi:   .res MAX_SECTIONS
 __obj_sections_sizelo:
 sections_sizelo:   .res MAX_SECTIONS
 __obj_sections_sizehi:
@@ -331,12 +338,13 @@ __obj_close_section = close_section
 	lda reloctop+1
 	sta sections_relocstarthi,x	; set reloc start MSB
 
-	; get SEGMENT id and address for this section
+	; get SEGMENT id and segment-relative base for this section
+	; (must match what pass 1 returned so labels validate)
 	ldx num_reloctables_mapped
 	lda __obj_segment_ids,x		; segment id
 	pha
-	ldy sections_starthi,x		; section start LSB
-	lda sections_startlo,x		; section start MSB
+	ldy sections_basehi,x		; segment-relative base MSB
+	lda sections_baselo,x		; segment-relative base LSB
 	tax
 	pla
 	inc num_reloctables_mapped
@@ -372,13 +380,14 @@ __obj_close_section = close_section
 
 	tax
 
-	; set the start address for this SECTION to the current size of
-	; its SEGMENT
+	; the SECTION resumes at its SEGMENT's current size; record that as
+	; the section's segment-relative base (sections_start keeps the
+	; physical address where the object code is stored)
 	lda segments_sizehi-1,x
-	sta sections_starthi,y
-	pha			; LSB of SEGMENTS current top
+	sta sections_basehi,y
+	pha			; MSB of SEGMENT's current top
 	lda segments_sizelo-1,x
-	sta sections_startlo,y
+	sta sections_baselo,y
 	tax
 	pla
 	tay			; MSB of SEGMENT's current top
@@ -425,6 +434,12 @@ __obj_close_section = close_section
 :	ldx numsections
 	pla			; restore SEGMENT id
 	sta __obj_segment_ids,x
+
+	pha			; save SEGMENT id (returned in .A)
+	lda #$00
+	sta sections_baselo,x	; new SEGMENT: section begins at base 0
+	sta sections_basehi,x
+	pla
 
 	ldxy #$0000		; return 0 for address for new segment
 	inc numsections
@@ -559,6 +574,7 @@ __obj_close_section = close_section
 @sz=r0
 @rel=r1
 @offset=r3
+@tmp=r4
 	sta @sz
 	sty @offset
 
@@ -599,15 +615,38 @@ __obj_close_section = close_section
 	pha			; save info byte
 	STOREB_Y @rel		; write info byte
 
-	; write offset in obj file (current "assembly" address)
-	iny			; .Y=1
-	lda zp::asmresult	; write offset LSB
+	; write the offset of the target within its SEGMENT:
+	; (asmresult+offset) - section physical start + section base
+	lda zp::asmresult
 	clc
 	adc @offset
-	STOREB_Y @rel
-	iny			; .Y=2
+	sta @tmp
 	lda zp::asmresult+1
 	adc #$00
+	sta @tmp+1
+
+	ldx num_reloctables_mapped	; current section (1-based in pass 2)
+	lda @tmp
+	sec
+	sbc sections_startlo-1,x
+	sta @tmp
+	lda @tmp+1
+	sbc sections_starthi-1,x
+	sta @tmp+1
+
+	lda @tmp
+	clc
+	adc sections_baselo-1,x
+	sta @tmp
+	lda @tmp+1
+	adc sections_basehi-1,x
+	sta @tmp+1
+
+	ldy #$01
+	lda @tmp
+	STOREB_Y @rel		; write offset LSB
+	iny			; .Y=2
+	lda @tmp+1
 	STOREB_Y @rel		; write offset MSB
 	iny			; .Y=3
 
@@ -670,6 +709,8 @@ __obj_close_section = close_section
 	stxy @id
 
 	ldx #$00
+	cpx numimports		; any imports defined?
+	bcs @notfound		; if not, don't probe the (stale) table
 @l0:	; look for the matching symbol ID in the table of mapped IMPORTs
 	lda @id
 	cmp import_label_idslo,x
@@ -681,6 +722,7 @@ __obj_close_section = close_section
 @next:	inx
 	cpx numimports
 	bcc @l0
+@notfound:
 	RETURN_ERR ERR_IMPORT_UNDEFINED
 
 @found:	txa
@@ -1273,13 +1315,14 @@ __obj_close_section = close_section
 	jsr vmem_load		; load LSB of addend
 	clc
 	adc @tmp
+	php			; save carry from LSB addition
 	ldxy @pc
 	jsr vmem_store		; store updated value
 
 	incw @pc
 	ldxy @pc
 	jsr vmem_load		; load MSB of addend
-	clc
+	plp			; restore carry from LSB addition
 	adc @tmp+1
 	ldxy @pc
 	jsr vmem_store		; store MSB of relocated operand
@@ -1598,7 +1641,9 @@ __obj_close_section = close_section
 	sta @namebuff,y
 	beq @cont
 	iny
-	bne :-
+	cpy #MAX_LABEL_NAME_LEN
+	bcc :-
+	RETURN_ERR ERR_LABEL_TOO_LONG		; corrupt object file
 
 @cont:	jsr krn::chrin				; get info byte (address mode)
 	sta zp::label_mode
@@ -1640,7 +1685,9 @@ __obj_close_section = close_section
 	sta @namebuff,y
 	beq @addexport
 	iny
-	bne :-
+	cpy #MAX_LABEL_NAME_LEN
+	bcc :-
+	RETURN_ERR ERR_LABEL_TOO_LONG		; corrupt object file
 
 @addexport:
 	jsr krn::chrin				; get SEGMENT id for EXPORT
@@ -1721,7 +1768,9 @@ __obj_close_section = close_section
 	cmp #$00
 	beq @cont
 	iny
-	bne :-
+	cpy #MAX_LABEL_NAME_LEN-1	; -1 for the '@' prefix
+	bcc :-
+	RETURN_ERR ERR_LABEL_TOO_LONG	; corrupt object file
 
 @cont:	jsr krn::chrin				; get SEGMENT id
 	cmp #SEG_ABS
@@ -1971,6 +2020,7 @@ __obj_close_section = close_section
 @reltab:
 	lda seg_idx
 	jsr apply_relocation		; load/apply relocation table
+	jcs @ret			; propagate relocation errors
 
 @next_seg:
 	inc seg_idx
@@ -1982,11 +2032,15 @@ __obj_close_section = close_section
 @dbginfo:
 	lda #$01			; flag for dbgi::load (apply relocation)
 	CALL FINAL_BANK_DEBUG, dbgi::load	; load debug info
+	bcs @dbgierr			; propagate debug info errors
 
 ;-------------------------------------------------------------------------------
 @done:	RETURN_OK
 
 @undef:	RETURN_ERR ERR_IMPORT_UNDEFINED
+@dbgierr:
+	sec
+	rts
 
 ;-------------------------------------------------------------------------------
 ; reads past a symbol record (0-terminated name, segment id, 16-bit offset)

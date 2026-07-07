@@ -162,7 +162,7 @@ ret:     .word 0
 	lda #$d5		; RAM in BLK5
 	sta $9ff2
 
-	ldy #>$a000		; BLK5
+	ldy #>$a400		; BLK5 + $400 (virtual $400 is at offset $400)
 	sty @dst+1
 	ldy #$00
 	sty @dst

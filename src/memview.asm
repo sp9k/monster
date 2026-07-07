@@ -382,10 +382,10 @@ memaddr: .word 0
 	sta mem::linebuffer+TITLE_ADDR_START+5
 
 	; set bounds for the input
-	lda #18
+	lda #TITLE_ADDR_START
 	sta cur::minx
 	sta zp::curx
-	lda #18+4
+	lda #TITLE_ADDR_START+4
 	sta cur::maxx
 
 	lda #MEMVIEW_START
@@ -394,11 +394,12 @@ memaddr: .word 0
 	ldxy #key::gethex
 	jsr edit::gets
 
-	ldxy #mem::linebuffer+17
+	ldxy #mem::linebuffer+TITLE_ADDR_START-1
 	stxy zp::line
 	jsr expr::eval
+	bcs :+			; on invalid input, leave address unchanged
 	stxy memaddr
-	popcur
+:	popcur
 	rts
 .endproc
 
@@ -515,6 +516,7 @@ memaddr: .word 0
 	cmp @val+1		; is the MSB a match our value's?
 	beq @found		; if so, we found our word
 @next:	incw @addr		; try from the next address
+	ldxy @addr
 	cmpw memaddr
 	bne @l0
 @notfound:

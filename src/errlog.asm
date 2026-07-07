@@ -119,7 +119,7 @@ numerrs: .byte 0
 .export __errlog_log
 .proc __errlog_log
 	ldx numerrs
-	cpx #MAX_ERRORS-1
+	cpx #MAX_ERRORS
 	bcs @done		; if already at max errors, return with .C set
 
 	pha
@@ -146,6 +146,9 @@ numerrs: .byte 0
 @done:	php
 
 	; log the error to the log file too
+	lda numerrs
+	sec
+	sbc #$01		; render_error takes the log INDEX, not the code
 	jsr render_error
 	jsr log::out
 

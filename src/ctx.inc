@@ -17,6 +17,9 @@
 ; the max number of lines stored in contexts for macros
 MAX_CTX_LINES = 16
 
+; the max number of parameters for a context (must match ctx.asm)
+MAX_PARAMS = 4
+
 CTX_REPEAT = 1
 CTX_MACRO  = 2
 

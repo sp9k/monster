@@ -174,7 +174,7 @@ tempbuff: .res LINESIZE
 	bne :+
 @zero:  ;lda #$00
 	sta mem::linebuffer,y
-	beq @redraw		; branch always
+	jmp @redraw
 
 :	cmp #$14
 	bne @printing
@@ -252,7 +252,12 @@ tempbuff: .res LINESIZE
 
 	cmp #$09		; TAB
 	bne @redraw
-@tab:	jsr __text_tabr_dist
+@tab:	jsr __text_rendered_line_len
+	dex
+	bmi @tabok		; if len is 0 -> continue
+	cpx cur::maxx
+	bcs @abort		; TAB made the line oversized - abort
+@tabok:	jsr __text_tabr_dist
 	clc
 	adc zp::curx
 	sta zp::curx
@@ -265,7 +270,7 @@ tempbuff: .res LINESIZE
 	cpx cur::maxx
 	bcc :+
 
-	; line is oversized now - abort the operation
+@abort:	; line is oversized now - abort the operation
 	lda @savecurx
 	sta zp::curx
 	lda @savecury
@@ -812,6 +817,8 @@ __text_tabr_dist_a=*+2
 	sta @xstart
 	ldy #$00
 :	iny
+	cpy #tabs_end		; run out of tab stops?
+	bcs @last
 	cmp tabs,y
 	bcs :-
 
@@ -819,6 +826,11 @@ __text_tabr_dist_a=*+2
 	sec
 	sbc @xstart
 @done:	rts
+
+@last:	lda #SCREEN_WIDTH	; no next tab stop; return distance to EOL
+	sec
+	sbc @xstart
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -965,8 +977,10 @@ LAST_TAB_COL=TAB_WIDTH*(tabs_end-tabs)
 	sta mem::statusinfo,y
 	beq @done
 	iny
-	cpy #20
+	cpy #20-1
 	bne :-
+	lda #$00
+	sta mem::statusinfo+20-1	; truncate and terminate long messages
 
 @done:	; restore return address
 	lda @ret

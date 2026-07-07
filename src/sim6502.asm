@@ -88,6 +88,15 @@ __sim_affected: .byte 0
 .export __sim_effective_addr
 __sim_effective_addr: .word 0
 
+; depth of simulated (VIA) interrupt handlers currently entered
+.export __sim_irq_depth
+__sim_irq_depth: .byte 0
+
+; !0 if the last RTI returned from a simulated IRQ/NMI (not a subroutine-like
+; RTI); used by step-out/step-over to keep their JSR/RTS depth balanced
+.export __sim_rti_irq
+__sim_rti_irq: .byte 0
+
 ; stopwatch of cycles counted by simulator since last reset
 .export __sim_stopwatch
 __sim_stopwatch: .res 3
@@ -145,6 +154,8 @@ tracing: .byte 0
 	lda #$00
 	sta step_cycles
 	sta nmi_prev
+	sta __sim_irq_depth
+	sta __sim_rti_irq
 
 .ifdef vic20
 	; copy the user's saved VIA registers ($9110-$912f) to the shadows
@@ -683,10 +694,11 @@ cycles_tab:
 
 	jsr @go				; execute the handler
 
-	; .C set if the step failed (BRK or JAM encountered)
+	; .C set if the step failed (BRK, JAM, or illegal opcode encountered)
 	lda __sim_at_brk
 	ora __sim_jammed
 	ora __sim_vital_addr_clobbered
+	ora __sim_illegal
 	cmp #$01
 .ifdef vic20
 	bcs @done			; step failed; skip VIA update
@@ -1062,6 +1074,8 @@ cycles_tab:
 vpush:				; push .A onto virtual stack at $01SP, dec SP
 	ldy #1				; stack page hi = $01
 	ldx __sim_reg_sp
+	sty __sim_effective_addr+1	; record access so watches see stack ops
+	stx __sim_effective_addr	; (and don't fire on a stale address)
 	jsr vmem::store			; .A preserved by vmem::store; ldy/ldx don't touch .A
 	dec __sim_reg_sp
 	rts
@@ -1070,6 +1084,8 @@ vpull:				; inc SP, pull byte from virtual stack into .A
 	inc __sim_reg_sp
 	ldy #1
 	ldx __sim_reg_sp
+	sty __sim_effective_addr+1	; record access so watches see stack ops
+	stx __sim_effective_addr
 	jmp vmem::load
 
 ;******************************************************************************
@@ -1406,6 +1422,7 @@ do_adc:
 	lda __sim_reg_a
 	plp
 	adc r4
+	cld			; don't leak virtual D flag to the host
 	pha
 	jsr update_nzvc
 	pla
@@ -1472,6 +1489,7 @@ do_sbc:
 	lda __sim_reg_a
 	plp
 	sbc r4
+	cld			; don't leak virtual D flag to the host
 	pha
 	jsr update_nzvc
 	pla
@@ -1878,6 +1896,7 @@ h_rol_a:
 	lda __sim_reg_a
 	plp
 	rol
+	cld			; don't leak virtual D flag to the host
 	pha
 	jsr update_nzc
 	pla
@@ -1912,6 +1931,7 @@ do_rol_mem:
 	lda r4
 	plp
 	rol
+	cld			; don't leak virtual D flag to the host
 	jsr rmw_done
 	rts
 
@@ -1927,6 +1947,7 @@ h_ror_a:
 	lda __sim_reg_a
 	plp
 	ror
+	cld			; don't leak virtual D flag to the host
 	pha
 	jsr update_nzc
 	pla
@@ -1961,6 +1982,7 @@ do_ror_mem:
 	lda r4
 	plp
 	ror
+	cld			; don't leak virtual D flag to the host
 	jsr rmw_done
 	rts
 
@@ -2381,6 +2403,16 @@ h_rts:
 h_rti:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
+
+	; if we are in a simulated interrupt handler, flag that this RTI
+	; returns from it (step-out/step-over must not count it as an RTS)
+	ldx #$00
+	lda __sim_irq_depth
+	beq :+
+	dec __sim_irq_depth
+	inx
+:	stx __sim_rti_irq
+
 	jsr vpull			; P
 	ora #$30			; bit5 (UNUSED) always 1; bit4 (BRK) == 1
 	sta __sim_reg_p
@@ -2727,6 +2759,8 @@ h_rti:
 @vec=r2
 	stxy @vec
 
+	inc __sim_irq_depth	; track handler depth (see h_rti)
+
 	; push the return PC and the status
 	lda __sim_pc+1
 	jsr vpush
@@ -2848,7 +2882,7 @@ h_rti:
 	bne @ok
 	cpx #$16
 	bcc @ok
-	cpx #$20
+	cpx #$1a	; $31a+ (KERNAL vectors) may be legitimately revectored
 	bcs @ok
 
 @err:	; an important memory location will be clobbered

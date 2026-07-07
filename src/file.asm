@@ -174,10 +174,9 @@ ENDOSPROC
 
 ;*******************************************************************************
 ; SAVE SRC
-; Saves the active source buffer to a file of the given name
+; Saves the active source buffer to the given (already open) file
 ; IN:
-;  .XY: the 0-terminated filename to save the source buffer to
-;  .A:  the length of the filename
+;  .A: the handle of the file to write the source buffer to
 ; OUT:
 ;  .C: set on error, clear on success
 .export __file_save_src
@@ -218,7 +217,7 @@ ENDOSPROC
 ; READB
 ; Reads a byte from the open file
 ; OUT:
-;  - .C:  set on error or EOF
+;  - .C:  set on error (EOF returns .C clear)
 ;  - .A:  the byte that was read
 ;  - eof: set if READST returns eof
 .export __file_readb
@@ -258,7 +257,9 @@ OSPROC __file_getline
 
 	ldy #$00
 @l0:	jsr __file_readb
-	bcs @ret	; return err or check EOF
+	bcs @ret	; return read error
+	ldx __file_eof
+	bne @done	; EOF: return what we have of the final line
 
 	cmp #$0d
 	beq @done
@@ -294,17 +295,10 @@ OSPROC __file_scratch
 	lda #15			; SA (command channel)
 	jsr __file_open
 	bcs @err
-	pha
-	jsr @close
-	pla
-	jmp __file_close	; close logical file of deleted file
+	jsr __file_close	; close logical file of deleted file
+	jmp __file_geterr	; return the drive's response to the scratch
 
-@close: lda #$0f		; command channel
-	jsr __file_close
-	jmp __file_geterr
-
-@err:   jsr @close
-	RETURN_ERR ERR_IO_ERROR
+@err:	rts			; return error from open
 
 .PUSHSEG
 .RODATA
@@ -556,8 +550,8 @@ ENDOSPROC
 
 :	lda #ERR_IO_ERROR	; default (unknown) file error
 	cpx #$3e		; err code $3e (file not found)?
+	sec
 	bne @ret
-	;sec
 	lda #ERR_FILE_NOT_FOUND
 @ret:	rts
 .endproc

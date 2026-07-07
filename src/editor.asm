@@ -150,7 +150,6 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	txs
 
 	inx			; ldx #$00
-	stx debugging
 	stx zp::gendebuginfo
 
 	inx			; ldx #$01
@@ -175,7 +174,6 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	jsr asm::reset
 	jsr file::init_drive
 	jsr scr::unblank
-	jsr edit		; initialize size/mode/etc.
 
 	; fall through to __edit_run
 .endproc
@@ -185,6 +183,13 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 ; Runs the main loop for the editor
 .export __edit_run
 .proc __edit_run
+	ldx #$ff
+	txs
+	inx			; .X=0
+	stx debugging
+
+	jsr edit		; initialize size/mode/etc.
+
 	jsr text::update
 	jsr draw_status_bar
 
@@ -353,7 +358,7 @@ main:	jsr key::getch
 	ldxy @filename
 	jsr asm::include	; assemble the file (pass 2)
 
-	ldxy zp::asmresult
+	ldxy zp::virtualpc	; end address (segment-relative in OBJ mode)
 	jsr dbgi::endblock	; end the final block
 	jsr obj::close_section	; close final OBJ section
 @done:	jmp display_result
@@ -916,6 +921,7 @@ main:	jsr key::getch
 	ldxy #key::getch	; key-input callback
 	jsr __edit_gets		; read the user input
 	php			; save success state
+	stx @result_offset	; save LSB of the result address ($01xx)
 
 	lda #LINESIZE
 	sta cur::maxx		; restore cursor x limit
@@ -995,7 +1001,14 @@ main:	jsr key::getch
 	cmp mode
 	beq @done
 
-	lda #MODE_INSERT
+	; if leaving VISUAL mode, clear the selection highlight
+	jsr is_visual
+	bne @novis
+	lda #CUR_NORMAL
+	sta cur::mode
+	jsr refresh		; unhighlight the selection
+
+@novis:	lda #MODE_INSERT
 	sta mode
 	jsr use_insert_cursor
 	lda #'i'
@@ -1055,6 +1068,8 @@ cancel = enter_command
 .proc command_yank
 	jsr yank
 	bcc @done
+	cmp #$00		; was there anything to yank?
+	beq @done		; if selection was just empty, no error to report
 	jsr report_typein_error
 
 @done:	; fall through to enter_command
@@ -1897,13 +1912,27 @@ cancel = enter_command
 	; get the bounds of the text we're copying
 	jsr src::pushp
 	jsr get_selection_bounds
-	bcs @restoresrc			; if nothing was selected -> skip copy
+	bcc @doyank			; if something is selected, continue
 
+	; nothing was selected; restore the cursor and return .C set with
+	; no error code (.A=0) so callers know not to delete/paste anything
+	jsr @restoresrc
+	lda #$00
+	sec
+	rts
+
+@doyank:
 	jsr buff::clear			; clear current contents of copy buffer
 
 	; set the selection type so we know how to handle the eventual paste
 	lda mode
 	sta selection_type
+
+	; a LINE selection of an empty line has end < start: nothing to copy
+	; (the copy buffer is left empty and delete will remove just the line)
+	jsr src::pos
+	cmpw @cur
+	bcc @restoresrc
 
 @copy:	jsr src::atcursor	; get next char to copy
 	cmp #$00		; EOF?
@@ -1986,9 +2015,7 @@ cancel = enter_command
 	stxy @cur
 	inc @moveback	; flag that we don't need to move source cursor
 
-@cont:	incw @cur
-
-	lda mode
+@cont:	lda mode
 	cmp #MODE_VISUAL_LINE	; are we selecting in LINE mode?
 	bne @ok
 
@@ -1996,9 +2023,9 @@ cancel = enter_command
 	jsr src::goto
 
 	jsr src::home	; if cursor is not at start of line, move it there
-	jsr src::next
 	jsr src::pos
 	stxy @cur
+	incw @cur	; copy range begins after the line's start position
 
 	ldxy @end
 	jsr src::goto
@@ -2007,7 +2034,8 @@ cancel = enter_command
 	stxy @end
 	RETURN_OK
 
-@ok:	; Update end pointer:
+@ok:	incw @cur
+	; Update end pointer:
 	; the source pos ends on the character BEFORE the one we want to copy
 	incw @end
 	ldxy @end
@@ -2514,6 +2542,9 @@ cancel = enter_command
 	bne :+
 	iny
 :	stxy @cnt
+	lda @cnt
+	ora @cnt+1		; is the count zero?
+	beq @deldone		; if so, there is nothing to delete
 
 @delsel:
 	jsr src::delete
@@ -2524,6 +2555,7 @@ cancel = enter_command
 	dec @cnt+1
 :	ora @cnt+1		; are LSB and MSB of @cnt 0?
 	bne @delsel
+@deldone:
 	beq refresh		; done, refresh to clear deleted text
 
 ;-------------------------------------------------------------------------------
@@ -3472,7 +3504,7 @@ goto_buffer:
 
 	; check if the file is already open in one of our buffers
 	lda src::numbuffers
-	cmp #MAX_SOURCES-1
+	cmp #MAX_SOURCES	; all 8 user buffers (LOG is stored separately)
 	bcc :+
 	lda #ERR_TOO_MANY_BUFFERS
 	jmp report_typein_error
@@ -4637,8 +4669,10 @@ goto_buffer:
 @str=r0
 	ldxy #@prompt_find
 	jsr readinput
+	bcc :+
+	rts			; no input; abort
 
-	; copy (.XY) to the find buffer
+:	; copy (.XY) to the find buffer
 	stxy @str
 	ldy #$00
 :	lda (@str),y
@@ -4968,6 +5002,7 @@ __edit_gotoline:
 	iszero @target
 	bne :+
 	ldxy #1
+	stxy @target	; clamp target to line 1
 
 :	cmpw src::line	; is the target forward or backward?
 	bne :+

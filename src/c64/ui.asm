@@ -57,7 +57,7 @@ COLMEM_ADDR=$9400
 	; draw .P (status)
 	lda sim::reg_p
 	sta @tmp
-	lda #$a1
+	lda #$80		; start with N; bit 5 is skipped below
 	sta @flag
 	ldx #$00
 

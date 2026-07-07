@@ -154,8 +154,9 @@
 :	stx @start
 	sta @stop
 	cmp @start
+	beq @none	; empty range: nothing to scroll
 	bcs :+
-	rts
+@none:	rts
 
 :	; get number of characters to scroll (.A - .X)
 	;sec
@@ -211,6 +212,8 @@
 	;sec
 	sbc @numrows
 	sbc @offset
+	bcc @done	; offset exceeds the range: nothing to scroll
+	beq @done	; zero rows: nothing to scroll
 	asl
 	asl
 	asl

@@ -217,7 +217,7 @@ STATUS_COL=0		; start column for status line
 	; draw .P (status)
 	lda sim::reg_p
 	sta @tmp
-	lda #$a1
+	lda #$80		; start with N; bit 5 is skipped below
 	sta @flag
 	ldx #$00
 

@@ -39,7 +39,7 @@ __statusline = __mem_spare+80
 __statusinfo: .res 20
 
 .export __mem_drive_err
-__mem_drive_err: .res 23
+__mem_drive_err: .res LINESIZE+1
 
 .export __linesave
 __linesave: .res 40

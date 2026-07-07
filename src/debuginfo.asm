@@ -7,6 +7,7 @@
 ;*******************************************************************************
 .include "errors.inc"
 .include "kernal.inc"
+.include "labels.inc"
 .include "linker.inc"
 .include "macros.inc"
 .include "object.inc"
@@ -465,7 +466,8 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 	lda @dline
 	ora @daddr
 	bne :+
-	rts		; no line/addr change, no instruction needed
+	clc		; no line/addr change, no instruction needed
+	rts
 :	and #$f0	; if either's LSB is >= $10, need extended
 	bne @extended
 
@@ -1308,7 +1310,6 @@ get_filename = get_filename_addr
 ;   - .C: set on error
 .export __debuginfo_load
 .proc __debuginfo_load
-@i         = r0
 @header    = r0
 @freeptr   = r0
 @segname   = r0
@@ -1316,6 +1317,7 @@ get_filename = get_filename_addr
 @block_i   = zp::tmp10
 @relocate  = zp::tmp12
 @progstart = zp::tmp14
+@i         = zp::tmp16
 @filemap   = filemap
 @filename  = $100	; NOTE: must not overlap get_fileid's buffer ($120)
 	sta @relocate
@@ -1411,15 +1413,18 @@ get_filename = get_filename_addr
 	lda @filemap,x
 	sta file
 
-	; look up global SEGMENT id and replace the LOCAL one with it
 	lda seg_id
-	clc
-	adc #$01		; get 1-based id
+	cmp #SEG_ABS
+	beq @relocate_done
+
+	; look up global SEGMENT id and replace the LOCAL one with it
 	CALL FINAL_BANK_LINKER, obj::get_segment_name_by_id
 	bcc :+
 	rts			; not found
 :	CALL FINAL_BANK_LINKER, link::segid_by_name
-	sta seg_id
+	bcc :+
+	rts			; unknown segment; return error
+:	sta seg_id
 
 	; look up the address offset for this SEGMENT
 	CALL FINAL_BANK_LINKER, link::segaddr_by_id

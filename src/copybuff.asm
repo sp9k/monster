@@ -155,29 +155,34 @@ copybuff:		; buffer for copy data
 	stxy @dst
 
 	jsr push	; save the buffer pointers
-	ldxy #copybuff
-	stxy @buff
 
 	; make sure buffer is not empty
-	LOADB_Y @buff
-	beq @done	; buffer is empty
+	ldxy buffptr
+	cmpw #copybuff
+	beq @getline	; if empty, skip ahead
 
-	; seek for the start of the oldest line
-:	LOADB_Y @buff
+	ldxy #copybuff
+	stxy @buff
+	ldy #$00
+
+:	; seek for the start of the oldest line (the first newline)
+	LOADB_Y @buff
 	cmp #$0d
 	beq @found
 	iny
 	bne :-
 
-@found:	dey
+@found:	; point buffptr at the newline; getline reads backwards from there
 	tya
 	clc
-	adc @dst
+	adc #<copybuff
 	sta buffptr
-	bcc @done
-	inc buffptr+1
+	lda #>copybuff
+	adc #$00
+	sta buffptr+1
 
-@done:	ldxy @dst
+@getline:
+	ldxy @dst
 	jsr getline
 
 	php

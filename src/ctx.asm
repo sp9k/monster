@@ -132,16 +132,16 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 ; OUT:
 ; - .C: set if there is no room to create a new context
 .proc push
-	sta type
+	pha			; save type for the new context
 
 	lda __ctx_active
 	beq @init		; no active context -> continue
-	cmp #MAX_CONTEXTS+1
+	cmp #MAX_CONTEXTS
 	bcc @save
 
-@err:	;sec
-	pla			; clean stack
+@err:	pla			; clean stack
 	lda #ERR_STACK_OVERFLOW	; too many contexts
+	sec
 	rts
 
 @save:	lda cur
@@ -162,7 +162,9 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	pla
 	sta parent
 
-@init:	inc __ctx_active
+@init:	pla			; restore type
+	sta type		; set the type of the new context
+	inc __ctx_active
 	inc __ctx_open		; flag that a context is now open
 
 	; move ctx pointer to next context space
@@ -571,7 +573,12 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 ;  - .XY: the rest of the string after the parameter that was extracted
 .proc addparam
 @param=r0
-	stxy @param
+	lda numparams
+	cmp #MAX_PARAMS
+	bcc :+
+	RETURN_ERR ERR_INVALID_MACRO_ARGS
+
+:	stxy @param
 
 	ldy #$00
 @copy:  lda (@param),y

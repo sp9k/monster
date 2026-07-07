@@ -338,7 +338,7 @@ labelvars_size=*-labelvars
 	iny
 	dex
 	bne :-
-	RETURN_OK		; maxed out scope len; don't terminate
+	; maxed out scope len; truncate (fall through to terminate)
 
 @done:  lda #$00
 	STOREB_Y @scopes	; terminate
@@ -715,7 +715,7 @@ labelvars_size=*-labelvars
 	lda zp::label_lineno
 	STOREB_Y label		; store line # (LSB)
 	iny
-	lda zp::label_lineno
+	lda zp::label_lineno+1
 	STOREB_Y label		; store line # (MSB)
 
 	; 6. append pointer to the node we just built to its bucket's list
@@ -869,7 +869,7 @@ labelvars_size=*-labelvars
 	rts
 
 @found:
-	lda #$00
+	lda @cnt+1
 	sta @seek+1
 	lda @cnt
 	asl
@@ -944,7 +944,9 @@ labelvars_size=*-labelvars
 	lda @cnt
 	bne :+
 	dec @cnt+1
-	bpl @l0
+	bmi @err	; count exhausted
+	dec @cnt	; wrap LSB to $ff and continue
+	jmp @l0
 @err:	RETURN_ERR ERR_LABEL_UNDEFINED
 
 :	dec @cnt
@@ -1623,7 +1625,7 @@ labelvars_size=*-labelvars
 	tay
 	txa
 	ror		; carry cleared because multiple of 2
-	and #$02	; align to element size
+	and #$fe	; align to element size
 	adc @lb		; mid = low + ((high - low) / 2)
 	sta @m
 	tya
@@ -1654,8 +1656,8 @@ labelvars_size=*-labelvars
 
 @modhigh:		; A[mid] > value
 	lda @m		; high = mid - element size
-	;clc
-	sbc #2-1	; carry always clear
+	;sec
+	sbc #$02
 	sta @ub
 	lda @m+1
 	sbc #$00
@@ -2032,9 +2034,7 @@ labelvars_size=*-labelvars
 	rol label+1
 	adc @tmp		; *6
 	sta label
-	bcc :+
-	inc label+1
-:	lda label+1
+	lda label+1
 	adc @tmp+1
 	sta label+1
 	asl label		; *12
@@ -2042,6 +2042,7 @@ labelvars_size=*-labelvars
 
 	; add offset to labels data
 	lda label
+	clc
 	adc #<labels
 	sta label
 	lda label+1
@@ -2384,6 +2385,8 @@ labelvars_size=*-labelvars
 	cmp #$00
 	bne :-
 
+	jsr next_sym
+
 	; decrement count and repeat until all labels are dumped
 	lda @cnt
 	bne :+
@@ -2426,6 +2429,7 @@ labelvars_size=*-labelvars
 	bcc :-
 
 	; load the name of the symbol
+	ldy #$00
 	SELECT_BANK "SYMBOL_NAMES"
 :	jsr krn::chrin
 	STOREB_Y @symname

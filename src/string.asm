@@ -1,3 +1,4 @@
+.include "config.inc"
 .include "errors.inc"
 .include "macros.inc"
 .include "memory.inc"
@@ -102,6 +103,7 @@ SLASH = SPECIAL_CHARS_START+2
 @buff=mem::spare
 @str1=r2
 @str2=r0
+@limit=r4
 	; copy the first string to a spare buffer
 	stxy @str1
 	ldy #$00
@@ -109,12 +111,18 @@ SLASH = SPECIAL_CHARS_START+2
 	sta @buff,y
 	beq @cat
 	iny
-	bne :-
+	cpy #LINESIZE+1
+	bcc :-
 
 @toolong:
 	RETURN_ERR ERR_LINE_TOO_LONG
 
-@cat:	tya
+@cat:	tya		; .A = length of the first string
+	eor #$ff
+	sec
+	adc #LINESIZE+1	; @limit = LINESIZE+1 - len1
+	sta @limit
+	tya
 	clc
 	adc #<@buff
 	sta @str1
@@ -127,8 +135,9 @@ SLASH = SPECIAL_CHARS_START+2
 	sta (@str1),y
 	beq @done
 	iny
-	bne :-
-	beq @toolong
+	cpy @limit
+	bcc :-
+	bcs @toolong	; branch always
 
 @done:	ldxy #@buff
 	RETURN_OK

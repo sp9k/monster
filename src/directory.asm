@@ -52,6 +52,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	bcs @ret
 	sta @file
 
+	ldxy #@buff		; use filename buffer as scratch for disk name
 	jsr read_disk_name
 	lda #$00
 	sta @cnt
@@ -167,6 +168,12 @@ HEIGHT = SCREEN_HEIGHT-2
 ;-------------------------------------------------------------------------------
 ; parse filenames and render initial view
 @getfilenames:
+	; make sure there is room for another (max-length) filename before
+	; the file-pointer tables; if not, just show the files we have so far
+	ldxy @line
+	cmpw #@fptrslo-18
+	bcs @cont
+
 	ldx @cnt
 	lda @line+1
 	sta @fptrshi,x	; save pointer to this filename
@@ -195,8 +202,8 @@ HEIGHT = SCREEN_HEIGHT-2
 :	; next line
 	inc @cnt
 	bpl @getfilenames
-	bmi @exit		; only 127 files allowed
-				; TODO: report this error better
+	bmi @cont		; only 128 files allowed; show what we have
+
 
 ;-------------------------------------------------------------------------------
 ; init viewer

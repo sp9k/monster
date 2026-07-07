@@ -520,11 +520,10 @@ exit:	rts				; no GUI to draw
 	lda guisp+1
 	sbc #$00
 	sta @stack+1
-	incw @stack
 
-	; copy the data from the GUI stack to the zeropage area
+	; copy the data from the zeropage area to the GUI stack
 	ldy #guidata_size
-@l0:	lda guidata,y		; -1 because we don't store 1st byte (TYPE)
+@l0:	lda guidata-1,y		; -1 because we don't store 1st byte (TYPE)
 	sta (@stack),y
 	dey
 	bne @l0
@@ -566,5 +565,38 @@ exit:	rts				; no GUI to draw
 	lda maxh	; else, only resize to the size needed to fit all items
 :	clc		; ok
 	sta height
+
+	; clamp scroll/selection to the item count, which may have shrunk
+	; since the state was saved (e.g. an item was deleted)
+	lda scroll
+	clc
+	adc select
+	cmp num
+	bcc @done	; scroll+select < num: still valid
+
+	ldx num
+	bne :+
+	stx scroll	; no items: home the selection
+	stx select
+	clc
+	rts
+
+:	dex		; .X = index of the last item
+	txa
+	cmp height
+	bcs @scrl
+	stx select	; all items fit: select the last one
+	lda #$00
+	sta scroll
+	clc
+	rts
+
+@scrl:	sbc height	; (.C set) .A = last - height
+	adc #$00	; (.C still set) scroll = last - height + 1
+	sta scroll
+	ldx height
+	dex
+	stx select	; select the bottom row
+	clc
 @done:	rts
 .endproc

@@ -472,13 +472,16 @@ screen: .res LINESIZE*HEIGHT
 	ldx #$00
 
 @findredir:
-	cpx #LINESIZE-1
+	cpx #LINESIZE-2
 	beq @done
 	lda mem::linebuffer+1,x	; start after prompt (+1)
 	beq @done		; no redirect, return
 	cmp #'>'		; redirect?
+	bne @next
+	lda mem::linebuffer+2,x	; redirect must be followed by whitespace
+	jsr is_whitespace	; (to disambiguate from the MSB operator '>')
 	beq @redir
-	inx
+@next:	inx
 	bne @findredir
 	rts
 
@@ -486,6 +489,7 @@ screen: .res LINESIZE*HEIGHT
 	lda #$00
 	sta mem::linebuffer+1,x	; terminate the line where the redirect was
 	sta $100+1,x
+	sta CMD_BUFF,x		; also terminate the command that will run
 @l0:	inx
 	lda mem::linebuffer+1,x
 	beq @err_nofile
@@ -568,6 +572,7 @@ screen: .res LINESIZE*HEIGHT
 ; The NMI handler - simply sets the INT signal
 @nmi_handler:
 	pha
+	lda $9111		; ack CA1 (RESTORE) so future NMIs can fire
 	lda exp::bank
 	pha			; save current bank
 	lda #FINAL_BANK_MONITOR

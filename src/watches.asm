@@ -248,14 +248,16 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 	sta @flags
 	stxy @addr
 	ldx __watches_num
-	beq :+
+	beq @new
 
 	; check if watch (in r2) already exists
 	jsr getwatch
-	bcs @done		; already a watch here, exit
+	bcs @ok			; already a watch here; no-op success
 
 	ldx __watches_num
-:	lda @addr
+@new:	cpx #MAX_WATCHPOINTS
+	bcs @done		; too many watches, exit with .C set
+	lda @addr
 	sta __watches_watcheslo,x
 	lda @addr+1
 	sta __watches_watcheshi,x
@@ -275,7 +277,49 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 	sta __watches_watch_flags,x
 
 	inc __watches_num
+
+@ok:	clc			; success
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; UPDATE
+; Compares the current value of each watch with its last known value and
+; marks any watch whose value changed as DIRTY.
+; Used after a TRACE, where watches are not checked per-instruction.
+; OUT:
+;   - .C: set if any watch was marked dirty
+.export __watches_update
+.proc __watches_update
+@i=r6
+@dirty=r7
+	lda #$00
+	sta @dirty
+	ldx __watches_num
+	beq @done
+	stx @i
+
+@l0:	ldx @i
+	lda __watches_watcheslo-1,x
+	ldy __watches_watcheshi-1,x
+	tax
+	jsr vmem::load			; current value of watched address
+	ldx @i
+	cmp __watches_watch_vals-1,x
+	beq @next			; unchanged
+
+	sta __watches_watch_vals-1,x
+	lda __watches_watch_flags-1,x
+	ora #WATCH_DIRTY
+	sta __watches_watch_flags-1,x
+	inc @dirty
+
+@next:	dec @i
+	bne @l0
+
+@done:	lda @dirty
+	cmp #$01			; .C set if any watch is dirty
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -378,6 +422,7 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 @stop=r0
 @addr=r2
 	ldx __watches_num
+	beq @none
 @l0:	lda @addr
 	cmp __watches_watcheslo-1,x
 	bne @next
@@ -385,13 +430,17 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 	cmp __watches_watcheshi-1,x
 	bne @next
 	lda @stop
-	cmp __watches_watches_stoplo,x
+	cmp __watches_watches_stoplo-1,x
 	bne @next
 	lda @stop+1
-	cmp __watches_watches_stophi,x
-	beq @done
+	cmp __watches_watches_stophi-1,x
+	beq @found
 @next:	dex
 	bne @l0
-	clc			; no watch exists
-@done:	rts
+@none:	clc			; no watch exists
+	rts
+
+@found:	dex			; .X = id of the matching watch
+	sec			; watch exists
+	rts
 .endproc

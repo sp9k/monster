@@ -42,6 +42,10 @@ default_start:     .word 0	; default start address for command
 .export __mon_default_start_set
 __mon_default_start_set: .byte 0
 
+; buffer for the byte lists parsed by parse_exprs (used by f and h)
+MAX_EXPR_LIST = 32
+exprlist: .res MAX_EXPR_LIST
+
 .segment "CONSOLE"
 
 ;*******************************************************************************
@@ -122,7 +126,7 @@ __mon_default_start_set: .byte 0
 
 ;*******************************************************************************
 ; ADD WATCH LOAD
-; was <expression> [, expression]
+; wal <expression> [, expression]
 ; Prompts for a start address and (optional) stop address and adds a watch
 ; at that location
 ; The set watch will only trigger when the watched value is read from
@@ -130,8 +134,7 @@ __mon_default_start_set: .byte 0
 ;  - .XY: the parameters for the command
 .proc add_watch_load
 	lda #WATCH_LOAD
-	bne add_watch
-	; fall through
+	bne add_watch_mode	; branch always
 .endproc
 
 ;*******************************************************************************
@@ -144,8 +147,7 @@ __mon_default_start_set: .byte 0
 ;  - .XY: the parameters for the command
 .proc add_watch_store
 	lda #WATCH_STORE
-	skw
-	; fall through
+	bne add_watch_mode	; branch always
 .endproc
 
 ;*******************************************************************************
@@ -156,7 +158,20 @@ __mon_default_start_set: .byte 0
 ; IN:
 ;  - .XY: the parameters for the command
 .proc add_watch
+	lda #WATCH_LOAD|WATCH_STORE
+	; fall through to add_watch_mode
+.endproc
+
+;*******************************************************************************
+; ADD WATCH MODE
+; Common handler for the watch commands
+; IN:
+;  - .A:  the watch mode (WATCH_LOAD and/or WATCH_STORE)
+;  - .XY: the parameters for the command
+.proc add_watch_mode
 @addr=zp::debuggertmp
+	pha					; save the watch mode
+
 	; evaluate the expression to get start address
 	jsr eval
 	bcs @err
@@ -168,17 +183,28 @@ __mon_default_start_set: .byte 0
 	lda (zp::line),y
 	cmp #$00				; was there a 2nd argument?
 	beq @set				; if not, continue
+	cmp #','				; skip the separator (if any)
+	bne :+
+	incw zp::line
+	jsr eat_whitespace
 
-	; evaluate the 2nd expression (if any) to get stop address
+:	; evaluate the 2nd expression (if any) to get stop address
 	jsr eval
 	bcs @err
 	stxy r0
 
 @set:	ldxy @addr
-	lda #WATCH_LOAD|WATCH_STORE
+	pla					; restore the watch mode
 	CALLMAIN watch::add		; add the watch
-	clc
-@err:	rts
+	bcc :+
+	RETURN_ERR ERR_TOO_MANY_WATCHES
+:	rts
+
+@err:	tax					; save error code
+	pla					; clean up saved watch mode
+	txa					; restore error code
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -276,8 +302,11 @@ __mon_default_start_set: .byte 0
 	pha			; save file id
 	stxy @line
 	CALLMAIN dbg::setbrkatline
+	bcc :+
+	pla			; clean up saved file id
+	RETURN_ERR ERR_TOO_MANY_BREAKPOINTS
 
-	lda @addr
+:	lda @addr
 	sta r0
 	lda @addr+1
 	sta r0+1
@@ -290,7 +319,8 @@ __mon_default_start_set: .byte 0
 	; no line number for the address requested
 	ldxy @addr
 	CALLMAIN dbg::setbrkataddr
-	clc						; ok
+	bcc @done				; ok
+	RETURN_ERR ERR_TOO_MANY_BREAKPOINTS
 @done:	rts
 .endproc
 
@@ -417,7 +447,7 @@ __mon_default_start_set: .byte 0
 @start   = zp::debuggertmp
 @stop    = zp::debuggertmp+2
 @listlen = zp::debuggertmp+4
-@list    = zp::debuggertmp+6
+@list    = exprlist
 @i       = r0
 	jsr get_range
 	bcs @ret
@@ -458,14 +488,19 @@ __mon_default_start_set: .byte 0
 ;  - .A:               the number of values extracted
 ;  - .C:               set if an error occurred during parsing
 ;  - zp::debuggertmp+4 the length of the byte array created
-;  - zp::debuggertmp+6 the list of values that were read
+;  - exprlist:         the list of values that were read
 .proc parse_exprs
 @listlen = zp::debuggertmp+4
-@list    = zp::debuggertmp+6
+@list    = exprlist
 	lda #$00
 	sta @listlen
 
-@l0:	jsr eval
+@l0:	lda @listlen
+	cmp #MAX_EXPR_LIST-1	; room for (up to) 2 more bytes?
+	bcc :+
+	RETURN_ERR ERR_LINE_TOO_LONG
+
+:	jsr eval
 	bcs @ret
 
 	cmp #$02		; was expression 2 bytes?
@@ -474,7 +509,8 @@ __mon_default_start_set: .byte 0
 	bcc :+			; if < 2 bytes, only store LSB
 	sta @list+1,y		; store MSB of the expression as a fill val
 	inc @listlen
-:	stx @list,y		; store LSB of expression as fill val
+:	txa			; store LSB of expression as fill val
+	sta @list,y
 	inc @listlen
 	ldy #$00
 	lda (zp::line),y	; are we at the end?
@@ -562,6 +598,8 @@ __mon_default_start_set: .byte 0
 @next:	incw @block0
 	incw @block1
 	decw @num
+	lda @num
+	ora @num+1	; decw only sets .Z for the LSB; test all 16 bits
 	bne @l0
 @ok:	clc
 @done:	rts
@@ -665,7 +703,7 @@ __mon_default_start_set: .byte 0
 @start   = zp::debuggertmp
 @i       = zp::debuggertmp+2
 @listlen = zp::debuggertmp+4
-@list    = zp::debuggertmp+6
+@list    = exprlist
 	; get the start address
 	jsr eval
 	stxy @start
@@ -673,6 +711,7 @@ __mon_default_start_set: .byte 0
 	jsr eat_whitespace
 
 	jsr parse_exprs		; get the values to hunt for
+	bcs @ret		; propagate parse errors
 
 	lda #$00
 	sta @i
@@ -681,18 +720,28 @@ __mon_default_start_set: .byte 0
 	ldxy @start
 	jsr vmem_load
 	ldx @i
-	inc @i
 	cmp @list,x
-	beq :+
-	lda #$00
-	sta @i			; reset i to 0
+	beq @match
 
-:	; if i >= listlen, we found all the values we were looking for
+	; mismatch: rewind so the search restarts one byte after the
+	; position where the partial match began
+	lda @start
+	sec
+	sbc @i
+	sta @start
+	bcs :+
+	dec @start+1
+:	lda #$00
+	sta @i
+	beq @next		; branch always
+
+@match:	inc @i
+	; if i >= listlen, we found all the values we were looking for
 	lda @i
 	cmp @listlen
 	bcs @found
 
-	; start++
+@next:	; start++
 	inc @start
 	bne @l0
 	inc @start+1
@@ -794,6 +843,7 @@ __mon_default_start_set: .byte 0
 	; if outputting to file, don't render addresses
 	lda mon::outfile
 	beq @db_with_addr
+	incw @addr		; move past the byte we rendered
 	ldxy #@byte_msg_no_addr
 	RENDER_STR
 	jmp mon::puts
@@ -1018,10 +1068,13 @@ __mon_default_start_set: .byte 0
 	sta @addr
 	bcc :+
 	inc @addr+1
-:	dec @lines		; (max 255 lines)
+:	lda @lines
+	bne @declo
+	dec @lines+1		; borrow from the high byte
+@declo:	dec @lines
+	lda @lines
+	ora @lines+1		; count exhausted?
 	bne @l0
-	dec @lines+1
-	bpl @l0
 @done:	clc			; OK
 @ret:	rts
 .endproc
@@ -1106,13 +1159,13 @@ __mon_default_start_set: .byte 0
 	beq @cont			; no offset specified, continue
 
 	; get the offset
-	incw zp::line			; move past separator
 	jsr eval
+	bcs @done			; invalid offset expression
 	cpy #$01
-	bcc @cont
-:	RETURN_ERR ERR_OVERSIZED_OPERAND	; offset must be <$80
-	cpx #$80
-	bcs :-
+	bcc :+
+@err:	RETURN_ERR ERR_OVERSIZED_OPERAND	; offset must be <$80
+:	cpx #$80
+	bcs @err
 
 @cont:	stx @offset
 	lda sim::reg_sp
@@ -1231,14 +1284,19 @@ __mon_default_start_set: .byte 0
 	; save the given memory range
 	ldxy @startaddr
 	CALLMAIN file::savebin
-
-	pla
-	bcs @err				; if file save failed -> done
+	bcs @saverr
 
 	; close the file
+	pla
 	CALLMAIN file::close
 	jsr @err				; restore IRQ
 	RETURN_OK
+
+@saverr:
+	sta @startaddr				; save error code
+	pla					; get the file handle
+	CALLMAIN file::close			; close the file we opened
+	lda @startaddr				; restore error code
 
 @err:	pha					; save error code
 	CALLMAIN scr::unblank

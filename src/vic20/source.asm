@@ -86,7 +86,9 @@ data: .res BUFFER_SIZE
 	bne @ins	; no, insert as usual
 
 	; check if there is room to expand the gap
-	lda poststartzp+1
+	; (the expansion moves [poststart, end) up by $100, so it is END that
+	; must stay below the top of the buffer)
+	lda end+1
 	cmp #>(BUFFER_SIZE+data)-1	; -1 to save space for a $100 byte gap
 	bcc @ok
 
@@ -189,7 +191,7 @@ data: .res BUFFER_SIZE
 
 	jsr activate_source
 
-	; if MSB of (end-poststart) > 0, use $ff for counter
+@chunk:	; if MSB of (end-poststart) > 0, use $ff for counter
 	; if they're equal, use the LSB of difference as the counter
 	lda end
 	sec
@@ -197,25 +199,41 @@ data: .res BUFFER_SIZE
 	tax
 	lda end+1
 	sbc poststartzp+1
-	beq :+
+	beq @small
 	ldx #$ff
+	bne @go			; branch always
 
-:	ldy #$00
+@small:	cpx #$00
+	beq @eof		; no chars after the cursor; cannot move down
+
+@go:	ldy #$00
 @l0:	lda (poststartzp),y
 	sta (cursorzp),y
 	iny
 	cmp #$0d
 	beq @ok
 
-	; check if we're at the end of the buffer
+	; check if we've exhausted this chunk
 	dex
 	bne @l0
+
+	; no newline in this chunk; advance past the copied bytes and
+	; continue with the next chunk (if the buffer end was reached, the
+	; next iteration exits via @eof with the cursor moved to the end)
+	jsr @advance
+	jmp @chunk
 
 @eof:	jsr deactivate_source
 	sec			; end of the buffer
 	rts
 
 @ok:	incw line
+	jsr @advance
+	clc			; success
+	jmp deactivate_source
+
+@advance:
+	; move both gap pointers past the .Y bytes that were copied
 	tya
 	clc
 	adc poststartzp
@@ -223,14 +241,12 @@ data: .res BUFFER_SIZE
 	bcc :+
 	inc poststartzp+1
 	clc
-
 :	tya
 	adc cursorzp
 	sta cursorzp
 	bcc :+
 	inc cursorzp+1
-	clc
-:	jmp deactivate_source
+:	rts
 .endproc
 
 ;*******************************************************************************
@@ -446,7 +462,12 @@ data: .res BUFFER_SIZE
 	cmp #$80
 	bcs @done		; not displayable, don't insert
 
-@store:	pha
+@store:	; make sure there is room for the character
+	ldy end+1
+	cpy #>(BUFFER_SIZE+data)
+	bcs @full		; buffer is full
+
+	pha
 	jsr activate_source
 	pla
 	ldy #$00
@@ -454,6 +475,10 @@ data: .res BUFFER_SIZE
 	incw end
 	jsr deactivate_source
 @done:	RETURN_OK
+
+@full:	lda #ERR_BUFFER_FULL
+	sec
+	rts
 .endproc
 .POPSEG
 

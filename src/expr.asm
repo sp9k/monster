@@ -27,6 +27,7 @@
 ; CONSTANTS
 MAX_OPERATORS = $10
 MAX_OPERANDS  = MAX_OPERATORS/2
+MAX_RPN_LEN   = $20	; size of the RPN token list (__expr_rpnlist)
 
 TOK_SYMBOL    = 1	; symbol e.g. "label"
 TOK_SYMBOL_ZP = 2	; zeropage symbol e.g. "tmp"
@@ -240,7 +241,7 @@ operands: .res $100
 	beq :+			; if so, assume 2 bytes
 
 	cmpw #PC_SYMBOL_ID
-	bne  :+			; if '*' assume 2 bytes
+	beq :+			; if '*' assume 2 bytes
 
 	; get the address mode of the symbol
 	CALLMAIN lbl::addrmode
@@ -370,8 +371,13 @@ operands: .res $100
 
 	; get the operand for the unary operation
 	jsr @popval
-	jcs @ret
+	bcc @unary_ok
+	tax			; save error code
+	pla			; clean up saved operator
+	txa			; restore error code
+	jmp @ret
 
+@unary_ok:
 	; if VAL_REL, this must be the last operator
 	pla				; restore operator
 @lsb:	cmp #'<'
@@ -738,6 +744,7 @@ operands: .res $100
 
 	; check if symbol is in same segment
 	; (can't do postproc on inter-segment symbol)
+	ldxy @symbol
 	CALLMAIN lbl::getsegment
 	cmp asm::segment
 	beq :+
@@ -798,19 +805,20 @@ operands: .res $100
 
 	; check whitespace behavior, finish if configured as terminator
 	lda end_on_whitespace
-	bne @done
+	jne @done
 	jsr inc_line
 	bne @l0		; branch always
 
 :	lda (zp::line),y
 	jsr @isterminator
-	beq @done
+	jeq @done
 
 @rparen:
 	cmp #'('
 	bne @lparen
 	inc @may_be_unary
 	jsr @pushop
+	jcs @ret	; operator stack full
 	jsr inc_line
 	bne @l0		; branch always
 
@@ -822,7 +830,7 @@ operands: .res $100
 
 @paren_eval:
 	ldx @num_operators
-	beq @err	; no parentheses found
+	jeq @err	; no parentheses found
 	lda @operators-1,x
 	cmp #'('
 	bne :+
@@ -831,6 +839,7 @@ operands: .res $100
 	bne @l0		; branch always - done evaluating this () block
 
 :	jsr @eval	; append the top operation/operand(s)
+	jcs @ret	; RPN list full
 	jmp @paren_eval
 
 @checkop:
@@ -857,15 +866,23 @@ operands: .res $100
 	bcs @process_ops_done
 :	pha			; save priority
 	jsr @eval		; append operation to the stack
+	bcs @poperr		; RPN list full
 	pla			; get priority
 	jmp @process_ops	; continue til op on left has lower priority
+
+@poperr:
+	tax			; save error code
+	pla			; clean up saved priority
+	txa			; restore error code
+	jmp @ret
 
 @process_ops_done:
 	pla			; restore operator of operator
 	jsr @pushop		; push it to operator stack
+	jcs @ret		; operator stack full
 	jsr inc_line
 	inc @may_be_unary
-	bne @l0			; branch always
+	jmp @l0
 
 @getoperand:
 	jsr get_operand		; have we found a valid operand?
@@ -873,6 +890,7 @@ operands: .res $100
 
 @operand:
 	jsr @appendval
+	bcs @ret		; RPN list full
 	lda #$00
 	sta @may_be_unary
 	jmp @l0
@@ -880,6 +898,7 @@ operands: .res $100
 @done:	ldx @num_operators	; if there are still ops on stack
 	beq @end		; no operators: terminate the RPN list
 	jsr @eval		; evaluate each remaining operator
+	bcs @ret		; RPN list full
 	jmp @done
 
 @end:	; TODO: validate
@@ -923,13 +942,14 @@ operands: .res $100
 @pushop:
 	ldx @num_operators
 	cpx #MAX_OPERATORS
-	bcc :+
-:	sta @operators,x
+	bcs @rpnfull		; operator stack exhausted
+	sta @operators,x
 	pha
 	jsr @priority
 	sta @priorities,x
 	pla
 	inc @num_operators
+	clc			; ok
 	rts
 
 ;-------------------------------------------------------------------------------
@@ -948,6 +968,15 @@ operands: .res $100
 @priochars: .byte '+', '-', '*', '/', '&', '^', '.', '<', '>'
 @prios:	    .byte  1,   1,   2,   2,   3,   4,   5,   3,   3
 @num_prios=*-@prios
+
+;-------------------------------------------------------------------------------
+; expression is too complex to represent (RPN list or operator stack full)
+@rpnfull_pla:
+	pla			; clean up saved token/operator
+@rpnfull:
+	lda #ERR_LINE_TOO_LONG
+	sec
+	rts
 
 ;-------------------------------------------------------------------------------
 ; appends the operands involved in the evaluation followed by the operation
@@ -970,6 +999,8 @@ operands: .res $100
 @unary: ; append the operator token
 	lda #TOK_UNARY_OP
 	ldx @i
+	cpx #MAX_RPN_LEN-2	; room for token, operator, and terminator?
+	bcs @rpnfull_pla
 	sta __expr_rpnlist,x	; write TOKEN type
 	pla			; get operator
 	sta __expr_rpnlist+1,x	; write operator
@@ -977,6 +1008,7 @@ operands: .res $100
 	inx
 	stx @i
 @evaldone:
+	clc
 	rts
 
 ;-------------------------------------------------------------------------------
@@ -986,11 +1018,16 @@ operands: .res $100
 	bne :+
 	; TOK_PC only takes 1 byte
 	ldx @i
+	cpx #MAX_RPN_LEN-1	; room for token and terminator?
+	bcs @rpnfull
 	sta __expr_rpnlist,x
-	bpl :++			; branch always
+	bcc :++			; branch always
 
-:	pha
-	txa
+:	pha			; save the token type
+	lda @i
+	cmp #MAX_RPN_LEN-3	; room for token, value, and terminator?
+	bcs @rpnfull_pla
+	txa			; .A = value LSB
 	ldx @i
 	sta __expr_rpnlist+1,x	; LSB
 	tya

@@ -45,6 +45,7 @@ macro_addresses: .res MAX_MACROS * 2
 ; BSS
 .segment "MACROBSS"
 macros: .res $6000 - (MAX_MACROS*2)
+macros_end:
 
 ;*******************************************************************************
 ; MACRO FORMAT:
@@ -95,6 +96,12 @@ macros: .res $6000 - (MAX_MACROS*2)
 	cmp #MAX_MACROS
 	bcc :+
 	RETURN_ERR ERR_TOO_MANY_MACROS
+
+:	; make sure there is room for the macro's header (name, params, ...)
+	lda __mac_top+1
+	cmp #>(macros_end-$100)
+	bcc :+
+	RETURN_ERR ERR_OOM
 
 :	; write pointer for the macro to address we will write it to
 	lda nummacros
@@ -154,6 +161,13 @@ macros: .res $6000 - (MAX_MACROS*2)
 	beq @done		; if not, we're done
 :	stxy @src
 
+	; make sure there is room for the line (and the terminating 0,0)
+	lda @dst+1
+	cmp #>(macros_end-LINESIZE-3)
+	bcc @copyline
+	RETURN_ERR ERR_OOM
+
+@copyline:
 	ldy #$00
 @l1:	lda (@src),y
 	STOREB_Y @dst		; store character for the macro
@@ -187,6 +201,7 @@ macros: .res $6000 - (MAX_MACROS*2)
 .export __mac_asm
 .proc __mac_asm
 @params=zp::macros
+@argslen=zp::macros+$08	; 2*(number of args passed by the caller)
 @err=zp::macros+$0b
 @errcode=zp::macros+$0c
 @cnt=zp::macros+$0d
@@ -194,6 +209,7 @@ macros: .res $6000 - (MAX_MACROS*2)
 @numparams=zp::macros+$10
 @tmplabel=$140
 @tmp=r0
+	stx @argslen	; save the number of args (*2) that were passed
 	; get the address of the macro from its id
 	asl
 	tax
@@ -239,21 +255,8 @@ macros: .res $6000 - (MAX_MACROS*2)
 	cmp @numparams
 	beq @paramsdone
 
-	; get the value to set the parameter to
-	asl
-	tax
-	lda @params,x
-	sta zp::label_value
-	lda @params+1,x
-	sta zp::label_value+1
-	beq :+
-	lda #$01		; ABS
-:	sta zp::label_mode	; set the address mode for this label
-	inc @cnt
-
-	; set the parameter to its value
-	; (copy the param name to a temp buffer so that it can be
-	; seen in the label bank first)
+	; copy the param name to a temp buffer so that it can be
+	; seen in the label bank (this also advances @macro past the name)
 	ldy #$ff		; -1
 :	iny
 	LOADB_Y @macro
@@ -269,10 +272,34 @@ macros: .res $6000 - (MAX_MACROS*2)
 	bcc :+
 	inc @macro+1
 
-:	ldxy #@tmplabel
+:	; if no value was passed for this parameter, leave it undefined
+	lda @cnt
+	asl
+	cmp @argslen
+	bcs @nextparam
+
+	; get the value to set the parameter to
+	tax
+	lda @params,x
+	sta zp::label_value
+	lda @params+1,x
+	sta zp::label_value+1
+	beq :+
+	lda #$01		; ABS
+:	sta zp::label_mode	; set the address mode for this label
+
+	; macro params are constants; they must not generate relocations
+	lda #SEG_ABS
+	sta zp::label_segmentid
+
+	; set the parameter to its value
+	ldxy #@tmplabel
 	CALLMAIN lbl::set
 	bcs @done
-	bcc @setparams		; repeat for all params
+
+@nextparam:
+	inc @cnt
+	bne @setparams		; repeat for all params (branch always)
 
 @paramsdone:
 	; check if the macro is empty (begins with 2 0's)

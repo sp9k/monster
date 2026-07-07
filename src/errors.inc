@@ -90,6 +90,11 @@ ERR_CTX_FULL             = 60
 ERR_NO_MATCHING_SCOPE    = 61
 ERR_FILENAME_TOO_LONG    = 62
 
+;******************************************************************************
+; debugger errors
+ERR_TOO_MANY_WATCHES     = 63
+ERR_TOO_MANY_BREAKPOINTS = 64
+
 .import __err_get
 
 .scope err
