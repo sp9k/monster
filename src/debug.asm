@@ -879,6 +879,7 @@ blank   = scr::blank
 ; Flags are preserved (except .I, which is cleared)
 .proc reenable_irq
 	php
+	jsr sim::flush_vias	; sync VIA shadows to vmem so views see them
 	jsr unblank
 	plp
 	cli
@@ -922,9 +923,6 @@ blank   = scr::blank
 ;-------------------------------------------------------------------------------
 ; perform the step
 @step:
-.ifdef vic20
-	sei
-.endif
 	jsr sim::step		; execute the STEP
 	bcc @check_watches	; if ok, continue
 

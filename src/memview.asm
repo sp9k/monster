@@ -381,6 +381,9 @@ memaddr: .word 0
 	lda #$00
 	sta mem::linebuffer+TITLE_ADDR_START+5
 
+	lda #'$'
+	sta mem::linebuffer+TITLE_ADDR_START-1
+
 	; set bounds for the input
 	lda #TITLE_ADDR_START
 	sta cur::minx

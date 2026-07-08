@@ -177,9 +177,9 @@ segment_names: .res MAX_SEGMENT_NAME_LEN*MAX_SEGMENTS
 ;
 ; Exports are calculated during linkage according to the current offset +
 ; SEGMENT values
-;******************************************************************************
+;*******************************************************************************
 
-;******************************************************************************
+;*******************************************************************************
 ; DEBUG FILE overview
 ; Debug (.d) files are binary files that contain the linked object code.
 ; They are similar to the object files that they are built from.
@@ -203,9 +203,9 @@ segment_names: .res MAX_SEGMENT_NAME_LEN*MAX_SEGMENTS
 ;  SEGMENTS:
 ;   CODE $1032
 ;   DATA $062
-;******************************************************************************
+;*******************************************************************************
 
-;******************************************************************************
+;*******************************************************************************
 ; OBJ Code Opcodes
 ; These represent the "instruction" opcodes of the object code
 OBJ_SETSEG  = $01       ; switches to the given segment e.g. "SEG DATA"
@@ -2188,7 +2188,7 @@ __link_get_segment_by_name:
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LOG NEWL
 ; Logs a newline
 .proc log_newl
@@ -2196,7 +2196,7 @@ __link_get_segment_by_name:
 	JUMPMAIN log::out
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LOG MSG
 ; Copies the provided string to shared RAM and logs it
 ; IN:
@@ -2232,7 +2232,7 @@ __link_get_segment_by_name:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LOG BANNER
 ; Logs a '*' banner
 .proc log_banner

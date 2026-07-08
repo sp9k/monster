@@ -26,8 +26,11 @@ via_acr  = $b	; auxiliary control register
 via_ifr  = $d	; interrupt flag register
 via_ier  = $e	; interrupt enable register
 
+;*******************************************************************************
 .BSS
 
+;*******************************************************************************
+; SIMUATOR REGISTER STATE
 .export __sim_register_state
 .export __sim_pc
 .export __sim_reg_a
@@ -191,6 +194,32 @@ tracing: .byte 0
 	sta via_t2_latch
 	lda __sim_via2+via_t2cl
 	sta via_t2_latch+1
+.endif
+	rts
+.endproc
+
+;******************************************************************************
+; FLUSH VIAS
+; Writes the VIA shadow registers back to virtual memory ($9110-$912f).
+.export __sim_flush_vias
+.proc __sim_flush_vias
+.ifdef vic20
+	ldx #$00
+@copy:	lda vias,x
+	sta viatmp
+	txa
+	pha
+	clc
+	adc #<$9110
+	tax
+	ldy #>$9110
+	lda viatmp
+	jsr vmem::store
+	pla
+	tax
+	inx
+	cpx #$20
+	bne @copy
 .endif
 	rts
 .endproc
@@ -846,8 +875,7 @@ cycles_tab:
 	pha
 	jsr update_nzc
 	pla
-	jsr store_ea
-	rts
+	jmp store_ea
 .endproc
 
 ;******************************************************************************
@@ -2021,8 +2049,7 @@ do_inc_done:
 	pha
 	jsr update_nz
 	pla
-	jsr store_ea
-	rts
+	jmp store_ea
 
 ;******************************************************************************
 ; DEC - Decrement memory; updates N, Z only
@@ -2638,7 +2665,7 @@ h_rti:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; UPDATE VIAS
 ; Ticks both VIAs' timers down by the number of cycles that the instruction
 ; just executed took and, if any enabled interrupt is flagged, dispatches an
@@ -2677,7 +2704,7 @@ h_rti:
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; TICK VIA
 ; Counts the given VIA's timers down by the current STEP's cycle count and
 ; flags any timer interrupt that occurs
@@ -2748,7 +2775,7 @@ h_rti:
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; DO INTERRUPT
 ; Performs the 6502's interrupt sequence: pushes the PC and status (with the
 ; BREAK flag clear), sets the I flag, and loads the PC from the given vector.
@@ -2790,7 +2817,7 @@ h_rti:
 .endproc
 .endif	; vic20
 
-;******************************************************************************
+;*******************************************************************************
 ; VMEM LOAD
 ; Loads a byte from virtual memory.  If we are tracing, this may be the
 ; physical address
@@ -2847,7 +2874,7 @@ h_rti:
 @v:	jmp vmem::load ; not in the visible range, load from virtual memory
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; VMEM STORE
 ; Stores a byte from virtual memory.  If we are tracing, this may be the
 ; physical address
@@ -2856,7 +2883,7 @@ h_rti:
 ;   - .A:  byte to store
 .proc vmem_store
 @target=r0
-.ifdef vic20
+.ifdef ultimem
 	; mirror writes to the VIA registers ($9110-$912f) into their shadows
 	; to update the simulated timer state; the write then falls through to
 	; virtual memory as usual so the stored value is also visible there
@@ -2867,9 +2894,8 @@ h_rti:
 	cpx #$30
 	bcs @notvia
 	jsr via_write		; .A, .X, .Y are preserved
+
 @notvia:
-.endif
-.ifdef ultimem
 	; check if target address is ok
 	; writes to IO2/3 ($9800-$9fff) and $316-$319 are not allowed
 	cpy #$98

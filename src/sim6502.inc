@@ -16,6 +16,7 @@
 .import __sim_reg_sp
 .import __sim_reg_p
 .import __sim_effective_addr
+.import __sim_flush_vias
 .import __sim_rti_irq
 .import __sim_stopwatch
 .import __sim_at_brk
@@ -29,6 +30,7 @@
 .scope sim
 	affected         = __sim_affected
 	at_brk           = __sim_at_brk
+	flush_vias       = __sim_flush_vias
 	init             = __sim_init
 	branch_taken     = __sim_branch_taken
 	illegal          = __sim_illegal
