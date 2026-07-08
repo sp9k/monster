@@ -1321,6 +1321,7 @@ get_filename = get_filename_addr
 @filemap   = filemap
 @filename  = $100	; NOTE: must not overlap get_fileid's buffer ($120)
 	sta @relocate
+	cmp #$00
 	bne :+			; if relocating (linking), append to existing
 	jsr init		; absolute load: replace existing debug info
 

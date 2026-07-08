@@ -2030,9 +2030,9 @@ __obj_close_section = close_section
 ;-------------------------------------------------------------------------------
 ; finally, link the debug information for the object file
 @dbginfo:
-	lda #$01			; flag for dbgi::load (apply relocation)
+	lda #$01				; flag to apply relocation
 	CALL FINAL_BANK_DEBUG, dbgi::load	; load debug info
-	bcs @dbgierr			; propagate debug info errors
+	bcs @dbgierr				; propagate debug info errors
 
 ;-------------------------------------------------------------------------------
 @done:	RETURN_OK
