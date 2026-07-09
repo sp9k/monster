@@ -34,6 +34,7 @@ FINAL_BANK_SYMBOL_NAMES = $11
 FINAL_BANK_SYMVIEW      = $12
 FINAL_BANK_MONITOR      = $13
 FINAL_BANK_CTX          = $14
+FINAL_BANK_LOG          = $15
 
 .macro CALLMAIN proc
 	jsr proc

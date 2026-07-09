@@ -478,6 +478,7 @@ num_illegals = *-illegal_opcodes
 	lda #$00
 	sta zp::verify
 
+	sta ifstacksp		; reset the .IF stack (may leak from prior pass)
 	sta top			; set top of program to 0
 	sta top+1
 	sta origin
@@ -499,61 +500,23 @@ num_illegals = *-illegal_opcodes
 .endproc
 
 ;*******************************************************************************
-; TOKENIZE PASS
-; Based on the current pass (zp::pass), calls the appropriate routine to
-; handle assembly for that pass
-; IN:
-;  - .XY: the string to tokenize
-.export __asm_tokenize_pass
-.proc __asm_tokenize_pass
-	pha
-	lda zp::pass
-	cmp #$02
-	pla
-	bcc __asm_tokenize_pass1
-
-	; fall through
-.endproc
-
-;*******************************************************************************
-; TOKENIZE PASS2
-; Calls tokenize and generated debug info (if enabled)
-; IN:
-;  - .A:  the bank that the line to assemble resides in
-;  - .XY: the line to assemble
-;  - .C:  set if an error occurred
+; END PASS
+; Validates the assembly state at the end of a pass.
+; Returns an error if a .IF block or a .MAC/.REP context was left unclosed.
 ; OUT:
-;  - .C: set on error
-.export __asm_tokenize_pass2
-.proc __asm_tokenize_pass2
-	jsr __asm_tokenize
-	bcs @done	; return err
+;   - .A: the error code (if .C is set)
+;   - .C: set if a block was left unterminated
+.export __asm_endpass
+.proc __asm_endpass
+	lda ifstacksp		; all .IF blocks closed?
+	beq :+
+	RETURN_ERR ERR_UNCLOSED_IF
 
-	; store debug info (if enabled)
-	ldx zp::gendebuginfo
-	beq @retok
-	cmp #ASM_ORG
-	bne @ok
-
-@org:	; if we assembled a .ORG in pass 2, create a new block at the new addr
-	ldxy __asm_linenum
-	stxy dbgi::srcline
-	ldxy zp::virtualpc	; address of new block
-	jmp dbgi::newblock	; create a block
-@retok:	txa			; .A=0
-@ok:	clc
-@done:	rts
+:	lda ctx::active		; all .MAC/.REP blocks closed?
+	beq :+
+	RETURN_ERR ERR_UNCLOSED_CTX
+:	RETURN_OK
 .endproc
-
-;*******************************************************************************
-; TOKENIZE_PASS1
-; Calls tokenize on the given line
-; IN:
-;  - .A:  the bank that the line to assemble resides in
-;  - .XY: the line to assemble
-;  - .C:  set if an error occurred
-.export __asm_tokenize_pass1
-__asm_tokenize_pass1 = __asm_tokenize
 
 ;*******************************************************************************
 ; TOKENIZE
@@ -588,6 +551,8 @@ __asm_tokenize_pass1 = __asm_tokenize
 ;-------------------------------------------------------------------------------
 ; check if we're in an .IF (FALSE) and if we are, return
 @checkifs:
+	lda zp::verify
+	bne assemble_with_ctx	; if verifying, .IF state is stale - ignore it
 	lda ifstacksp
 	beq assemble_with_ctx	; no active .IF
 	ldx #$00
@@ -1346,6 +1311,9 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; Stores the current VPC to the current source line
 ; If debug info generation is disabled, does nothing
 .proc storedebuginfo
+	lda zp::verify
+	bne @skip		; if verifying, nothing to store
+
 	jsr pass1		; are we on pass 1?
 	beq @skip		; if so, don't generate debug info
 
@@ -1718,7 +1686,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 :	; close the context
 	lda #CTX_REPEAT
 	jsr ctx::end
-	bcs @err
+	bcs @reterr		; no matching context -> return the error
 
 	; if the number of iterations is zero, we're done
 	iszero zp::ctx+repctx::iter_end
@@ -1755,13 +1723,14 @@ __asm_tokenize_pass1 = __asm_tokenize
 	sta zp::label_mode
 
 @set:	jsr lbl::set		; successive iterations- set (replace)
-	bcs @err
+	bcs @errpop
 
 ;-------------------------------------------------------------------------------
 ; assemble all lines for the iteration
-@l1:	incw __asm_linenum
-	jsr ctx::getline	; get a line to assemble
-	bcs @err
+; NOTE: __asm_linenum is NOT advanced; every generated line maps to the
+; line of the .ENDREP (as macros map their expansion to the invocation line)
+@l1:	jsr ctx::getline	; get a line to assemble
+	bcs @errpop
 	cmp #$00
 	beq @next		; if at the end, continue to next iteration
 
@@ -1769,7 +1738,18 @@ __asm_tokenize_pass1 = __asm_tokenize
 	lda #FINAL_BANK_MAIN	; bank doesn't matter for ctx
 	jsr __asm_tokenize	; assemble context line
 	bcc @l1			; ok -> repeat
-@err:	rts			; return err
+
+@errpop:
+	; error during expansion: unwind the context before returning
+	pha			; save the error code
+	jsr ctx::pop		; pop the context
+	lda ctx::active
+	bne :+
+	jsr lbl::popscope	; all contexts popped, pop the scope
+:	pla			; restore the error code
+	sec			; return err
+@reterr:
+	rts
 
 @next:	; increment iterator and repeat if more iterations left
 	incw zp::ctx+repctx::iter
@@ -1821,6 +1801,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	jsr ctx::getparams	; get the active iterator's name
 	ldxy #@buff
 	jsr sub_label		; and replace uses with its value in asmbuffer
+	bcs @done		; substituted line too long -> return error
 
 @nosub:	ldxy #mem::asmbuffer
 	jsr ctx::write_parent	; write disassembled line to PARENT's ctx buff
@@ -1986,8 +1967,12 @@ __asm_tokenize_pass1 = __asm_tokenize
 	lda #$01			; ABS
 	sta zp::label_mode
 
+	lda zp::verify
+	bne @skip		; don't record imports when verifying
+
 	jsr pass1
 	beq :+
+@skip:	lda #ASM_DIRECTIVE
 	RETURN_OK			; imports are handled in pass 1
 
 :	ldxy zp::line
@@ -1999,8 +1984,12 @@ __asm_tokenize_pass1 = __asm_tokenize
 ; Exports the label following this directive
 ; e.g. `EXPORT LABEL`
 .proc export
+	lda zp::verify
+	bne @skip		; don't record exports when verifying
+
 	jsr pass1
 	bne :+
+@skip:	lda #ASM_DIRECTIVE
 	RETURN_OK		; exports are done in pass 2
 
 :	; if producing an object file, add to its EXPORTs
@@ -2057,9 +2046,22 @@ __asm_tokenize_pass1 = __asm_tokenize
 	bcc @add
 	rts		; error
 
-@add:	ldxy __asm_linenum
+@add:	; if verifying, the name is validated; skip all side effects
+	lda zp::verify
+	beq @apply
+	lda #ASM_DIRECTIVE
+	RETURN_OK
+
+@apply:	ldxy __asm_linenum
 	stxy dbgi::srcline
 
+	; end the current BLOCK of debug info (if one is open)
+	jsr pass1
+	beq @nodbgi		; only end block in pass 2
+	ldxy zp::virtualpc	; current address in the active SEGMENT
+	jsr dbgi::endblock	; end the current block
+
+@nodbgi:
 	lda #$01
 	sta pcset	; mark PC set (linker will take care of setting it)
 
@@ -2080,18 +2082,17 @@ __asm_tokenize_pass1 = __asm_tokenize
 	jsr pass1
 	beq @done
 
-	; end current BLOCK of debug info (if one is open)
-	ldxy zp::virtualpc	; current address
-	jsr dbgi::endblock	; end the current block
 	lda __asm_segmentid
 	jsr dbgi::set_seg_id	; set segment ID for debug info
 
 	; create a new BLOCK of debug info at zp::virtualpc
 	ldxy zp::virtualpc
-	jsr dbgi::newblock	; start new block for included file
+	jsr dbgi::newblock	; start new block for the new SEGMENT
+	bcs @err
 
 @done:	lda #ASM_DIRECTIVE
 	RETURN_OK
+@err:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2146,7 +2147,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	beq @l0			; comment (';') -> continue
 
 	cmp #','
-	bne @err		; unexpected character
+	bne @badchar		; unexpected character
 	jsr line::incptr
 	jsr expr::eval
 	bcs @err
@@ -2168,7 +2169,7 @@ __asm_tokenize_pass1 = __asm_tokenize
 	cmp #';'
 	beq @l0			; comment (';') -> continue
 	cmp #','
-	bne @err		; unexpected character
+	bne @badchar		; unexpected character
 	jsr line::incptr
 	jsr expr::eval
 	bcs @err
@@ -2194,6 +2195,12 @@ __asm_tokenize_pass1 = __asm_tokenize
 	decw @size
 	iszero @size
 	bne @l0
+	beq @eof		; branch always
+
+@badchar:
+	lda #ERR_UNEXPECTED_CHAR
+	sec
+	bcs @err		; branch always
 
 @eof:	clc			; return without err
 @err:	sta @errcode		; save the error code (if any)
@@ -2237,8 +2244,12 @@ __asm_include:
 	clc			; don't include a file when verifying
 :	rts
 
-@inc:	; save current file
+@inc:	; save the current debug file ID and line number
 	lda dbgi::file
+	pha
+	lda __asm_linenum
+	pha
+	lda __asm_linenum+1
 	pha
 
 	ldxy @fname
@@ -2246,37 +2257,45 @@ __asm_include:
 	bcc :+
 	lda #ERR_FAILED_OPEN_INCLUDE
 @reterr:
-	tax
-	pla			; clean stack
-	txa
+	tax			; save error code
+	pla
+	sta __asm_linenum+1	; restore the line number (MSB)
+	pla
+	sta __asm_linenum	; restore the line number (LSB)
+	pla
+	sta dbgi::file		; restore the debug file ID
+	txa			; restore error code
 	sec
 	rts
 
-:	ldxy @fname
-	jsr file::open_r	; open the file we are including
-	bcs @reterr
-
-	pha		; save the id of the file we're working on (for closing)
-	sta zp::file
-
-	; add the filename to debug info (if it isn't yet), reset line number
-	; and finally create a new block of debug information
+:	; add the filename to debug info (if it isn't yet), reset line number
+	; and finally create a new block of debug information.
 	ldxy @fname
 	jsr dbgi::setfile
+	bcs @reterr		; propagate error (e.g. too many files)
+
 	ldxy #1
 	stxy dbgi::srcline
 	stxy __asm_linenum
 
 	jsr pass1
-	beq @doline		; only create new block in pass 2
+	beq @open		; only create new block in pass 2
 
 	; end current file's block and start a new one at the current address
 	lda pcset
-	beq @doline
+	beq @open
 	ldxy zp::virtualpc	; current address
 	jsr dbgi::endblock	; end the current block
 	ldxy zp::virtualpc	; current address
 	jsr dbgi::newblock	; start new block for included file
+	bcs @reterr		; propagate error (e.g. debug info full)
+
+@open:	ldxy @fname
+	jsr file::open_r	; open the file we are including
+	bcs @reterr
+
+	pha			; save id of the file we're working on
+	sta zp::file
 
 ; read a line from file
 @doline:
@@ -2295,7 +2314,7 @@ __asm_include:
 	pha
 
 	lda #FINAL_BANK_MAIN	; any bank that is valid (low mem is used)
-	jsr __asm_tokenize_pass
+	jsr __asm_tokenize
 	bcc @ok
 	jsr errlog::log		; log the error (.C stays set if fatal/too many)
 
@@ -2310,6 +2329,11 @@ __asm_include:
 @close: pla			; get the file ID for the include file to close
 	jsr file::close		; close the file
 
+	pla
+	sta __asm_linenum+1	; restore the line number (MSB)
+	pla
+	sta __asm_linenum	; restore the line number (LSB)
+
 	pla			; restore debug file ID
 	sta dbgi::file
 
@@ -2319,13 +2343,17 @@ __asm_include:
 	; create new block in file we included from (if PC is set)
 	lda pcset
 	beq @done
+	ldxy __asm_linenum
+	stxy dbgi::srcline	; resume at the line of the .INC itself
 	ldxy zp::virtualpc
 	jsr dbgi::endblock	; end the block for the included file
 	ldxy zp::virtualpc
 	jsr dbgi::newblock	; start a new block in original file
+	bcs @err
 @done:
 	lda #$00
 	RETURN_OK
+@err:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2337,9 +2365,31 @@ __asm_include:
 .proc defineorg
 	jsr line::process_ws
 	jsr expr::eval
-	bcs @ret		; error
+	jcs @ret		; error
 
-	stxy zp::asmresult
+	; if verifying, the expression is validated; skip all side effects
+	lda zp::verify
+	beq @doorg
+	lda #ASM_ORG
+	RETURN_OK
+
+@doorg:	; if generating debug info (pass 2), end the current block (if any)
+	lda zp::gendebuginfo
+	beq @setpc
+	jsr pass1
+	beq @setpc		; only end block in pass 2
+	txa			; save the new origin (LSB)
+	pha
+	tya			; save the new origin (MSB)
+	pha
+	ldxy zp::virtualpc	; the address reached before this .ORG
+	jsr dbgi::endblock	; end the current block
+	pla			; restore the new origin (MSB)
+	tay
+	pla			; restore the new origin (LSB)
+	tax
+
+@setpc:	stxy zp::asmresult
 	stxy zp::virtualpc
 	lda pcset
 	bne @chkorg
@@ -2379,7 +2429,22 @@ __asm_include:
 	; create a new SECTION for the parsed SEGMENT name
 	CALL FINAL_BANK_LINKER, obj::add_section
 
-	lda #ASM_ORG
+	; if generating debug info (pass 2), create the new block at the new
+	; origin.
+	lda zp::gendebuginfo
+	beq @ok
+	jsr pass1
+	beq @ok			; only create a block in pass 2
+
+	ldxy __asm_linenum
+	stxy dbgi::srcline
+	lda #SEG_ABS
+	jsr dbgi::set_seg_id	; .ORG blocks are absolute (never relocated)
+	ldxy zp::virtualpc
+	jsr dbgi::newblock	; create a block for the new origin
+	bcs @ret
+
+@ok:	lda #ASM_ORG
 	clc			; ok
 @ret:	rts
 .endproc
@@ -2407,13 +2472,64 @@ __asm_include:
 ; Note that the physical assembly target (asmresult) is unaffected.
 ; e.g.: `.RORG $1000` or `RORG $1000+LABEL`
 .proc define_psuedo_org
-	jsr line::process_ws
+	; .RORG addresses are runtime-absolute, so .RORG is only valid in an
+	; absolute (.ORG) context: not in a relocatable SEGMENT and not before
+	; an origin has been set.
+	; if verifying, the segment state is stale - skip this validation
+	lda zp::verify
+	bne @absok
+	lda __asm_segmentid
+	cmp #SEG_ABS
+	beq @absok
+	RETURN_ERR ERR_RORG_NOT_ABSOLUTE
+
+@absok:	jsr line::process_ws
 	jsr expr::eval
 	bcs @ret		; error
 
+	; if verifying, the expression is validated; skip all side effects
+	lda zp::verify
+	beq @dorg
+	lda #ASM_DIRECTIVE
+	RETURN_OK
+
+@dorg:	; if generating debug info (pass 2), end the current block (if any) at
+	; the current address
+	lda zp::gendebuginfo
+	beq @setpc
+	jsr pass1
+	beq @setpc		; only split blocks in pass 2
+	txa			; save the new origin (LSB)
+	pha
+	tya			; save the new origin (MSB)
+	pha
+	ldxy zp::virtualpc	; the address reached before this .RORG
+	jsr dbgi::endblock	; end the current block
+	pla			; restore the new origin (MSB)
+	tay
+	pla			; restore the new origin (LSB)
+	tax
+
+@setpc:
 	; TODO: require expression to resolve in pass 1
 	stxy zp::virtualpc
-	;clc			; ok
+
+	; if generating debug info (pass 2), create a new block at the new
+	; origin.  The block is marked SEG_ABS: .RORG addresses are runtime-
+	; absolute, so the loader must not relocate them by any SEGMENT base.
+	lda zp::gendebuginfo
+	beq @ok
+	jsr pass1
+	beq @ok			; only create a block in pass 2
+
+	ldxy __asm_linenum
+	stxy dbgi::srcline
+	lda #SEG_ABS
+	jsr dbgi::set_seg_id	; .RORG blocks are absolute (never relocated)
+	ldxy zp::virtualpc	; the new (runtime) origin
+	jmp dbgi::newblock	; create a block
+
+@ok:	clc			; ok
 @ret:	rts
 .endproc
 
@@ -2447,7 +2563,7 @@ __asm_include:
 	bcs @err		; too many contexts
 
 	jsr expr::eval  	; get the number of times to repeat the code
-	bcs @ret		; error evaluating # of reps expression
+	bcs @errzero		; error evaluating # of reps expression
 
 @ok:	stxy zp::ctx+repctx::iter_end	; set number of iterations
 	jsr line::process_ws		; .Y=0
@@ -2464,7 +2580,8 @@ __asm_include:
 	beq @getparam
 	jsr islineterminator
 	beq @done		; no iterator given (allowed)
-	RETURN_ERR ERR_UNEXPECTED_CHAR ; comma must follow the # of reps
+	lda #ERR_UNEXPECTED_CHAR ; comma must follow the # of reps
+	bne @errzero		; branch always
 
 @getparam:
 	; get the name of the iterator
@@ -2472,7 +2589,7 @@ __asm_include:
 @saveparam:
 	ldxy zp::line
 	jsr ctx::addparam
-	bcs @ret		; error adding parameter
+	bcs @errzero		; error adding parameter
 	ldxy zp::line
 
 	; define the label for the iterator as a constant with value 0
@@ -2481,13 +2598,24 @@ __asm_include:
 	lda #$01		; define label as 16-bit (ABSOLUTE)
 	sta zp::label_mode
 	jsr lbl::set
-	bcs @ret
+	bcs @errzero
 
 @cont:	stxy zp::line		; update line pointer to after parameter
 
 @done:	clc			; ok
-@ret:	lda #ASM_DIRECTIVE
+	lda #ASM_DIRECTIVE
 @err:	rts
+
+@errzero:
+	; error after the context was opened: zero the iteration count so the
+	; captured block assembles nothing and .ENDREP unwinds it normally
+	pha			; save the error code
+	lda #$00
+	sta zp::ctx+repctx::iter_end
+	sta zp::ctx+repctx::iter_end+1
+	pla			; restore the error code
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -2517,12 +2645,13 @@ __asm_include:
 	jsr line::process_ws
 	jsr islineterminator
 	bne @storename
-	RETURN_ERR ERR_NO_MACRO_NAME
+	lda #ERR_NO_MACRO_NAME
+	bne @errpop		; branch always
 
 @storename:
 	ldxy zp::line
 	jsr ctx::addparam
-	bcs @ret		; return err
+	bcs @errpop		; return err
 	stxy zp::line		; update line pointer
 
 @getparams:
@@ -2532,6 +2661,7 @@ __asm_include:
 	beq @done
 	ldxy zp::line
 	jsr ctx::addparam
+	bcs @errpop		; error (e.g. too many parameters)
 	stxy zp::line
 
 	; look for the comma or line-end
@@ -2541,13 +2671,23 @@ __asm_include:
 	beq @done
 	cmp #','
 	beq :+
-	RETURN_ERR ERR_UNEXPECTED_CHAR
+	lda #ERR_UNEXPECTED_CHAR
+	bne @errpop		; branch always
 
 :	jsr line::incptr
 	bne @getparams
 @done:	lda #ASM_DIRECTIVE
 	clc
 @ret:	rts
+
+@errpop:
+	; error after the context was opened: close it so that the macro
+	; body is not captured with a bad definition
+	pha			; save the error code
+	jsr ctx::pop		; pop the context we pushed
+	pla			; restore the error code
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -2597,21 +2737,124 @@ __asm_include:
 ; EXAMPLE:
 ;   .align $100, $ff
 .proc directive_align
-@align   = r0
-@fillval = r1
-.if 0
-	lda zp::verify
-	bne @ok		; if verifying, just return OK
-
-	; get the first parameter (align address)
+@align = r0
+@fill  = r2
+@cnt   = r3
+	; get the first parameter (the alignment)
 	jsr line::process_ws
 	jsr expr::eval
-	stxy @align
+	bcc :+
+	rts			; return the error
+:	stxy @align
 
-	; get difference between PC and next aligned value
-@ok:	clc
+	; when verifying, the expression is validated; skip all side effects
+	lda zp::verify
+	beq :+
+	lda #ASM_DIRECTIVE
+	RETURN_OK
+
+:	; an alignment of 0 is invalid
+	iszero @align
+	bne :+
+	RETURN_ERR ERR_SYNTAX_ERROR
+
+:	; get the optional second parameter (the fill value; default 0)
+	lda #$00
+	sta @fill
+	jsr line::process_ws	; .A = next character
+	jsr islineterminator
+	beq @pad		; end of line -> use the default fill
+	cmp #','
+	bne @badchar		; only a ',' may follow the alignment
+	jsr line::incptr
+
+	lda @align		; save the alignment across the eval
+	pha
+	lda @align+1
+	pha
+	jsr expr::eval		; get the fill value
+	bcc @fillok
+
+	; clean the stack and return the error from eval
+	tax
+	pla
+	pla
+	txa
+	;sec
 	rts
-.endif
+
+@fillok:
+	pla			; restore the alignment
+	sta @align+1
+	pla
+	sta @align
+
+	tya			; fill value must fit in a single byte
+	beq :+
+	RETURN_ERR ERR_OVERSIZED_OPERAND
+:	stx @fill
+
+	; nothing else may follow the fill value (except a comment)
+	jsr line::process_ws
+	jsr islineterminator
+	beq @pad
+
+@badchar:
+	RETURN_ERR ERR_UNEXPECTED_CHAR
+
+@pad:	; get the pad count: (align - (PC MOD align)) MOD align
+	; NOTE: in object mode the PC (and so the alignment) is relative to
+	; the base of the active SEGMENT
+	; compute PC MOD align by repeated subtraction
+	lda zp::virtualpc
+	sta @cnt
+	lda zp::virtualpc+1
+	sta @cnt+1
+@mod:	lda @cnt+1
+	cmp @align+1
+	bcc @moddone		; remainder < align -> done
+	bne @sub		; remainder MSB > align MSB -> subtract
+	lda @cnt
+	cmp @align
+	bcc @moddone		; remainder < align -> done
+@sub:	lda @cnt
+	sec
+	sbc @align
+	sta @cnt
+	lda @cnt+1
+	sbc @align+1
+	sta @cnt+1
+	jmp @mod
+
+@moddone:
+	; if the remainder is 0, the PC is already aligned
+	iszero @cnt
+	beq @done
+
+	; pad count = align - remainder
+	lda @align
+	sec
+	sbc @cnt
+	sta @cnt
+	lda @align+1
+	sbc @cnt+1
+	sta @cnt+1
+
+	; write the pad bytes
+@fillloop:
+	iszero @cnt
+	beq @done
+	lda @fill
+	ldy #$00
+	jsr writeb		; write the fill byte
+	bcs @ret		; return error (e.g. no origin)
+	jsr incpc
+	decw @cnt
+	jmp @fillloop
+
+@done:	lda #ASM_DIRECTIVE
+	clc			; ok
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -3071,16 +3314,21 @@ __asm_include:
 ; OUT:
 ;  - .C: set if error
 .proc do_if
-	lda ifstacksp
+	jsr expr::eval
+	bcs @done
+
+	; if verifying, evaluate the condition for its syntax only
+	lda zp::verify
+	beq @exec
+	lda #ASM_DIRECTIVE
+	RETURN_OK
+
+@exec:	lda ifstacksp
 	cmp #MAX_IFS
 	bcc :+
 	RETURN_ERR ERR_STACK_OVERFLOW
 
-:	; evaluate the condition for the .IF
-	; TODO: make sure expression resolvable in pass 1
-	jsr expr::eval
-	bcs @done
-	txa
+:	txa
 	bne @true
 	tya
 	beq @false
@@ -3101,12 +3349,15 @@ __asm_include:
 ; DO_ENDIF
 ; Handles .ENDIF during assembly
 .proc do_endif
+	lda zp::verify
+	bne @skip
+
 	lda ifstacksp
 	bne :+
 	RETURN_ERR ERR_UNMATCHED_ENDIF
 
 :	dec ifstacksp
-	lda #ASM_DIRECTIVE
+@skip:	lda #ASM_DIRECTIVE
 	RETURN_OK
 .endproc
 
@@ -3114,6 +3365,9 @@ __asm_include:
 ; DO_ELSE
 ; handles .ELSE during assembly
 .proc do_else
+	lda zp::verify
+	bne @skip
+
 	ldx ifstacksp
 	bne :+
 	RETURN_ERR ERR_UNMATCHED_ENDIF	; no .IF is active
@@ -3121,7 +3375,7 @@ __asm_include:
 :	lda #$01
 	eor ifstack-1,x
 	sta ifstack-1,x
-	lda #ASM_DIRECTIVE
+@skip:	lda #ASM_DIRECTIVE
 	RETURN_OK
 .endproc
 
@@ -3129,7 +3383,12 @@ __asm_include:
 ; DO_IFDEF
 ; handles the .IFDEF directive during assembly
 .proc do_ifdef
-	lda ifstacksp
+	lda zp::verify
+	beq :+
+	lda #ASM_DIRECTIVE
+	RETURN_OK
+
+:	lda ifstacksp
 	cmp #MAX_IFS
 	bcc :+
 	RETURN_ERR ERR_STACK_OVERFLOW
@@ -3207,10 +3466,13 @@ __asm_include:
 .proc defineconst
 	jsr pass1
 	beq :+
-	lda #ASM_DIRECTIVE
+@skip:	lda #ASM_DIRECTIVE
 	RETURN_OK
 
-:	ldxy zp::line
+:	lda zp::verify
+	bne @skip		; don't define constants when verifying
+
+	ldxy zp::line
 	jsr lbl::isvalid
 	bcs @err
 
@@ -3441,6 +3703,9 @@ __asm_include:
 ;   - expr::global_op:          operation to apply the relocation with
 ;   - expr::global_postproc:    postprocessing to apply to global (if relevant)
 .proc write_reloc
+	ldx zp::verify
+	bne :--				; verifying -> ok (no relocation)
+
 	ldx __asm_mode
 	beq :--				; DIRECT mode -> ok (no relocation)
 
@@ -3484,9 +3749,10 @@ __asm_include:
 ;   - asmbuffer: buffer to find/replace the symbol in
 ; OUT:
 ;   - asmbuffer: updated buffer with symbol replaced
+;   - .C:        set if the substituted line does not fit in the line buffer
 .proc sub_label
 @cnt         = r0
-@replace_idx = r1
+@restlen     = r1
 @val         = r2
 @backup      = r4
 @len         = r6
@@ -3501,13 +3767,13 @@ __asm_include:
 
 @find:	ldxy @label
 	jsr find_label
-	bcs @done	; not found -> exit
+	bcs @ok		; not found -> exit
 	stxy @line	; @line = address of label to substitute
 
 	; look up the address of the label we are substituting
 	ldxy @label
 	jsr lbl::addr
-	bcs @done	; label doesn't exist -> exit
+	bcs @ok		; label doesn't exist -> exit
 	stxy @val	; save the value of the symbol for later
 
 	; get offset to start backup at (line+strlen(@label))
@@ -3519,10 +3785,24 @@ __asm_include:
 	ldy @len
 :	lda (@line),y
 	sta @buff,x
+	beq :+
 	inx
 	iny
 	cpy #LINESIZE
 	bne :-
+
+:	stx @restlen
+
+	; make sure the substituted line will still fit in the line buffer:
+	; new length = offset of the match + 5 ("$xxxx") + length of the rest
+	lda @line
+	clc
+	adc #$05
+	adc @restlen
+	sec
+	sbc #<mem::asmbuffer	; .A = the new total line length
+	cmp #LINESIZE+1
+	bcs @toolong		; new line doesn't fit -> error
 
 	; replace label with its hex value in the line
 	ldy #$00
@@ -3534,8 +3814,7 @@ __asm_include:
 	lda @val
 	jsr @write_hex
 
-	; copy backup[replace_idx:LINESIZE] to asmbuffer[@cnt]
-	; to append rest of line after our replacement
+	; copy the backed up rest of the line after our replacement
 	ldy #$00
 @l1:	lda (@backup),y
 	sta (@line),y
@@ -3544,7 +3823,11 @@ __asm_include:
 	cpy #LINESIZE
 	bcc @l1
 
-@done:	rts
+@ok:	clc		; ok
+	rts
+
+@toolong:
+	RETURN_ERR ERR_LINE_TOO_LONG
 
 ;-------------------------------------------------------------------------------
 ; WRITE HEX
@@ -3591,6 +3874,7 @@ __asm_include:
 	sty @cnt
 @l0:	; read until we're NOT on a separator
 	lda (@line),y
+	beq @notfound	; end of line -> not found
 	jsr util::isseparator
 	bne @check	; found a non-separator char -> check if it's our label
 	inc @line
@@ -3599,6 +3883,7 @@ __asm_include:
 	cmp #LINESIZE
 	bcc @l0
 @notfound:
+	sec		; flag "not found"
 	rts
 
 @check:	; check if we're now pointing to the label

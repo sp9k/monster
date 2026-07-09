@@ -9,6 +9,7 @@
 .import __debuginfo_initonce
 .import __debug_new_block
 .import __debug_numfiles
+.import __debug_rename_file
 .import __debug_set_file
 .import __debug_store_line
 
@@ -41,6 +42,7 @@ SIZEOF_BLOCK_HEADER  = 14
 	initonce     = __debuginfo_initonce
 	newblock     = __debug_new_block
 	numfiles     = __debug_numfiles
+	rename_file  = __debug_rename_file
 	setfile      = __debug_set_file
 	set_seg_id   = __debuginfo_set_seg_id
 	srcline      = __debug_src_line

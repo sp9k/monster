@@ -57,8 +57,9 @@
 
 ;******************************************************************************
 ; CONSTANTS
-MAX_SOURCES = 8			; maximum number of source banks/buffers
-LOG_BUFFER  = MAX_SOURCES 	; special buffer for logging
+; NOTE: these must match the definitions in source.asm
+MAX_SOURCES = 8			; maximum number of user source buffers
+LOG_BUFFER  = MAX_SOURCES 	; reserved buffer for logging (not counted in src::numbuffers)
 
 FLAG_DIRTY = 1	; flag that source buffer has been changed since last save
 

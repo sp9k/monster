@@ -57,6 +57,8 @@
 .include "vmem.inc"
 .include "zeropage.inc"
 
+.macpack longbranch
+
 .ifdef vic20
 .include "vic20/udgedit.inc"
 .endif
@@ -347,7 +349,12 @@ main:	jsr key::getch
 
 	jsr obj::close_section	; close final OBJ section
 
-	; if there were any errors after pass 1, abort
+	; make sure all .IF/.MAC/.REP blocks were closed
+	jsr asm::endpass
+	bcc @p1chk
+	jsr errlog::log		; log the unclosed-block error
+
+@p1chk:	; if there were any errors after pass 1, abort
 	lda errlog::numerrs
 	bne @done
 
@@ -523,12 +530,12 @@ main:	jsr key::getch
 
 	; check if user interrupted assembly
 	lda __edit_sigint
-	bne @done
+	jne @done
 
 	jsr src::readline
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
-	jsr asm::tokenize_pass1
+	jsr asm::tokenize
 	bcc @ok
 
 	jsr errlog::log
@@ -537,7 +544,12 @@ main:	jsr key::getch
 @ok:	jsr src::end
 	bne @pass1loop
 
-	; if there were any errors after pass 1, abort
+	; make sure all .IF/.MAC/.REP blocks were closed
+	jsr asm::endpass
+	bcc @p1chk
+	jsr errlog::log		; log the unclosed-block error
+
+@p1chk:	; if there were any errors after pass 1, abort
 	lda errlog::numerrs
 	bne @done
 
@@ -581,7 +593,7 @@ main:	jsr key::getch
 @asm:	jsr src::readline
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
-	jsr asm::tokenize_pass2
+	jsr asm::tokenize
 	bcc @next		; no error, continue
 	jsr errlog::log		; if error, add it to errors log
 	bcs @done		; if we've hit error threshold, exit
@@ -590,7 +602,7 @@ main:	jsr key::getch
 	bne @pass2loop		; repeat if not
 	beq @done		; branch always (done)
 
-@done:	ldxy zp::asmresult
+@done:	ldxy zp::virtualpc	; block addresses are in virtualpc-space
 	jsr dbgi::endblock	; end the final debug info block
 	jsr obj::close_section	; close final OBJ section
 
@@ -3073,14 +3085,18 @@ goto_buffer:
 	jsr src::filename	; check if there is already a name
 	bcs @new		; no existing ID, continue with generated one
 
-@rename:
 	; update the active debug-info mapping to support renaming files
 	; without requiring a full reassembly
 	jsr dbgi::getfileid	; get the ID to update from its mapped name
+	bcs @new		; old name isn't mapped; create a new mapping
+	ldxy @file		; restore NEW file name
+	jsr dbgi::rename_file	; rename the debug info entry for the old ID
+	jmp @setname
 
 @new:	ldxy @file		; restore NEW file name
-	jsr dbgi::setfile	; replace EXISTING debuginfo mapping for this ID
+	jsr dbgi::setfile	; create a debug info mapping for the new name
 
+@setname:
 	ldxy @file		; restore NEW file name
 	jmp src::name		; rename to the "source" name to string in .XY
 .endproc
@@ -3259,6 +3275,15 @@ goto_buffer:
 	; read the debug information
 	lda #$00				; no relocation
 	CALL FINAL_BANK_DEBUG, dbgi::load
+	bcc @done
+
+	; failed to load the debug info; close the file and report the error
+	pha			; save the error code
+	lda @file
+	jsr file::close
+	jsr unblank
+	pla			; restore the error code
+	jmp report_typein_error
 
 @done:	lda @file
 	jsr file::close

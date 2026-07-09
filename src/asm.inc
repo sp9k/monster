@@ -1,4 +1,5 @@
 .import __asm_disassemble
+.import __asm_endpass
 .import __asm_include
 .import __asm_mode
 .import __asm_segtype
@@ -9,9 +10,6 @@
 .import __asm_set_pc
 .import __asm_startpass
 .import __asm_tokenize
-.import __asm_tokenize_pass
-.import __asm_tokenize_pass1
-.import __asm_tokenize_pass2
 .import __asm_top
 .import __asm_linenum
 .import __asm_is_opcode
@@ -21,6 +19,7 @@
 
 .scope asm
 	disassemble    = __asm_disassemble
+	endpass        = __asm_endpass
 	include        = __asm_include
 	isopcode       = __asm_is_opcode
 	linenum        = __asm_linenum
@@ -35,9 +34,6 @@
 	segment        = __asm_segmentid
 	segtype        = __asm_segtype
 	tokenize       = __asm_tokenize
-	tokenize_pass  = __asm_tokenize_pass
-	tokenize_pass1 = __asm_tokenize_pass1
-	tokenize_pass2 = __asm_tokenize_pass2
 	top            = __asm_top
 	type_to_mode   = __asm_type_to_mode
 .endscope

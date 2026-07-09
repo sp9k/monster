@@ -95,6 +95,12 @@ ERR_FILENAME_TOO_LONG    = 62
 ERR_TOO_MANY_WATCHES     = 63
 ERR_TOO_MANY_BREAKPOINTS = 64
 
+;******************************************************************************
+; more assembler errors
+ERR_RORG_NOT_ABSOLUTE    = 65
+ERR_UNCLOSED_IF          = 66
+ERR_UNCLOSED_CTX         = 67
+
 .import __err_get
 
 .scope err

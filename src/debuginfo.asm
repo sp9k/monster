@@ -112,6 +112,7 @@ debuginfo_end:
 .export __debuginfo_initonce
 .export __debug_get_filename
 .export __debug_new_block
+.export __debug_rename_file
 .export __debug_set_file
 .export __debug_store_line
 
@@ -129,6 +130,7 @@ __debuginfo_init:         JUMP FINAL_BANK_DEBUG, init
 __debuginfo_initonce:     JUMP FINAL_BANK_DEBUG, initonce
 __debug_get_filename:     JUMP FINAL_BANK_DEBUG, get_filename
 __debug_new_block:        JUMP FINAL_BANK_DEBUG, new_block
+__debug_rename_file:      JUMP FINAL_BANK_DEBUG, rename_file
 __debug_set_file:         JUMP FINAL_BANK_DEBUG, set_file
 __debug_store_line:       JUMP FINAL_BANK_DEBUG, store_line
 __debuginfo_get_fileid:   JUMP FINAL_BANK_DEBUG, get_fileid
@@ -161,8 +163,12 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 
 ;*******************************************************************************
 ; INITONCE
-; Clears state that should only be cleared on boot (file table)
+; Clears state that should only be cleared on boot (the file table)
+; The file table is NOT cleared by init: file IDs must remain stable across
+; assemblies because they are stored externally (e.g. breakpoints)
 .proc initonce
+	lda #$00
+	sta numfiles	; clear the file table
 	; fall through to init
 .endproc
 
@@ -171,6 +177,8 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 ; Clears the debug info state that is valid for a single assembled program
 ; This is the line table and line program information, which is regenerated
 ; from scratch each time a program is assembled
+; The file table persists (see initonce); set_file reuses the existing ID
+; when a filename is already stored, so IDs are stable across assemblies
 .proc init
 	; init the address for the next free line program location
 	lda #<debuginfo
@@ -182,7 +190,6 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 	lda #$00
 	sta numblocks
 	sta block_open
-	sta numfiles
 	rts
 .endproc
 
@@ -572,6 +579,7 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 	lda addr+1
 	adc @daddr+1
 	sta addr+1
+	clc		; ok (the add sets .C when the delta is negative)
 	rts
 .endproc
 
@@ -746,7 +754,7 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 ; IN:
 ;  - .XY: the filename to return the id of
 ; OUT:
-;  - .A: the file ID
+;  - .A: the file ID (or the ID the file would get if added - see set_name)
 ;  - .C: set if there was no match
 .proc get_fileid
 @other=zp::str0
@@ -787,6 +795,7 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 
 @notfound:
 	ldxy @filename	; restore .XY
+	lda numfiles	; .A = the ID the file would be assigned if added
 	sec		; not found
 	rts
 .endproc
@@ -887,14 +896,66 @@ get_filename = get_filename_addr
 
 ;*******************************************************************************
 ; SET NAME
-; Renames the entry for the given ID in the file table to the given name
+; Adds a new entry to the file table with the given filename
 ; IN:
-;   - .A:  the debug file ID of the handle to (re)name
-;   - .XY: the filename to set for the handle
+;   - .XY: the filename to add to the file table
 ; OUT:
-;   - .A: the ID of the file that was named
-;   - .C: set if the file table is full or the filename is too long
+;   - .A: the ID assigned to the new file
+;   - .C: set if the file table is full or the filename is empty or too long
 .proc set_name
+	lda numfiles		; the ID for the new entry
+	cmp #MAX_FILES		; is the file table full?
+	bcs @toomany		; if so -> error
+	jsr write_name		; write the name to the new entry's slot
+	bcs @err		; -> error (invalid filename)
+	lda numfiles		; get ID of new file
+	inc numfiles
+	RETURN_OK
+
+@toomany:
+	RETURN_ERR ERR_MAX_FILES_EXCEEDED
+@err:	rts
+.endproc
+
+;*******************************************************************************
+; RENAME FILE
+; Renames an existing entry in the file table to the given name.
+; Unlike set_name, no new file ID is created; debug info that references the
+; given ID (blocks, breakpoints, etc.) now maps to the new name.
+; IN:
+;   - .A:  the debug file ID of the entry to rename
+;   - .XY: the new filename for the entry
+; OUT:
+;   - .A: the ID of the file that was renamed
+;   - .C: set if the ID doesn't exist or the filename is empty or too long
+.proc rename_file
+	cmp numfiles		; does an entry exist for the given ID?
+	bcs @invalid		; if not -> error
+	pha			; save the file ID
+	jsr write_name		; write the new name to the entry's slot
+	bcs @err
+	pla			; restore the file ID
+	RETURN_OK
+
+@err:	tax			; save the error code
+	pla			; clean up the saved file ID
+	txa			; restore the error code
+	sec
+	rts
+
+@invalid:
+	RETURN_ERR ERR_FILE_NOT_FOUND
+.endproc
+
+;*******************************************************************************
+; WRITE NAME
+; Writes the given filename to the file table slot for the given file ID
+; IN:
+;   - .A:  the file ID of the slot to write to
+;   - .XY: the filename to write (must reside in the MAIN bank)
+; OUT:
+;   - .C: set if the filename is empty or too long
+.proc write_name
 .ifdef vic20
 @filename = ram::src
 @dst      = ram::dst
@@ -903,16 +964,19 @@ get_filename = get_filename_addr
 @dst=r4
 .endif
 	stxy @filename
-	cmp #MAX_FILES		; is the ID valid (is the file table full)?
-	bcs @toomany		; if not -> error
 	jsr get_filename_addr	; get the destination address for ID
 	stxy @dst
 	ldxy @filename		; restore filename
 	CALLMAIN str::len
 
+	; make sure the filename is not empty (an empty name terminates the
+	; file list in dumped debug info)
+	cmp #$00
+	beq @invalid
+
 	; make sure the filename (and terminating 0) fits in the file table
 	cmp #MAX_FILENAME_LEN
-	bcs @toolong
+	bcs @invalid
 
 .ifdef vic20
 	; bytes to copy = strlen(@filename)+1
@@ -925,19 +989,15 @@ get_filename = get_filename_addr
 	sta ram::src+2
 	CALLMAIN ram::copy
 .else
-
+	tay			; .Y = index of terminating 0 (copy len..0)
 :	lda (@filename),y
 	sta (@dst),y
 	dey
 	bpl :-
 .endif
-	lda numfiles	; get ID of new file
-	inc numfiles
 	RETURN_OK
 
-@toomany:
-	RETURN_ERR ERR_MAX_FILES_EXCEEDED
-@toolong:
+@invalid:
 	RETURN_ERR ERR_FILENAME_TOO_LONG
 .endproc
 
@@ -1303,7 +1363,8 @@ get_filename = get_filename_addr
 ;  - map of global (linker context) segment names to id's
 ;  - map of global (linker context) base addresses for segments
 ; If the relocate flag is clear (absolute load), all existing debug info is
-; replaced by the loaded debug info.
+; replaced by the loaded debug info.  The file table persists in both cases
+; (see initonce); loaded filenames are merged into it.
 ; IN:
 ;   - .A: relocate flag: !0=relocate segments, 0=absolute load
 ; OUT:
@@ -1315,6 +1376,7 @@ get_filename = get_filename_addr
 @segname   = r0
 @offset    = r0
 @block_i   = zp::tmp10
+@nblocks   = zp::tmp11
 @relocate  = zp::tmp12
 @progstart = zp::tmp14
 @i         = zp::tmp16
@@ -1371,10 +1433,10 @@ get_filename = get_filename_addr
 :	; append this file's blocks to any that are already loaded
 	ldx numblocks
 	stx @block_i		; start at the first free block index
+	sta @nblocks		; save the number of blocks left to load
 	clc
 	adc numblocks		; new total = existing + count for this file
 	jcs @toomany		; if more than 255 total blocks -> error
-	sta numblocks
 @load_block:
 	; load the BLOCK header
 	ldy #$00
@@ -1394,25 +1456,39 @@ get_filename = get_filename_addr
 	jsr krn::chrin		; read size LSB
 	clc
 	adc freeptr
-	sta freeptr		; store stop address LSB
+	sta progstop		; store stop address LSB (BLOCK_PROG_STOP_ADDR)
 	php
 	jsr krn::chrin		; read size MSB
 	plp
 	adc freeptr+1
 	jcs @toomany		; if we wrapped past $ffff -> error
-	sta freeptr+1		; store stop address MSB
-	sta progstop+1		; also update header state (BLOCK_PROG_STOP_ADDR)
-	lda freeptr
-	sta progstop
+	sta progstop+1		; store stop address MSB
+
+	; make sure the line program will fit in the debug info buffer
+	ldxy progstop
+	cmpw #debuginfo_end
+	beq @commit		; == end of buffer: fits exactly
+	jcs @toomany		; > end of buffer -> out of memory
+
+@commit:
+	; the program fits; commit the new freeptr
+	lda progstop
+	sta freeptr
+	lda progstop+1
+	sta freeptr+1
+
+	; map the local (object file) file id to the global one
+	; this is needed even for absolute loads: the file table persists, so
+	; global file ids may not match the ids local to the loaded file
+	ldx file
+	cpx @i			; is the local file id one that was loaded?
+	jcs @badfile		; if not -> corrupt debug info
+	lda @filemap,x
+	sta file
 
 	; check if we should do relocation (for linking)
 	lda @relocate
 	beq @relocate_done
-
-	; map local file id to the global one
-	ldx file
-	lda @filemap,x
-	sta file
 
 	lda seg_id
 	cmp #SEG_ABS
@@ -1460,10 +1536,12 @@ get_filename = get_filename_addr
 	dey
 	bpl :-
 
+	; the header is written; the block may now be safely counted
+	inc numblocks
+
 @next_block:
 	inc @block_i
-	lda @block_i
-	cmp numblocks
+	dec @nblocks		; any more blocks to load for this file?
 	jne @load_block
 
 	; where freeptr ended is the new top of the program
@@ -1502,5 +1580,7 @@ get_filename = get_filename_addr
 
 @toomany:
 	RETURN_ERR ERR_OOM	; too many blocks / debug info too big
+@badfile:
+	RETURN_ERR ERR_FILE_NOT_FOUND	; block references an invalid file id
 @ret:	rts		; return with error from set_file
 .endproc

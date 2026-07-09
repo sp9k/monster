@@ -269,6 +269,18 @@ err_too_many_breakpoints:
 ; .byte "too many breakpoints",0
 .byte $a3,$cf,$db,$41,$76,$5b,$14,$85,$a,$d0,$7a,$4e,$a4,$c0
 
+err_rorg_not_absolute:
+; .byte "rorg requires absolute origin",0
+.byte $93,$d2,$3e,$d2,$2c,$55,$4c,$85,$9e,$c1,$14,$cf,$65,$54,$2e,$cf,$92,$47,$4b,$80
+
+err_unclosed_if:
+; .byte "unclosed .if",0
+.byte $ab,$83,$63,$d3,$29,$1b,$e2,$46,$0
+
+err_unclosed_ctx:
+; .byte "unclosed .mac or .rep",0
+.byte $ab,$83,$63,$d3,$29,$1b,$e3,$41,$1e,$cf,$96,$dc,$91,$50,$0
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -336,7 +348,10 @@ err_too_many_breakpoints:
 	err_no_matching_scope, \
 	err_filename_too_long, \
 	err_too_many_watches, \
-	err_too_many_breakpoints
+	err_too_many_breakpoints, \
+	err_rorg_not_absolute, \
+	err_unclosed_if, \
+	err_unclosed_ctx
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

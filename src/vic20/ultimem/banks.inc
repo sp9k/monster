@@ -40,5 +40,6 @@ VMEM_BLK2_BANK     = 37 ; $4000-$6000 ($2000 bytes)
 VMEM_BLK3_BANK     = 38	; $6000-$8000 ($2000 bytes)
 VMEM_BLK5_BANK     = 39	; $a000-$c000 ($2000 bytes)
 
-FINAL_BANK_SOURCE0 = 40
+FINAL_BANK_SOURCE0 = 40	; 8 source buffers * 3 blocks each (40-63)
+FINAL_BANK_LOG     = 64
 .endif

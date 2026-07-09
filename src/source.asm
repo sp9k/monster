@@ -38,10 +38,12 @@
 
 ;*******************************************************************************
 ; CONSTANTS
-MAX_SOURCES    = 8+1	; # of source buffers that can be loaded at once
-POS_STACK_SIZE = 16 	; size of source position stack
+; NOTE: MAX_SOURCES and LOG_BUFFER must match their definitions in source.inc
+MAX_SOURCES    = 8		; max # of user source buffers
+NUM_BUFFERS    = MAX_SOURCES+1	; user buffers + the reserved LOG buffer
+POS_STACK_SIZE = 16 		; size of source position stack
 
-LOG_BUFFER	= MAX_SOURCES-1	; reservered buffer for LOG
+LOG_BUFFER	= MAX_SOURCES	; reserved buffer for LOG
 
 ;*******************************************************************************
 ; FLAGS
@@ -79,11 +81,11 @@ __src_lines = lines
 ; SAVESTATE
 ; This buffer holds the "buffer state" for each source buffer. See BUFFSTATE
 ; 11 bytes: curl, curr, line, lines, end, srcx
-savestate:  .res MAX_SOURCES*SAVESTATE_SIZE
+savestate:  .res NUM_BUFFERS*SAVESTATE_SIZE
 
 .export __src_names
 __src_names:
-names:	   .res MAX_SOURCES*MAX_BUFFER_NAME_LEN
+names:	   .res NUM_BUFFERS*MAX_BUFFER_NAME_LEN
 
 ;*******************************************************************************
 .export __src_numbuffers
@@ -96,11 +98,11 @@ activesrc:  .byte 0		; index of active buffer (also bank offset)
 .export __src_bank
 __src_bank:
 bank:	    .byte 0
-buffs_curx: .res MAX_SOURCES	; cursor X positions for each inactive buffer
-buffs_cury: .res MAX_SOURCES	; cursor Y positions for each inactive buffer
+buffs_curx: .res NUM_BUFFERS	; cursor X positions for each inactive buffer
+buffs_cury: .res NUM_BUFFERS	; cursor Y positions for each inactive buffer
 .export banks
-banks:      .res MAX_SOURCES	; the corresponding bank for each buffer
-flags:      .res MAX_SOURCES	; flags for each source buffer
+banks:      .res NUM_BUFFERS	; the corresponding bank for each buffer
+flags:      .res NUM_BUFFERS	; flags for each source buffer
 
 .CODE
 ;*******************************************************************************
@@ -117,7 +119,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	sta lines+1
 	sta zp::srcx
 
-	ldx #MAX_SOURCES
+	; clear the active bank and all per-buffer state
+	.assert (flags+NUM_BUFFERS)-bank = (NUM_BUFFERS*4)+1, error, "bank/buffs_curx/buffs_cury/banks/flags must be contiguous"
+	ldx #(NUM_BUFFERS*4)+1
 :	sta bank-1,x
 	dex
 	bne :-
@@ -230,6 +234,9 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 ;*******************************************************************************
 ; GET FREE BANK
 ; Returns an available "bank" for a new source buffer.
+; Only banks[0..numsrcs-1] are scanned, so the caller must invoke this before
+; counting the new buffer in numsrcs.  The LOG buffer never allocates from
+; here; it uses its own dedicated bank (FINAL_BANK_LOG).
 ; NOTE: this is quite platform specific. What defines a "bank" varies
 ; a lot between platforms.
 ; OUT:
@@ -280,6 +287,12 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	pha
 	jsr __src_save
 
+	; the LOG buffer always lives in its own dedicated bank; it is not
+	; counted in numsrcs, so it must not compete for the banks that
+	; get_free_bank allocates to user buffers
+	lda #FINAL_BANK_LOG
+	sta bank
+
 	; init the LOG buffer
 	lda #LOG_BUFFER
 	sta activesrc
@@ -313,7 +326,7 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 .proc __src_new
 	ldx numsrcs
 	beq @cont
-	cpx #MAX_SOURCES-1	; -1 because last source is reserved for LOG
+	cpx #MAX_SOURCES	; all 8 user buffers in use? (LOG has its own bank)
 	bcc @saveold
 	rts			; err, too many sources
 
@@ -321,11 +334,15 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	lda activesrc
 	jsr __src_save	; save current source data
 
-@cont:	lda numsrcs
+@cont:	; find a free bank for the new buffer
+	jsr get_free_bank
+	sta bank
+
+	lda numsrcs
 	sta activesrc
 	inc numsrcs
 
-	; fall through to init_buff
+	; fall through to init_buff (.A = ID of the new buffer)
 .endproc
 
 ;*******************************************************************************
@@ -359,10 +376,6 @@ flags:      .res MAX_SOURCES	; flags for each source buffer
 	; init line and lines to 1
 	inc line
 	inc lines
-
-	; find a free bank to store this buffer in
-	jsr get_free_bank
-	sta bank
 
 	jmp __src_init_buff
 .endproc
