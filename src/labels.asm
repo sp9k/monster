@@ -2281,8 +2281,8 @@ labelvars_size=*-labelvars
 .proc find_in_list
 @sym   = r0
 @len   = r2
-@name  = zp::str0
-@other = zp::str2
+@name  = temp
+@other = temp+2
 	; check if the list exists
 	iszero list
 	beq @notfound
@@ -2490,14 +2490,16 @@ labelvars_size=*-labelvars
 ; Compares the string in (str0) to the label name in (str2)
 ; The label name is assumed to be in the SYMBOL NAMES logical bank
 ; IN:
-;  zp::str0: one of the strings to compare
-;  zp::str2: the other string to compare (in SYMBOL NAMES)
+;  temp:   one of the strings to compare
+;  temp+2: the other string to compare (in SYMBOL NAMES)
 ;  .A:       the max length to compare
 ; OUT:
 ;  -A: 0 if strings are equal
 ;  .Z: set if the strings are equal
 .export cmp_name
 .proc cmp_name
+@name  = temp
+@other = temp+2
 	tay		; is length to compare 0?
 	beq @match	; if 0-length comparison, it's a match by default
 
@@ -2506,8 +2508,8 @@ labelvars_size=*-labelvars
 
 @l0:	dey
 	bmi @match
-	LOADB_Y zp::str2	; get byte of the label to compare
-	cmp (zp::str0),y	; compare with our name
+	LOADB_Y @other	; get byte of the label to compare
+	cmp (@name),y	; compare with our name
 	beq @l0
 
 @nomatch:

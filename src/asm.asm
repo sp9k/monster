@@ -113,6 +113,17 @@ ifstack:   .res MAX_IFS	; TRUE/FALSE values for the active IF blocks
 			; (referenced as ifstack-1,x; x in [1, ifstacksp])
 ifstacksp: .byte 0	; stack pointer to "if" stack
 
+;*******************************************************************************
+; .IFDEF result log.  Pass 2's label table contains ALL labels defined during
+; pass 1, so re-evaluating a .IFDEF in pass 2 answers TRUE for symbols that
+; are defined AFTER it (where pass 1 answered FALSE)
+; Pass 1 records each .IFDEF result here and pass 2 replays them
+; (see do_ifdef/record_ifdef/replay_ifdef)
+MAX_IFDEFS = 255
+ifdefresults: .res 32	; one bit per recorded .IFDEF result
+ifdefidx:     .byte 0	; index of the next .IFDEF to record/replay
+ifdefcnt:     .byte 0	; number of .IFDEFs recorded in pass 1
+
 ; Opcode/operand values captured when asm::disassemble is called.
 ; These are cached here for the simulator to avoid refetching unnecessarily.
 .export __asm_raw_opcode
@@ -304,6 +315,7 @@ directives:
 	.byte "bss",0
 	.byte "bsszp",0
 	.byte "align",0
+	.byte "importzp",0
 directives_len=*-directives
 
 ;*******************************************************************************
@@ -312,7 +324,7 @@ directives_len=*-directives
 defineorg, define_psuedo_org, repeat, macro, do_if, do_else, do_endif, \
 do_ifdef, create_macro, handle_repeat, incbinfile, import, export, \
 directive_res, directive_seg, directive_segzp, directive_bss, directive_bsszp, \
-directive_align
+directive_align, importzp
 .linecont -
 
 directive_vectorslo: .lobytes directive_vectors
@@ -446,6 +458,7 @@ num_illegals = *-illegal_opcodes
 	; empty CONTEXT and IF stacks
 	lda #$00
 	sta ifstacksp
+	sta ifdefidx		; restart the .IFDEF result log (pass 1)
 
 	jsr ctx::init
 	CALL FINAL_BANK_MACROS, mac::init
@@ -486,6 +499,7 @@ num_illegals = *-illegal_opcodes
 	sta zp::asmresult	; also set default physical address to 0
 	sta zp::asmresult+1
 	sta __asm_segmentid
+	sta __asm_segtype	; reset segment type (TYPE_UNDEF) for the pass
 
 	; ignore whitespace in expressions
 	CALL FINAL_BANK_UDGEDIT, expr::end_on_ws
@@ -495,7 +509,11 @@ num_illegals = *-illegal_opcodes
 	sta zp::pass		; set pass #
 	cmp #$01
 	beq __asm_reset
-@pass2: jsr resetpc		; reset PC
+@pass2: lda ifdefidx		; snapshot the number of .IFDEF results
+	sta ifdefcnt		; recorded during pass 1...
+	lda #$00
+	sta ifdefidx		; ...and replay them from the start
+	jsr resetpc		; reset PC
 	jmp ctx::init		; re-init the context
 .endproc
 
@@ -539,12 +557,13 @@ num_illegals = *-illegal_opcodes
 	stxy zp::bankaddr1
 	jsr ram::copyline
 
+	ldy #$00
+	sty mem::asmbuffer+LINESIZE
+
 	ldxy #asmbuffer
 	stxy zp::line
 	jsr str::toupper
 
-	ldy #$00
-	sty mem::asmbuffer+LINESIZE
 	jsr line::process_ws
 	beq noasm			; empty line -> done
 
@@ -746,6 +765,11 @@ num_illegals = *-illegal_opcodes
 	RETURN_ERR ERR_UNEXPECTED_CHAR
 :	lda zp::verify
 	bne @label_done		; if verifying, don't add a label
+	lda pcset		; an anonymous label needs an origin too
+	bne @anonok		; (else virtualpc holds a stale address)
+	RETURN_ERR ERR_NO_ORIGIN
+
+@anonok:
 	ldxy zp::virtualpc
 	jsr pass1		; pass 1?
 	bne @validate_anon	; if not, just validate
@@ -772,7 +796,23 @@ num_illegals = *-illegal_opcodes
 @label_done:
 	jsr storedebuginfo	; store debug info for label
 	bcs @ret0		; return error (debug info full)
-	jsr line::process_word	; read past the label name
+
+	; move the line pointer past the label reference
+	; example cases handled: "foo lda #$00", "foo:lda #$00"
+@skipname:
+	ldy #$00
+	lda (zp::line),y
+	beq @name_done		; end of line -> done
+	jsr util::is_whitespace
+	beq @name_done		; whitespace ends the name
+	cmp #':'
+	beq @colon
+	jsr line::incptr
+	jmp @skipname
+
+@colon:	jsr line::incptr	; eat the ':'
+
+@name_done:
 	ldxy zp::line
 	jsr assemble_with_ctx	; assemble the rest of the line
 	bcs @ret0		; return error
@@ -932,7 +972,13 @@ num_illegals = *-illegal_opcodes
 @done:	lda resulttype
 	cmp #ASM_OPCODE
 	beq @chkaddrmode
-	; if not an instruction, we're done (nothing to write)
+	cmp #ASM_NONE
+	bne @noemit	; anything else (label, etc.): done, nothing to write
+
+	; the line had content but assembled to nothing: e.g. "$1234"
+	RETURN_ERR ERR_SYNTAX_ERROR
+
+@noemit:
 	clc		; ok
 @ret:	rts
 
@@ -953,7 +999,7 @@ num_illegals = *-illegal_opcodes
 
 @jmpind:
 	cpx #ABS_IND	; only abs-indirect is supported for JMP (XXXX)
-	bne @err
+	jne @err
 	lda #$6c
 	sta opcode		; fix the opcode variable
 	jne @noerr		; branch always
@@ -1033,6 +1079,8 @@ num_illegals = *-illegal_opcodes
 @rangeerr:
 	jsr pass1
 	beq @store_offset	; on pass 1, offset might not be correct: allow
+	lda zp::verify		; while typing, virtualpc/pass are stale, so
+	bne @store_offset	; the offset is meaningless: allow
 	lda #ERR_BRANCH_OUT_OF_RANGE
 	sec
 	rts
@@ -1190,7 +1238,11 @@ num_illegals = *-illegal_opcodes
 @cont:	lda zp::verify
 	bne @ok			; if verifying, don't add/check label
 
-	ldxy zp::line
+	lda pcset
+	bne :+
+	RETURN_ERR ERR_NO_ORIGIN
+
+:	ldxy zp::line
 	jsr pass1
 	bne @validate		; if not pass 1, don't add the label
 	lda #$ff		; infer address mode
@@ -1576,19 +1628,20 @@ num_illegals = *-illegal_opcodes
 	bne @l0		; branch always
 
 @closed:
-	; parens are balanced, if there are any more '(' or ')' the expression
-	; is not indirect or invalid (unbalanced) respectively
+	; parens are balanced; the operand is indirect only if nothing but
+	; ",y" indexing, whitespace, or the end of the statement follows the
+	; closing ')'.  Any other character means the leading '(' was part
+	; of an arithmetic expression, e.g. "(2+3)*4"
 	iny
 @l1:	lda (zp::line),y
 	jsr islineterminator_or_separator
-	beq @yes
-
-	cmp #'('
-	beq @no
-	cmp #')'
-	beq @no
+	beq @yes	; end of statement -> indirect
+	cmp #','
+	beq @yes	; ",y" indexing -> indirect
+	jsr util::is_whitespace
+	bne @no		; any other character -> expression, not indirect
 	iny
-	bne @l1
+	bne @l1		; skip whitespace and keep looking
 
 @no:	lda #$ff
 @yes:	rts
@@ -1716,6 +1769,11 @@ num_illegals = *-illegal_opcodes
 	ora zp::label_value
 	beq @l1			; label already defined in repeat
 
+	; (re)load the iterator name from the context.  $100 is a shared
+	; scratch buffer so the name must be refreshed on every iteration
+	ldxy #@itername
+	jsr ctx::getparams
+
 	ldxy #@itername
 	lda #SEG_ABS
 	sta zp::label_segmentid
@@ -1774,6 +1832,9 @@ num_illegals = *-illegal_opcodes
 ;  - .Z: set if the line was handled by this handler
 ;  - .C: set on error
 .proc handle_ctx
+	lda zp::verify
+	bne @ok
+
 	lda ctx::active
 	beq @ok		; no contexts -> continue
 
@@ -1891,7 +1952,7 @@ num_illegals = *-illegal_opcodes
 .proc defineword
 	jsr line::process_ws
 	jsr expr::eval
-	bcs @err
+	bcs @ret
 
 	; store the extracted value
 	tya				; .A=MSB
@@ -1926,11 +1987,12 @@ num_illegals = *-illegal_opcodes
 @cnt=r0
 	jsr line::process_ws
 	jsr expr::eval
-	stxy @cnt
-	bcc @fill
-	lda #ERR_SYNTAX_ERROR
+	bcs @err
+	jsr require_const	; the count must not vary between passes
+	bcc :+
 @err:	rts
 
+:	stxy @cnt
 @fill:	iszero @cnt
 	beq @done
 	lda #$00
@@ -2056,6 +2118,8 @@ num_illegals = *-illegal_opcodes
 	stxy dbgi::srcline
 
 	; end the current BLOCK of debug info (if one is open)
+	lda zp::gendebuginfo	; only touch debug info when generating it
+	beq @nodbgi		; (e.g. NOT from the monitor's assembler)
 	jsr pass1
 	beq @nodbgi		; only end block in pass 2
 	ldxy zp::virtualpc	; current address in the active SEGMENT
@@ -2071,6 +2135,7 @@ num_illegals = *-illegal_opcodes
 	; create a new SECTION for the parsed SEGMENT name
 	lda __asm_segtype
 	CALL FINAL_BANK_LINKER, obj::add_section
+	bcs @err		; propagate error (e.g. too many segments)
 
 	; set PC to base of this SECTION (0 if new, or where we left off
 	; if not) so that labels will be relative to the SEGMENT
@@ -2078,7 +2143,9 @@ num_illegals = *-illegal_opcodes
 
 	sta __asm_segmentid		; set SEGMENT id
 
-	; if pass 2, create new block for debug info
+	; if pass 2 (and generating debug info), create new block
+	lda zp::gendebuginfo
+	beq @done
 	jsr pass1
 	beq @done
 
@@ -2236,7 +2303,6 @@ __asm_include:
 @fname=rc
 @readfile:
 	stxy @fname
-	jsr log::out		; log the name of file being assembled
 
 	lda zp::verify
 	beq @inc
@@ -2244,7 +2310,11 @@ __asm_include:
 	clc			; don't include a file when verifying
 :	rts
 
-@inc:	; save the current debug file ID and line number
+@inc:	; log the name of the file being assembled
+	ldxy @fname
+	jsr log::out
+
+	; save the current debug file ID and line number
 	lda dbgi::file
 	pha
 	lda __asm_linenum
@@ -2278,6 +2348,8 @@ __asm_include:
 	stxy dbgi::srcline
 	stxy __asm_linenum
 
+	lda zp::gendebuginfo	; only touch debug info when generating it
+	beq @open
 	jsr pass1
 	beq @open		; only create new block in pass 2
 
@@ -2312,13 +2384,17 @@ __asm_include:
 @asm:	ldxy #mem::spare
 	lda zp::file
 	pha
+	lda file::eof		; save OUR file's EOF state: a nested .INC or
+	pha			; .INCBIN in this line clobbers the global
 
 	lda #FINAL_BANK_MAIN	; any bank that is valid (low mem is used)
 	jsr __asm_tokenize
 	bcc @ok
 	jsr errlog::log		; log the error (.C stays set if fatal/too many)
 
-@ok:	pla			; restore the file ID we included from
+@ok:	pla			; restore our EOF state
+	sta file::eof
+	pla			; restore the file ID we included from
 	sta zp::file		; and temporarily store it
 	bcs @close
 
@@ -2337,6 +2413,8 @@ __asm_include:
 	pla			; restore debug file ID
 	sta dbgi::file
 
+	lda zp::gendebuginfo	; only touch debug info when generating it
+	beq @done
 	jsr pass1
 	beq @done		; if not pass 2, don't mess with debug info
 
@@ -2373,7 +2451,10 @@ __asm_include:
 	lda #ASM_ORG
 	RETURN_OK
 
-@doorg:	; if generating debug info (pass 2), end the current block (if any)
+@doorg:	jsr require_const	; the origin must not vary between passes
+	jcs @ret
+
+	; if generating debug info (pass 2), end the current block (if any)
 	lda zp::gendebuginfo
 	beq @setpc
 	jsr pass1
@@ -2410,12 +2491,14 @@ __asm_include:
 	bcs @done
 @set:	stxy origin
 
-	tya			; .Y == 0?
-	beq :+
-	ldy #TYPE_ABS		; absolute
-:	sty __asm_segtype	; set segment mode
+@done:	; set the segment type for this .ORG region
+	ldx #TYPE_SEGZP		; assume zeropage
+	tya			; .Y (new origin MSB) == 0?
+	beq :+			; if so -> ZP type
+	ldx #TYPE_ABS		; absolute
+:	stx __asm_segtype	; set segment mode
 
-@done:	; close the current section (if any)
+	; close the current section (if any)
 	jsr obj::close_section
 
 	lda #$00
@@ -2428,6 +2511,7 @@ __asm_include:
 
 	; create a new SECTION for the parsed SEGMENT name
 	CALL FINAL_BANK_LINKER, obj::add_section
+	bcs @ret		; propagate error (e.g. too many segments)
 
 	; if generating debug info (pass 2), create the new block at the new
 	; origin.
@@ -2493,7 +2577,10 @@ __asm_include:
 	lda #ASM_DIRECTIVE
 	RETURN_OK
 
-@dorg:	; if generating debug info (pass 2), end the current block (if any) at
+@dorg:	jsr require_const	; the origin must not vary between passes
+	bcs @ret
+
+	; if generating debug info (pass 2), end the current block (if any) at
 	; the current address
 	lda zp::gendebuginfo
 	beq @setpc
@@ -2564,6 +2651,8 @@ __asm_include:
 
 	jsr expr::eval  	; get the number of times to repeat the code
 	bcs @errzero		; error evaluating # of reps expression
+	jsr require_const	; the count must not vary between passes
+	bcs @errzero
 
 @ok:	stxy zp::ctx+repctx::iter_end	; set number of iterations
 	jsr line::process_ws		; .Y=0
@@ -2877,14 +2966,27 @@ __asm_include:
 	jsr vmem::load
 	sta opcode
 	sta __asm_raw_opcode
-	ldxy @opaddr		; operand
-	lda #$01
-	jsr vmem::load_off
+
+	; read the operand bytes
+	lda @opaddr		; operand address = opcode address + 1
+	clc
+	adc #$01
+	tax
+	lda @opaddr+1
+	adc #$00
+	tay
+	jsr vmem::load
 	sta operand
 	sta __asm_raw_operand
-	ldxy @opaddr		; operand byte 2
-	lda #$02
-	jsr vmem::load_off
+
+	lda @opaddr		; operand byte 2 address = opcode address + 2
+	clc
+	adc #$02
+	tax
+	lda @opaddr+1
+	adc #$00
+	tay
+	jsr vmem::load
 	sta operand+1
 	sta __asm_raw_operand+1
 	pla			; restore nostr flag
@@ -3323,7 +3425,10 @@ __asm_include:
 	lda #ASM_DIRECTIVE
 	RETURN_OK
 
-@exec:	lda ifstacksp
+@exec:	jsr require_const	; the condition must not vary between passes
+	bcs @done
+
+	lda ifstacksp
 	cmp #MAX_IFS
 	bcc :+
 	RETURN_ERR ERR_STACK_OVERFLOW
@@ -3393,14 +3498,26 @@ __asm_include:
 	bcc :+
 	RETURN_ERR ERR_STACK_OVERFLOW
 
-:	; check if the label exists
+:	jsr pass1
+	bne @replay	; pass 2 -> replay the result recorded in pass 1
+
+	; pass 1: check if the label exists (at THIS point in the source)
 	ldxy zp::line
 	jsr lbl::find
 	lda #$00
 	bcs :+		; label not defined
 	lda #$01
 
-:	; store TRUE/FALSE to the if stack
+:	jsr record_ifdef	; record the result for pass 2 to replay
+	bcs @err		; too many .IFDEFs
+	bcc @push		; branch always
+
+@replay:
+	; pass 2: replay .ifdef computed in pass 1
+	jsr replay_ifdef
+	bcs @err
+
+@push:	; store TRUE/FALSE to the if stack
 	inc ifstacksp
 	ldx ifstacksp
 	sta ifstack-1,x
@@ -3408,7 +3525,96 @@ __asm_include:
 	jsr line::process_word
 	lda #ASM_DIRECTIVE
 	RETURN_OK
+@err:	rts
 .endproc
+
+;*******************************************************************************
+; RECORD IFDEF
+; Records the result of a .IFDEF evaluated in pass 1 (see do_ifdef)
+; IN:
+;   - .A: the result (0 or 1)
+; OUT:
+;   - .A: the result (unchanged on success)
+;   - .C: set if there are too many .IFDEFs to record
+.proc record_ifdef
+@res=r2
+	sta @res
+	ldx ifdefidx
+	cpx #MAX_IFDEFS
+	bcs @toomany
+	inc ifdefidx
+
+	txa
+	and #$07	; bit index
+	tay
+	txa
+	lsr
+	lsr
+	lsr
+	tax		; byte index (result index / 8)
+
+	lda @res
+	bne @set
+
+@clear:	lda ifdefmasks,y
+	eor #$ff
+	and ifdefresults,x
+	sta ifdefresults,x
+	lda @res
+	RETURN_OK
+
+@set:	lda ifdefmasks,y
+	ora ifdefresults,x
+	sta ifdefresults,x
+	lda @res
+	RETURN_OK
+
+@toomany:
+	RETURN_ERR ERR_STACK_OVERFLOW
+.endproc
+
+;*******************************************************************************
+; REPLAY IFDEF
+; Returns the .IFDEF result that was recorded at this position during pass 1
+; (see do_ifdef)
+; OUT:
+;   - .A: the recorded result (0 or 1)
+;   - .C: set if there is no result recorded for this position (the passes
+;         encountered a different number of .IFDEFs)
+.proc replay_ifdef
+	ldx ifdefidx
+	cpx ifdefcnt
+	bcs @norecord
+	inc ifdefidx
+
+	txa
+	and #$07	; bit index
+	tay
+	txa
+	lsr
+	lsr
+	lsr
+	tax		; byte index (result index / 8)
+
+	lda ifdefresults,x
+	and ifdefmasks,y
+	beq :+
+	lda #$01
+:	RETURN_OK
+
+@norecord:
+	RETURN_ERR ERR_STACK_OVERFLOW
+.endproc
+
+;-------------------------------------------------------------------------------
+.ifdef vic20
+ifdefmasks = $8270	; $01,$02,$04,$08,$10,$20,$40,$80
+.else
+.PUSHSEG
+.RODATA
+ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
+.POPSEG
+.endif
 
 ;*******************************************************************************
 ; ISLINETERMINATOR OR SEPARATOR
@@ -3515,6 +3721,7 @@ __asm_include:
 
 :	sta zp::label_mode
 	jsr lbl::add
+	bcs @err
 
 	lda #ASM_DIRECTIVE
 	RETURN_OK
@@ -3660,8 +3867,15 @@ __asm_include:
 
 :	stx @savex
 	sty @savey
+
+	; compute effective address (asmresult + offset)
 	tya			; .A = offset
-	ldxy zp::asmresult
+	clc
+	adc zp::asmresult
+	tax			; effective address LSB
+	lda zp::asmresult+1
+	adc #$00
+	tay			; effective address MSB
 
 	jsr vmem::writable
 	bcc :+
@@ -3669,7 +3883,8 @@ __asm_include:
 	;sec
 	rts			; address is not writable
 
-:	jsr vmem::store_off
+:	lda zp::bankval		; get the byte to write
+	jsr vmem::store
 @done:	ldx @savex
 	ldy @savey
 :				; <- write_reloc
@@ -3773,7 +3988,7 @@ __asm_include:
 	; look up the address of the label we are substituting
 	ldxy @label
 	jsr lbl::addr
-	bcs @ok		; label doesn't exist -> exit
+	bcs @noaddr	; label doesn't exist -> clean stack and exit
 	stxy @val	; save the value of the symbol for later
 
 	; get offset to start backup at (line+strlen(@label))
@@ -3823,6 +4038,11 @@ __asm_include:
 	cpy #LINESIZE
 	bcc @l1
 
+@noaddr:
+	pla		; clean up the saved @label/@line
+	pla
+	pla
+	pla
 @ok:	clc		; ok
 	rts
 
@@ -3920,6 +4140,32 @@ __asm_include:
 .proc pass1
 	lda zp::pass
 	cmp #$01
+	rts
+.endproc
+
+;*******************************************************************************
+; REQUIRE CONST
+; Validates that the last evaluated expression (expr::eval) produced a
+; CONSTANT (a fully resolved, non-relocatable value).
+; Directives that change the structure of the program (.IF, .REP count,
+; .RES count, .ORG/.RORG target, ...) must not depend on values that can
+; differ between the two assembly passes: a forward reference evaluates to a
+; dummy in pass 1 and to its real value in pass 2, for example.
+; OUT:
+;   - .C: set if the expression was not constant (error code in .A)
+.proc require_const
+	lda expr::kind
+	cmp #VAL_ABS
+	beq @ok
+	lda expr::segment
+	cmp #SEG_UNDEF
+	beq @unresolved
+	RETURN_ERR ERR_CANNOT_REDUCE	 ; relocatable value
+
+@unresolved:
+	RETURN_ERR ERR_UNRESOLVABLE_LABEL ; forward reference
+
+@ok:	clc
 	rts
 .endproc
 

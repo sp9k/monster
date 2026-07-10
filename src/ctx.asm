@@ -59,6 +59,8 @@ contexts_top:
 
 __ctx_active: .byte 0	; # of contexts on stack - !0: a context is active
 __ctx_open:   .byte 0	; !0: current context is "closed" (ctx::end was called)
+quote:        .byte 0	; quote char of the string/char literal being copied
+			; by write/write_parent (0 = not in a literal)
 
 ;*******************************************************************************
 ; CTX META
@@ -424,6 +426,7 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	stxy @line
 
 	ldy #$00
+	sty quote	; not inside a quoted literal
 	lda (@line),y
 	beq @ok		; don't store empty lines
 
@@ -441,9 +444,28 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	beq @done
 	cmp #$0d
 	beq @done
+	ldx quote	; inside a string/char literal?
+	beq @unquoted
+
+	; inside a literal only the matching closing quote is special
+	cmp quote
+	bne @store	; not the closing quote -> store verbatim
+
+	; reset quote flag
+	ldx #$00
+	stx quote
+	beq @store	; branch always
+
+@unquoted:
 	cmp #';'
-	beq @done
-	STOREB_Y parent
+	beq @done	; comment ends the line
+	cmp #'"'
+	beq @openq
+	cmp #$27	; single quote
+	bne @store
+@openq:	sta quote	; set quote flag
+
+@store:	STOREB_Y parent
 
 	incw @line
 	incw parent
@@ -485,6 +507,7 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 @line=r0
 	stxy @line
 	ldy #$00
+	sty quote	; not inside a quoted literal
 	lda (@line),y
 	beq @ok		; don't store empty lines
 
@@ -501,22 +524,41 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 	beq @done
 	cmp #$0d
 	beq @done
+	ldx quote	; inside a string/char literal?
+	beq @unquoted
+
+	; inside a literal only the matching closing quote is special
+	; (a ';' in "a;b" or ';' is NOT a comment)
+	cmp quote
+	bne @store	; not the closing quote -> store verbatim
+	ldx #$00
+	stx quote	; leaving the literal
+	beq @store	; branch always (store the closing quote too)
+
+@unquoted:
 	cmp #';'
-	beq @done
-	STOREB_Y cur
+	beq @done	; comment (outside any literal) ends the line
+	cmp #'"'
+	beq @openq
+	cmp #$27	; single quote
+	bne @store
+@openq:	sta quote	; entering a quoted literal
+
+@store:	STOREB_Y cur
 
 	incw @line
 
 	; increment context pointer and make sure the context isn't full
 	incw cur
 	lda cur+1
-	cmp #>contexts_top
-	bcc @write
+	cmp params+1
+	bcc @write	; cur < params -> continue
+	bne @full	; cur > params -> full
 	lda cur
-	cmp #<contexts_top
-	bne @write
+	cmp params
+	bcc @write	; cur < params -> continue
 
-	;sec
+@full:	;sec
 	lda #ERR_CTX_FULL
 	rts
 
@@ -550,7 +592,12 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 ; OUT:
 ;   - .C: set on error
 .proc end
-	; make sure the open context type matches the type we're closing
+	; make sure a context is open
+	ldx __ctx_active
+	bne :+
+	RETURN_ERR ERR_NO_MATCHING_SCOPE
+
+:	; make sure the open context type matches the type we're closing
 	cmp type
 	beq :+
 	RETURN_ERR ERR_NO_MATCHING_SCOPE ; if scope types mismatch, return err
@@ -574,7 +621,7 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 .proc addparam
 @param=r0
 	lda numparams
-	cmp #MAX_PARAMS
+	cmp #MAX_PARAMS+1	; +1 (macro NAME is stored as param 0)
 	bcc :+
 	RETURN_ERR ERR_INVALID_MACRO_ARGS
 

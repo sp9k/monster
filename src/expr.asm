@@ -191,7 +191,7 @@ operands: .res $100
 	jpl @cont
 
 @done:	jsr @popval		; read result (should be only value on stack)
-	bcs @ret
+	jcs @ret
 
 	stxy @val1
 
@@ -209,6 +209,8 @@ operands: .res $100
 	cmp #VAL_ABS
 	bne @rel_result
 @abs_result:
+	lda #POSTPROC_NONE
+	sta __expr_postproc	; constant results carry no post-processing
 	lda @val1+1		; is MSB of result 0?
 	bne :+
 	lda #$01
@@ -269,6 +271,7 @@ operands: .res $100
 	cmp #TOK_UNARY_OP
 	bne :+
 	jsr @eval_unary		; evaluate the unary operator
+	bcs @ret		; propagate error (e.g. missing operand)
 	jmp @evalloop		; and continue
 
 :	cmp #TOK_BINARY_OP
@@ -297,7 +300,7 @@ operands: .res $100
 	stxy @symbol
 	ldxy zp::virtualpc	; offset from SECTION base
 	stxy @val1
-	bpl @pushrel		; finish by pushing this as a VAL_REL
+	jmp @pushrel		; finish by pushing this as a VAL_REL
 
 @getoperand:
 	; not operator, get the operand
@@ -394,16 +397,25 @@ operands: .res $100
 	bne @invalid_unary
 	lda @kind
 	cmp #VAL_ABS
-	beq :+			; if ABS, no need for post-processing
+	beq @msb_abs		; if ABS, apply the '>' now
+
+	; for a relocatable operand the '>' is applied at link time (post-
+	; processing).  Keep the FULL 16-bit addend: the linker must compute
+	; MSB(segment base + addend), so truncating the addend here would
+	; drop the carry out of the LSB sum (and the addend's own MSB)
 	lda #POSTPROC_MSB
 	sta @postproc
-:	tya
+	jmp @pushval_with_postproc
+
+@msb_abs:
+	tya
 	tax
 	ldy #$00
 	beq @pushval+4	; branch always
 
 @invalid_unary:
-	brk		; TODO: should be impossible
+	; unrecognized unary operator byte in the RPN list
+	RETURN_ERR ERR_INVALID_EXPRESSION
 
 ;--------------------------------------
 @pushval:
@@ -459,9 +471,11 @@ operands: .res $100
 	sta @postproc2
 	cmp #POSTPROC_NONE
 	beq @getval1
-	jsr @handle_postproc
-	bcs @err
-	stxy @val2
+	; post-processing ('<'/'>') applies to the final result of the
+	; expression, so it must begin the expression (documented); a
+	; post-processed value as the RIGHT operand (e.g. "1 + >label")
+	; is not representable
+	RETURN_ERR ERR_INVALID_EXPRESSION
 
 @getval1:
 	jsr @popval
@@ -477,14 +491,14 @@ operands: .res $100
 	sta @symbol1+1
 	lda @postproc
 	sta @postproc1
-	cmp #POSTPROC_NONE
-	beq @cont_eval
-	jsr @handle_postproc
-	bcc :+
-	; TODO: make error code for this
+	; NOTE: if val1 carries post-processing (e.g. "<label + 3"), it is
+	; NOT applied here: the full 16-bit addend takes part in the
+	; arithmetic and the marker (still in the shared @postproc) is
+	; carried onto the result for +/- via @pushval_with_postproc, to be
+	; applied at link time
+	jmp @cont_eval
 
 @err:	rts
-:	stxy @val1
 
 @cont_eval:
 	lda @operator		; restore operator
@@ -502,7 +516,7 @@ operands: .res $100
 	lda @val1+1
 	adc @val2+1
 	tay
-	jmp @pushval
+	jmp @pushval_with_postproc	; keep val1's postproc (if any)
 
 @chksub:
 	cmp #'-'
@@ -519,7 +533,7 @@ operands: .res $100
 	lda @val1+1
 	sbc @val2+1
 	tay
-	jmp @pushval
+	jmp @pushval_with_postproc	; keep val1's postproc (if any)
 
 @chkmul:
 	cmp #'*'	; MULTIPLY
@@ -549,7 +563,9 @@ operands: .res $100
 	ldxy @val1
 	stxy r0
 	jsr m::div16
-	ldxy r0
+	bcc :+
+	RETURN_ERR ERR_DIVIDE_BY_ZERO
+:	ldxy r0
 	jmp @pushval
 
 @chkand:
@@ -596,7 +612,9 @@ operands: .res $100
 	tay
 	jmp @pushval
 @unknownop:
-	brk		; TODO: should be impossible
+	; unrecognized operator byte in the RPN list (e.g. from a
+	; malformed/unbalanced expression like "1[2]")
+	RETURN_ERR ERR_INVALID_EXPRESSION
 
 ;--------------------------------------
 @popval:
@@ -645,11 +663,17 @@ operands: .res $100
 	RETURN_OK
 
 @add_a_abs_b_rel:
-	; A=ABS, B=REL, use b's symbol and segment
+	; A=ABS, B=REL, result is REL with b's symbol and segment
+	; (the shared vars hold A's metadata from the last pop, so ALL of
+	; kind/segment/symbol must be replaced with B's)
+	lda #VAL_REL
+	sta @kind
 	lda @segment2
 	sta @segment
 	lda @symbol2
 	sta @symbol
+	lda @symbol2+1
+	sta @symbol+1
 	RETURN_OK
 
 @add_a_rel:
@@ -695,21 +719,44 @@ operands: .res $100
 	beq @sub_a_rel_b_rel
 
 	; A=REL, B=ABS, result is REL with A's symbol/segment
+	; (the shared vars already hold A's segment/symbol from the last pop;
+	; .A holds @kind2 (VAL_ABS) here, so the kind must be set explicitly)
+	lda #VAL_REL
 	sta @kind		; kind = REL
 	lda @segment1
 	sta @segment
 	lda @symbol1
 	sta @symbol
+	lda @symbol1+1
+	sta @symbol+1
 	RETURN_OK
 
 @sub_a_rel_b_rel:
-	; this case can be reduced to an ABS entry if val1 and val2 share
-	; a segment
+	; a post-processed ('<'/'>') value cannot take part in a symbol
+	; difference
+	lda @postproc
+	beq @chksegs
+	sec
+	rts
+
+@chksegs:
+	; if either operand is not yet resolved (pass 1 forward reference),
+	; the segments can't be validated yet; assume the difference will
+	; reduce (pass 2 revalidates with both symbols resolved)
+	lda @segment1
+	cmp #SEG_UNDEF
+	beq :+
+	lda @segment2
+	cmp #SEG_UNDEF
+	beq :+
+
+	; the difference of two symbols reduces to a constant if and only if
+	; they are in the same segment (the segment base cancels out)
 	lda @segment1
 	cmp @segment2
-	bne :+
-	sec
-	rts		; different segments -> err
+	beq :+		; same segment -> reduce to ABS constant
+	sec		; different segments -> cannot reduce
+	rts
 
 :	lda #VAL_ABS
 	sta @kind	; set kind to absolute
@@ -733,38 +780,6 @@ operands: .res $100
 	sta @kind
 	RETURN_OK
 
-;--------------------------------------
-; HANDLE POSTPROC
-; Validates a binary operand's post-processing
-; Post-processing is allowed if symbol is in the same segment as the
-; expression (asm::segment)
-@handle_postproc:
-	lda @postproc
-	beq :+++	; -> ok
-
-	; check if symbol is in same segment
-	; (can't do postproc on inter-segment symbol)
-	ldxy @symbol
-	CALLMAIN lbl::getsegment
-	cmp asm::segment
-	beq :+
-	sec
-	rts
-:	ldxy @symbol		; restore symbol ID
-
-	; get the address (addend) of the label within the segment
-	CALLMAIN lbl::by_id
-
-	lda @postproc
-	cmp #POSTPROC_MSB
-	beq :+
-	; set value to just the LSB of label address
-	ldy #$00		; clear MSB
-	rts
-:	; set value to MSB (move MSB to LSB)
-	tya
-	tax
-:	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -873,6 +888,9 @@ operands: .res $100
 @poperr:
 	tax			; save error code
 	pla			; clean up saved priority
+	pla			; clean up the saved operator (pushed before
+				; @process_ops) - without this the rts at @ret
+				; consumes it as part of the return address
 	txa			; restore error code
 	jmp @ret
 

@@ -281,6 +281,14 @@ err_unclosed_ctx:
 ; .byte "unclosed .mac or .rep",0
 .byte $ab,$83,$63,$d3,$29,$1b,$e3,$41,$1e,$cf,$96,$dc,$91,$50,$0
 
+err_cannot_assemble_log:
+; .byte "cannot assemble log",0
+.byte $18,$4e,$73,$d4,$d8,$53,$99,$4d,$13,$5,$db,$f,$38,$0
+
+err_divide_by_zero:
+; .byte "divide by zero",0
+.byte $22,$56,$49,$5,$d8,$99,$de,$85,$93,$c0
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -351,7 +359,9 @@ err_unclosed_ctx:
 	err_too_many_breakpoints, \
 	err_rorg_not_absolute, \
 	err_unclosed_if, \
-	err_unclosed_ctx
+	err_unclosed_ctx, \
+	err_cannot_assemble_log, \
+	err_divide_by_zero
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

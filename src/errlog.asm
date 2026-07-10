@@ -120,7 +120,7 @@ numerrs: .byte 0
 .proc __errlog_log
 	ldx numerrs
 	cpx #MAX_ERRORS
-	bcs @done		; if already at max errors, return with .C set
+	bcs @ret		; if already at max errors, return with .C set
 
 	pha
 	sta errcodes,x
@@ -153,7 +153,7 @@ numerrs: .byte 0
 	jsr log::out
 
 	plp
-	rts
+@ret:	rts
 
 .PUSHSEG
 .RODATA
@@ -227,6 +227,8 @@ numerrs: .byte 0
 
 	ldx #$00
 	stx @found
+	lda numerrs		; any errors logged at all?
+	beq @done		; if not, we're done
 
 @l0:	; prioritize lines in the same file
 	lda @matchfile

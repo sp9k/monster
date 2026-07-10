@@ -334,8 +334,9 @@ main:	jsr key::getch
 	jsr close_windows	; close errlog (if open)
 	jsr dbgi::init
 	jsr errlog::clear
+	jsr run::install_sigint	; reset SIGINT flag
 
-	;jsr init_log
+	jsr init_log		; create a (new) log file
 	jsr asm::reset
 
 	lda #$01
@@ -345,7 +346,7 @@ main:	jsr key::getch
 	; do the first pass of assembly
 	ldxy @filename
 	jsr asm::include	; assemble the file (pass 1)
-	bcs @done		; error, we're done
+	bcs @logerr
 
 	jsr obj::close_section	; close final OBJ section
 
@@ -364,11 +365,16 @@ main:	jsr key::getch
 	jsr asm::startpass
 	ldxy @filename
 	jsr asm::include	; assemble the file (pass 2)
+	bcs @logerr
 
 	ldxy zp::virtualpc	; end address (segment-relative in OBJ mode)
 	jsr dbgi::endblock	; end the final block
 	jsr obj::close_section	; close final OBJ section
 @done:	jmp display_result
+
+@logerr:
+	jsr errlog::log
+	jmp @done
 .endproc
 
 ;*******************************************************************************
@@ -419,6 +425,15 @@ main:	jsr key::getch
 @filename=zp::editortmp
 @fileid=zp::editortmp
 @savename=mem::filename
+	; the LOG buffer is not a source file; refuse to assemble it
+	lda src::activebuff
+	cmp #LOG_BUFFER
+	bne @notlog
+
+	lda #ERR_CANNOT_ASSEMBLE_LOG
+	jmp report_typein_error
+
+@notlog:
 	lda #$01
 	sta zp::gendebuginfo	; enable debug info
 
@@ -479,7 +494,15 @@ main:	jsr key::getch
 	bcc :+
 	rts
 
-:	; ensure that the buffer we are assembling has a name
+:	; the LOG buffer is not a source file; refuse to assemble it
+	lda src::activebuff
+	cmp #LOG_BUFFER
+	bne @notlog
+	lda #ERR_CANNOT_ASSEMBLE_LOG
+	jmp report_typein_error
+
+@notlog:
+	; ensure that the buffer we are assembling has a name
 	lda src::activebuff
 	jsr src::filename
 	bcc :+
@@ -3091,6 +3114,7 @@ goto_buffer:
 	bcs @new		; old name isn't mapped; create a new mapping
 	ldxy @file		; restore NEW file name
 	jsr dbgi::rename_file	; rename the debug info entry for the old ID
+	bcs @err
 	jmp @setname
 
 @new:	ldxy @file		; restore NEW file name
@@ -3099,6 +3123,7 @@ goto_buffer:
 @setname:
 	ldxy @file		; restore NEW file name
 	jmp src::name		; rename to the "source" name to string in .XY
+@err:	rts
 .endproc
 
 ;*******************************************************************************

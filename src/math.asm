@@ -66,7 +66,14 @@
 @dividend = r0
 @remainder = r4
 @result = @dividend		; return quotient in dividend's place
-	lda #0			; preset remainder to 0
+	; division by zero is undefined; return with .C set
+	lda @divisor
+	ora @divisor+1
+	bne @start
+	sec			; divide-by-zero -> error
+	rts
+
+@start:	lda #0			; preset remainder to 0
 	sta @remainder
 	sta @remainder+1
 	ldx #16			; repeat for each bit: ...
@@ -90,5 +97,6 @@
 
 @skip:	dex
 	bne @divloop
+	clc			; ok
 	rts
 .endproc

@@ -295,7 +295,10 @@ macros_end:
 	; set the parameter to its value
 	ldxy #@tmplabel
 	CALLMAIN lbl::set
-	bcs @done
+	bcc @nextparam		; ok -> continue with the next parameter
+	sta @errcode		; save the error code (e.g. invalid label)
+	rol @err		; record the error (.C is set) for @done
+	bne @done		; branch always (@err is now nonzero)
 
 @nextparam:
 	inc @cnt
@@ -900,6 +903,7 @@ MODE_DEF  = 1
 	skw
 @toolong:
 	lda #ERR_LABEL_TOO_LONG
+	sec			; error
 	bcs @done		; branch always
 
 @params:

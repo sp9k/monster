@@ -105,23 +105,23 @@ Anonymous labels can be declared with ':'.
 Anonymous labels are useful when you need to do a short branch where
 a descriptive label name isn't necessary.
 
-A colon followed by a + or - character is used to reference these
-labels.  Pluses (+) refers to the next _forward_ anonymous label and
-minuses (-) refer to the previous _backward_ anonymous label.
+A + or - character is used to reference these labels.  Pluses (+) refer
+to the next _forward_ anonymous label and minuses (-) refer to the
+previous _backward_ anonymous label.
 
 for example
 ```
     .ORG $1000
-:   JMP :+      ; JMP $1003
-:   JMP :-      ; JMP $1003
-:   JMP :--     ; JMP $1003
+:   JMP +       ; JMP $1003
+:   JMP -       ; JMP $1003
+:   JMP --      ; JMP $1003
 ```
 
 Using multiple +'s or -'s will count the same number of references before landing
 on the corresponding anonymous label.
 for example:
 ```
-    JMP :+++
+    JMP +++
 :   nop
 :   nop
 :   nop         ; will jump here

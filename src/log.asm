@@ -42,6 +42,8 @@ __log_written: .byte 0
 .export __log_out
 .proc __log_out
 @msg=r0
+	lda __log_written	; was a log ever created?
+	beq @done		; if not, do nothing
 	stxy @msg
 	lda src::activebuff
 	pha
@@ -56,6 +58,7 @@ __log_written: .byte 0
 
 	pla
 	jmp src::setbuff	; return to buffer we started on
+@done:	rts
 .endproc
 
 ;******************************************************************************
@@ -64,7 +67,11 @@ __log_written: .byte 0
 .export __log_banner
 .proc __log_banner
 @cnt=zp::util
-	lda src::activebuff
+	lda __log_written	; was a log ever created?
+	bne :+			; if so, continue
+	rts			; if not, do nothing
+
+:	lda src::activebuff
 	pha
 
 	lda #LOG_BUFFER
@@ -89,6 +96,8 @@ __log_written: .byte 0
 ; Closes the log file that was created with log::new.
 .export __log_close
 .proc __log_close
+	lda __log_written	; was a log ever created?
+	beq @done		; if not, do nothing
 	lda src::activebuff
 	pha
 
@@ -98,4 +107,5 @@ __log_written: .byte 0
 
 	pla
 	jmp src::setbuff
+@done:	rts
 .endproc
