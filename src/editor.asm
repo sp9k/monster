@@ -3595,7 +3595,10 @@ goto_buffer:
 	pla			; get the file handle
 	pha
 	jsr file::loadsrc	; load to SOURCE buff
-	pla
+	pla			; restore file handle
+	php			; save load status
+	jsr file::close		; close the file
+	plp			; restore load status
 	bcs @err
 
 	jsr unblank
