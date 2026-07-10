@@ -195,6 +195,9 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 	jsr text::update
 	jsr draw_status_bar
 
+	jsr use_replace_cursor
+	jsr enter_command
+
 main:	jsr key::getch
 	beq @done
 
@@ -1323,7 +1326,7 @@ cancel = enter_command
 
 @move:	jsr src::popgoto
 	ldxy @target
-	jmp gotoline
+	jmp __edit_gotoline
 .endproc
 
 ;*******************************************************************************
@@ -1347,7 +1350,7 @@ cancel = enter_command
 
 @move:	jsr src::popgoto
 	ldxy @target
-	jmp gotoline
+	jmp __edit_gotoline
 .endproc
 
 ;*******************************************************************************
@@ -1994,7 +1997,7 @@ cancel = enter_command
 @movetostart:
 	; move back to the line the selection began on
 	ldxy visual_start_line
-	jsr gotoline
+	jsr __edit_gotoline
 
 	; move right until we're back at the start of the selection
 	jmp :+			; enter loop at conditional check
@@ -2181,7 +2184,7 @@ cancel = enter_command
 
 @top:	jsr add_jump_point
 	ldxy #1
-	jmp gotoline
+	jmp __edit_gotoline
 
 ;--------------------------------------
 @gotodef:
@@ -4663,7 +4666,7 @@ goto_buffer:
 	stxy @line
 	jsr add_jump_point	; save the current position as a jump point
 	ldxy @line
-	jmp gotoline		; go to the target line
+	jmp __edit_gotoline	; go to the target line
 @done:	rts
 .endproc
 
@@ -4987,7 +4990,7 @@ goto_buffer:
 @move:	jsr src::popgoto	; restore old source position
 	jsr add_jump_point	; add a jump point
 	ldxy @target
-	jsr gotoline		; go to the new line
+	jsr __edit_gotoline	; go to the new line
 
 	; go back to the start of the line if needed
 :	jsr src::atcursor
@@ -5018,7 +5021,7 @@ goto_buffer:
 .proc goto_end
 	jsr add_jump_point
 	ldxy #$ffff
-	bne gotoline		; branch always
+	bne __edit_gotoline	; branch always
 .endproc
 
 ;*******************************************************************************
@@ -5036,8 +5039,7 @@ goto_buffer:
 ; IN:
 ;  - .XY: the line number to go to
 .export __edit_gotoline
-__edit_gotoline:
-.proc gotoline
+.proc __edit_gotoline
 @target=r6
 @diff=r6		; lines to move up or down
 @seekforward=r8		; 0=backwards 1=forwards
@@ -5603,7 +5605,7 @@ __edit_gotoline:
 	ldy jumplist_hi-1,x
 	lda jumplist_lo-1,x
 	tax
-	jmp gotoline
+	jmp __edit_gotoline
 .endproc
 
 ;*******************************************************************************
