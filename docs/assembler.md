@@ -396,7 +396,7 @@ Each macro can be at most 16 lines or 512 bytes, whichever is lower. This restri
 
 Comments are excluded from the internal context buffer, so using them will not count toward the byte limit.
 
-### OTHER LIMITATOINS/GUIDELINES
+### OTHER LIMITATIONS/GUIDELINES
 
 #### MEMORY USAGE
 

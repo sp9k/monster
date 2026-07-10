@@ -1,3 +1,4 @@
+.import __ui_machine_state
 .import __ui_regs_contents
 .import __ui_render_breakpoint
 .import __ui_update_statusline
@@ -5,6 +6,7 @@
 .import __ui_render_watch
 
 .scope ui
+	machine_state     = __ui_machine_state
 	regs_contents     = __ui_regs_contents
 	update_statusline = __ui_update_statusline
 

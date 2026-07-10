@@ -29,6 +29,7 @@
 .import __str_linking
 .import __str_load
 .import __str_loading
+.import __str_machine_state
 .import __str_nolabels
 .import __str_nolog
 .import __str_nomacros
@@ -88,6 +89,7 @@
 	link                    = __str_link
 	linking                 = __str_linking
 	loading                 = __str_loading
+	machine_state           = __str_machine_state
 	macros                  = __str_macros
 	memview_title           = __str_memview_title
 	newl                    = __str_newl

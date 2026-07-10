@@ -77,6 +77,7 @@ K_RESET_STOPWATCH	= $b2	; C= + r
 K_QUIT_DEBUGGER		= $bd	; C= + x
 K_GOTO_BREAK		= $5e	; up-arrow
 K_ENTER_DEBUG_CMD	= $21	; !
+K_TOGGLE_INFO           = $76	; v
 
 K_GO       = $a5	; C= + g
 K_JUMP     = $b5	; C= + j

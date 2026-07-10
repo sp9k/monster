@@ -10,6 +10,10 @@
 ;*******************************************************************************
 .RODATA
 
+.export __str_machine_state
+__str_machine_state:
+.byte "line cyc hpos  v1t1  v1t2  v2t1  v2t2",0
+
 .export __str_buffers
 __str_buffers: .byte "buffers",0
 

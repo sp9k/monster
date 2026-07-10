@@ -181,9 +181,134 @@ STATUS_COL=0		; start column for status line
 .endproc
 
 ;*******************************************************************************
+; cycles in a raster line (used to derive CYC/HPOS from the raster LINE)
+.ifdef PAL
+CYCLES_PER_LINE = 71
+.else ; NTSC
+CYCLES_PER_LINE = 65
+.endif
+
+; timer register offsets within the sim::via1/via2 shadow blocks
+VIA_T1CL = $4		; T1 counter lo
+VIA_T1CH = $5		; T1 counter hi
+VIA_T2CL = $8		; T2 counter lo
+VIA_T2CH = $9		; T2 counter hi
+
+;*******************************************************************************
+; MACHINE STATE
+; Returns a line of data about the current state of the electron gun. This
+; includes the vertical position (LINE), the cycle within the line (CYC) and
+; the horizontal pixel position (HPOS = 4*CYC).
+; Also displays the current VIA timer values (V1 for VIA #1 and V2 for VIA #2).
+; OUT:
+;   - mem::linebuffer: line of text containing VIC specific data
+;     matches the format "LINE CYC HPOS  V1T1 V1T2 V2T1 V2T2"
+.export __ui_machine_state
+.proc __ui_machine_state
+@buff=mem::linebuffer2
+@val=r0			; 16-bit scratch (raster line / HPOS)
+@cyc=r2			; cycle within the current raster line
+	ldy #39
+	lda #' '
+:	sta @buff,y
+	dey
+	bpl :-
+
+	; write the LINE number
+	ldxy sim::line
+	jsr util::todec
+	ldy #0			; column 0
+	jsr @put
+
+	; CYC = LINE % CYCLES_PER_LINE
+	ldxy sim::line
+	stxy @val
+@modl:	lda @val+1
+	bne @modsub		; hi != 0 -> value >= CYCLES_PER_LINE
+	lda @val
+	cmp #CYCLES_PER_LINE
+	bcc @moddone
+@modsub:
+	lda @val
+	sec
+	sbc #CYCLES_PER_LINE
+	sta @val
+	bcs @modl
+	dec @val+1
+	bcc @modl		; (always)
+@moddone:
+	lda @val
+	sta @cyc
+	tax
+	ldy #0			; hi byte = 0 (CYC < CYCLES_PER_LINE)
+	jsr util::todec
+	ldy #5			; column 5
+	jsr @put
+
+	; HPOS = 4 * CYC
+	lda @cyc
+	sta @val
+	lda #0
+	sta @val+1
+	asl @val
+	rol @val+1
+	asl @val
+	rol @val+1
+	ldxy @val
+	jsr util::todec
+	ldy #9			; column 9
+	jsr @put
+
+	; VIA #1 timer 1
+	ldx sim::via1+VIA_T1CL
+	ldy sim::via1+VIA_T1CH
+	jsr util::todec
+	ldy #15			; column 15
+	jsr @put
+
+	; VIA #1 timer 2
+	ldx sim::via1+VIA_T2CL
+	ldy sim::via1+VIA_T2CH
+	jsr util::todec
+	ldy #21			; column 21
+	jsr @put
+
+	; VIA #2 timer 1
+	ldx sim::via2+VIA_T1CL
+	ldy sim::via2+VIA_T1CH
+	jsr util::todec
+	ldy #27			; column 27
+	jsr @put
+
+	; VIA #2 timer 2
+	ldx sim::via2+VIA_T2CL
+	ldy sim::via2+VIA_T2CH
+	jsr util::todec
+	ldy #33			; column 33
+	jsr @put
+
+	ldxy #@buff
+	rts
+
+;-------------------------------------------------------------------------------
+; copy the 0-terminated decimal string in mem::spare to @buff at the column
+; given in .Y
+@put:	ldx #$00
+:	lda mem::spare,x
+	beq @putdone
+	sta @buff,y
+	inx
+	iny
+	bne :-
+@putdone:
+	rts
+.endproc
+
+;*******************************************************************************
 ; REGS CONTENTS
 ; Returns a line containing the contents of the registers
-; OUT: mem::linebuffer: a line of text containing the values for each tegister
+; OUT:
+;    - mem::linebuffer: a line of text containing the values for each register
 ;      matches the format: PC  A  X  Y  SP NV-BDIZC ADDR
 .export __ui_regs_contents
 .proc __ui_regs_contents

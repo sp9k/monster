@@ -122,6 +122,8 @@ __debug_sw_valid: .byte 0	; if !0, stopwatch is valid
 
 breakpoints_active: .byte 0	; if !0 breakpoints are installed
 
+show_extended_state: .byte 0	; if !0, show extra info about machine state
+
 lineset: .byte 0		; not zero if we know the line number we're on
 
 aux_mode: .byte 0		; the active auxiliary view
@@ -204,6 +206,7 @@ blank   = scr::blank
 	stx breakpoints_active	; flag that breakpoints are not installed
 	stx __debug_interface	; set interface to GUI
 	stx fmt::enable
+	stx show_extended_state
 
 	dex			; .X = $ff
 	txs			; initialize stack to $1ff
@@ -486,7 +489,7 @@ blank   = scr::blank
 
 @showbrk:
 	; set color for the message row
-	ldx #DEBUG_MESSAGE_LINE
+	ldx edit::status_row
 	jsr draw::hiline
 
 	; get the address before the BRK and go to it
@@ -712,7 +715,7 @@ blank   = scr::blank
 ; receiving it
 .proc quit
 	ldxy #strings::debug_stop_debugging
-	lda #DEBUG_MESSAGE_LINE
+	lda edit::status_row
 	jsr text::print
 
 :	jsr key::waitch
@@ -734,6 +737,28 @@ blank   = scr::blank
 
 	jmp edit::run		; re-enter the editor
 @abort:	rts
+.endproc
+
+;*******************************************************************************
+; TOGGLE EXTENDED INFO
+; Toggles the display of additional information (e.g. current raster line)
+.proc toggle_extended_info
+	lda show_extended_state
+	eor #$01
+	sta show_extended_state
+	beq :+
+
+	; enable color for the message row
+	ldx #DEBUG_MESSAGE_LINE-2
+	sta edit::status_row
+	jsr draw::hiline
+	ldx #DEBUG_MESSAGE_LINE-2
+	skw
+:	ldx #DEBUG_MESSAGE_LINE
+	stx edit::status_row
+	dex
+	txa
+	jmp edit::resize
 .endproc
 
 ;*******************************************************************************
@@ -848,29 +873,13 @@ blank   = scr::blank
 ; at the line after the subroutine (after the subroutine has run)
 .export __debug_step_over
 .proc __debug_step_over
-	jsr blank
-	jsr bsp::install_tracer
-
-	jsr step	; run one STEP
-	bcs @done		; stop tracing if STEP errored
+	jsr step		; run one STEP
+	bcs @done
 	lda sim::op		; get opcode we just ran
 	cmp #$20		; did we run a JSR?
-	bne @done		; if not, we're done
-	jsr __debug_step_out	; if we did enter a subroutine, STEP OUT
-@done:	jmp reenable_irq
-.endproc
-
-;*******************************************************************************
-; STEP
-; Runs the step command
-.export __debug_step
-.proc  __debug_step
-	TRACE_OFF
-	jsr blank
-
-	jsr step
-
-	; fall through to reenable_irq
+	bne @done		; not a JSR -> done
+	jmp __debug_step_out	; entered a subroutine: STEP OUT (via trace)
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -893,6 +902,8 @@ blank   = scr::blank
 ; the current instruction and RUNning.
 ; OUT:
 ;   - .C: set if we should stop tracing (e.g. if a watch was activated)
+.export __debug_step
+__debug_step:
 .proc step
 @cnt=r0
 ;-------------------------------------------------------------------------------
@@ -1507,7 +1518,7 @@ __debug_remove_breakpoint:
 
 .ifndef hard8x8
 	lda #REGISTERS_LINE+1
-	jmp text::print
+	jsr text::print
 .else
 	lda #$00
 	sta mem::linebuffer2+16	; break the register contents line
@@ -1521,8 +1532,25 @@ __debug_remove_breakpoint:
 	jsr ui::regs_contents
 	ldxy #mem::linebuffer2+17
 	lda #REGISTERS_LINE+3
-	jmp text::print
+	jsr text::print
 .endif
+
+	lda show_extended_state
+	bne show_machine_state
+	rts
+.endproc
+
+;*******************************************************************************
+; SHOW MACHINE STATE
+; prints auxiliary (platform specific) state of the machine
+.proc show_machine_state
+	ldxy #strings::machine_state
+	lda #REGISTERS_LINE-2
+	jsr text::print
+
+	jsr ui::machine_state
+	lda #REGISTERS_LINE-1
+	jmp text::print
 .endproc
 
 ;*******************************************************************************
@@ -1581,7 +1609,7 @@ __debug_remove_breakpoint:
 	pha
 
 	ldxy #strings::debug_brk_line
-@print:	lda #DEBUG_MESSAGE_LINE
+@print:	lda edit::status_row
 	jsr text::print		; break in line <line #>
 :	rts
 .endproc
@@ -1868,6 +1896,7 @@ commands:
 	.byte K_EDIT_STATE
 	.byte K_GOTO_BREAK
 	.byte K_MONITOR
+	.byte K_TOGGLE_INFO
 num_commands=*-commands
 
 .linecont +
@@ -1875,7 +1904,7 @@ num_commands=*-commands
 	__debug_go, jump, __debug_step_out, __debug_trace, edit_source, \
 	edit_mem, edit_breakpoints, __debug_edit_watches, \
 	__debug_swap_user_mem, reset_stopwatch, edit_state, \
-	goto_pc, activate_monitor
+	goto_pc, activate_monitor, toggle_extended_info
 .linecont -
 command_vectorslo: .lobytes command_vectors
 command_vectorshi: .hibytes command_vectors

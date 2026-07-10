@@ -142,6 +142,13 @@ viatmp: .byte 0
 __sim_tracing:
 tracing: .byte 0
 
+;*******************************************************************************
+.export __sim_line
+.export __sim_hpos
+__sim_line: .word 0		; current raster line (0-311)
+__sim_hpos: .byte 0		; current pixel offset on line
+
+;*******************************************************************************
 .import stop_tracing		; flag to halt a trace command
 
 ;******************************************************************************
@@ -159,6 +166,9 @@ tracing: .byte 0
 	sta nmi_prev
 	sta __sim_irq_depth
 	sta __sim_rti_irq
+	sta __sim_line
+	sta __sim_line+1
+	sta __sim_hpos
 
 .ifdef vic20
 	; copy the user's saved VIA registers ($9110-$912f) to the shadows

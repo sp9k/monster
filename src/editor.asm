@@ -135,7 +135,8 @@ highlight_status:	.byte 0		; if !0 highlight is active
 
 ; the status row is where the text status is displayed.
 ; It is also where the program accepts commands (see get_command)
-.export status_row
+.export __edit_statusrow
+__edit_statusrow:
 status_row: .byte 0
 
 autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)

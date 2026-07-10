@@ -19,6 +19,7 @@
 .import __edit_sethighlight
 .import __edit_sigint
 .import __edit_src2screen
+.import __edit_statusrow
 
 .scope edit
 	binary_flag    = __edit_binary_flag
@@ -41,6 +42,7 @@
 	sethighlight   = __edit_sethighlight
 	sigint         = __edit_sigint
 	src2screen     = __edit_src2screen
+	status_row     = __edit_statusrow
 .endscope
 
 ;******************************************************************************
