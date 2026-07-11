@@ -467,7 +467,7 @@ main:	jsr key::getch
 	; OPEN
 	ldxy #@savename		; restore filename
 	jsr file::open_w	; OPEN the output filename
-	bcs @err
+	bcs @erropen		; no file to close (@fileid aliases @filename)
 	sta @fileid
 	tax
 	jsr krn::chkout		; CHKOUT, file in .X is output
@@ -476,13 +476,19 @@ main:	jsr key::getch
 	CALL FINAL_BANK_LINKER, obj::dump	; dump the object code
 	bcc @ok
 
-@err:	; print the error
+	; print the error
 	jsr report_typein_error
 	jsr key::getch
 
 @ok:	; CLOSE
 	lda @fileid
 	jsr file::close
+	jmp @done
+
+@erropen:
+	; print the error
+	jsr report_typein_error
+	jsr key::getch
 
 @done:	dec asm::mode		; switch back to DIRECT assembly mode
 	jmp unblank
@@ -3290,7 +3296,9 @@ goto_buffer:
 	sta asm::top+1
 
 	; read the CODE (binary data)
-:	jsr krn::chrin
+:	jsr krn::readst
+	bne @trunc		; EOF/error before all data was read
+	jsr krn::chrin
 	ldxy @addr
 	jsr vmem::store
 	incw @addr
@@ -3305,8 +3313,12 @@ goto_buffer:
 	lda #$00				; no relocation
 	CALL FINAL_BANK_DEBUG, dbgi::load
 	bcc @done
+	bcs @errclose		; branch always
+
+@trunc:	lda #ERR_IO_ERROR	; file ended before all data was read
 
 	; failed to load the debug info; close the file and report the error
+@errclose:
 	pha			; save the error code
 	lda @file
 	jsr file::close
@@ -3382,6 +3394,9 @@ goto_buffer:
 
 @done:	lda @file
 	jsr file::close
+	jsr file::geterr	; check for drive-reported errors (e.g. disk full)
+	bcc :+
+	jmp @err
 :	jmp unblank			; <- command_saveprg
 .endproc
 
@@ -3449,8 +3464,15 @@ goto_buffer:
 	ldxy asm::origin	; get the base address of the program (in vmem)
 	lda @file
 	jsr file::savebin	; write the binary to file
+	php			; save the save status
 	lda @file
 	jsr file::close
+	plp
+	bcs @err
+	jsr file::geterr	; check for drive-reported errors (e.g. disk full)
+	bcc @done
+@err:	jsr unblank
+	jmp report_drive_error
 @done:	jmp unblank
 .endproc
 
@@ -3504,11 +3526,18 @@ goto_buffer:
 
 	lda @file
 	jsr file::savesrc	; SAVE the buffer
+	php			; save the save status
+	pha			; and the error code
 	jsr src::popgoto	; restore source pos in buffer
 
 	lda @file
 	jsr file::close		; CLOSE file
 	jsr krn::clrchn
+	pla			; restore the error code
+	plp			; restore the save status
+	bcs @err		; on failure report and keep the buffer dirty
+	jsr file::geterr	; check for drive-reported errors (e.g. disk full)
+	bcs @err
 
 @ok:	lda #$00
 	jsr src::setflags	; clear flags on the source buffer and return

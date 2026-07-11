@@ -410,6 +410,7 @@ screen: .res LINESIZE*HEIGHT
 
 	ldxy #mem::linebuffer
 	jsr set___monitor_outfile
+	bcs @redirerr
 
 	lda line
 	cmp #HEIGHT-1
@@ -425,6 +426,11 @@ screen: .res LINESIZE*HEIGHT
 
 	; no previous prompt, get input again
 	jmp @prompt		; if command length is 0, there is no command
+
+@redirerr:
+	; the output file couldn't be opened; don't run the command
+	pla			; discard the input length
+	jmp @prompt
 
 @run:	; run the command
 	ldxy #CMD_BUFF
@@ -516,16 +522,21 @@ screen: .res LINESIZE*HEIGHT
 
 	bcs @err
 	sta __monitor_outfile
-@done:	rts
+@done:	RETURN_OK
 
 @err:	; display error
+	jsr unblank		; re-enable the IRQ (disabled for file IO)
 	ldxy #strings::file_open_failed
-	jmp __monitor_puts
+	jsr __monitor_puts
+	sec
+	rts
 
 @err_nofile:
 	; display error
 	ldxy #strings::nofile
-	jmp __monitor_puts
+	jsr __monitor_puts
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************

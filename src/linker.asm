@@ -285,8 +285,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	; load link file into filebuff
 	ldxy #strings::link
 	CALLMAIN file::open_r
-	pha					; save file ID
-	bcs @parse
+	bcc :+
+	rts					; failed to open the link file
+:	pha					; save file ID
 	tax
 	jsr krn::chkin
 
@@ -1186,6 +1187,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jcs log_error
 
 	jsr generate_map	; produce the map file
+	jcs log_error
 	jmp validate_segments	; validate segments and return error if needed
 
 @done:	rts
@@ -1996,7 +1998,8 @@ __link_get_segment_by_name:
 	bne @symloop
 
 @done:	pla					; restore file handle
-	JUMPMAIN file::close
+	CALLMAIN file::close
+	JUMPMAIN file::geterr			; report write errors (e.g. disk full)
 
 ;-------------------------------------------------------------------------------
 @seglist_title:  .byte "segments",$0d,0

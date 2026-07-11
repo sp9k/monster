@@ -322,8 +322,11 @@ ENDOSPROC
 	lda #>@p_w
 	sta r0+1
 	jsr str::cat	; filename + ",p,w"
+	bcc :+
+	rts		; filename too long
 
 	; fall through to __file_open_r
+:
 .PUSHSEG
 .RODATA
 @p_w:	.byte ",p,w",0
@@ -412,6 +415,10 @@ OSPROC __file_open
 	bcc @ok
 
 @getopenerr:
+	pha			; save the KERNAL error code
+	lda @file
+	jsr krn::close
+	pla			; restore the KERNAL error code
 	cmp #$05		; DEVICE NOT PRESENT?
 	bne :+
 	ldxy #strings::device_not_present

@@ -32,6 +32,10 @@
 	jsr krn::open	; OPEN
 	bcc @ok
 
+	pha			; save the KERNAL error code
+	lda #$0f
+	jsr krn::close		; close command channel
+	pla			; restore the KERNAL error code
 	cmp #$05		; DEVICE NOT PRESENT?
 	bne :+
 	ldxy #strings::device_not_present

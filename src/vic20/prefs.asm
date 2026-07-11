@@ -123,10 +123,13 @@ NUM_TABLES   = 7
 .proc __prefs_load
 @i   = r0
 @tmp = r1
+@file = r2
 @pal = mem::spare
 .if 0
 	ldxy #prefs
 	jsr file::open_r
+	bcs @ret		; no PREFS file; use defaults
+	sta @file
 	tax
 	jsr krn::chkin
 
@@ -169,9 +172,13 @@ NUM_TABLES   = 7
 	cpy #NUM_TABLES
 	bne @load
 
-@done:	; load the (new) default palette
+@done:	lda @file
+	jsr file::close
+
+	; load the (new) default palette
 	ldx #$00
 	jmp set_pal
+@ret:	rts
 .PUSHSEG
 .RODATA
 prefs: .byte "prefs",0
