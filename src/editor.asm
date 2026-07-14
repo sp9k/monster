@@ -316,6 +316,7 @@ main:	jsr key::getch
 
 	; leave the window onscreen; make sure the editor still fits above it
 	jsr __edit_monwin_resize
+	jsr refresh_line
 	jmp draw_status_bar
 .endproc
 
