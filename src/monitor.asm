@@ -751,6 +751,8 @@ screen: .res LINESIZE*HEIGHT
 ; Normally the border doubles as the status row; while debugging it is
 ; drawn as a clean bitmap separator line instead (the status contents are
 ; not meaningful there).
+.export __monitor_draw_border
+__monitor_draw_border:
 .proc draw_border
 	lda edit::debugging
 	bne @separator

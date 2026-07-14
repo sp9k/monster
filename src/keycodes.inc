@@ -81,7 +81,7 @@ K_ENTER_DEBUG_CMD	= $21	; !
 K_TOGGLE_INFO           = $76	; v
 
 K_GO       = $a5	; C= + g
-K_JUMP     = $b5	; C= + j
+K_JUMP     = $af	; C= + p (set PC to the line under the cursor)
 K_STEPOVER = $73	; s
 K_TRACE    = $74	; t
 K_STEP     = $7a	; z
@@ -96,8 +96,8 @@ K_DEL_WATCH = $ac	; C= + d
 ; MONITOR KEYS
 K_GO_BASIC_TUI		= $89	; F2
 K_MON_CLEAR		= $b6	; C= + l
-K_MONWIN_GROW		= $a6	; C= + + (grow monitor window)
-K_MONWIN_SHRINK		= $dc	; C= + - (shrink monitor window)
+K_MONWIN_GROW		= $a1	; C= + k (grow monitor window)
+K_MONWIN_SHRINK		= $b5	; C= + j (shrink monitor window)
 
 ;*******************************************************************************
 ; KEY REMAPPINGS

@@ -17,7 +17,8 @@ become available.
 
 The monitor may also be activated as a window that takes up only the bottom portion of the screen
 with the `F8` (`SHIFT + F7`) key.  In this mode the editor remains visible above the monitor window.
-The window may be resized with `C= + +` (grow) and `C= + -` (shrink) while the monitor is active.
+The window may be resized with `C= + j` (grow) and `C= + k` (shrink).  These keys work both while
+the monitor is active and from the editor while the window is open.
 
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
 Pressing `F7` or `F8` while the window is open re-activates it in place.  The monitor window is
@@ -77,5 +78,5 @@ Most parameters may be expressions (e.g. `label+10`).
 |    F1    | view screen             |                                    |                      | toggles the view of the user-memory (swaps the the  $1000-$2000 range monitor <-> program                                     |
 |    F2    | enter BASIC             |                                    |                      | drops into the stock KERNAL BASIC interpreter                                                                                 |
 |    C= + l| clear                   |                                    |                      | shortcut to clear the screen (equivalent to the clear command)                                                                |
-|    C= + +| grow window             |                                    |                      | grows the monitor window by one row (windowed mode only)                                                                      |
-|    C= + -| shrink window           |                                    |                      | shrinks the monitor window by one row (windowed mode only)                                                                    |
+|    C= + j| grow window             |                                    |                      | grows the monitor window by one row (windowed mode only)                                                                      |
+|    C= + k| shrink window           |                                    |                      | shrinks the monitor window by one row (windowed mode only)                                                                    |

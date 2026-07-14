@@ -74,7 +74,7 @@ respective Key in the table below.
 |  z           | Step            | steps to the next instruction.                                                       |
 |  t           | Trace           | like GO but the debugger takes control between each instruction                      |
 |  C= + g      | Go              | begins execution at the cursor                                                       |
-|  C= + j      | Jump to         | sets the PC to the address corresponding to the line the cursor is on                |
+|  C= + p      | Jump to         | sets the PC to the address corresponding to the line the cursor is on                |
 |  C= + r      | Reset Stopwatch | resets the value of the stopwatch to 0                                               |
 | C= + t       | Enter monitor   | enters the text-based debug interface (see the monitor commands section for more info|
 | C= + x       | Quit Debugger   | Prompts the user for confirmation then quits the debugger upon receiving it          |

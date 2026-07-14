@@ -321,6 +321,52 @@ main:	jsr key::getch
 .endproc
 
 ;*******************************************************************************
+; MONWIN GROW
+; Grows the monitor window (if one is open) by one row and shrinks the
+; editor to fit above it
+.proc monwin_grow
+	lda mon::wintop
+	beq @done		; no monitor window open
+
+	; the monitor draws the border and the revealed row of its history
+	; (bounds are checked there)
+	CALL FINAL_BANK_MONITOR, mon::win_grow
+
+	jsr __edit_monwin_resize
+	jmp draw_status_bar
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; MONWIN SHRINK
+; Shrinks the monitor window (if one is open) by one row and grows the
+; editor to fit above it
+.proc monwin_shrink
+	lda mon::wintop
+	beq @done		; no monitor window open
+	cmp #SCREEN_HEIGHT-1
+	bcs @done		; don't shrink past the monitor's input line
+	inc mon::wintop
+
+	; draw the revealed row (the old border row) with its source line
+	lda mon::wintop
+	sec
+	sbc #$02
+	pha
+	tax
+	jsr draw::resetline	; clear the border color from the row
+	pla
+	jsr __edit_render_row
+
+	jsr __edit_monwin_resize	; grow the editor (rows already drawn)
+
+	; draw the border at its new position
+	CALL FINAL_BANK_MONITOR, mon::draw_border
+	jmp draw_status_bar
+@done:	rts
+.endproc
+
+;*******************************************************************************
 ; MONWIN RESIZE
 ; Resizes the editor to fit above the monitor window and moves the status
 ; row to the window's border row.  Called (also by the monitor) whenever the
@@ -6078,6 +6124,8 @@ ro_commands:
 	.byte K_GETCMD		; get command
 	.byte K_MONITOR		; enter console
 	.byte K_MONITOR_WIN	; enter console in a window
+	.byte K_MONWIN_GROW	; grow the console window
+	.byte K_MONWIN_SHRINK	; shrink the console window
 	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
 	.byte K_CLOSE_WINDOWS	; <- (close windows)
@@ -6097,7 +6145,7 @@ numcommands=*-commands
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
 	command_find, next_drive, prev_drive, get_command, monitor, \
-	monitor_win, next_err, \
+	monitor_win, monwin_grow, monwin_shrink, next_err, \
 	help::show, close_windows
 .linecont -
 
