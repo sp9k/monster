@@ -74,6 +74,11 @@
 
 	lda $dc0d	; ack interrupts
 
+	; keep VIC in bank 0 (screen @ $0400 / charset @ $1800)
+	lda $dd00
+	ora #$03
+	sta $dd00
+
 	pla
 	sta $01
 

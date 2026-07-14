@@ -12,7 +12,11 @@
 
 .export __str_machine_state
 __str_machine_state:
+.ifdef vic20
 .byte "line cyc hpos  v1t1  v1t2  v2t1  v2t2",0
+.else
+.byte "line cyc hpos",0
+.endif
 
 .export __str_buffers
 __str_buffers: .byte "buffers",0

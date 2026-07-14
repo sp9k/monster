@@ -27,9 +27,9 @@ C64_REU_INC = 1
 .import __reu_txlen
 .import __reu_zero
 
-.importzp __reu_move_src
-.importzp __reu_move_dst
-.importzp __reu_move_size
+.import __reu_move_src
+.import __reu_move_dst
+.import __reu_move_size
 
 ; address of virtual memory state
 REU_VMEM_ADDR           = $fe0000

@@ -30,6 +30,28 @@ nop_handler:
 	rti
 
 ;*******************************************************************************
+; INSTALL SIGINT
+; Installs an NMI to cancel a long running command (such as FIND) by pressing
+; the RESTORE key.
+.export __run_install_sigint
+.proc __run_install_sigint
+	ldxy #nmi_sigint
+	stxy $0318		; vector used when the KERNAL is banked in
+	stxy $fffa		; vector used when all RAM is banked in
+	lda #$00
+	sta edit::sigint	; reset INT flag
+	jmp nmi::enable		; allow RESTORE key NMIs
+.endproc
+
+;*******************************************************************************
+; NMI SIGINT
+; NMI handler that flags a long running command to stop (see install_sigint)
+.proc nmi_sigint
+	inc edit::sigint
+	rti
+.endproc
+
+;*******************************************************************************
 ; CLR
 .export __run_clr
 .proc __run_clr

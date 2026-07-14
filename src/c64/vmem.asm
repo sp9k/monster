@@ -56,7 +56,10 @@ savexy: .word 0
 :	sta reu::reuaddr+2
 	jsr reu::load1
 
-@done:	ldxy savexy
+@done:	ldx savexy
+	ldy savexy+1
+	pha
+	pla			; restore .N/.Z from the loaded value (in .A)
 	rts
 .endproc
 
@@ -207,9 +210,12 @@ savexy: .word 0
 	cmpw #$a000
 	bcc @ram
 	cmpw #$c000
-	bcc @rom
+	bcc @rom	; $a000-$bfff: BASIC ROM
+	cmpw #$d000
+	bcc @ram	; $c000-$cfff: always RAM
 	cmpw #$e000
-	bcs @rom
+	bcc @io		; $d000-$dfff: I/O
+	bcs @rom	; $e000-$ffff: KERNAL ROM
 
 @io:	lda #^REU_VMEM_IO
 	RETURN_OK

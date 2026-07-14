@@ -3,7 +3,11 @@ REGION ?= NTSC
 
 # for Vic-20, which expansion to use
 # Valid values: ultimem
+ifeq ($(TARGET),vic20)
 EXPANSION ?= ultimem
+else
+EXPANSION =
+endif
 
 # default device # (for cart image)
 DEFAULT_DEVICE=8
@@ -15,7 +19,10 @@ X64=x64sc
 SCREEN_MODE=soft4x8
 #SCREEN_MODE=hard8x8
 
-ASMFLAGS=--asm-define $(TARGET) --asm-define $(REGION) --asm-define $(SCREEN_MODE) --asm-define DEFAULT_DEVICE=$(DEFAULT_DEVICE) --asm-define $(EXPANSION)
+ASMFLAGS=--asm-define $(TARGET) --asm-define $(REGION) --asm-define $(SCREEN_MODE) --asm-define DEFAULT_DEVICE=$(DEFAULT_DEVICE)
+ifneq ($(EXPANSION),)
+ASMFLAGS+=--asm-define $(EXPANSION)
+endif
 
 # set KERNAL based on configured TARGET and REGION
 ifeq ($(TARGET),vic20)
@@ -129,9 +136,10 @@ ifeq ($(TARGET),vic20)
 	$(EXOMIZER) sfx basic -t55 -n -o $@ bootloader.prg
 endif
 ifeq ($(TARGET),c64)
-	#$(PYTHON) makeboot.py labels.txt monster-disk.prg bootloader.prg masm.prg
-	#$(EXOMIZER) sfx basic -t64 -n -o $@ bootloader.prg masm.prg
-	$(EXOMIZER) sfx basic -t64 -n -o $@ monster-disk.prg
+	# Split the image around the $D000-$DFFF I/O gap so the exomizer
+	# decruncher has free RAM to work in (see makeboot-c64.py).
+	$(PYTHON) makeboot-c64.py monster-disk.prg boot-lo.prg boot-hi.prg
+	$(EXOMIZER) sfx basic -t64 -n -o $@ boot-lo.prg boot-hi.prg
 endif
 
 test-disk: $(TESTS_FILES)
@@ -143,7 +151,7 @@ ifeq ($(TARGET),vic20)
 	$(C1541) -format test,1 d81 test.d81 -attach test.d81 $(addprefix -write , $(TEST_FILES))
 endif
 ifeq ($(TARGET),c64)
-	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write monster-disk.prg $(addprefix -write , $(TEST_FILES))
+	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write boot.prg $(addprefix -write , $(TEST_FILES))
 endif
 
 start-cart: $(CART_IMAGE) test.d81

@@ -20,13 +20,8 @@ RAM_INC = 1
 .import __ram_load_byte
 .import __ram_load_byte_off
 
-.ifdef c64
-.importzp __ram_src
-.importzp __ram_dst
-.else
 .import __ram_src
 .import __ram_dst
-.endif
 
 .scope ram
 	call      = __ram_call

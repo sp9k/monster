@@ -31,11 +31,12 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 ;*******************************************************************************
 ; INIT BUFF
 ; Initializes a new source buffer by setting its pointers to the
-; start/end of the gap
-; IN:
-;  - .A: the bank to init
+; start/end of the gap and clearing the buffer's REU bank.
+; The bank to initialize is the active buffer's bank (__src_bank), which the
+; caller (init_buff) sets before this is called.
 .export __src_init_buff
 .proc __src_init_buff
+	lda __src_bank
 	sta reu::reuaddr+2
 
 	lda #$00
@@ -88,11 +89,18 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	cmp #$80
 	bcs @done		; not displayable, don't insert
 
-@store:	ldy __src_bank
+@store:	; make sure there is room for the character
+	ldy end+1
+	cpy #>BUFFER_SIZE
+	bcs @full		; buffer is full
+
+	ldy __src_bank
 	sty reu::reuaddr+2
 	STOREB end
 	incw end
 @done:	RETURN_OK
+
+@full:	RETURN_ERR ERR_BUFFER_FULL
 .endproc
 
 ;*******************************************************************************
@@ -117,9 +125,11 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	cmp #$09
 	beq :+
 	cmp #$20
-	bcc @done
+	bcc @nodisp
 	cmp #$80
-	bcs @done	; not displayable
+	bcc :+
+@nodisp:
+	RETURN_OK	; not displayable; not inserted but still a success
 
 :	pha
 	jsr __src_mark_dirty
@@ -128,7 +138,9 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	bne @ins		; no, insert as usual
 
 	; check if there is room to expand the gap
-	lda poststartzp+1
+	; the expansion moves [poststart, end) up by $100, so it is END that
+	; must stay below the top of the buffer
+	lda end+1
 	cmp #>BUFFER_SIZE-1	; -1 to save space for a $100 byte gap
 	bcc @ok
 
@@ -175,7 +187,10 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	incw line
 	jsr on_line_inserted
 	incw lines
+	lda #$ff
+	sta zp::srcx		; reset cursor "column"
 @insdone:
+	inc zp::srcx		; move to next "column"
 	incw cursorzp
 @done:	RETURN_OK
 .endproc
@@ -209,7 +224,12 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	cmp #$0d
 	bne @done
 	incw line
-@done:	RETURN_OK
+
+	ldx #$ff
+	stx zp::srcx		; reset cursor "column"
+
+@done:	inc zp::srcx		; move to next "column"
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -241,7 +261,11 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	bne :+
 	decw line
 
-:	; get the character at the new cursor position
+:	dec zp::srcx		; decrement cursor "column"
+	bpl @done
+	inc zp::srcx		; NOTE: srcx is inaccurate if a newline is crossed
+
+@done:	; get the character at the new cursor position
 	jsr __src_atcursor
 	RETURN_OK
 .endproc
@@ -275,17 +299,14 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 ; Callback to handle a line insertion. Various state needs to be shifted when
 ; this occurs (breakpoints, etc.)
 .proc on_line_inserted
-	; TODO:
-	rts
+	; TODO: shift debug info line programs after the current line
 
-	; update debug info: find all line programs in the current file with
-	; start lines greater than the current line and increment those
-	jsr __src_get_filename
-	jsr dbgi::getfileid
-
-	; shift breakpoints
-	jsr edit::currentfile
-	sta r0
+	; shift breakpoints; line to shift from is current line+1
+	jsr edit::currentfile	; .A=file id, .XY=current line
+	inx
+	bne :+
+	iny
+:	sta r0
 	lda #$01
 	jmp dbg::shift_breakpointsd
 .endproc
@@ -301,4 +322,32 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	lda24 __src_bank, cursorzp
 	incw cursorzp
 	rts
+.endproc
+
+;*******************************************************************************
+; SYNC X
+; Syncs the zp::srcx based on the distance from the start of the line or buffer
+.export sync_x
+.proc sync_x
+@cur=r0
+@x=r2
+	ldxy cursorzp
+	stxy @cur
+
+	lda #$00
+	sta @x
+
+@l0:	lda @cur
+	ora @cur+1
+	beq @done		; start of buffer
+	decw @cur
+	lda24 __src_bank, @cur
+	cmp #$0d
+	beq @done
+	inc @x
+	bne @l0			; branch always
+
+@done:	lda @x
+	sta zp::srcx
+	RETURN_OK
 .endproc

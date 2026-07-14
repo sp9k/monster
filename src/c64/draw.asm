@@ -100,6 +100,32 @@ COLOR_SELECT  = 6
 .endproc
 
 ;******************************************************************************
+; RVS LINE
+; Draws a horizontal rule on the row given in .A.
+; IN:
+;  - .A: the character row to draw the line at
+;  - .Y: pixel offset of the line (ignored on C64)
+.export __draw_rvs_line
+.proc __draw_rvs_line
+@dst=r0
+	tax
+	lda c64::rowslo,x
+	sta @dst
+	lda c64::rowshi,x
+	sta @dst+1
+
+	ldy #SCREEN_WIDTH-1
+@l0:	lda (@dst),y
+	cmp #$20		; blank?
+	bne :+
+	lda #$40		; horizontal line character
+	sta (@dst),y
+:	dey
+	bpl @l0
+	rts
+.endproc
+
+;******************************************************************************
 ; SCROLLCOLORSU
 ; Scrolls all colors from the given start row to the given stop row up by the
 ; given amount

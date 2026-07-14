@@ -61,9 +61,9 @@ FINAL_BANK_LOG          = $15
 ; LDA24
 ; Loads the value from the given 24 bit address and returns it in .A
 .macro lda24 bank, addr
+	lda bank
 	; set REU (load) address
 	IO_BEGIN
-	lda bank
 	sta $df06	; MSB of REU address
 	lda addr+1
 	sta $df05	; middle byte of REU address
@@ -99,7 +99,10 @@ FINAL_BANK_LOG          = $15
 ;  zp::banktmp
 .macro sta24 bank, addr
 	sta zp::banktmp
+	lda bank
 	IO_BEGIN
+
+	sta $df06	; MSB of REU address
 
 	ldx #$00
 
@@ -108,8 +111,6 @@ FINAL_BANK_LOG          = $15
 	sta $df04	; LSB of REU address
 	lda addr+1
 	sta $df05	; middle byte of REU address
-	lda bank
-	sta $df06	; MSB of REU address
 
 	; set c64 (target) address
 	lda #zp::banktmp

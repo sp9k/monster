@@ -7,6 +7,7 @@
 .include "reu.inc"
 .include "../config.inc"
 .include "../draw.inc"
+.include "../irq.inc"
 .include "../layout.inc"
 .include "../macros.inc"
 .include "../memory.inc"
@@ -38,6 +39,15 @@
 .export __screen_init
 .proc __screen_init
 	IO_BEGIN
+
+	; screen @ $0400 character ROM @$1800
+	lda $dd02	; DDRA: bank bits are outputs
+	ora #$03
+	sta $dd02
+	lda $dd00
+	ora #$03	; %11 -> VIC bank 0
+	sta $dd00
+
 	lda #$16	; lowercase chars / screen @ $0400
 	sta $d018
 	lda #$00
@@ -46,6 +56,23 @@
 	IO_DONE
 
 	rts
+.endproc
+
+;*******************************************************************************
+; BLANK
+; Prepares the screen for sensitive work that requires the IRQ to be disabled.
+; The hardware text screen doesn't rely on the IRQ, so this only disables it.
+.export __screen_blank
+.proc __screen_blank
+	jmp irq::off
+.endproc
+
+;*******************************************************************************
+; UNBLANK
+; Ends a "blank"; call when sensitive IRQ disabled work has finished
+.export __screen_unblank
+.proc __screen_unblank
+	jmp irq::on
 .endproc
 
 .CODE
@@ -88,6 +115,10 @@
 	dey
         bne @l0
 
+	IO_DONE
+
+	; the row color shadows may live under the I/O space, so they must be
+	; written with I/O banked out
 	ldx #SCREEN_HEIGHT-1
 :	lda #COLOR_NORMAL
 	sta mem::rowcolors_idx,x
@@ -96,7 +127,6 @@
 	dex
 	bpl :-
 
-	IO_DONE
         rts
 .endproc
 
@@ -193,6 +223,8 @@
 
 	ldy @stop
 	beq @col0
+	cpy @start
+	beq @col0		; start==stop: reverse only the char at @start
 	cpy #NUM_COLS+1
 	bcc :+
 	ldy #NUM_COLS
@@ -346,28 +378,49 @@
 ;  - .A: the bottom line that is scrolled
 .proc __text_scrollup
 .export __text_scrollup
+	ldy #$01
+
+	; fall through to __text_scrollupn
+.endproc
+
+;*******************************************************************************
+; SCROLLUPN
+; Scrolls all lines from .X to .A up by .Y rows
+; IN:
+;  - .X: the top line that characters are scrolled to
+;  - .A: the bottom line that is scrolled
+;  - .Y: the number of rows to scroll by
+.export __text_scrollupn
+.proc __text_scrollupn
 @src=zp::text
 @dst=zp::text+2
-@numrows=zp::text+4
-	stx @numrows
-	cmp @numrows
-	bcc @done
-
+@cnt=zp::text+4
+@n=zp::text+5
+	sty @n
+	stx @cnt		; temporarily store the top row
 	sec
-	sbc @numrows
-	sta @numrows
+	sbc @cnt		; .A = bottom - top
+	bcc @done
+	sec
+	sbc @n			; .A = bottom - top - n
+	bcc @done		; range is smaller than scroll amount
+	sta @cnt		; # of rows to copy (-1)
 
 	lda __screen_rowslo,x
 	sta @dst
 	lda __screen_rowshi,x
 	sta @dst+1
 
-	lda __screen_rowslo+1,x
+	txa
+	clc
+	adc @n
+	tax
+	lda __screen_rowslo,x
 	sta @src
-	lda __screen_rowshi+1,x
+	lda __screen_rowshi,x
 	sta @src+1
 
-	ldx @numrows
+	ldx @cnt
 @l0:	ldy #NUM_COLS-1
 @l1:	lda (@src),y
 	sta (@dst),y
@@ -386,10 +439,9 @@
 	sta @dst
 	bcc :+
 	inc @dst+1
-	ldy #$00
 
 :	dex
-	bne @l0
+	bpl @l0
 @done:	rts
 .endproc
 
@@ -420,10 +472,18 @@
 @rowstart=zp::text+4
 @offset=zp::text+5
 	sta @rowstart
-	cpx @rowstart
-	beq @done	; if first and last rows are equal, no scroll
-
 	sty @offset
+
+	; .X is the last row to scroll INTO. Work from the last destination
+	; down so no source row is overwritten before it is copied, and so
+	; nothing below .X is ever touched. The first source is (last-offset).
+	txa
+	sec
+	sbc @offset
+	bcc @done		; offset > last: nothing fits
+	cmp @rowstart
+	bcc @done		; range smaller than the scroll amount
+	tax
 
 @l0:	lda __screen_rowslo,x
 	sta @src
@@ -432,10 +492,7 @@
 	txa
 	clc
 	adc @offset
-	cmp #NUM_ROWS-1
-	bcs @next		; destination is off screen, skip
-
-	tay
+	tay			; dst = src + offset (always <= last)
 	lda __screen_rowslo,y
 	sta @dst
 	lda __screen_rowshi,y
@@ -447,7 +504,7 @@
 	dey
 	bpl @l1
 
-@next:	dex		; decrement row counter
+	dex		; decrement row counter
 	bmi @done
 	cpx @rowstart
 	bcs @l0

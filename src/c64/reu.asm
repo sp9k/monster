@@ -14,9 +14,9 @@
 .include "../memory.inc"
 .include "../zeropage.inc"
 
-.exportzp __reu_move_src
-.exportzp __reu_move_dst
-.exportzp __reu_move_size
+.export __reu_move_src
+.export __reu_move_dst
+.export __reu_move_size
 
 REU_TMP_ADDR            = $ff0000
 REU_VMEM_ADDR           = $fe0000
@@ -26,17 +26,29 @@ savey = zp::inline+1
 
 .import prog00
 
-;*******************************************************************************
-savea = zp::str0
-savep = zp::str0+1
-tmp   = zp::str0+2
-
-.BSS
+; This state is read by mapreu while I/O is banked in ($01=$36), so it must
+; live in low RAM (always visible), NOT under the I/O space or KERNAL ROM
+.DATA
 
 ;*******************************************************************************
 __reu_c64_addr: .word 0	; -> $df02
 __reu_reu_addr: .res  3	; -> $df04
 __reu_txlen:    .word 0 ; -> $df07
+
+;*******************************************************************************
+; load/store scratch. NOT in the zeropage: reu::loadb/storeb are called by the
+; source primitives while callers keep live pointers in zp::str0-str3 (e.g.
+; edit::find), so these must not alias that space.
+savea: .byte 0
+savep: .byte 0
+tmp:   .word 0
+
+; move parameters (24-bit REU src/dst + 16-bit size). NOT in the zeropage:
+; they previously aliased zp::bankstack, so a gap-expanding source insert
+; reached inside a ram::call would corrupt the saved bank stack.
+__reu_move_src:  .res 3
+__reu_move_dst:  .res 3
+__reu_move_size: .word 0
 
 ;*******************************************************************************
 ; TABLE STATE
@@ -63,7 +75,7 @@ tab_num_elements: .word 0
 	lda #^REU_VMEM_ADDR
 	sta $df04+2
 
-	ldxy #$3ff
+	ldxy #$400	; prog00 window is $0000-$03ff (1024 bytes)
 	stxy $df07
 
 	lda #$90	; transfer from c64 -> REU with immediate execution
@@ -90,7 +102,7 @@ tab_num_elements: .word 0
 	lda #^REU_VMEM_ADDR
 	sta $df04+2
 
-	ldxy #$3ff
+	ldxy #$400	; prog00 window is $0000-$03ff (1024 bytes)
 	stxy $df07
 
 	lda #$91	; transfer from REU -> c64 with immediate execution
@@ -151,14 +163,15 @@ tab_num_elements: .word 0
 
 	IO_BEGIN
 	jsr mapreu
-	lda #@tmp
+	lda #<@tmp
 	sta $df02	; c64addr
+	lda #>@tmp
+	sta $df02+1	; c64addr+1
 
 	lda #$01
 	sta $df07	; txlen
 
 	lda #$00
-	sta $df02+1	; c64addr+1
 	sta $df07+1	; txlen+1
 	sta $df0a
 
@@ -202,14 +215,15 @@ tab_num_elements: .word 0
 @tmp=tmp
 	IO_BEGIN
 	jsr mapreu
-	lda #@tmp
+	lda #<@tmp
 	sta $df02	; c64addr
+	lda #>@tmp
+	sta $df02+1	; c64addr+1
 
 	lda #$01
 	sta $df07	; txlen
 
 	lda #$00
-	sta $df02+1	; c64addr+1
 	sta $df07+1	; txlen+1
 	sta $df0a
 
@@ -363,9 +377,6 @@ tab_num_elements: .word 0
 ;   - reu::move_src: the address of the data to move
 ;   - reu::move_dst: the destination address in the REU
 ;   - reu::move_size: # of byte to relocate
-__reu_move_src=zp::bank
-__reu_move_dst=zp::bank+3
-__reu_move_size=zp::bank+6
 .export __reu_move
 .proc __reu_move
 @src=__reu_move_src

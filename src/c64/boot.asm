@@ -40,23 +40,21 @@ start:
 	lda #$34
 	sta $01
 
-;--------------------------------------
-; zero the BSS segment
-	lda #>__BSS_LOAD__
-	sta r0+1
-	ldy #<__BSS_LOAD__
+;-------------------------------------------------------------------------------
+; zero the HIRAM BSS ($d000-$dfff)
 	lda #$00
+	tay
 	sta r0
+	ldx #$d0
+	stx r0+1
 
 @zerobss:
 	sta (r0),y
 	iny
-	bne :+
+	bne @zerobss		; 256 bytes per page
 	inc r0+1
-:	cpy #<(__BSS_LOAD__+__BSS_SIZE__)
-	bne @zerobss
 	ldx r0+1
-	cpx #>(__BSS_LOAD__+__BSS_SIZE__)
+	cpx #$e0		; stop at $e000 (KERNAL-area code is loaded there)
 	bne @zerobss
 
 	sta zp::banksp		; zero out bank stack pointer

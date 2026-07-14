@@ -687,6 +687,7 @@ cycles_tab:
 ; encountered (or the caller interrupts via an NMI/IRQ)
 ; Checks the "stop_tracing" flag to determine if such an interrupt occurred.
 .proc trace
+.ifdef ultimem
 	; map the user's $2000-$8000 banks into BLK1/2/3 so that
 	; vmem_load/vmem_store can access them directly.
 	lda #VMEM_BLK1_BANK
@@ -695,6 +696,7 @@ cycles_tab:
 	sta $9ffa
 	lda #VMEM_BLK3_BANK
 	sta $9ffc
+.endif
 
 :	jsr step
 	lda stop_tracing

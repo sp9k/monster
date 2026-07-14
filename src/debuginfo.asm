@@ -148,12 +148,12 @@ block_open: .byte 0	; if !0, we are creating a block, when this is set
 __debug_filenames:
 filenames: .res MAX_FILES * MAX_FILENAME_LEN
 
+; map of local (object file) file IDs to global file IDs (used during load)
+filemap: .res MAX_FILES
+
 ;*******************************************************************************
 ; BSS
 .segment "DEBUGINFO_BSS"
-
-; map of local (object file) file IDs to global file IDs (used during load)
-filemap: .res MAX_FILES
 
 ; table of headers for each block
 .export blockheaders

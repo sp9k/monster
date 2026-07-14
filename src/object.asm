@@ -90,12 +90,6 @@ TYPE_BSSZP = 4		; zeropage (uninitialized)
 TYPE_ABS   = $ff	; constants, etc.
 
 ;*******************************************************************************
-; SEG IDX, SEG CNT
-; Variables used during object file loading
-seg_idx: .byte 0
-seg_cnt: .byte 0
-
-;*******************************************************************************
 ; RELOC TABLES
 ; This buffer contains the relocation tables for the object file
 ; sections_relocstartlo/hi contain the start address for each SECTION's
@@ -132,6 +126,10 @@ numsegments: .byte 0	; number of SEGMENTs in obj file being written/read
 ; VARIABLES
 .segment "OBJVARS"
 reloctop: .word 0	; pointer to top of relocation table being built
+
+; SEGMENT index/counter used while loading an object file.
+seg_idx: .byte 0
+seg_cnt: .byte 0
 
 .export __obj_numsections
 __obj_numsections:
@@ -589,6 +587,11 @@ __obj_close_section = close_section
 	RETURN_ERR ERR_OOM
 
 :	stxy @rel
+
+.ifdef c64
+	lda #FINAL_BANK_LINKER
+	sta reu::reuaddr+2
+.endif
 
 ;-------------------------------------------------------------------------------
 ; encode the "info" byte for the relocation based on the result of the
@@ -1136,6 +1139,11 @@ __obj_close_section = close_section
 	sta @sz+1
 	ora @sz
 	beq @reloc_next			; if no relocation table, skip
+
+.ifdef c64
+	lda #FINAL_BANK_LINKER
+	sta reu::reuaddr+2
+.endif
 
 	ldy #$00
 @relocloop:

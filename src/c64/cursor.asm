@@ -19,7 +19,10 @@
 	lda c64::rowshi,x
 	sta @dst+1
 	ldy zp::curx
-	lda (@dst),y
+	cpy #40
+	bne :+
+	dey			; clamp to last column (cursor at end of full line)
+:	lda (@dst),y
 	eor #$80		; reverse
 	sta (@dst),y
 
@@ -27,5 +30,7 @@
 	eor __cur_status
 	sta __cur_status
 
+	ldx zp::curx
+	ldy zp::cury
 	rts
 .endproc

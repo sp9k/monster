@@ -1,4 +1,5 @@
 .include "layout.inc"
+.include "macros.inc"
 .include "../settings.inc"
 .include "../asmflags.inc"
 .include "../debug.inc"
@@ -17,7 +18,16 @@
 .include "../vmem.inc"
 .include "../zeropage.inc"
 
-COLMEM_ADDR=$9400
+COLMEM_ADDR=$d800
+
+; color RAM row for the register contents (drawn at REGISTERS_LINE+1)
+REGS_COLOR_ROW = REGISTERS_LINE+1
+
+.ifdef PAL
+CYCLES_PER_LINE = 63
+.else
+CYCLES_PER_LINE = 65
+.endif
 
 .CODE
 ;*******************************************************************************
@@ -29,6 +39,7 @@ COLMEM_ADDR=$9400
 .proc __ui_regs_contents
 @tmp=zp::disasm+6
 @flag=zp::disasm+7
+@aff=zp::disasm+5	; sim::affected cached in zp (readable while I/O banked in)
 @buff=mem::linebuffer2
 	ldy #39
 	lda #' '
@@ -96,44 +107,57 @@ COLMEM_ADDR=$9400
 	lda __debug_interface
 	bne @colordone		; if monitor is active, skip color
 
-	ldx #TEXT_COLOR
+	; cache affected flags in zp; sim::affected lives under the I/O space
+	; and can't be read once I/O is banked in below
 	lda sim::affected
+	sta @aff
+
+	IO_BEGIN
+
+	ldx #TEXT_COLOR
+	lda @aff
 	and #OP_REG_A
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+2
-	stx COLMEM_ADDR+(20*$b)+3
+:	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+5
+	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+6
 
 	ldx #TEXT_COLOR
-	lda sim::affected
+	lda @aff
 	and #OP_REG_X
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+4
+:	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+8
+	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+9
 
 	ldx #TEXT_COLOR
-	lda sim::affected
+	lda @aff
 	and #OP_REG_Y
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+5
-	stx COLMEM_ADDR+(20*$b)+6
+:	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+11
+	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+12
 
 	ldx #TEXT_COLOR
-	lda sim::affected
+	lda @aff
 	and #OP_STACK
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+7
+:	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+14
+	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+15
 
 	; if memory was WRITTEN to, highlight it as well
 	ldx #TEXT_COLOR
-	lda sim::affected
+	lda @aff
 	and #OP_STORE
 	beq :+
 	ldx #DEBUG_REG_CHANGED_COLOR
-:	stx COLMEM_ADDR+(20*$b)+13
-	stx COLMEM_ADDR+(20*$b)+14
+:	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+26
+	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+27
+	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+28
+	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+29
+
+	IO_DONE
 
 @colordone:
 ; if memory was loaded or stored, show the effective address
@@ -194,6 +218,106 @@ COLMEM_ADDR=$9400
 @print:	lda #$00
 	sta @buff+40
 	ldxy #@buff
+	rts
+.endproc
+
+;*******************************************************************************
+; MACHINE STATE
+; Returns a line of data about the current state of the electron gun. This
+; includes the vertical position (LINE), the cycle within the line (CYC) and
+; the horizontal pixel position (HPOS = 8*CYC).
+; The C64 simulator does not (yet) simulate the CIA timers, so unlike the
+; VIC-20 no timer values are displayed.
+; OUT:
+;   - mem::linebuffer: line of text containing VIC-II specific data
+;     matches the format "LINE CYC HPOS"
+.export __ui_machine_state
+.proc __ui_machine_state
+@buff=mem::linebuffer2
+@val=r0			; 16-bit scratch (raster line / HPOS)
+@cyc=r2			; cycle within the current raster line
+	ldy #39
+	lda #' '
+:	sta @buff,y
+	dey
+	bpl :-
+
+	; if the stopwatch is invalid (e.g. after a GO), the raster position is
+	; unknown; show ??? for LINE, CYC, and HPOS
+	lda dbg::sw_valid
+	bne @line
+	lda #'?'
+	sta @buff		; LINE[0]
+	sta @buff+9+3		; HPOS[3]
+	ldx #3-1
+:	sta @buff+1,x		; LINE[1:3]
+	sta @buff+5,x		; CYC
+	sta @buff+9,x		; HPOS
+	dex
+	bpl :-
+	bmi @done		; branch always
+
+@line:	; write the LINE number
+	ldxy sim::line
+	jsr util::todec
+	ldy #0			; column 0
+	jsr @put
+
+	; CYC = LINE % CYCLES_PER_LINE
+	ldxy sim::line
+	stxy @val
+@modl:	lda @val+1
+	bne @modsub		; hi != 0 -> value >= CYCLES_PER_LINE
+	lda @val
+	cmp #CYCLES_PER_LINE
+	bcc @moddone
+@modsub:
+	lda @val
+	sec
+	sbc #CYCLES_PER_LINE
+	sta @val
+	bcs @modl
+	dec @val+1
+	bcc @modl		; (always)
+@moddone:
+	lda @val
+	sta @cyc
+	tax
+	ldy #0			; hi byte = 0 (CYC < CYCLES_PER_LINE)
+	jsr util::todec
+	ldy #5			; column 5
+	jsr @put
+
+	; HPOS = 8 * CYC
+	lda @cyc
+	sta @val
+	lda #0
+	sta @val+1
+	asl @val
+	rol @val+1
+	asl @val
+	rol @val+1
+	asl @val
+	rol @val+1
+	ldxy @val
+	jsr util::todec
+	ldy #9			; column 9
+	jsr @put
+
+@done:	ldxy #@buff
+	rts
+
+;-------------------------------------------------------------------------------
+; copy the 0-terminated decimal string in mem::spare to @buff at the column
+; given in .Y
+@put:	ldx #$00
+:	lda mem::spare,x
+	beq @putdone
+	sta @buff,y
+	inx
+	iny
+	bne :-
+@putdone:
 	rts
 .endproc
 
