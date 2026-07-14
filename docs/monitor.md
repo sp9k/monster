@@ -8,10 +8,24 @@ manipulate the program state.
 
 ### ACTIVATION
 
-The monitor is activated with the `C= + M` key combination. It can be activated from the editor both during
+The monitor is activated with the `F7` key. It can be activated from the editor both during
 normal editing and while debugging.
 If activated while debugging, a number of additional commands related to the state of the debugged program
 become available.
+
+### WINDOWED MODE
+
+The monitor may also be activated as a window that takes up only the bottom portion of the screen
+with the `F8` (`SHIFT + F7`) key.  In this mode the editor remains visible above the monitor window.
+The window may be resized with `C= + +` (grow) and `C= + -` (shrink) while the monitor is active.
+
+When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
+Pressing `F7` or `F8` while the window is open re-activates it in place.  The monitor window is
+closed, just as other windows, are with the `<-` key.
+
+While debugging, `F7`/`F8` open the monitor as a window over the bottom of the debug view (covering
+the register/state display), leaving the source view visible above it.  The window may be resized as
+usual.  When the monitor is quit, the window is dismissed and the debug view is redrawn in its place.
 
 ### FILE REDIRECTION
 The output from a given monitor command can be redirected to file instead of the screen by using the
@@ -63,3 +77,5 @@ Most parameters may be expressions (e.g. `label+10`).
 |    F1    | view screen             |                                    |                      | toggles the view of the user-memory (swaps the the  $1000-$2000 range monitor <-> program                                     |
 |    F2    | enter BASIC             |                                    |                      | drops into the stock KERNAL BASIC interpreter                                                                                 |
 |    C= + l| clear                   |                                    |                      | shortcut to clear the screen (equivalent to the clear command)                                                                |
+|    C= + +| grow window             |                                    |                      | grows the monitor window by one row (windowed mode only)                                                                      |
+|    C= + -| shrink window           |                                    |                      | shrinks the monitor window by one row (windowed mode only)                                                                    |

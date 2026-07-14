@@ -369,25 +369,6 @@ blank   = scr::blank
 	SAVE_IO
 
 	; save the registers pushed by the KERNAL interrupt handler ($FF72)
-	; TODO: save VIA timers?
-	;lda $9114
-	;sta sim::via1_t1
-	;lda $9114+1
-	;sta sim::via1_t1+1
-	;lda $9118
-	;sta sim::via1_t2
-	;lda $9118+1
-	;sta sim::via1_t2+1
-	;lda $9124
-	;sta sim::via2_t1
-	;lda $9124+1
-	;sta sim::via2_t1+1
-	;lda $9128
-	;sta sim::via2_t2
-	;lda $9128+1
-	;sta sim::via2_t2+1
-
-	; save the registers pushed by the KERNAL interrupt handler ($FF72)
 	pla
 	sta sim::reg_y
 	pla
@@ -481,11 +462,29 @@ blank   = scr::blank
 	beq @iface_gui		; if interface is GUI, continue
 
 @debugloop_tui:
+	; if the monitor is windowed, update the source view above it to
+	CALL FINAL_BANK_MONITOR, mon::update_pc_view
 	CALL FINAL_BANK_MONITOR, mon::reenter	; re-enter monitor (get input)
-	jmp @debugloop_tui
+	jmp @enter_iface	; monitor quit
 
 @iface_gui:
-	jsr show_aux		; display the auxiliary mode
+	; dismiss the monitor window (if open)
+	lda mon::wintop
+	beq :+
+	ldx #$00
+	stx mon::wintop
+
+	; restore the debug view's layout
+	ldx #DEBUG_MESSAGE_LINE
+	stx edit::status_row
+	ldx #DEBUG_MESSAGE_LINE-1
+	stx zp::editor_height
+
+	cmp #REGISTERS_LINE
+	bcs :+			; the window didn't cover any source rows
+	jsr edit::refresh	; redraw the source rows the window covered
+
+:	jsr show_aux		; display the auxiliary mode
 
 @showbrk:
 	; set color for the message row
@@ -1644,9 +1643,41 @@ __debug_remove_breakpoint:
 ; ACTIVATE MONITOR
 ; Activates the text user interface debugger (monitor)
 .proc activate_monitor
-	jsr scr::save
 	jsr bsp::save_debug_state
-	jmp edit::entermonitor
+	CALL FINAL_BANK_MONITOR, mon::enter_win
+	rts
+.endproc
+
+;*******************************************************************************
+; UPDATE PC VIEW
+; If the monitor window is open, updates the source view above it to show
+; (and highlight) the line that maps to the current PC.
+; Called when stepping/resuming from the monitor so that the source view
+; follows the code being debugged, as it does in the GUI interface.
+.export __debug_update_pc_view
+.proc __debug_update_pc_view
+	lda mon::wintop
+	beq @done		; fullscreen monitor; no source view
+
+	; limit editor to the rows above the window
+	sec
+	sbc #$01
+	sta edit::status_row
+	sbc #$01
+	sta zp::editor_height
+
+	; highlight the selected line
+	jsr cur::off
+	ldxy sim::pc
+	jsr __debug_gotoaddr	; navigate to the line of the new PC
+	bcs @done		; no line matches the address
+	jsr edit::sethighlight
+	inc lineset
+
+	; the source view was redrawn; let the monitor re-save the screen
+	; (used to restore rows revealed when its window shrinks)
+	CALL FINAL_BANK_MONITOR, mon::win_resync
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1896,6 +1927,7 @@ commands:
 	.byte K_EDIT_STATE
 	.byte K_GOTO_BREAK
 	.byte K_MONITOR
+	.byte K_MONITOR_WIN
 	.byte K_TOGGLE_INFO
 num_commands=*-commands
 
@@ -1904,7 +1936,7 @@ num_commands=*-commands
 	__debug_go, jump, __debug_step_out, __debug_trace, edit_source, \
 	edit_mem, edit_breakpoints, __debug_edit_watches, \
 	__debug_swap_user_mem, reset_stopwatch, edit_state, \
-	goto_pc, activate_monitor, toggle_extended_info
+	goto_pc, activate_monitor, activate_monitor, toggle_extended_info
 .linecont -
 command_vectorslo: .lobytes command_vectors
 command_vectorshi: .hibytes command_vectors

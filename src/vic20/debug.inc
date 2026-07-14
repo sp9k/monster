@@ -46,6 +46,46 @@
 ; This macro saves Vic-20 specific I/O (VIAs etc.) upon returning to the
 ; debugger from a "GO" command
 .macro SAVE_IO
-	;lda $912e
-	;sta sim::via2+$e
+	; capture the pending interrupt state before the timer reads below
+	; VIA #1's CA1 flag ($02) is masked out (the debugger uses CA1)
+	lda $911d
+	and #$ff-$02
+	sta sim::via1+$d
+	lda $912d
+	sta sim::via2+$d
+
+	; copy the timer counters, T1 latches, and DDRs (offsets $2-$9)
+	; re-read the hi byte after the lo byte: if it changed, the lo byte
+	; wrapped mid-read; read again
+	ldx #$08	; $8=T2 counter, $6=T1 latches, $4=T1 counter, $2=DDRs
+:	ldy $9111,x
+	lda $9110,x
+	sta sim::via1,x
+	tya
+	cmp $9111,x		; hi byte still the same?
+	bne :-			; if not (overflow) retry
+	sta sim::via1+1,x
+:	ldy $9121,x
+	lda $9120,x
+	sta sim::via2,x
+	tya
+	cmp $9121,x
+	bne :-
+	sta sim::via2+1,x
+	dex
+	dex
+	bne :--			; repeat for next register pair
+
+	; capture the ACRs: the simulator's timer emulation depends on them
+	; (T1 free-run vs one-shot and T2 pulse-count mode)
+	lda $911b
+	sta sim::via1+$b
+	lda $912b
+	sta sim::via2+$b
+
+	; capture VIA #2's IER; the simulator dispatches IRQs from it.
+	; VIA #1's IER is left alone: the debugger arms it (CA1/RESTORE)
+	; itself while the user program runs
+	lda $912e
+	sta sim::via2+$e
 .endmacro

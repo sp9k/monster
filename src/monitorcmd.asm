@@ -1098,6 +1098,7 @@ exprlist: .res MAX_EXPR_LIST
 	rts		; can't step if not debugging
 
 :	CALLMAIN dbg::step
+	jsr mon::update_pc_view		; follow the PC in the source view
 	; print the registers
 	jsr __dbgcmd_regs
 	jmp put_instruction
@@ -1112,6 +1113,7 @@ exprlist: .res MAX_EXPR_LIST
 	jsr debugging
 	bcc @done				; can't step if not debugging
 	CALLMAIN dbg::step_over
+	jsr mon::update_pc_view		; follow the PC in the source view
 	jsr __dbgcmd_regs
 	jmp put_instruction
 @done:	rts
@@ -1256,6 +1258,7 @@ exprlist: .res MAX_EXPR_LIST
 	rts		; can't step if not debugging
 
 :	CALLMAIN dbg::step_out
+	jsr mon::update_pc_view		; follow the PC in the source view
 	jsr __dbgcmd_regs
 	jmp put_instruction
 .endproc

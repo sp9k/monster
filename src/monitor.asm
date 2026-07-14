@@ -9,6 +9,7 @@
 .include "config.inc"
 .include "cursor.inc"
 .include "debug.inc"
+.include "draw.inc"
 .include "monitorcmd.inc"
 .include "edit.inc"
 .include "errors.inc"
@@ -40,9 +41,27 @@ NMI_HANDLER_ADDR = mem::spare+120
 ;*******************************************************************************
 HEIGHT = SCREEN_HEIGHT
 
+; default first row of the monitor window's contents (when windowed)
+WIN_DEFAULT_TOP = SCREEN_HEIGHT-8
+
+; minimum row the top of the monitor window may be moved to (leaves room for the
+; border row and one row of editor)
+WIN_MIN_TOP = 2
+
+; loop counter/scratch used when redrawing the window
+winrow = zp::monitor
+
 .segment "SHAREBSS"
 .export CMD_BUFF
 CMD_BUFF: .res LINESIZE		; written by edit::gets
+
+;*******************************************************************************
+; WINTOP
+; If nonzero, the monitor is displayed as a window whose contents begin at this
+; row and continue to the bottom of the screen.
+; If zero, the monitor takes the entire screen.
+.export __monitor_wintop
+__monitor_wintop: .byte 0
 
 .segment "CONSOLE_VARS"
 .export __monitor_line
@@ -53,6 +72,11 @@ repeatcmd: .byte 0	; if set, empty line repeats last command
 
 cursave_x: .byte 0
 cursave_y: .byte 0
+
+; first row of the saved screen (scr::save) that does NOT hold valid editor
+; content (rows at/below it were covered by the window when the screen was
+; saved).
+winsave_top: .byte 0
 
 ;*******************************************************************************
 ; OUTFILE
@@ -99,9 +123,21 @@ screen: .res LINESIZE*HEIGHT
 	jmp text::drawline
 	rts
 
+:	cmp #K_MONWIN_GROW
+	bne :+
+	CALL FINAL_BANK_MONITOR, __monitor_win_grow
+	jmp @handled
+
+:	cmp #K_MONWIN_SHRINK
+	bne :+
+	CALL FINAL_BANK_MONITOR, __monitor_win_shrink
+	jmp @handled
+
 :	cmp #K_SWAP_USERMEM_TUI
 	bne :+
 	jsr dbg::swapusermem
+	lda __monitor_wintop
+	bne @handled		; windowed: leave per-row color enabled
 	dec mem::coloron	; (re-disable color)
 	jmp @handled
 
@@ -135,8 +171,8 @@ screen: .res LINESIZE*HEIGHT
 	cmp #HEIGHT-1
 	bcc @print
 
-	; scroll everything up
-	ldx #$00
+	; scroll everything up (only window's rows if windowed)
+	ldx __monitor_wintop
 	lda #HEIGHT-1
 	CALLMAIN text::scrollup
 
@@ -241,6 +277,7 @@ screen: .res LINESIZE*HEIGHT
 .proc __monitor_init
 	lda #$00
 	sta line
+	sta __monitor_wintop
 	sta __mon_default_start_set
 	rts
 .endproc
@@ -251,15 +288,28 @@ screen: .res LINESIZE*HEIGHT
 .export __monitor_clear
 .proc __monitor_clear
 @scr=r0
-	; clear the screen
+	; clear the screen (or just the window's rows if windowed)
+	lda __monitor_wintop
+	bne @clrwin
 	CALLMAIN scr::clr
+	jmp @clrbuff
 
+@clrwin:
+:	pha
+	CALLMAIN scr::clrline
+	pla
+	clc
+	adc #$01
+	cmp #HEIGHT
+	bcc :-
+
+@clrbuff:
 	; clear the monitor buffer
 	ldxy #screen
 	stxy @scr
 	ldx #HEIGHT
 	ldy #$00
-@l0:	tya		; .A=0
+@l0:	lda #$00
 	sta (@scr),y
 
 	; move to next line
@@ -272,10 +322,14 @@ screen: .res LINESIZE*HEIGHT
 :	dex
 	bne @l0
 
-	stx zp::cury
-	stx line	; go back to first line
-	inx
-	stx zp::curx
+	; move back to the first line (bottom row if windowed)
+	lda __monitor_wintop
+	beq :+
+	lda #HEIGHT-1
+:	sta zp::cury
+	sta line
+	lda #$01
+	sta zp::curx
 	lda #MONITOR_PROMPT
 	sta mem::linebuffer
 	lda #$00
@@ -462,8 +516,419 @@ screen: .res LINESIZE*HEIGHT
 	lda cursave_y
 	sta zp::cury
 
-	; debug interface changed back to GUI, refresh editor
+	; if windowed, leave the window onscreen (editor will resize to fit)
+	lda __monitor_wintop
+	beq :+
+	rts
+
+:	; debug interface changed back to GUI, refresh editor
 	JUMPMAIN edit::refresh
+.endproc
+
+;******************************************************************************
+; ENTER WIN
+; Activates the monitor as a window on the lower part of the screen.
+; If the monitor window is already open, re-activates it.
+.export __monitor_enter_win
+.proc __monitor_enter_win
+	CALLMAIN asm::reset
+
+	; save cursor state of caller
+	lda zp::curx
+	sta cursave_x
+	lda zp::cury
+	sta cursave_y
+
+	; save the screen so that the editor's rows can be restored from the
+	; backup when the window shrinks
+	CALLMAIN scr::save
+
+	lda __monitor_wintop
+	bne @reactivate
+
+@activate:
+	lda #HEIGHT-1
+	sta winsave_top
+	lda #WIN_DEFAULT_TOP
+	sta __monitor_wintop
+
+	; move the monitor's history down so that the input line is on the
+	; bottom row of the screen (and therefore within the window)
+	jsr anchor_bottom
+	jmp @draw
+
+@reactivate:
+	; the rows in/below the window hold monitor content in the backup;
+	; rows revealed beyond this point are rendered on demand by the editor
+	sec
+	sbc #$01
+	sta winsave_top
+
+@draw:	jsr draw_window
+	jmp __monitor_reenter
+.endproc
+
+;******************************************************************************
+; WIN GROW
+; Grows the monitor window by one row (moves its top row up).
+; Does nothing if the monitor is fullscreen or the window is at its max size.
+.export __monitor_win_grow
+.proc __monitor_win_grow
+	lda __monitor_wintop
+	beq @done		; if fullscreen, nothing to do
+	cmp #WIN_MIN_TOP+1
+	bcc @done		; already at max size
+	dec __monitor_wintop
+
+	; draw the border at its new position and the single row of history
+	; that the window revealed
+	jsr draw_border
+	lda __monitor_wintop
+	sta winrow
+	jmp draw_row
+@done:	rts
+.endproc
+
+;******************************************************************************
+; WIN SHRINK
+; Shrinks the monitor window by one row (moves its top row down).
+; Does nothing if the monitor is fullscreen or the input line would be pushed
+; out.
+.export __monitor_win_shrink
+.proc __monitor_win_shrink
+	lda __monitor_wintop
+	beq @done		; fullscreen; nothing to do
+	cmp line
+	bcs @done		; don't shrink past the input line
+	inc __monitor_wintop
+
+	; redraw the revealed row (the old border row): restore it from the
+	; saved screen if it holds editor content there, else have the editor
+	; render the source line that belongs at that row
+	lda __monitor_wintop
+	sec
+	sbc #$02
+	pha
+
+	; clear the border highlight from the row before it is drawn
+	tax
+	CALLMAIN draw::resetline
+
+	pla
+	cmp winsave_top
+	bcs @render
+	CALLMAIN scr::restore_row
+	jmp @border
+
+@render:
+	pha
+	jsr render_hidden_row
+
+	; cache the rendered row in the screen backup so that, if it's
+	; covered and revealed again, it can be restored instead of re-rendered
+	pla
+	CALLMAIN scr::save_row
+	inc winsave_top
+
+@border:
+	jmp draw_border
+@done:	rts
+.endproc
+
+;******************************************************************************
+; UPDATE PC VIEW
+; Updates the source view above the monitor window to follow the debugger's
+; PC (see dbg::update_pc_view).
+; The editor's redraw logic requires the cursor to be in sync with the
+; source position, so the monitor's cursor is swapped out for the saved
+; editor cursor around the call.
+.export __monitor_update_pc_view
+.proc __monitor_update_pc_view
+	; swap in the editor's cursor (the monitor owns the live one)
+	lda zp::cury
+	pha
+	lda zp::curx
+	pha
+	lda cursave_y
+	sta zp::cury
+	lda cursave_x
+	sta zp::curx
+
+	CALLMAIN dbg::update_pc_view
+
+	; redraw the border in case the source redraw disturbed it
+	lda __monitor_wintop
+	beq :+
+	jsr draw_border
+
+:	; save the editor's cursor (it moved to the new PC's line) and
+	; restore the monitor's
+	lda zp::cury
+	sta cursave_y
+	lda zp::curx
+	sta cursave_x
+	pla
+	sta zp::curx
+	pla
+	sta zp::cury
+	rts
+.endproc
+
+;******************************************************************************
+; WIN RESYNC
+; Re-saves the screen backup and the caller's cursor after the display above
+; the monitor window has been redrawn behind the monitor's back (e.g. by the
+; debugger moving the source view to the new PC while stepping).
+.export __monitor_win_resync
+.proc __monitor_win_resync
+	; re-save the caller's cursor (it may have moved with the redraw)
+	lda zp::curx
+	sta cursave_x
+	lda zp::cury
+	sta cursave_y
+
+	; re-save the rows above the window (the ones the redraw changed)
+	lda #$00
+@l0:	pha
+	CALLMAIN scr::save_row
+	pla
+	clc
+	adc #$01
+	cmp __monitor_wintop
+	bcc @l0			; repeat for rows 0 to wintop-1
+
+	; rows at/below the border hold monitor content in the backup; rows
+	; revealed beyond this point are rendered on demand by the editor
+	lda __monitor_wintop
+	sec
+	sbc #$01
+	sta winsave_top
+	rts
+.endproc
+
+;******************************************************************************
+; RENDER HIDDEN ROW
+; Has the editor render the source line that belongs at the given row.
+; Used when the window shrinks past the point captured in the screen backup.
+; The editor's render is based on its cursor row, so the monitor's cursor is
+; swapped out for the saved editor cursor around the call.
+; IN:
+;   - .A: the row to render
+.proc render_hidden_row
+	sta winrow
+	lda zp::cury
+	pha
+	lda cursave_y
+	sta zp::cury
+	lda winrow
+	CALLMAIN edit::render_row
+	pla
+	sta zp::cury
+	rts
+.endproc
+
+;******************************************************************************
+; DRAW WINDOW
+; Redraws the monitor window: the border row at wintop-1 and the contents of
+; the monitor's screen buffer from wintop to the bottom of the screen.
+; Redraws the input line from the linebuffer and clears rows below it
+.proc draw_window
+	jsr draw_border
+
+	lda __monitor_wintop
+	sta winrow
+@l0:	jsr draw_row
+	inc winrow
+	lda winrow
+	cmp #HEIGHT
+	bcc @l0
+	rts
+.endproc
+
+;******************************************************************************
+; DRAW BORDER
+; Draws the border row above the monitor window (at wintop-1).
+; Normally the border doubles as the status row; while debugging it is
+; drawn as a clean bitmap separator line instead (the status contents are
+; not meaningful there).
+.proc draw_border
+	lda edit::debugging
+	bne @separator
+
+	; draw the status row as the border
+	lda __monitor_wintop
+	sec
+	sbc #$01
+	pha
+	CALLMAIN text::status
+	pla
+	tax
+	lda #COLOR_RVS
+	JUMPMAIN draw::hline
+
+@separator:
+	; draw a horizontal line as the border
+	lda __monitor_wintop
+	sec
+	sbc #$01
+	pha
+	CALLMAIN scr::clrline
+	pla
+	pha
+	ldy #$03		; draw the line in the middle of the row
+	CALLMAIN draw::rvs_line
+	pla
+	tax
+	JUMPMAIN draw::resetline
+.endproc
+
+;******************************************************************************
+; DRAW ROW
+; Draws the row given in "winrow" from the monitor's screen buffer.
+; Draws the input row from the linebuffer and clears rows below it.
+.proc draw_row
+@scr=r0
+	lda winrow
+	cmp line
+	beq @input	; if input row, draw current contents of the linebuffer
+	bcs @clr	; if BELOW the input row, clear the row
+
+	; copy the buffered line to shared memory and print it
+	jsr rowptr
+	stxy @scr
+	ldy #LINESIZE-1
+:	lda (@scr),y
+	sta mem::spare,y
+	dey
+	bpl :-
+	lda #$00
+	sta mem::spare+LINESIZE	; 0 terminate
+
+	ldx winrow
+	CALLMAIN draw::resetline
+	ldxy #mem::spare
+	lda winrow
+	JUMPMAIN text::print
+
+@input:	ldx winrow
+	CALLMAIN draw::resetline
+	ldxy #mem::linebuffer
+	lda winrow
+	JUMPMAIN text::print
+
+@clr:	lda winrow
+	pha
+	CALLMAIN scr::clrline
+	pla
+	tax
+	JUMPMAIN draw::resetline
+.endproc
+
+;******************************************************************************
+; ANCHOR BOTTOM
+; Moves the contents of the monitor's screen buffer down so that the last line
+; of history is just above the input line, which is moved to the bottom row
+; of the screen
+.proc anchor_bottom
+@src=r0
+@dst=r2
+@cnt=r4
+	lda #HEIGHT-1
+	sec
+	sbc line	; .A = # of rows to move everything down by
+	beq @done	; already anchored to the bottom
+
+	lda line
+	beq @clr	; no content to move
+
+	sta @cnt
+
+	; copy rows line-1..0 to rows HEIGHT-2..D-1 (bottom up)
+	lda line
+	sec
+	sbc #$01
+	jsr rowptr
+	stxy @src
+	lda #HEIGHT-2
+	jsr rowptr
+	stxy @dst
+
+@l0:	ldy #LINESIZE-1
+:	lda (@src),y
+	sta (@dst),y
+	dey
+	bpl :-
+
+	; move both pointers up one row
+	lda @src
+	sec
+	sbc #LINESIZE
+	sta @src
+	bcs :+
+	dec @src+1
+:	lda @dst
+	sec
+	sbc #LINESIZE
+	sta @dst
+	bcs :+
+	dec @dst+1
+:	dec @cnt
+	bne @l0
+
+@clr:	; clear the rows that were left behind (0 to D-1)
+	lda #HEIGHT-1
+	sec
+	sbc line
+	sta @cnt
+	ldxy #screen
+	stxy @dst
+	ldy #$00
+@l1:	lda #$00
+	sta (@dst),y	; terminate the row (empty line)
+	lda @dst
+	clc
+	adc #LINESIZE
+	sta @dst
+	bcc :+
+	inc @dst+1
+:	dec @cnt
+	bne @l1
+
+	lda #HEIGHT-1
+	sta line
+@done:	rts
+.endproc
+
+;******************************************************************************
+; ROWPTR
+; Returns the address of the given row in the monitor's screen buffer
+; IN:
+;   - .A: the row to get the buffer address of
+; OUT:
+;   - .XY: the address of the row (screen + row*LINESIZE)
+.proc rowptr
+@tmp=r6
+	sta @tmp
+	asl		; *2
+	asl		; *4
+	adc @tmp	; *5
+	sta @tmp
+	lda #$00
+	sta @tmp+1
+	asl @tmp
+	rol @tmp+1	; *10
+	asl @tmp
+	rol @tmp+1	; *20
+	asl @tmp
+	rol @tmp+1	; *40 (LINESIZE)
+	lda @tmp
+	clc
+	adc #<screen
+	tax
+	lda @tmp+1
+	adc #>screen
+	tay
+	rts
 .endproc
 
 ;*******************************************************************************

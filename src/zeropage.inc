@@ -14,6 +14,8 @@ bankjmpvec  = $08	; JMP vector
 memsrc      = $0a	; temporary pointer for memory operations
 memdst      = $0c	; temporary pointer for memory operations
 
+monitor     = $0e	; scratchpad for the monitor (window drawing)
+
 debug = $10		; $10-$28 debug info generation
 
 debugger    = $28	; $28-$29 used by debugger

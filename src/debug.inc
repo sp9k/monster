@@ -35,6 +35,7 @@
 .import __debug_swap_in
 .import __debug_swap_out
 .import __debug_trace
+.import __debug_update_pc_view
 .import __debug_swap_user_mem
 .import __debug_setbrkataddr
 .import __debug_enable_expansion
@@ -75,4 +76,5 @@
 	swap_out             = __debug_swap_out
 	swapusermem          = __debug_swap_user_mem
 	trace                = __debug_trace
+	update_pc_view       = __debug_update_pc_view
 .endscope

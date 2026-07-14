@@ -278,14 +278,121 @@ main:	jsr key::getch
 
 ;*******************************************************************************
 ; MONITOR
-; Activates the monitor and restores the editor when it exits
+; Activates the monitor and restores the editor when it exits.
+; If the monitor is open as a window, re-activates the window instead.
 .proc monitor
+	lda debugging
+	bne @fullscreen		; always use the full screen while debugging
+	lda mon::wintop
+	bne monitor_win		; monitor window is open; re-enter it
+
+@fullscreen:
+	lda #$00
+	sta mon::wintop		; close the monitor window (if any)
 	jsr scr::save
 	pushcur
 	jsr __edit_enter_monitor
 	inc mem::coloron		; restore per-row color
 	popcur
 	jmp scr::restore
+.endproc
+
+;*******************************************************************************
+; MONITOR WIN
+; Activates the monitor as a window at the bottom of the screen, leaving the
+; editor visible above it.
+.proc monitor_win
+	lda debugging
+	bne monitor		; always use the full screen while debugging
+
+	lda mon::wintop
+	bne :+			; window already open; re-enter it in place
+
+	; close any other windows (e.g. the error log) and redraw the editor
+	; at max size so that the monitor saves a clean screen when it opens
+	jsr close_windows
+
+:	CALL FINAL_BANK_MONITOR, mon::enter_win
+
+	; leave the window onscreen; make sure the editor still fits above it
+	jsr __edit_monwin_resize
+	jmp draw_status_bar
+.endproc
+
+;*******************************************************************************
+; MONWIN RESIZE
+; Resizes the editor to fit above the monitor window and moves the status
+; row to the window's border row.  Called (also by the monitor) whenever the
+; monitor window's size changes.
+.export __edit_monwin_resize
+.proc __edit_monwin_resize
+	lda mon::wintop
+	sec
+	sbc #$01
+	sta status_row		; border row above the window is the status row
+	sbc #$01		; editor rows end above the status row
+	cmp height
+	sta height
+	bcs @done	; if the editor grew, the screen contents are already
+			; valid (the monitor restores/renders revealed rows)
+
+	; the editor shrank; move the cursor up until it is in range
+@l0:	lda zp::cury
+	cmp height
+	bcc @done
+	jsr ccup
+	bcc @l0
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; RENDER ROW
+; Renders the source line that belongs at the given screen row without
+; affecting the cursor, linebuffer, or source position.  The given row must
+; be at or below the cursor's row.  Rows past the end of the source are
+; cleared.
+; Used by the monitor to render rows that are revealed when its window
+; shrinks below the size it had when the screen was last saved.
+; IN:
+;  - .A: the row to render
+.export __edit_render_row
+.proc __edit_render_row
+	pha			; save row
+	jsr text::savebuff	; save linebuffer
+	jsr src::pushp		; save source position
+	jsr src::home		; move to the start of the current line
+
+	; move to the line that belongs at the given row
+	pla
+	pha
+	sec
+	sbc zp::cury
+	bcs @down
+
+	; the row is above the cursor's row; move up (cury - row) lines
+	eor #$ff
+	adc #$01		; .A = cury - row (.C is clear)
+	tax
+	ldy #$00
+	jsr src::upn
+	jmp @read
+
+@down:	; the row is at/below the cursor's row; move down (row - cury) lines
+	tax
+	ldy #$00
+	jsr src::downn
+	bcs @clr		; source ended before the target row
+
+@read:	jsr src::readline	; read the target line into the linebuffer
+	pla			; restore the row
+	jsr text::drawline
+	jmp @done
+
+@clr:	pla			; restore the row
+	jsr scr::clrline
+
+@done:	jsr src::popgoto	; restore the source position
+	jmp text::restorebuff	; and the linebuffer
 .endproc
 
 ;*******************************************************************************
@@ -303,15 +410,18 @@ main:	jsr key::getch
 	jsr label_addr_or_org	; get address to begin debugging at
 	stxy @addr
 	bcc :+
-@ret:	rts			; address not found
+	jmp report_typein_error	; invalid expression
 
 :	jsr src::anydirty
 	beq :+			; if no dirty buffers, continue
 	jsr prompt_saveall	; ask user if they want to save buffers
-	bcs @ret
+	bcc :+
+@ret:	rts
 
 :	jsr enter_command
 	inc debugging
+	lda #$00
+	sta mon::wintop	; close the monitor window (if open)
 	jsr reset_size
 	inc readonly	; enable read-only mode
 
@@ -1089,6 +1199,8 @@ cancel = enter_command
 ; the full screen
 .proc close_windows
 	jsr gui::closeall		; close any open windows
+	lda #$00
+	sta mon::wintop			; close the monitor window (if open)
 	; fall through to reset_size
 .endproc
 
@@ -1100,8 +1212,12 @@ cancel = enter_command
 	beq :+
 	lda #DEBUG_MESSAGE_LINE-1
 	sta height
+	lda #DEBUG_MESSAGE_LINE
+	sta status_row
 	rts
-:	lda #EDITOR_HEIGHT
+:	lda #STATUS_ROW
+	sta status_row
+	lda #EDITOR_HEIGHT
 	sta height
 	jmp refresh
 .endproc
@@ -1434,20 +1550,20 @@ cancel = enter_command
 
 @sof:	; at start of the buffer, DELETE the newline (connecting the NEXT line)
 	jsr src::delete
-	jmp :+
+	jmp @cont
 
 @moveup:
 	; BACKSPACE to delete the newline character connecting the PREVIOUS line
 	jsr src::backspace
 	jsr src::down
-	bcc :+
+	bcc @cont
 
 	; end of buffer: clear the line we deleted
 	lda zp::cury
 	jsr scr::clrline
 	dec zp::cury		; and don't leave cursor on same line (that line
 	                        ; is gone now)
-:	inc zp::cury
+@cont:	inc zp::cury
 	jsr bumpup
 	jsr refresh_line	; refresh linebuffer with new line's contents
 
@@ -2780,9 +2896,20 @@ __edit_refresh:
 	jsr scr::clrline		; clear the bitmap data for this row
 	jmp @clr
 
-@done:	lda #COLOR_RVS
-	ldx #STATUS_ROW
+@done:	ldx #STATUS_ROW
+	lda mon::wintop		; if the monitor window is open, the bottom
+	beq @rvs		; rows belong to it; color the border row
+	ldx status_row
+	lda debugging
+	beq @rvs
+	; while debugging, the monitor window's border is a bitmap
+	; separator; leave its color normal
+	jsr draw::resetline
+	jmp @coloron
+
+@rvs:	lda #COLOR_RVS
 	jsr draw::hline		; re-init status row's color
+@coloron:
 	lda #$01
 	sta mem::coloron	; enable color
 
@@ -4748,6 +4875,8 @@ goto_buffer:
 :	rts
 .endproc
 
+.RODATA
+
 ;******************************************************************************
 ; COMMAND_FIND
 ; Gets a string from the user and searches (forward) for it in the source file
@@ -5045,8 +5174,6 @@ goto_buffer:
 	bne :-
 @done:	jmp unblank
 .endproc
-
-.RODATA
 
 ;*******************************************************************************
 ; GOTO END
@@ -5948,6 +6075,7 @@ ro_commands:
 	.byte K_PREV_DRIVE	; prev drive
 	.byte K_GETCMD		; get command
 	.byte K_MONITOR		; enter console
+	.byte K_MONITOR_WIN	; enter console in a window
 	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
 	.byte K_CLOSE_WINDOWS	; <- (close windows)
@@ -5966,7 +6094,8 @@ numcommands=*-commands
 	home_line, ccdel, ccright, goto_end, goto_start, find_next, find_prev, \
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
-	command_find, next_drive, prev_drive, get_command, monitor, next_err, \
+	command_find, next_drive, prev_drive, get_command, monitor, \
+	monitor_win, next_err, \
 	help::show, close_windows
 .linecont -
 

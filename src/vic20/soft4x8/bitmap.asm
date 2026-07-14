@@ -454,6 +454,28 @@ blank_backup: .res 16
 .endproc
 
 ;*******************************************************************************
+; RESTORE ROW
+; Restores a single character row of the bitmap from the backup buffer.
+; IN:
+;  - .A: the character row to restore
+.export __screen_restore_row
+.proc __screen_restore_row
+	CALL FINAL_BANK_VSCREEN, restore_row
+	rts
+.endproc
+
+;*******************************************************************************
+; SAVE ROW
+; Saves a single character row of the bitmap to the backup buffer.
+; IN:
+;  - .A: the character row to save
+.export __screen_save_row
+.proc __screen_save_row
+	CALL FINAL_BANK_VSCREEN, save_row
+	rts
+.endproc
+
+;*******************************************************************************
 ; CHAR ADDR
 ; Returns the bitmap address for the "character row" of the given row.
 ; Characters are 8 pixels tall, so this is BITMAP_ADDR+(8*row) where row is
@@ -547,6 +569,109 @@ inittab_blank:	.byte $02,$fe,$fe,$eb,$00,$0c
 	lda @bm+1
 	cmp #>$2000
 	bne :-
+	rts
+.endproc
+
+;*******************************************************************************
+; ROW PTRS
+; Computes the bitmap and backup buffer addresses for the given character row.
+; NOTE: this code runs in the VSCREEN bank, so it must not reference any
+; data outside of this segment (e.g. the column LUTs)
+; IN:
+;  - .A: the character row
+; OUT:
+;  - r0: the address of the row in the backup buffer
+;  - r2: the address of the row in the bitmap (first column)
+.proc row_ptrs
+@buff=r0
+@bm=r2
+	; @bm = address of the row in the first bitmap column
+	; (BITMAP_ADDR + row*8; BITMAP_ADDR is page aligned)
+	asl
+	asl
+	asl
+	sta @bm
+	lda #>BITMAP_ADDR
+	sta @bm+1
+
+	; @buff = backbuff + (@bm - BITMAP_ADDR)
+	lda @bm
+	clc
+	adc #<(backbuff-BITMAP_ADDR)
+	sta @buff
+	lda @bm+1
+	adc #>(backbuff-BITMAP_ADDR)
+	sta @buff+1
+	rts
+.endproc
+
+;*******************************************************************************
+; RESTORE ROW
+; Restores a single character row of the bitmap from the backup buffer.
+; IN:
+;  - .A: the character row to restore
+.proc restore_row
+@buff=r0
+@bm=r2
+	jsr row_ptrs
+
+	ldx #NUM_COLS
+@l0:	ldy #$07
+:	lda (@buff),y
+	sta (@bm),y
+	dey
+	bpl :-
+
+	; move both pointers to the next column ($c0 bytes per column)
+	lda @bm
+	clc
+	adc #$c0
+	sta @bm
+	bcc :+
+	inc @bm+1
+:	lda @buff
+	clc
+	adc #$c0
+	sta @buff
+	bcc :+
+	inc @buff+1
+:	dex
+	bne @l0
+	rts
+.endproc
+
+;*******************************************************************************
+; SAVE ROW
+; Saves a single character row of the bitmap to the backup buffer.
+; IN:
+;  - .A: the character row to save
+.proc save_row
+@buff=r0
+@bm=r2
+	jsr row_ptrs
+
+	ldx #NUM_COLS
+@l0:	ldy #$07
+:	lda (@bm),y
+	sta (@buff),y
+	dey
+	bpl :-
+
+	; move both pointers to the next column ($c0 bytes per column)
+	lda @bm
+	clc
+	adc #$c0
+	sta @bm
+	bcc :+
+	inc @bm+1
+:	lda @buff
+	clc
+	adc #$c0
+	sta @buff
+	bcc :+
+	inc @buff+1
+:	dex
+	bne @l0
 	rts
 .endproc
 

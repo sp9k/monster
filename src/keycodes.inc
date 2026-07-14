@@ -29,6 +29,7 @@ K_LINK           = $8a  ; F4 (shift + F3)
 K_SHOW_BUFFERS   = $87	; F5
 K_SHOW_PROJECT	 = $8b	; F6
 K_MONITOR        = $88	; F7
+K_MONITOR_WIN    = $8c	; F8 (SHIFT + F7)
 K_CLOSE_WINDOWS  = $5f	; <-
 
 K_NEXT_PAL       = $db	; SHIFT + +
@@ -95,6 +96,8 @@ K_DEL_WATCH = $ac	; C= + d
 ; MONITOR KEYS
 K_GO_BASIC_TUI		= $89	; F2
 K_MON_CLEAR		= $b6	; C= + l
+K_MONWIN_GROW		= $a6	; C= + + (grow monitor window)
+K_MONWIN_SHRINK		= $dc	; C= + - (shrink monitor window)
 
 ;*******************************************************************************
 ; KEY REMAPPINGS

@@ -214,7 +214,22 @@ VIA_T2CH = $9		; T2 counter hi
 	dey
 	bpl :-
 
-	; write the LINE number
+	; if the stopwatch is invalid (e.g. after a GO), the raster position is
+	; unknown; show ??? for LINE, CYC, and HPOS
+	lda dbg::sw_valid
+	bne @line
+	lda #'?'
+	sta @buff		; LINE[0]
+	sta @buff+9+3		; HPOS[3]
+	ldx #3-1
+:	sta @buff+1,x		; LINE[1:3]
+	sta @buff+5,x		; CYC
+	sta @buff+9,x		; HPOS
+	dex
+	bpl :-
+	bmi @vias		; branch always
+
+@line:	; write the LINE number
 	ldxy sim::line
 	jsr util::todec
 	ldy #0			; column 0
@@ -260,7 +275,7 @@ VIA_T2CH = $9		; T2 counter hi
 	jsr @put
 
 	; VIA #1 timer 1
-	ldx sim::via1+VIA_T1CL
+@vias:	ldx sim::via1+VIA_T1CL
 	ldy sim::via1+VIA_T1CH
 	jsr util::todec
 	ldy #15			; column 15
@@ -446,9 +461,9 @@ VIA_T2CH = $9		; T2 counter hi
 	bne :+
 	; if stopwatch is invalid, show ???
 	lda #'?'
+	sta @buff+36
 	sta @buff+37
 	sta @buff+38
-	sta @buff+39
 	bne @print
 
 :	ldx sim::stopwatch

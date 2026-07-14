@@ -10,6 +10,7 @@
 .include "../prefs.inc"
 .include "../settings.inc"
 .include "../vaddrs.inc"
+.include "../../asm.inc"
 .include "../../debug.inc"
 .include "../../edit.inc"
 .include "../../irq.inc"
@@ -192,6 +193,7 @@ ret:     .word 0
 	; initialize PC to warm start
 	ldxy #$c474
 	stxy sim::pc
+	stxy asm::origin
 
 	jsr irq::on
 

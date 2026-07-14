@@ -240,6 +240,28 @@ SCREEN_ROWS = 12	; number of physical rows per column
 .endproc
 
 ;*******************************************************************************
+; RESTORE ROW
+; Restores a single row of the screen from the backup buffer.
+; IN:
+;  - .A: the row to restore
+.export __screen_restore_row
+.proc __screen_restore_row
+	; TODO: (see __screen_save)
+	rts
+.endproc
+
+;*******************************************************************************
+; SAVE ROW
+; Saves a single row of the screen to the backup buffer.
+; IN:
+;  - .A: the row to save
+.export __screen_save_row
+.proc __screen_save_row
+	; TODO: (see __screen_save)
+	rts
+.endproc
+
+;*******************************************************************************
 ; CHAR ADDR
 ; Returns the address for the "character row" of the given row.
 ; IN:

@@ -285,6 +285,44 @@
 .endproc
 
 ;*******************************************************************************
+; RESTORE ROW
+; Restores a single row of the screen from the backup buffer.
+; IN:
+;  - .A: the row to restore
+.export __screen_restore_row
+.proc __screen_restore_row
+	jsr row_addrs
+	jmp reu::load
+.endproc
+
+;*******************************************************************************
+; SAVE ROW
+; Saves a single row of the screen to the backup buffer.
+; IN:
+;  - .A: the row to save
+.export __screen_save_row
+.proc __screen_save_row
+	jsr row_addrs
+	jmp reu::store
+.endproc
+
+;*******************************************************************************
+; ROW ADDRS
+; Sets up the REU registers for transferring the given screen row
+; IN:
+;  - .A: the row to set the transfer registers for
+.proc row_addrs
+	jsr __screen_char_addr	; .XY = the screen address of the row
+	stxy reu::c64addr
+	stxy reu::reuaddr
+	lda #^REU_BACKUP_ADDR
+	sta reu::reuaddr+2
+	ldxy #NUM_COLS
+	stxy reu::txlen
+	rts
+.endproc
+
+;*******************************************************************************
 ; CHAR ADDR
 ; Returns the address for the "character row" of the given row.
 ; IN:
