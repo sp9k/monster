@@ -1203,6 +1203,10 @@ exprlist: .res MAX_EXPR_LIST
 	sbc #$00
 	sta @addr+1
 
+	; if there are no symbols, we can't symbolize the frame
+	iszero lbl::num
+	beq @nosym
+
 	; get the symbol name for this address (if there is one)
 	ldxy @addr
 	CALLMAIN lbl::by_addr
@@ -1240,6 +1244,16 @@ exprlist: .res MAX_EXPR_LIST
 
 	ldxy #@backtrace_msg
 	jmp mon::puts
+
+@nosym:	; no symbols exist; push placeholders for the name and offset
+	lda #$00
+	pha			; offset LSB
+	pha			; offset MSB
+	lda #>strings::question_marks
+	pha
+	lda #<strings::question_marks
+	pha
+	jmp @push_addr
 
 .PUSHSEG
 .RODATA

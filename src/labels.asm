@@ -101,7 +101,7 @@ temp    = zp::labels+$14	; temporary scratchpad
 
 ;*******************************************************************************
 ; CONSTANTS
-SCOPE_LEN  = 8		; max len of namespace (scope)
+SCOPE_LEN  = 12		; size of a namespace (scope) entry (name + terminator)
 
 ; NOTE: BE CAREFUL CHANGING THIS
 ; BUCKETING LOGIC RELIES ON AN EXACT SIZE (BITS 8-11)
@@ -212,7 +212,7 @@ labels: .res MAX_LABELS*SIZEOF_LABEL
 ; SCOPES
 ; Stack of "scopes". These are defined by a global (non-local) label definition
 ; And they end at the definition of another non-local symbol
-scopes: .res 8*MAX_SCOPES		; scope stack buffer
+scopes: .res SCOPE_LEN*MAX_SCOPES	; scope stack buffer
 
 ;*******************************************************************************
 ; LABEL ADDRESSES INDEX
@@ -259,6 +259,11 @@ label_names_sorted:     .res MAX_LABELS*2
 .export label_names_sorted_ids
 label_names_sorted_ids: .res MAX_LABELS*2
 
+; lbl::load's index rebuild steps between these arrays by their size
+.assert label_addresses_sorted_ids-label_addresses_sorted = MAX_LABELS*2, error, "label index arrays must be contiguous"
+.assert label_names_sorted-label_addresses_sorted_ids = MAX_LABELS*2, error, "label index arrays must be contiguous"
+.assert label_names_sorted_ids-label_names_sorted = MAX_LABELS*2, error, "label index arrays must be contiguous"
+
 ;*******************************************************************************
 ; ANON ADDRS
 ; address table for each anonymous label
@@ -276,7 +281,7 @@ __label_num: .word 0		; total number of labels
 __label_numanon:
 numanon: .word 0		; total number of anonymous labels
 
-scopesp: .byte 0		; index of curent active scope's name
+scopesp: .byte 0		; offset of next free scope (0 = no scope)
 labelvars_size=*-labelvars
 
 .segment "LABELS"
@@ -305,18 +310,15 @@ labelvars_size=*-labelvars
 .proc set_scope
 @scope  = temp
 @scopes = temp+2
-	; scopesp += SCOPE_LEN
+	; make sure there is room to push another scope
 	lda scopesp
-	cmp #(MAX_SCOPES-1)*SCOPE_LEN
+	cmp #MAX_SCOPES*SCOPE_LEN
 	bcc :+
 	;sec
 	lda #ERR_STACK_OVERFLOW
 	rts
 
-:	adc #SCOPE_LEN
-	sta scopesp
-
-	; get @scope-scopesp so that @scope+scopesp points to the start of the
+:	; get @scope-scopesp so that @scope+scopesp points to the start of the
 	; input string
 	txa
 	sec
@@ -342,6 +344,12 @@ labelvars_size=*-labelvars
 
 @done:  lda #$00
 	STOREB_Y @scopes	; terminate
+
+	; scopesp += SCOPE_LEN
+	lda scopesp
+	clc
+	adc #SCOPE_LEN
+	sta scopesp
 	RETURN_OK
 .endproc
 
@@ -363,9 +371,13 @@ labelvars_size=*-labelvars
 	stxy @scopes
 
 	ldx #$00
-	ldy scopesp			; check if there is a scope defined
-	bne @l0				; if so, continue
+	lda scopesp			; check if there is a scope defined
+	bne :+				; if so, continue
 	RETURN_ERR ERR_NO_OPEN_SCOPE
+
+:	sec				; .Y = offset of the active scope
+	sbc #SCOPE_LEN
+	tay
 
 @l0:	; write the scope to the buffer
 	LOADB_Y @scopes
@@ -619,9 +631,7 @@ labelvars_size=*-labelvars
 ;  - .XY: the ID of the label added
 ;  - .C:  set on error or clear if the label was successfully added
 .proc addlabel
-@addr   = temp
 @name   = r6
-@exists = r8
 @allow_overwrite=r9
 	sta @allow_overwrite	; set overwrite flag (SET) or clear (ADD)
 
@@ -631,15 +641,12 @@ labelvars_size=*-labelvars
 	bcs @ret		; return err
 
 	; check if the label already exists
-	lda #$00
-	sty @exists
 	ldxy @name
 	jsr find
 	stxy id
 	bcs @insert		; label doesn't exist -> continue to add it
 
 	; label exists, if we are in SET mode overwrite, else return with error
-	inc @exists
 	lda @allow_overwrite
 	bne @overwrite
 	RETURN_ERR ERR_LABEL_ALREADY_DEFINED
@@ -752,7 +759,7 @@ labelvars_size=*-labelvars
 	;sec
 	rts			; return err
 
-:	lda #$00
+:	lda numanon+1
 	sta @src+1
 
 	lda numanon
@@ -769,9 +776,17 @@ labelvars_size=*-labelvars
 	cmpw @src
 	beq @finish		; skip shift if this is the highest address
 
-	; shift all the existing labels
-@shift:	; src[i+2] = src[i]
-	; src[i+3] = src[i+1]
+	; shift the labels at/above the insertion point up one entry
+@shift:	; src -= 2 (next entry to move up)
+	lda @src
+	sec
+	sbc #$02
+	sta @src
+	bcs :+
+	dec @src+1
+
+:	; src[2] = src[0]
+	; src[3] = src[1]
 	ldy #$00
 	LOADB_Y @src	; LSB
 	ldy #$02	; move up 2 bytes
@@ -781,21 +796,13 @@ labelvars_size=*-labelvars
 	ldy #$03	; move up 2 bytes
 	STOREB_Y @src
 
-	; src -= 2
-	lda @src
-	sec
-	sbc #$02
-	sta @src
-	lda @src+1
-	sbc #$00
-	sta @src+1
-
-	; check if src == dst
-	cmp @dst+1
-	bne @shift
+	; loop until the entry at the insertion point has been shifted
 	lda @src
 	cmp @dst
-	bne @shift	; loop til we have shifted all labels
+	bne @shift
+	lda @src+1
+	cmp @dst+1
+	bne @shift
 
 @finish:
 	; insert the address of the anonymous label we're adding
@@ -1051,7 +1058,6 @@ labelvars_size=*-labelvars
 ; OUT:
 ;  - .A: the segment ID for the label
 .proc get_segment
-@sec = temp
 	; load the symbol and mask the segment-id bits (1-7)
 	jsr loadlabel
 	lda flags
@@ -1073,10 +1079,9 @@ labelvars_size=*-labelvars
 ;  - .C:  is set if no label was found, clear if it was
 ;  - .A:  the size (address mode) of the label
 .proc address
-	jsr find		; get the id in YX
-	bcs :-			; -> rts
-
-	; fall through to address_by_id
+	jsr find		; get the id in .XY
+	bcc address_by_id	; if found, get the address for the id
+	rts			; not found; return with .C set
 .endproc
 
 ;*******************************************************************************
@@ -1207,7 +1212,7 @@ labelvars_size=*-labelvars
 ;  - .A: nonzero if the label is local
 ;  - .Z: clear if label is local, set if not
 .proc is_local
-@l=zp::labels+7
+@l=temp+2
 	stxy @l
 	ldy #$00
 	lda (@l),y
@@ -1242,12 +1247,12 @@ labelvars_size=*-labelvars
 
 ;*******************************************************************************
 ; ID BY ALPHA INDEX
-; Looks up the ID of the label indexed alphanumerically at the provided index.
-; the correct ID. If you've added a label since the last index, it is necessary
+; Looks up the ID of the label at the provided alphabetical index.
+; Labels must be indexed (lbl::index) for this to return the correct ID.
 ; IN:
-;  - .XY: address of label name to get the name of (in LABEL_NAMES bank)
+;  - .XY: the alphabetical index of the label to get the ID of
 ; OUT:
-;  - .XY: the ID of the label at the given alphanumeric index
+;  - .XY: the ID of the label at the given alphabetical index
 .proc id_by_alpha_index
 @arr = r0
 	txa
@@ -1394,7 +1399,6 @@ labelvars_size=*-labelvars
 ;  - .Y:   the length of the copied label
 .proc get_name
 @dst = r0
-@src = temp
 	jsr loadlabel
 
 	; switch to SYMBOL NAMES bank
@@ -1414,10 +1418,9 @@ labelvars_size=*-labelvars
 	lda #$00
 	sta (@dst),y
 
-	; switch back to main SYMBOLS bank
+@done:	; switch back to main SYMBOLS bank
 	SELECT_BANK "SYMBOLS"
-
-@done:	rts
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1593,7 +1596,13 @@ labelvars_size=*-labelvars
 @top        = zp::tmp12
 	stxy @b
 
+	; if no labels exist, there is nothing to find
 	lda __label_num
+	ora __label_num+1
+	bne :+
+	RETURN_ERR ERR_LABEL_UNDEFINED
+
+:	lda __label_num
 	asl
 	sta @ub
 	lda __label_num+1
@@ -1631,7 +1640,15 @@ labelvars_size=*-labelvars
 	tya
 	adc @lb+1
 	sta @m+1
-	ldy #$00
+
+	; if mid is one past the last element, the target is > all entries
+	ldx @m
+	ldy @m+1
+	cmpw @top
+	bne :+
+	jmp @past_end
+
+:	ldy #$00
 
 	; load A[mid] and compare our target against it
 	LOADB_Y @m
@@ -1691,9 +1708,10 @@ labelvars_size=*-labelvars
 	cmpw __label_num	; was the result a valid label?
 	bcc :+		; if so, continue to return
 
+@past_end:
 	; if label wasn't valid, get the highest label by address
 	lda @top
-	;sec
+	sec
 	sbc #$02
 	sta @m
 	lda @top+1
@@ -1732,10 +1750,12 @@ labelvars_size=*-labelvars
 @comparator = zp::tmp15
 @setptrs_fn = zp::util
 @arr        = zp::util+2
+	lda __label_num+1
+	bne @index_by_addr	; > 255 labels -> sort
 	lda __label_num
-	ora __label_num+1
-	bne @index_by_addr
-	rts			; nothing to index
+	cmp #$02
+	bcs @index_by_addr
+	rts			; 0 or 1 labels -> nothing to sort
 
 ;-------------------------------------------------------------------------------
 ; index by address
@@ -2216,7 +2236,6 @@ labelvars_size=*-labelvars
 ;   - list:  list to advance
 ;   - label: pointer to symbol data to append as node to the list
 .proc listappend
-@nodes = r2
 	; check if the list already exists
 	iszero list
 	bne @append_list
@@ -2401,43 +2420,69 @@ labelvars_size=*-labelvars
 
 ;*******************************************************************************
 ; LOAD
-; Loads the symbol table from the open file.
+; Loads the symbol table from the open file and rebuilds the hash map and
+; sorted indexes for all loaded symbols.
+; OUT:
+;   - .C: set on error (corrupt or truncated symbol table)
 .proc load
 @symname = r0
 @symdata = r2
 @cnt     = r4
+@idx     = r6
+	jsr clr
+
 	; load the number of symbols
-	jsr krn::chrin
+	jsr @getb
 	sta __label_num
 	sta @cnt
-	jsr krn::chrin
+	jsr @getb
 	sta __label_num+1
 	sta @cnt+1
 
-	ora @cnt
-	beq @done			; no symbols
+	; validate the symbol count
+	ldxy __label_num
+	cmpw #MAX_LABELS
+	bcc :+
+	beq :+
+	lda #ERR_TOO_MANY_LABELS
+	jmp @error
 
-	jsr setup_for_load_or_dump
+:	iszero __label_num
+	bne :+
+	RETURN_OK		; no symbols
+
+:	jsr setup_for_load_or_dump
 
 @l0:	; load each symbol
 	ldy #$00
 	SELECT_BANK "SYMBOLS"
-:	jsr krn::chrin
+:	jsr @getb
 	STOREB_Y @symdata
 	iny
 	cpy #SIZEOF_LABEL
 	bcc :-
 
+	ldy #LABEL_NAME
+	lda @symname
+	STOREB_Y @symdata
+	iny
+	lda @symname+1
+	STOREB_Y @symdata
+
 	; load the name of the symbol
 	ldy #$00
 	SELECT_BANK "SYMBOL_NAMES"
-:	jsr krn::chrin
+:	jsr @getb
 	STOREB_Y @symname
 	iny
 	cmp #$00
-	bne :-
+	beq :+
+	cpy #MAX_LABEL_NAME_LEN
+	bcc :-
+	lda #ERR_IO_ERROR	; unterminated name; symbol table is corrupt
+	jmp @error
 
-	jsr next_sym
+:	jsr next_sym
 
 	lda @cnt
 	bne :+
@@ -2446,7 +2491,87 @@ labelvars_size=*-labelvars
 	bne @l0
 	lda @cnt+1
 	bne @l0
-@done:	rts
+
+	; rebuild the hash map and index arrays from the loaded symbols
+	SELECT_BANK "SYMBOLS"
+	lda #$00
+	sta @cnt
+	sta @cnt+1
+@rebuild:
+	ldxy @cnt
+	cmpw __label_num
+	beq @indexit		; all symbols rebuilt -> sort the indexes
+	jsr loadlabel		; load label, hash, addr, and name pointers
+
+	; @idx = label_addresses_sorted + id*2
+	lda @cnt
+	asl
+	sta @idx
+	lda @cnt+1
+	rol
+	sta @idx+1
+	lda @idx
+	adc #<label_addresses_sorted
+	sta @idx
+	lda @idx+1
+	adc #>label_addresses_sorted
+	sta @idx+1
+
+	ldxy addr
+	jsr @putidx		; label_addresses_sorted[id] = ADDR
+	ldxy @cnt
+	jsr @putidx		; label_addresses_sorted_ids[id] = id
+	ldxy name
+	jsr @putidx		; label_names_sorted[id] = NAME pointer
+	ldxy @cnt
+	jsr @putidx		; label_names_sorted_ids[id] = id
+
+	; hash label and append it to its hash bucket's list
+	ldxy hash
+	jsr getlist
+	jsr listappend
+
+	incw @cnt
+	jmp @rebuild
+
+@indexit:
+	jsr index		; sort the rebuilt indexes
+	RETURN_OK
+
+;-------------------------------------------------------------------------------
+; read a byte from the file, checking for read errors/EOF
+@getb:	jsr krn::readst
+	bne @trunc
+	jmp krn::chrin
+
+@trunc:	pla			; unwind @getb's return address
+	pla
+	lda #ERR_IO_ERROR
+
+@error:	pha
+	SELECT_BANK "SYMBOLS"
+	jsr clr			; don't leave a partially loaded symbol table
+	pla
+	sec
+	rts
+
+;-------------------------------------------------------------------------------
+; write .XY to (@idx) then advance @idx to point to the next parallel array
+@putidx:
+	tya
+	ldy #$01
+	STOREB_Y @idx
+	txa
+	dey
+	STOREB_Y @idx
+	lda @idx
+	clc
+	adc #<(MAX_LABELS*2)
+	sta @idx
+	lda @idx+1
+	adc #>(MAX_LABELS*2)
+	sta @idx+1
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -2500,14 +2625,15 @@ labelvars_size=*-labelvars
 .proc cmp_name
 @name  = temp
 @other = temp+2
+	tax		; save length for the termination check
 	tay		; is length to compare 0?
-	beq @match	; if 0-length comparison, it's a match by default
+	beq @nomatch	; names should not be 0 length
 
 	; activate the SYMBOL NAMES bank for comparison
 	SELECT_BANK "SYMBOL_NAMES"
 
 @l0:	dey
-	bmi @match
+	bmi @end	; all bytes matched -> verify label ends here
 	LOADB_Y @other	; get byte of the label to compare
 	cmp (@name),y	; compare with our name
 	beq @l0
@@ -2522,4 +2648,11 @@ labelvars_size=*-labelvars
 	SELECT_BANK "SYMBOLS"
 	pla
 	rts
+
+@end:	; do the labels have the same length?
+	txa		; .Y = compared length
+	tay
+	LOADB_Y @other
+	beq @match
+	bne @nomatch
 .endproc

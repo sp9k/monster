@@ -3435,6 +3435,7 @@ goto_buffer:
 
 	; read the symbol table
 	jsr lbl::load
+	bcs @errclose
 
 	; read the debug information
 	lda #$00				; no relocation
