@@ -5676,7 +5676,7 @@ goto_buffer:
 ; DIR VIEW
 ; Opens the directory viewer
 .proc dirview
-	jsr scr::save
+	jsr scr::savebuf
 	jsr scr::blank
 	jsr dir::view
 	bcc :+
