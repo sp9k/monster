@@ -426,6 +426,9 @@ HEIGHT = SCREEN_HEIGHT-2
 ; Opens the directory "file" for loading
 .proc open_dir
 	ldxy #strings::dir
+	jsr file::exists
+	bcs :+
+	ldxy #strings::dir
 	jsr file::open_r_prg
 	bcs :+
 	tax

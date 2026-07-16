@@ -19,17 +19,17 @@
 .export __io_readerr
 .proc __io_readerr
 @ch=rf
-	lda #$00	; no filename
+	lda #$00		; no filename
 	tax
 	tay
 	sta @ch
-	jsr krn::setnam	; SETNAM
+	jsr krn::setnam		; SETNAM
 
-	lda #$0f	; file number 15 (error channel)
+	lda #$0f		; file number 15 (error channel)
 	ldx zp::device
-	tay		; secondary address 15 (error channel)
-	jsr krn::setlfs	; SETLFS
-	jsr krn::open	; OPEN
+	tay			; secondary address 15 (error channel)
+	jsr krn::setlfs		; SETLFS
+	jsr krn::open		; OPEN
 	bcc @ok
 
 	pha			; save the KERNAL error code
@@ -43,32 +43,30 @@
 :	sec
 	rts
 
-@ok:	ldx #$0f	; filenumber 15
-	jsr krn::chkin	; CHKIN (file 15 now used as input)
+@ok:	ldx #$0f		; filenumber 15
+	jsr krn::chkin		; CHKIN (file 15 now used as input)
 
 	; read the error message to mem::drive_err
-@loop:	jsr krn::readst	; READST (read status byte)
-	bne @eof	; either EOF or read error
+@loop:	jsr krn::readst		; READST (read status byte)
+	bne @eof		; either EOF or read error
 
-	jsr krn::chrin	; CHRIN (get a byte from file)
+	jsr krn::chrin		; CHRIN (get a byte from file)
 	cmp #$0d
 	beq @eof
 	ldx @ch
-	cpx #LINESIZE	; cap size of string
-	bcs @eof	; if full, truncate and 0-terminate at the cap
+	cpx #LINESIZE		; cap size of string
+	bcs @eof		; if full, truncate and 0-terminate at the cap
 	sta mem::drive_err,x
 	inc @ch
-	bne @loop	; next byte
+	bne @loop		; next byte
 
 @eof:	ldx @ch
 	lda #$00
 	sta mem::drive_err,x
 
 @done:	; close the command channel (file 15)
-	lda #15		; filenumber 15 (command channel)
-	jsr krn::close	; CLOSE 15
-	jsr krn::clrchn	; CLRCHN
-
+	lda #15			; filenumber 15 (command channel)
+	jsr krn::close		; CLOSE 15
 	ldxy #mem::drive_err
 	jmp atoi
 .endproc
