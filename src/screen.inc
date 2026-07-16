@@ -7,6 +7,7 @@ SCREEN_INC = 1
 .import __screen_clrline
 .import __screen_init
 .import __screen_save
+.import __screen_savebuf
 .import __screen_restore
 .import __screen_restore_row
 .import __screen_rvsline_part
@@ -26,6 +27,7 @@ SCREEN_INC = 1
 	clrline      = __screen_clrline
 	init         = __screen_init
 	save         = __screen_save
+	savebuf      = __screen_savebuf
 	save_row     = __screen_save_row
 	restore      = __screen_restore
 	restore_row  = __screen_restore_row

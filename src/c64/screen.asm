@@ -250,6 +250,16 @@
 ; to scr::restore
 .export __screen_save
 .proc __screen_save
+	jsr __screen_savebuf
+	jmp __screen_init
+.endproc
+
+;*******************************************************************************
+; SAVEBUF
+; Saves the screen to the backup buffer WITHOUT reinitializing it (used when
+; overlaying another full-screen view that shares the same layout).
+.export __screen_savebuf
+.proc __screen_savebuf
 @scr=r0
 	; save colors
 	ldx #SCREEN_HEIGHT-1
@@ -285,7 +295,7 @@
 	dex
 	bne :-
 
-	jmp __screen_init
+	rts
 .endproc
 
 ;*******************************************************************************

@@ -228,6 +228,14 @@ savebank2: .byte 0
 	lda #$b8
 	sta $100f
 
+	; Keep the last row's leftmost (breakpoint) cell blank (char $0f)
+	; unless per-row color is active.
+	ldx #$0f
+	lda mem::coloron
+	beq :+
+	ldx #$00
+:	stx $10e7
+
 	; save $f5-$f6
         lda $f5
 	pha

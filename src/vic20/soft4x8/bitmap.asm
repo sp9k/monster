@@ -44,26 +44,11 @@ blank_backup: .res 16
 
 ;*******************************************************************************
 ; SAVE
-; Saves the bitmap to the backup buffer. It may then be restored with a call
-; to scr::restore
+; Saves the bitmap to the backup buffer and reinitializes the screen. It may
+; then be restored with a call to scr::restore
 .export __screen_save
 .proc __screen_save
-	CALL FINAL_BANK_VSCREEN, save
-
-	; save colors
-	ldx #SCREEN_ROWS*2-1
-:	lda mem::rowcolors_idx,x
-	sta mem::rowcolors_save,x
-
-	lda prefs::normal_color
-	sta mem::rowcolors,x
-
-	lda #COLOR_NORMAL
-	sta mem::rowcolors_idx,x
-
-	dex
-	bpl :-
-
+	jsr __screen_savebuf
 	; fall through to __screen_init
 .endproc
 
@@ -101,9 +86,8 @@ blank_backup: .res 16
 	cpy #PHYS_COLS*SCREEN_ROWS-1
 	bcc @l0
 
-	; set leftmost column of last row to char 0
-	lda #$00
-	sta $10e7
+	; set leftmost column of last row to the blank character
+	jsr set_bp_cell
 
 	; configure VIC registers
 	ldy #$05
@@ -131,6 +115,32 @@ blank_backup: .res 16
 .endproc
 
 ;*******************************************************************************
+; SAVEBUF
+; Saves the bitmap + per-row colors to the backup buffer WITHOUT reinitializing
+; the screen.  Use this to overlay another full-screen view that shares the same
+; layout (e.g. the monitor). Reinitializing would rewrite the breakpoint
+; column's shared glyphs ($1000/$10f0) and contend with the active IRQ.
+.export __screen_savebuf
+.proc __screen_savebuf
+	CALL FINAL_BANK_VSCREEN, save
+
+	; save colors
+	ldx #SCREEN_ROWS*2-1
+:	lda mem::rowcolors_idx,x
+	sta mem::rowcolors_save,x
+
+	lda prefs::normal_color
+	sta mem::rowcolors,x
+
+	lda #COLOR_NORMAL
+	sta mem::rowcolors_idx,x
+
+	dex
+	bpl :-
+	rts
+.endproc
+
+;*******************************************************************************
 ; UNBLANK
 ; Ends a "blank"; call when sensitive IRQ disabled work has finished
 .export __screen_unblank
@@ -139,8 +149,7 @@ blank_backup: .res 16
 
 	lda #$0f
 	jsr set_col0
-	lda #$00		; .X=0
-	sta $10e7		; reset $10e7
+	jsr set_bp_cell		; reset the last row's breakpoint cell
 
 	; restore the final character from the backup (the last half is simply
 	; cleared because we clobber if with the blank message)
@@ -234,6 +243,17 @@ blank_backup: .res 16
 	dex
 	bne @l0
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; SET BP CELL
+; Sets the last row's leftmost (breakpoint) cell at the blank char ($0f), whose
+; glyph $10f0 is left as $55,$55,... by init/unblank).  This is the default
+; state whenever the IRQ is NOT running.
+.proc set_bp_cell
+	lda #$0f
+	sta $10e7
+	rts
 .endproc
 
 ;*******************************************************************************

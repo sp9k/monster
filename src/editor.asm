@@ -289,7 +289,8 @@ main:	jsr key::getch
 	bne monitor_win		; monitor window is open; re-enter it
 
 @fullscreen:
-	jsr scr::save
+	; Save the editor screen WITHOUT reinitializing it (savebuf, not save)
+	jsr scr::savebuf
 	pushcur
 	jsr __edit_enter_monitor
 	inc mem::coloron		; restore per-row color
