@@ -49,19 +49,6 @@ exprlist: .res MAX_EXPR_LIST
 .segment "CONSOLE"
 
 ;*******************************************************************************
-; RENDER STR
-; Calls the appropriate text render function. On the Vic-20 this is
-; "render_ind" because the render function crosses banks (meaning extra data
-; is pushed to the stack)
-.macro RENDER_STR
-.ifdef vic20
-	CALLMAIN text::render_ind
-.else
-	CALLMAIN text::render
-.endif
-.endmacro
-
-;*******************************************************************************
 ; DBGCMD RUN
 ; Handles the given debug command input. The given string is parsed and handled.
 ; This can be used to add/remove watches, breakpoints, etc.
@@ -1544,36 +1531,8 @@ exprlist: .res MAX_EXPR_LIST
 .endproc
 
 ;*******************************************************************************
-; HEXTOSTR
-; Returns the string representation of the value in .A
-; IN:
-;  - .A: the value to get the string representation of
-; OUT:
-;  - .X: the character representation of the low nybble
-;  - .Y: the character representation of the  high nybble
-.proc hextostr
-	pha
-	lsr
-	lsr
-	lsr
-	lsr
-	cmp #$0a
-	bcs :+
-	adc #'0'
-	bcc :++
-:	adc #'a'-$a-1
-:	tay
-
-	pla
-	and #$0f
-	cmp #$0a
-	bcs :+
-	adc #'0'
-	bcc :++
-:	adc #'a'-$a-1
-:	tax
-	rts
-.endproc
+; INLINE HELPERS
+inline_proc hextostr, util::hextostr
 
 ;*******************************************************************************
 ; PUT INSTRUCTION

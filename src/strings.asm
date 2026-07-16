@@ -40,11 +40,7 @@ __str_null = *-1
 __str_endrep: .byte ".endrep",0
 
 .export __str_breakpoints_title
-.ifdef hard8x8
-__str_breakpoints_title: .byte ESCAPE_SPACING,6, "breakpoints",0
-.else
-__str_breakpoints_title: .byte ESCAPE_SPACING,14, "breakpoints",0
-.endif
+__str_breakpoints_title: .byte "breakpoints",0
 
 .export __str_question_marks
 __str_question_marks: .byte "???",0
@@ -71,6 +67,29 @@ __str_debug_stop_debugging: .byte "stop debugging? y/n",0
 
 .export __str_device_not_present
 __str_device_not_present: .byte "device not present",0
+
+.export __str_jam_detected
+__str_jam_detected: .byte "jam detected",0
+
+.export __str_illegal_detected
+__str_illegal_detected: .byte "illegal detected",0
+
+.export __str_vital_addr_clobber_detected
+.ifdef hard8x8
+__str_vital_addr_clobber_detected: .byte "dangerous write:$", ESCAPE_VALUE, "",0
+.else
+__str_vital_addr_clobber_detected: .byte "dangerous write detected ($", ESCAPE_VALUE, ")",0
+.endif
+
+.export __str_saveall
+__str_saveall: .byte "save all buffers? ", yes_no, 0
+
+.export __str_watch_triggered
+__str_watch_triggered:
+.byte "watch triggered",0
+
+.export __str_invalid_command
+__str_invalid_command: .byte "invalid command", 0
 
 .export __str_done
 __str_done: .byte "done",0
@@ -118,11 +137,7 @@ __str_linking: .byte "linking...",0
 __str_edit_file_save_failed: .byte "failed to save file; error ", ESCAPE_BYTE, 0
 
 .export __str_watches_title
-.ifdef hard8x8
-__str_watches_title: .byte ESCAPE_SPACING,8, "watches",0
-.else
-__str_watches_title: .byte ESCAPE_SPACING,16, "watches",0
-.endif
+__str_watches_title: .byte "watches",0
 
 .export __str_dir
 __str_dir: .byte "$",0
@@ -154,31 +169,8 @@ __str_watches_range_line: .byte ESCAPE_BYTE, ESCAPE_CHAR, " $", ESCAPE_VALUE, "-
 .export __str_errors
 __str_errors: .byte "errors",0
 
-.export __str_invalid_command
-__str_invalid_command: .byte "invalid command", 0
-
-.export __str_jam_detected
-__str_jam_detected: .byte "jam detected",0
-
-.export __str_illegal_detected
-__str_illegal_detected: .byte "illegal detected",0
-
-.export __str_vital_addr_clobber_detected
-.ifdef hard8x8
-__str_vital_addr_clobber_detected: .byte "dangerous write:$", ESCAPE_VALUE, "",0
-.else
-__str_vital_addr_clobber_detected: .byte "dangerous write detected ($", ESCAPE_VALUE, ")",0
-.endif
-
-.export __str_saveall
-__str_saveall: .byte "save all buffers? ", yes_no, 0
-
 .export __str_tracing
 __str_tracing: .byte "tracing...",0
-
-.export __str_watch_triggered
-__str_watch_triggered:
-.byte "watch triggered",0
 
 .export __str_pass1
 __str_pass1:
@@ -218,11 +210,10 @@ __str_watch_added:
 
 .export __str_memview_title
 __str_memview_title:
-.ifdef hard8x8
-.byte "    memory[$1000]",0
-.else
-.byte "          memory[$1000]",0
-.endif
+.byte "memory[$1000]",0
 
 .export __str_symview_title
 __str_symview_title: .byte "symbols",0
+
+.export __str_monitor_title
+__str_monitor_title: .byte "monitor",0

@@ -44,22 +44,23 @@ numerrs: .byte 0
 ;******************************************************************************
 ; ACTIVATE
 ; Displays the error window and resizes the editor to fit it.
-; IN:
-;  - .A: the row to base the window at (grows upward)
 .export __errlog_activate
 .proc __errlog_activate
 	ldxy #@menu
-	jmp gui::listmenu
+	jmp gui::open
 
 .PUSHSEG
 .RODATA
 @menu:
 .byte GUI_ERRLOG	; id for errlog
-.byte MAX_HEIGHT	; max height
+.byte GUI_CLASS_LIST
+.byte MAX_HEIGHT	; initial height
+.byte 1			; min height
+.byte 12		; max height
+.word strings::errors	; title
 .word @keyhandler	; key handler
 .word @getline		; get line handler
 .word numerrs		; pointer to number of errors
-.word strings::errors	; title
 .POPSEG
 
 ;--------------------------------------
@@ -83,7 +84,7 @@ numerrs: .byte 0
 	lda errfileids,x
 	jsr dbg::loadfile	; load the file containing the error
 	pla			; restore index
-	bcs :+			; if failed to load file -> continue
+	bcs @ret		; if failed to load file -> continue
 
 	tax
 
@@ -93,8 +94,16 @@ numerrs: .byte 0
 	cmpw #0
 	beq @ret
 	jsr edit::gotoline	; go to the line # corresponding to the error
+
+	; update saved cursor to new position after gotoline
+	lda zp::curx
+	sta gui::cursave_x
+	lda zp::cury
+	sta gui::cursave_y
+
+	lda #GUI_RET_QUIT
 	sec			; flag to exit menu
-:	rts
+	rts
 .endproc
 
 ;******************************************************************************

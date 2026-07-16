@@ -12,7 +12,6 @@
 .import __edit_highlight_line
 .import __edit_init
 .import __edit_load
-.import __edit_monwin_resize
 .import __edit_refresh
 .import __edit_render_row
 .import __edit_resize
@@ -37,7 +36,6 @@
 	highlight_line = __edit_highlight_line
 	init           = __edit_init
 	load           = __edit_load
-	monwin_resize  = __edit_monwin_resize
 	refresh        = __edit_refresh
 	render_row     = __edit_render_row
 	resize         = __edit_resize

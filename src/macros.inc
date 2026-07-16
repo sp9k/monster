@@ -130,3 +130,18 @@
 	lda arg
 	ora arg+1
 .endmacro
+
+;******************************************************************************
+; INLINE PROC
+; Defines name as a bank-local copy of inline/<name>.asm on banked targets.
+; On targets where the main bank is always reachable, defines it as an alias
+; for mainproc to avoid duplicating the code.
+.macro inline_proc name, mainproc
+.ifdef vic20
+.proc name
+	.include .sprintf("inline/%s.asm", .string(name))
+.endproc
+.else
+	name = mainproc
+.endif
+.endmacro

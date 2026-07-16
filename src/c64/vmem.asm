@@ -58,6 +58,7 @@ savexy: .word 0
 
 @done:	ldx savexy
 	ldy savexy+1
+	clc
 	pha
 	pla			; restore .N/.Z from the loaded value (in .A)
 	rts
@@ -233,28 +234,39 @@ savexy: .word 0
 ;*******************************************************************************
 ; WRITABLE
 ; Checks if the given address is within the valid writable range.
-; This includes the addresses [$00, $8000) and [$a000, $c000)
+; Everything but ROM (per the virtual bank register) is writable.
 ; IN:
 ;   - .XY: the address to check for writability
 ; OUT:
 ;   - .C: set if the address is NOT writable
+; CLOBBERS: NONE
 .export __vmem_writable
 .proc __vmem_writable
 	pha
+	txa
+	pha
+	tya
+	pha
 
 	jsr __vmem_translate
-	cmp #^REU_VMEM_IO
-	beq @writable
 	cmp #^REU_VMEM_ROM
-	bne @writable
-
-@rom:	pla
-	sec			; not writable
-	rts
+	beq @rom
 
 @writable:
 	pla
+	tay
+	pla
+	tax
+	pla
 	RETURN_OK		; writable
+
+@rom:	pla
+	tay
+	pla
+	tax
+	pla
+	sec			; not writable
+	rts
 .endproc
 
 ;*******************************************************************************

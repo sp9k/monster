@@ -54,10 +54,6 @@
 .import PROGRAM_STACK_START	; initial stack offset for user program.
 
 ;*******************************************************************************
-AUX_NONE = 0		; flag for no viewer enabled
-AUX_MEM  = 1		; enables the memory viewer in the debug view
-AUX_GUI  = 2		; enables viewers that use the standard GUI list menu
-
 ; layout constants for the register view
 REG_PC_OFFSET = 0
 REG_A_OFFSET  = 5
@@ -125,8 +121,6 @@ breakpoints_active: .byte 0	; if !0 breakpoints are installed
 show_extended_state: .byte 0	; if !0, show extra info about machine state
 
 lineset: .byte 0		; not zero if we know the line number we're on
-
-aux_mode: .byte 0		; the active auxiliary view
 
 ; set if interrupt was triggered by BRK
 .export __debug_is_brk
@@ -201,7 +195,6 @@ blank   = scr::blank
 
 	; init state
 	ldx #$00
-	stx aux_mode		; initialize auxiliary views
 	stx watch::num		; clear watches
 	stx breakpoints_active	; flag that breakpoints are not installed
 	stx __debug_interface	; set interface to GUI
@@ -464,27 +457,42 @@ blank   = scr::blank
 @debugloop_tui:
 	; if the monitor is windowed, update the source view above it to
 	CALL FINAL_BANK_MONITOR, mon::update_pc_view
+	lda mon::windowed
+	beq @tui_fullscreen
+
+	; hand the editor's cursor (synced to the PC by update_pc_view) to
+	; the window manager; the live cursor may still be a window row
+	lda gui::cursave_x
+	sta zp::curx
+	lda gui::cursave_y
+	sta zp::cury
+
+	jsr showstate		; show regs/BRK message below the window
+	jsr gui::enter		; give focus to the active window
+
+	; focus returned to the editor; if the monitor didn't already switch
+	; the interface (quit command), return to the GUI interface
+	lda #$00
+	sta __debug_interface
+	jmp @enter_iface
+
+@tui_fullscreen:
 	CALL FINAL_BANK_MONITOR, mon::reenter	; re-enter monitor (get input)
 	jmp @enter_iface	; monitor quit
 
 @iface_gui:
-	; dismiss the monitor window (if open)
-	lda mon::wintop
-	beq :+
-	ldx #$00
-	stx mon::wintop
-
-	; restore the debug view's layout
+	; restore the debug view's layout (windows stay open; the window
+	; manager keeps the editor sized above them)
 	ldx #DEBUG_MESSAGE_LINE
 	stx edit::status_row
+	lda gui::active_type
+	bne :+
+
+	; no windows open, set editor to max size
 	ldx #DEBUG_MESSAGE_LINE-1
 	stx zp::editor_height
 
-	cmp #REGISTERS_LINE
-	bcs :+			; the window didn't cover any source rows
-	jsr edit::refresh	; redraw the source rows the window covered
-
-:	jsr show_aux		; display the auxiliary mode
+:	jsr show_aux		; refresh any open windows
 
 @showbrk:
 	; set color for the message row
@@ -762,10 +770,11 @@ blank   = scr::blank
 
 ;*******************************************************************************
 ; EDIT SOURCE
-; Disable all views and reenable (almost) fullscreen editing
+; Closes all windows and reenables (almost) fullscreen editing
 .proc edit_source
+	jsr gui::closeall
 	lda #$00
-	sta aux_mode
+	sta mon::windowed	; the monitor window (if any) is closed
 	lda #DEBUG_MESSAGE_LINE-1
 	jmp edit::resize
 .endproc
@@ -774,18 +783,8 @@ blank   = scr::blank
 ; EDIT MEM
 ; Transfers control to the memory viewer/editor until the user exits it
 .proc edit_mem
-	lda #DEBUG_INFO_START_ROW-1
-	jsr edit::resize
-
-	pushcur
 	jsr showstate		; restore the state
-
-	lda #AUX_MEM
-	sta aux_mode
-
-	jsr view::edit
-	popcur
-	rts
+	jmp view::edit
 .endproc
 
 ;*******************************************************************************
@@ -793,10 +792,6 @@ blank   = scr::blank
 ; Transfers control to the breakpoint viewer/editor until the user exits it
 .proc edit_breakpoints
 	jsr showstate		; restore the state
-
-	lda #AUX_GUI
-	sta aux_mode
-
 	jmp brkpt::edit
 .endproc
 
@@ -806,9 +801,6 @@ blank   = scr::blank
 .export __debug_edit_watches
 .proc __debug_edit_watches
 	jsr showstate		; restore the state
-
-	lda #AUX_GUI
-	sta aux_mode
 	jmp watch::edit
 .endproc
 
@@ -1610,20 +1602,14 @@ __debug_remove_breakpoint:
 	ldxy #strings::debug_brk_line
 @print:	lda edit::status_row
 	jsr text::print		; break in line <line #>
-:	rts
+	rts
 .endproc
 
 ;*******************************************************************************
 ; SHOW AUX
-; Displays the memory viewer, breakpoint viewer, or watchpoint viewer depending
-; on which is enabled
+; Redraws any open windows (memory viewer, breakpoint viewer, monitor, etc.)
 .proc show_aux
-	lda aux_mode
-	beq :-			; no aux mode -> RTS
-	cmp #AUX_MEM
-	bne @gui
-@mem:	jmp view::mem		; refresh the memory viewer
-@gui:	jmp gui::refresh	; refresh the active GUI
+	jmp gui::refresh
 .endproc
 
 ;*******************************************************************************
@@ -1641,11 +1627,11 @@ __debug_remove_breakpoint:
 
 ;*******************************************************************************
 ; ACTIVATE MONITOR
-; Activates the text user interface debugger (monitor)
+; Activates the text user interface debugger (monitor) as a window
 .proc activate_monitor
 	jsr bsp::save_debug_state
-	CALL FINAL_BANK_MONITOR, mon::enter_win
-	rts
+	ldxy #mon::window
+	jmp gui::open
 .endproc
 
 ;*******************************************************************************
@@ -1656,15 +1642,8 @@ __debug_remove_breakpoint:
 ; follows the code being debugged, as it does in the GUI interface.
 .export __debug_update_pc_view
 .proc __debug_update_pc_view
-	lda mon::wintop
+	lda mon::windowed
 	beq @done		; fullscreen monitor; no source view
-
-	; limit editor to the rows above the window
-	sec
-	sbc #$01
-	sta edit::status_row
-	sbc #$01
-	sta zp::editor_height
 
 	; highlight the selected line
 	jsr cur::off
@@ -1673,10 +1652,6 @@ __debug_remove_breakpoint:
 	bcs @done		; no line matches the address
 	jsr edit::sethighlight
 	inc lineset
-
-	; the source view was redrawn; let the monitor re-save the screen
-	; (used to restore rows revealed when its window shrinks)
-	CALL FINAL_BANK_MONITOR, mon::win_resync
 @done:	rts
 .endproc
 

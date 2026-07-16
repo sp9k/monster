@@ -88,16 +88,19 @@ K_STEP     = $7a	; z
 ; K_STEPOUT  = $5e	; up-arrow
 K_STEPOUT  = $79	; y
 
-K_SET_WATCH = $b3	; C= + w (for use in MEMORY editor)
+K_SET_WATCH = $77	; w (for use in MEMORY editor)
 K_ADD_WATCH = $b3	; C= + w (for use in WATCH editor)
 K_DEL_WATCH = $ac	; C= + d
+
+;*******************************************************************************
+; WINDOW KEYS
+K_WIN_GROW		= $a1	; C= + k (grow the active window)
+K_WIN_SHRINK		= $b5	; C= + j (shrink the active window)
 
 ;*******************************************************************************
 ; MONITOR KEYS
 K_GO_BASIC_TUI		= $89	; F2
 K_MON_CLEAR		= $b6	; C= + l
-K_MONWIN_GROW		= $a1	; C= + k (grow monitor window)
-K_MONWIN_SHRINK		= $b5	; C= + j (shrink monitor window)
 
 ;*******************************************************************************
 ; KEY REMAPPINGS

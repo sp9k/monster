@@ -60,27 +60,7 @@
 ;  - .Y: the character representation of the  high nybble
 .export __util_hextostr
 .proc __util_hextostr
-	pha
-	lsr
-	lsr
-	lsr
-	lsr
-	cmp #$0a
-	bcs :+
-	adc #'0'
-	bcc :++
-:	adc #'a'-$a-1
-:	tay
-
-	pla
-	and #$0f
-	cmp #$0a
-	bcs :+
-	adc #'0'
-	bcc :++
-:	adc #'a'-$a-1
-:	tax
-	rts
+	.include "inline/hextostr.asm"
 .endproc
 
 ;*******************************************************************************

@@ -138,6 +138,18 @@ tab_num_elements: .word 0
 .endproc
 
 ;*******************************************************************************
+; TXLEN EMPTY
+; The REC interprets a transfer length of 0 as 64KB, so all block transfers
+; must treat a length of 0 as a no-op.
+; OUT:
+;   - .Z: set if reu::txlen is 0
+.proc txlen_empty
+	lda __reu_txlen
+	ora __reu_txlen+1
+	rts
+.endproc
+
+;*******************************************************************************
 ; INIT
 .export __reu_init
 .proc __reu_init
@@ -192,6 +204,8 @@ tab_num_elements: .word 0
 ;   - reu::len:      the number of bytes to copy (16-bit)
 .export __reu_store
 .proc __reu_store
+	jsr txlen_empty
+	beq @done
 	IO_BEGIN
 	jsr mapreu
 	lda #$00
@@ -200,7 +214,7 @@ tab_num_elements: .word 0
 	sta $df01	; execute
 	IO_DONE
 
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -244,6 +258,8 @@ tab_num_elements: .word 0
 ;   - reu::len:      the number of bytes to copy (16-bit)
 .export __reu_load
 .proc __reu_load
+	jsr txlen_empty
+	beq @done
 	IO_BEGIN
 	jsr mapreu
 	lda #$00
@@ -251,7 +267,7 @@ tab_num_elements: .word 0
 	lda #$91	; transfer from REU -> c64 with immediate execution
 	sta $df01	; execute
 	IO_DONE
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -265,6 +281,8 @@ tab_num_elements: .word 0
 ;   - reu::len:      the number of bytes to copy (16-bit)
 .export __reu_load_delayed
 .proc __reu_load_delayed
+	jsr txlen_empty
+	beq @done
 	lda #$36
 	sta $01
 
@@ -279,7 +297,7 @@ tab_num_elements: .word 0
 	lda $ff00
 	sta $ff00
 
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -293,6 +311,8 @@ tab_num_elements: .word 0
 ;   - reu::len:      the number of bytes to copy (16-bit)
 .export __reu_store_delayed
 .proc __reu_store_delayed
+	jsr txlen_empty
+	beq @done
 	lda #$36
 	sta $01
 
@@ -307,7 +327,7 @@ tab_num_elements: .word 0
 	lda $ff00
 	sta $ff00
 
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -317,6 +337,8 @@ tab_num_elements: .word 0
 ;   .Z: set if there are no differences
 .export __reu_compare
 .proc __reu_compare
+	jsr txlen_empty
+	beq @done	; 0 bytes -> no differences (.Z set)
 	IO_BEGIN
 	jsr mapreu
 	lda $df00	; read status to clear fault bit
@@ -327,7 +349,7 @@ tab_num_elements: .word 0
 
 	txa
 	and #$20	; check fault bit (set if differences found)
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -336,12 +358,14 @@ tab_num_elements: .word 0
 ; in the C64 at reu::c64addr.
 .export __reu_swap
 .proc __reu_swap
+	jsr txlen_empty
+	beq @done
 	IO_BEGIN
 	jsr mapreu
 	lda #$92	; swap c64 <-> REU with immediate execution
 	sta $df01	; execute
 	IO_DONE
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -349,6 +373,8 @@ tab_num_elements: .word 0
 ; Zeroes out the number of bytes in txlen at reu::move_dst
 .export __reu_zero
 .proc __reu_zero
+	jsr txlen_empty
+	beq @skip
 	IO_BEGIN
 	ldxy #@zero
 	stxy __reu_c64_addr
@@ -365,7 +391,7 @@ tab_num_elements: .word 0
 	lda #$00
 	sta $df0a		; unfix c64 address
 	IO_DONE
-	rts
+@skip:	rts
 .endproc
 
 ;*******************************************************************************
@@ -382,7 +408,12 @@ tab_num_elements: .word 0
 @src=__reu_move_src
 @dst=__reu_move_dst
 @size=__reu_move_size
-	lda __reu_reu_addr+2
+	lda @size
+	ora @size+1
+	bne :+
+	rts				; nothing to move
+
+:	lda __reu_reu_addr+2
 	pha				; save current "bank"
 
 	lda @size

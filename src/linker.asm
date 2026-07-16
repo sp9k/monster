@@ -1052,7 +1052,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 ; object file.
 	jsr log_banner
 	ldxy #strings::pass1
-	CALLMAIN text::render_ind
+	RENDER_STR
 	CALLMAIN log::out
 	jsr log_banner
 
@@ -1119,7 +1119,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @start_pass2:
 	jsr log_banner
 	ldxy #strings::pass2
-	CALLMAIN text::render_ind
+	RENDER_STR
 	CALLMAIN log::out
 	jsr log_banner
 
@@ -2225,7 +2225,7 @@ __link_get_segment_by_name:
 	sta @ret+1
 
 	ldxy #@buff
-	CALLMAIN text::render_ind	; render the string
+	RENDER_STR			; render the string
 	CALLMAIN log::out		; and log it
 
 	lda @ret+1

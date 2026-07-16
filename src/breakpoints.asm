@@ -38,20 +38,21 @@ BREAKPOINT_ENABLED = 1
 ; Begins the breakpoint editor
 .export __breakpoint_edit
 .proc __breakpoint_edit
-	; display the title
 	ldxy #@menu
-	lda #BRKVIEW_STOP
-	jmp gui::listmenu
+	jmp gui::open
 
 .PUSHSEG
 .RODATA
 @menu:
 .byte GUI_BREAKPOINTS			; id for breakpoint editor
-.byte HEIGHT				; max height
+.byte GUI_CLASS_LIST
+.byte HEIGHT				; initial height
+.byte 1					; min height
+.byte 12				; max height
+.word strings::breakpoints_title	; title
 .word @getkey				; key handler
 .word ui::render_breakpoint		; get line handler
 .word dbg::numbreakpoints		; # of breakpoints pointer
-.word strings::breakpoints_title	; title
 
 ;--------------------------------------
 @getkey:
@@ -86,11 +87,22 @@ BREAKPOINT_ENABLED = 1
 	pha
 
 	; if the breakpoint is visible, toggle its color
+	; src2screen needs the editor's cursor; if a GUI window has focus, the
+	; live cursor belongs to it instead, so swap in the saved editor cursor
+	lda zp::cury
+	pha
+	lda gui::cursave_y
+	sta zp::cury
+
 	lda dbg::breakpoint_lineslo,x
 	ldy dbg::breakpoint_lineshi,x
 	tax
 	jsr edit::src2screen
 	tax
+
+	pla
+	sta zp::cury
+
 	pla
 	bcs :+
 

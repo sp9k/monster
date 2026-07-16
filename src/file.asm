@@ -533,6 +533,7 @@ ENDOSPROC
 
 	jsr vmem::load
 	incw __file_save_address
+	clc
 @done:	rts
 .endproc
 

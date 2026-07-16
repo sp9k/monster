@@ -50,6 +50,20 @@ BREAKPOINT_CHAR     = 133
 BREAKPOINT_OFF_CHAR = 134
 CH_R_ARROW	    = 135
 
+;*******************************************************************************
+; RENDER STR
+; Renders the format string in .XY (with any variadic args on the stack).
+; On the VIC-20 cross-bank calls push extra data onto the stack, so the
+; "render_ind" variant must be used to skip it; on the C64 CALLMAIN is a plain
+; JSR and render_ind would misalign the stack args.
+.macro RENDER_STR
+.ifdef vic20
+	CALLMAIN text::render_ind
+.else
+	CALLMAIN text::render
+.endif
+.endmacro
+
 .scope text
 	buffer           = __text_buffer
 	bufferon         = __text_bufferon

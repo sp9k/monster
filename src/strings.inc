@@ -40,6 +40,7 @@
 .import __str_macros
 .import __str_memory
 .import __str_memview_title
+.import __str_monitor_title
 .import __str_pass1
 .import __str_pass2
 .import __str_question_marks
@@ -104,6 +105,7 @@
 	saving                  = __str_saving
 	saveall			= __str_saveall
 	symview_title           = __str_symview_title
+	monitor_title           = __str_monitor_title
 	tracing                 = __str_tracing
 	jam_detected            = __str_jam_detected
 	watch_added             = __str_watch_added

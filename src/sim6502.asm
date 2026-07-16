@@ -1109,6 +1109,31 @@ cycles_tab:
 .endproc
 
 ;******************************************************************************
+; AM_ABSX_PC/AM_ABSY_PC/AM_INDY_PC
+; Same as am_absx/am_absy/am_indy but also add the +1 cycle if a page
+; boundary was crossed
+.proc am_absx_pc
+	jsr am_absx
+	lda #0
+	adc #0
+	jmp add_cycles
+.endproc
+
+.proc am_absy_pc
+	jsr am_absy
+	lda #0
+	adc #0
+	jmp add_cycles
+.endproc
+
+.proc am_indy_pc
+	jsr am_indy
+	lda #0
+	adc #0
+	jmp add_cycles
+.endproc
+
+;******************************************************************************
 ; VIRTUAL STACK HELPERS - use vmem::store/load so BLK5 (SIM bank) is untouched
 ;******************************************************************************
 vpush:				; push .A onto virtual stack at $01SP, dec SP
@@ -1203,64 +1228,37 @@ h_nop:
 ;******************************************************************************
 h_ora_indx:
 	jsr am_indx
-	jsr fetch_ea
-	ora __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_ora
 
 h_ora_zp:
 	jsr am_zp
-	jsr fetch_ea
-	ora __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_ora
 
 h_ora_imm:
 	jsr am_imm
-	jsr fetch_ea
-	ora __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_ora
 
 h_ora_abs:
 	jsr am_abs
-	jsr fetch_ea
-	ora __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_ora
 
 h_ora_zpx:
 	jsr am_zpx
-	jsr fetch_ea
-	ora __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_ora
 
 h_ora_absx:
-	jsr am_absx
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
-	jsr fetch_ea
-	ora __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jsr am_absx_pc
+	jmp do_ora
 
 h_ora_absy:
-	jsr am_absy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
-	jsr fetch_ea
-	ora __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jsr am_absy_pc
+	jmp do_ora
 
 h_ora_indy:
-	jsr am_indy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_indy_pc
+	; fall through to do_ora
+
+do_ora:
 	jsr fetch_ea
 	ora __sim_reg_a
 	sta __sim_reg_a
@@ -1271,64 +1269,37 @@ h_ora_indy:
 ;******************************************************************************
 h_and_indx:
 	jsr am_indx
-	jsr fetch_ea
-	and __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_and
 
 h_and_zp:
 	jsr am_zp
-	jsr fetch_ea
-	and __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_and
 
 h_and_imm:
 	jsr am_imm
-	jsr fetch_ea
-	and __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_and
 
 h_and_abs:
 	jsr am_abs
-	jsr fetch_ea
-	and __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_and
 
 h_and_zpx:
 	jsr am_zpx
-	jsr fetch_ea
-	and __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_and
 
 h_and_absx:
-	jsr am_absx
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
-	jsr fetch_ea
-	and __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jsr am_absx_pc
+	jmp do_and
 
 h_and_absy:
-	jsr am_absy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
-	jsr fetch_ea
-	and __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jsr am_absy_pc
+	jmp do_and
 
 h_and_indy:
-	jsr am_indy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_indy_pc
+	; fall through to do_and
+
+do_and:
 	jsr fetch_ea
 	and __sim_reg_a
 	sta __sim_reg_a
@@ -1339,64 +1310,37 @@ h_and_indy:
 ;******************************************************************************
 h_eor_indx:
 	jsr am_indx
-	jsr fetch_ea
-	eor __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_eor
 
 h_eor_zp:
 	jsr am_zp
-	jsr fetch_ea
-	eor __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_eor
 
 h_eor_imm:
 	jsr am_imm
-	jsr fetch_ea
-	eor __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_eor
 
 h_eor_abs:
 	jsr am_abs
-	jsr fetch_ea
-	eor __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_eor
 
 h_eor_zpx:
 	jsr am_zpx
-	jsr fetch_ea
-	eor __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_eor
 
 h_eor_absx:
-	jsr am_absx
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
-	jsr fetch_ea
-	eor __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jsr am_absx_pc
+	jmp do_eor
 
 h_eor_absy:
-	jsr am_absy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
-	jsr fetch_ea
-	eor __sim_reg_a
-	sta __sim_reg_a
-	jmp update_nz
+	jsr am_absy_pc
+	jmp do_eor
 
 h_eor_indy:
-	jsr am_indy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_indy_pc
+	; fall through to do_eor
+
+do_eor:
 	jsr fetch_ea
 	eor __sim_reg_a
 	sta __sim_reg_a
@@ -1431,26 +1375,17 @@ h_adc_zpx:
 	jmp do_adc
 
 h_adc_absx:
-	jsr am_absx
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_absx_pc
 	jsr fetch_ea
 	jmp do_adc
 
 h_adc_absy:
-	jsr am_absy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_absy_pc
 	jsr fetch_ea
 	jmp do_adc
 
 h_adc_indy:
-	jsr am_indy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_indy_pc
 	jsr fetch_ea
 	jmp do_adc
 
@@ -1498,26 +1433,17 @@ h_sbc_zpx:
 	jmp do_sbc
 
 h_sbc_absx:
-	jsr am_absx
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_absx_pc
 	jsr fetch_ea
 	jmp do_sbc
 
 h_sbc_absy:
-	jsr am_absy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_absy_pc
 	jsr fetch_ea
 	jmp do_sbc
 
 h_sbc_indy:
-	jsr am_indy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_indy_pc
 	jsr fetch_ea
 	jmp do_sbc
 
@@ -1565,26 +1491,17 @@ h_cmp_zpx:
 	jmp do_cmp_a
 
 h_cmp_absx:
-	jsr am_absx
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_absx_pc
 	jsr fetch_ea
 	jmp do_cmp_a
 
 h_cmp_absy:
-	jsr am_absy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_absy_pc
 	jsr fetch_ea
 	jmp do_cmp_a
 
 h_cmp_indy:
-	jsr am_indy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_indy_pc
 	jsr fetch_ea
 	jmp do_cmp_a
 
@@ -1647,57 +1564,37 @@ do_cmp_y:
 ;******************************************************************************
 h_lda_indx:
 	jsr am_indx
-	jsr fetch_ea
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_lda
 
 h_lda_zp:
 	jsr am_zp
-	jsr fetch_ea
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_lda
 
 h_lda_imm:
 	jsr am_imm
-	jsr fetch_ea
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_lda
 
 h_lda_abs:
 	jsr am_abs
-	jsr fetch_ea
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_lda
 
 h_lda_zpx:
 	jsr am_zpx
-	jsr fetch_ea
-	sta __sim_reg_a
-	jmp update_nz
+	jmp do_lda
 
 h_lda_absx:
-	jsr am_absx
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
-	jsr fetch_ea
-	sta __sim_reg_a
-	jmp update_nz
+	jsr am_absx_pc
+	jmp do_lda
 
 h_lda_absy:
-	jsr am_absy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
-	jsr fetch_ea
-	sta __sim_reg_a
-	jmp update_nz
+	jsr am_absy_pc
+	jmp do_lda
 
 h_lda_indy:
-	jsr am_indy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_indy_pc
+	; fall through to do_lda
+
+do_lda:
 	jsr fetch_ea
 	sta __sim_reg_a
 	jmp update_nz
@@ -1707,33 +1604,25 @@ h_lda_indy:
 ;******************************************************************************
 h_ldx_imm:
 	jsr am_imm
-	jsr fetch_ea
-	sta __sim_reg_x
-	jmp update_nz
+	jmp do_ldx
 
 h_ldx_zp:
 	jsr am_zp
-	jsr fetch_ea
-	sta __sim_reg_x
-	jmp update_nz
+	jmp do_ldx
 
 h_ldx_abs:
 	jsr am_abs
-	jsr fetch_ea
-	sta __sim_reg_x
-	jmp update_nz
+	jmp do_ldx
 
 h_ldx_zpy:
 	jsr am_zpy
-	jsr fetch_ea
-	sta __sim_reg_x
-	jmp update_nz
+	jmp do_ldx
 
 h_ldx_absy:
-	jsr am_absy
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_absy_pc
+	; fall through to do_ldx
+
+do_ldx:
 	jsr fetch_ea
 	sta __sim_reg_x
 	jmp update_nz
@@ -1743,33 +1632,25 @@ h_ldx_absy:
 ;******************************************************************************
 h_ldy_imm:
 	jsr am_imm
-	jsr fetch_ea
-	sta __sim_reg_y
-	jmp update_nz
+	jmp do_ldy
 
 h_ldy_zp:
 	jsr am_zp
-	jsr fetch_ea
-	sta __sim_reg_y
-	jmp update_nz
+	jmp do_ldy
 
 h_ldy_abs:
 	jsr am_abs
-	jsr fetch_ea
-	sta __sim_reg_y
-	jmp update_nz
+	jmp do_ldy
 
 h_ldy_zpx:
 	jsr am_zpx
-	jsr fetch_ea
-	sta __sim_reg_y
-	jmp update_nz
+	jmp do_ldy
 
 h_ldy_absx:
-	jsr am_absx
-	lda #0
-	adc #0				; +1 cycle if page crossed
-	jsr add_cycles
+	jsr am_absx_pc
+	; fall through to do_ldy
+
+do_ldy:
 	jsr fetch_ea
 	sta __sim_reg_y
 	jmp update_nz
@@ -2102,32 +1983,28 @@ h_inx:
 	sta __sim_op_mode
 	inc __sim_reg_x
 	lda __sim_reg_x
-	jsr update_nz
-	jmp advance1
+	jmp nz_done
 
 h_iny:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	inc __sim_reg_y
 	lda __sim_reg_y
-	jsr update_nz
-	jmp advance1
+	jmp nz_done
 
 h_dex:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	dec __sim_reg_x
 	lda __sim_reg_x
-	jsr update_nz
-	jmp advance1
+	jmp nz_done
 
 h_dey:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	dec __sim_reg_y
 	lda __sim_reg_y
-	jsr update_nz
-	jmp advance1
+	jmp nz_done
 
 ;******************************************************************************
 ; BIT - N=mem[7], V=mem[6], Z=(A AND mem)==0
@@ -2173,32 +2050,28 @@ h_tax:
 	sta __sim_op_mode
 	lda __sim_reg_a
 	sta __sim_reg_x
-	jsr update_nz
-	jmp advance1
+	jmp nz_done
 
 h_tay:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	lda __sim_reg_a
 	sta __sim_reg_y
-	jsr update_nz
-	jmp advance1
+	jmp nz_done
 
 h_txa:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	lda __sim_reg_x
 	sta __sim_reg_a
-	jsr update_nz
-	jmp advance1
+	jmp nz_done
 
 h_tya:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	lda __sim_reg_y
 	sta __sim_reg_a
-	jsr update_nz
-	jmp advance1
+	jmp nz_done
 
 h_txs:				; does NOT affect flags
 	lda #MODE_IMPLIED
@@ -2212,8 +2085,7 @@ h_tsx:
 	sta __sim_op_mode
 	lda __sim_reg_sp
 	sta __sim_reg_x
-	jsr update_nz
-	jmp advance1
+	jmp nz_done
 
 ;******************************************************************************
 ; FLAG OPERATIONS
@@ -2221,54 +2093,39 @@ h_tsx:
 h_clc:
 	lda __sim_reg_p
 	and #$fe
-	sta __sim_reg_p
-	lda #MODE_IMPLIED
-	sta __sim_op_mode
-	jmp advance1
+	jmp setp_done
 
 h_sec:
 	lda __sim_reg_p
 	ora #$01
-	sta __sim_reg_p
-	lda #MODE_IMPLIED
-	sta __sim_op_mode
-	jmp advance1
+	jmp setp_done
 
 h_clv:
 	lda __sim_reg_p
 	and #$bf
-	sta __sim_reg_p
-	lda #MODE_IMPLIED
-	sta __sim_op_mode
-	jmp advance1
+	jmp setp_done
 
 h_cld:
 	lda __sim_reg_p
 	and #$f7
-	sta __sim_reg_p
-	lda #MODE_IMPLIED
-	sta __sim_op_mode
-	jmp advance1
+	jmp setp_done
 
 h_sed:
 	lda __sim_reg_p
 	ora #$08
-	sta __sim_reg_p
-	lda #MODE_IMPLIED
-	sta __sim_op_mode
-	jmp advance1
+	jmp setp_done
 
 h_cli:
 	lda __sim_reg_p
 	and #$fb
-	sta __sim_reg_p
-	lda #MODE_IMPLIED
-	sta __sim_op_mode
-	jmp advance1
+	jmp setp_done
 
 h_sei:
 	lda __sim_reg_p
 	ora #$04
+	; fall through to setp_done
+
+setp_done:
 	sta __sim_reg_p
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
@@ -2289,6 +2146,9 @@ h_pla:
 	sta __sim_op_mode
 	jsr vpull
 	sta __sim_reg_a
+	; fall through to nz_done
+
+nz_done:
 	jsr update_nz
 	jmp advance1
 

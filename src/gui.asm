@@ -1,383 +1,646 @@
 ;*******************************************************************************
 ; GUI.ASM
-; This file contains procedures for GUI functionality like graphical menus.
-; GUI windows are created by defining a structure containing handlers for
-; retrieving the lines of data to draw and handling key presses.
+; This file contains the window manager for the windows that share the bottom
+; of the screen: list menus (error log, breakpoints, watches, buffers) and
+; custom windows (the monitor and memory viewer).
+;
+; Open windows are kept in a stack. The top of the stack is the "active"
+; window, which is displayed with its contents at the bottom of the window
+; area (gui::baserow).  The title of every open window is displayed above the
+; active window's contents so that it is apparent which windows are open.
+; The editor is resized to fit above the window area.
+;
+; Windows are created from a table with the following layout:
+;	0: type id (see guis.inc)
+;	1: class (GUI_CLASS_LIST or GUI_CLASS_CUSTOM)
+;	2: initial height (content rows)
+;	3: minimum height
+;	4: maximum height
+;	5: address of the title string
+;	LIST class:                     CUSTOM class:
+;	7: key handler                  7: draw handler
+;	9: get line handler             9: enter handler
+;	B: pointer to number of items   B: unused
+;
+; LIST handlers:
+;  key handler:  IN:  .A: the key code, .X: the selected item's index
+;                OUT: .C: set to exit the window with the code in .A
+;                     (GUI_RET_QUIT or GUI_RET_SWITCH)
+;  get line:     IN:  .A: the item index to get the line of data for
+;                OUT: .XY: the rendered line to display
+;
+; While a window has focus, gui::cursave_x/y hold the editor's cursor (the
+; actual cursor belongs to the focused window).  Handlers that move the
+; editor's cursor on purpose (e.g. navigating to an error's line) must update
+; the saved cursor to match.
+;
+; CUSTOM handlers (both called with .A: top content row, .X: bottom row):
+;  draw handler:  draws the full contents of the window
+;  enter handler: interacts until done; returns a GUI_RET_x code in .A
+;
+; All handler vectors must reside in the MAIN bank.  Windows implemented in
+; another bank (e.g. the monitor) must register MAIN-bank stubs that forward
+; to their bank.
 ; Handlers should stay away from the gui zeropage area (see zeropage.inc)
 ;*******************************************************************************
 
 .include "beep.inc"
+.include "cursor.inc"
 .include "draw.inc"
 .include "edit.inc"
+.include "guis.inc"
 .include "key.inc"
 .include "keycodes.inc"
+.include "layout.inc"
 .include "macros.inc"
+.include "memory.inc"
 .include "screen.inc"
 .include "settings.inc"
-.include "strings.inc"
+.include "string.inc"
 .include "text.inc"
 .include "zeropage.inc"
-.include "prefs.inc"
 
 ;*******************************************************************************
-MAX_WINDOWS = 3
+MAX_WINDOWS = 6
+
+; window record offsets
+WIN_TYPE   = 0		; window type id (GUI_x)
+WIN_CLASS  = 1		; GUI_CLASS_LIST or GUI_CLASS_CUSTOM
+WIN_HEIGHT = 2		; current content height in rows
+WIN_MINH   = 3		; minimum content height
+WIN_MAXH   = 4		; maximum content height
+WIN_TITLE  = 5		; address of the title string
+WIN_V0     = 7		; LIST: key handler     CUSTOM: draw handler
+WIN_V1     = 9		; LIST: getline handler CUSTOM: enter handler
+WIN_V2     = $b		; LIST: pointer to number of items
+WIN_SCROLL = $d		; LIST: scroll offset
+WIN_SELECT = $e		; LIST: selection offset
+WIN_SIZE   = $f
+
+WIN_DESC_SIZE = WIN_SCROLL	; the part initialized from the descriptor
 
 ;*******************************************************************************
+; zeropage state for the active window (see zeropage.inc)
+wtop    = zp::gui	; first (top) row of the active window's contents
+getkey  = zp::gui+1	; LIST: key handler
+getline = zp::gui+3	; LIST: get line handler
+numptr  = zp::gui+5	; LIST: pointer to the number of items
+num     = zp::gui+7	; LIST: number of items (loaded from numptr)
+hght    = zp::gui+8	; effective content height of the active window
+scroll  = zp::gui+9	; LIST: scroll offset
+select  = zp::gui+$a	; LIST: selection offset
+wbot    = zp::gui+$b	; last (bottom) row of the active window's contents
+
 .BSS
-.exportzp scroll
-.exportzp select
-
-guidata = zp::gui
-guidata_size=$c
-; the following is the sequence stored
-maxh    = zp::gui	; max height of the GUI window
-getkey	= zp::gui+1	; pointer to get key handler function
-getdata = zp::gui+3	; pointer to get data handler function
-numptr  = zp::gui+5	; pointer to the number of items in the GUI
-title	= zp::gui+7	; pointer to the title string for the GUI
-
-; the following are not part of the initialization struct, they are initialized
-; upon constructing the window and persisted (along side the above fields)
-; for the duration of it
-scroll  = zp::gui+9	; amount that the GUI window is scrolled
-select	= zp::gui+$a	; offset that is currently selected (highlighted)
-baserow = zp::gui+$b	; base row for active GUI (set on creation of GUI)
-
-; the following are not stored in the stack, but just used locally within
-; a single procedure call
-num    = zp::guitmp
-height = zp::guitmp+1
-guitmp = zp::guitmp+2
-
 ;*******************************************************************************
-; GUISTACK
-; The guistack holds the gui data for each active window.
-; Activating a new window will push the current window (if any), and
-; deactivating the window will pop it back into the active gui data memory.
-.export guistack
-guistack:	.res MAX_WINDOWS*guidata_size
+windows: .res MAX_WINDOWS*WIN_SIZE	; the window stack (0 = bottom)
+rectmp:  .res WIN_SIZE			; scratch record for reordering
 
-;*******************************************************************************
+; dispatch vector for window handlers.  zp::jmpvec must NOT be used here:
+; edit::gets keeps its key handler there across calls, and window handlers
+; (e.g. the monitor's) invoke the manager from within a gets loop
+gvec: .res 2
+
+; cursor position of the editor, saved while a window has focus.
+; window code that redraws the editor behind the manager's back (e.g. the
+; debugger's source view) must keep these in sync
+.export __gui_cursave_x
+.export __gui_cursave_y
+__gui_cursave_x: .byte 0
+__gui_cursave_y: .byte 0
+
 .DATA
-guisp:		.word guistack	; pointer to end of all GUIs
-stackdepth:	.byte 0
+;*******************************************************************************
+depth: .byte 0		; number of open windows
+
+; The bottom row of the window area.  Windows are anchored here; rows below
+; belong to the status bar (and, while debugging, the debug info rows)
+.export __gui_baserow
+__gui_baserow:
+baserow: .byte STATUS_ROW-1
+
+; type id of the active window (0 if no windows are open)
+.export __gui_active_type
+__gui_active_type: .byte 0
+
+; set while a window has focus (used to keep the editor's cursor saved)
+infocus: .byte 0
+
+.PUSHSEG
+.RODATA
+; byte offset of each window record in the stack
+recoffs:
+.repeat MAX_WINDOWS+1, i
+	.byte i*WIN_SIZE
+.endrepeat
+.POPSEG
+
+.segment "GUICODE"
 
 ;*******************************************************************************
-.CODE
-
-;*******************************************************************************
-; REENTER
-; Activates the most recently created GUI without reinitializing it.
-.export __gui_reenter
-__gui_reenter = __gui_activate
-
-;*******************************************************************************
-; LIST_MENU
-; Displays a user selectable menu of options as rows of text that the given
-; callbacks provide.
-; The list will take up to the given number of rows, but will draw less if
-; there isn't enough data to fill them.
-;
-; The provided key handler will be called with the offset to the item
-; that is currently being selected in .A
-; This occurs on any key other than <-, which quits the selection list and
-; the up/down keys
-;
-; The provided get data handler is called to populate the lines of options.
-; It is also called with the offset of the item in .A
-;
+; RECPTR
+; Returns a pointer to the window record at the given stack index
 ; IN:
-;  - .XY: pointer to the menu data struct
-;	- 0: height of the view
-;	- 1: address of key handler
-;    		- IN:  .A: the key code, .X: the item index
-;    		- OUT: .C: set if the menu should exit
-;	- 3: address to the get data handler
-;    		- IN:  .A: the item index to get the line of data for
-;		- OUT: mem::linebuffer: the line to display
-;	- 5: pointer to number of items in the GUI
-;	- 7: address of menu title
-;	- 9: scroll value for the menu
-;	- A: selection offset for the menu
-.export  __gui_listmenu
-.proc __gui_listmenu
-@src=r0
-@stack=r2
-@tmp=r4
-@tmp2=r5
-@dst=r6
-@type=r8
-	pha
-	stxy @src
-
-	; search the GUI stack to see if this editor is open already
-	ldy #$00
-	lda (@src),y		; get a "TYPE" byte
-	sta @type
-	ldx stackdepth
-	bne :+
-	jmp @cont		; if stack is empty, must be a new GUI
-
-:	lda @type
-	cmp guistack,y
-	php
-
-	; .Y += guidata_size+1 (move to the next record)
-	tya
+;   - .X: the stack index of the record
+; OUT:
+;   - r0: address of the record
+.proc recptr
+	lda recoffs,x
 	clc
-	adc #guidata_size+1
-	tay
+	adc #<windows
+	sta r0
+	lda #>windows
+	adc #$00
+	sta r0+1
+	rts
+.endproc
 
-	plp
-	beq @already_active
+;*******************************************************************************
+; ACTIVE
+; Returns a pointer to the active (top of stack) window record
+; OUT:
+;   - r0: address of the active record
+;   - .C: set if no windows are open
+.proc active
+	ldx depth
+	beq @none
 	dex
-	bne :-
-	beq @cont		; not found
+	jsr recptr
+	clc
+	rts
+@none:	sec
+	rts
+.endproc
 
-;-------------------------------------------------------------------------------
-; GUI is already in stack, reload it
-@already_active:
-	stx @tmp
+;*******************************************************************************
+; HEIGHT
+; Returns the effective content height of the active window.  For LIST
+; windows this is the smaller of the window's height and its item count
+; (at least 1 row).
+; IN:
+;   - r0: address of the active record
+; OUT:
+;   - .A: the effective height
+.proc height
+@num=zp::guitmp
+	ldy #WIN_CLASS
+	lda (r0),y
+	bne @custom
 
-	; copy the item to activate to guidata in the zeropage
-	; set guisp to point to element above our chosen one
-	ldx #guidata_size
-:	dey
-	lda guistack,y
-	sta guidata-1,x		; -1 because we don't store TYPE byte
-	dex
-	bne :-
+	; LIST: min(height, number of items)
+	ldy #WIN_V2
+	lda (r0),y
+	sta @num
+	iny
+	lda (r0),y
+	sta @num+1
+	ldy #$00
+	lda (@num),y
+	ldy #WIN_HEIGHT
+	cmp (r0),y
+	bcc @clamp	; fewer items than rows: shrink to fit
 
-	; tmp = .X = sizeof(guidata)*num_elements_to_move
-	lda @tmp		; restore number of elements we need to move
-	cmp #$01
-	beq @reactivate_cont	; if none -> continue
-	asl			; *2
-	asl			; *4
-	sta @tmp2
-	asl			; *8
-	adc @tmp2		; *$c
-	adc @tmp		; *$d
-	sta @tmp
+@custom:
+	ldy #WIN_HEIGHT
+	lda (r0),y
+@clamp:	bne @done
+	lda #$01	; at least 1 row
+@done:	rts
+.endproc
 
+;*******************************************************************************
+; LAYOUT
+; Computes the geometry for the active window: its content rows
+; [wtop, wbot] and the editor height that leaves room for the window and
+; one title row per open window.
+; IN:
+;   - r0: address of the active record
+; OUT:
+;   - wtop/wbot/hght: geometry of the active window's contents
+;   - .A: the new editor height (index of its last row)
+;   - .C: clear if the window does not fit above the baserow
+.proc layout
+	jsr height
+	sta hght
+	lda baserow
+	sta wbot
 	sec
-	sbc #guidata_size+1
+	sbc hght	; .A = the active window's title row
+	tax
+	inx
+	stx wtop	; contents begin below the title
+
+	; editor's last row = baserow - height - (1 title row per window)
+	sbc depth
+	rts
+.endproc
+
+;*******************************************************************************
+; SWAPCUR
+; If a window has focus, exchanges the live cursor with the saved editor
+; cursor.  Used around editor drawing so that it sees its own cursor
+.proc swapcur
+	lda infocus
+	beq @done
+	ldx zp::curx
+	lda __gui_cursave_x
+	stx __gui_cursave_x
+	sta zp::curx
+	ldx zp::cury
+	lda __gui_cursave_y
+	stx __gui_cursave_y
+	sta zp::cury
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; DRAW ALL
+; Redraws the entire window area: resizes the editor (rendering any rows it
+; gains), draws the active window's contents, and draws the title row of
+; every open window.
+; Does nothing if no windows are open.
+.export __gui_refresh
+__gui_refresh:
+.proc draw_all
+@row=zp::guitmp
+@i=zp::guitmp+1
+@edh=zp::guitmp+2
+@off=zp::guitmp+2	; (@edh is done with by the time titles are drawn)
+@title=r2
+	jsr active
+	bcc :+
+	rts		; no windows are open
+
+:	jsr layout
+	sta @edh
+
+	; resize the editor to fit above the windows
+	cmp zp::editor_height
+	beq @content
+	bcs @edgrow
+
+@edshrink:
+	jsr swapcur
+	lda @edh
+	jsr edit::resize	; shrink: reflows the cursor, no redraw
+	jsr swapcur
+	jmp @content
+
+@edgrow:
+	; render the source rows revealed by the shrinking window area
+	jsr swapcur
+	ldx zp::editor_height
+	inx
+	stx @row
+	lda @edh
+	sta zp::editor_height
+@grow0:	ldx @row
+	lda #$00
+	sta mem::breakpoint_rows,x
+	jsr draw::resetline	; clear the old title/window color
+	lda @row
+	jsr edit::render_row
+	inc @row
+	lda @row
+	cmp @edh
+	bcc @grow0
+	beq @grow0
+	jsr swapcur
+
+@content:
+	; draw the active window's contents
+	jsr active
+	ldy #WIN_CLASS
+	lda (r0),y
+	beq @list
+	ldy #WIN_V0
+	jsr callvec
+	jmp @titles
+
+@list:	jsr list_loadvars
+	jsr list_draw
+
+@titles:
+	; draw one title row per open window; the active window's title is
+	; directly above its contents (centered), older windows' titles are
+	; drawn above it at the far left of their rows
+	lda wtop
+	sec
+	sbc depth
+	sta @row
+	lda #$00
+	sta @i
+@t0:	lda @row
+	jsr scr::clrline
+	ldx @i
+	jsr recptr
+	ldy #WIN_TITLE
+	lda (r0),y
+	sta @title
+	iny
+	lda (r0),y
+	sta @title+1
+
+	ldx #$00	; column for inactive windows: far left
+	ldy @i
+	iny
+	cpy depth
+	bne @pad
+
+	; active window: center the title
+	ldxy @title
+	jsr str::len
+	eor #$ff		; .A = -(len+1)
+	sec
+	adc #SCREEN_WIDTH	; .A = SCREEN_WIDTH - len
+	lsr			; /2
 	tax
 
-	; @dst = guisp - (num_elements_to_move*sizeof(guidata))
-	lda guisp
-	sec
-	sbc @tmp
-	sta @dst
-	lda guisp+1
-	sbc #$00
-	sta @dst+1
-
-	; @stack = @dst + guidata_size+1
-	lda @dst
-	clc
-	adc #guidata_size+1
-	sta @stack
-	lda @dst+1
-	adc #$00
-	sta @stack+1
-
-	; shift all elements above the one we moved down to take its place
-	ldy #$00
-:	lda (@stack),y
-	sta (@dst),y
-	iny
-	dex
-	bne :-
-
-	; and now replace the top of the stack with our new data
-	lda @type
-	sta (@dst),y
-	iny
-
+@pad:	; build the title line with .X leading spaces
+	stx @off
+	lda #' '
 	ldx #$00
-:	lda guidata,x
-	sta (@dst),y
+@sp:	cpx @off
+	bcs @cp
+	sta mem::spare,x
 	inx
-	cpx #guidata_size
-	bne :-
+	bne @sp
 
-@reactivate_cont:
+@cp:	ldy #$00
+@cp0:	lda (@title),y
+	sta mem::spare,x
+	beq @print	; done at the 0 terminator
+	inx
+	iny
+	bne @cp0
+
+@print:	ldxy #mem::spare
+	lda @row
+	jsr text::print
+	ldx @row
+	lda #COLOR_RVS
+	jsr draw::hline
+	inc @row
+	inc @i
+	lda @i
+	cmp depth
+	bcc @t0
+
+	; update the active window type
+	jsr active
+	ldy #WIN_TYPE
+	lda (r0),y
+	sta __gui_active_type
+	rts
+.endproc
+
+;*******************************************************************************
+; CALLVEC
+; Calls the active window's handler whose vector is at the given record
+; offset, passing the window's content geometry
+; IN:
+;   - .Y: record offset of the vector (WIN_V0 or WIN_V1)
+;   - r0: address of the active record
+.proc callvec
+	lda (r0),y
+	sta gvec
+	iny
+	lda (r0),y
+	sta gvec+1
+	lda wtop
+	ldx wbot
+	jmp (gvec)
+.endproc
+
+;*******************************************************************************
+; LIST LOADVARS
+; Copies the active LIST window's state to the zeropage and clamps the
+; scroll/selection to the item count, which may have changed since the state
+; was saved (e.g. an item was deleted)
+; IN:
+;   - r0: address of the active record
+.proc list_loadvars
+	; copy the three handler vectors
+	ldy #WIN_V0
+	ldx #$00
+:	lda (r0),y
+	sta getkey,x
+	iny
+	inx
+	cpx #$06
+	bcc :-
+
+	ldy #WIN_SCROLL
+	lda (r0),y
+	sta scroll
+	ldy #WIN_SELECT
+	lda (r0),y
+	sta select
+
 	ldy #$00
 	lda (numptr),y
 	sta num
 
-	cmp maxh
-	bcc :+		; if # of items is > max height, use full height
-	lda maxh	; else, only resize to the size needed to fit all items
-:	clc		; ok
-	sta height
-	pla		; clear stack
-
-	ldxy guisp
-	stxy @stack
-	bne draw_gui	; continue to redraw
-
-;-------------------------------------------------------------------------------
-; GUI isn't already in stack, load it as new
-@cont:	lda guisp
-	ldy guisp+1
-	ldx stackdepth
-	cpx #MAX_WINDOWS
-	bcc :+
-
-	; too many windows open
-	; TODO: close the oldest
-	pla			; clean stack
-	rts			; and return
-
-:	inc stackdepth
-
-;-------------------------------------------------------------------------------
-; copy the menu definition to the GUI stack
-@copyvars:
-	sta @stack
-	sty @stack+1
-
-	; update GUI stack pointer
+	; clamp scroll/selection to the item count
+	lda scroll
 	clc
-	adc #guidata_size+1
-	sta guisp
-	bcc :+
-	inc guisp+1
+	adc select
+	cmp num
+	bcc @inwin	; scroll+select < num: still a valid item
 
-:	ldy #baserow-zp::gui+1
-	pla
-	sta (@stack),y		; set base row
-	sta baserow
-
-	; initialize scroll and selection offset to 0
-	dey
-	lda #$00
-	sta (@stack),y		; select
-	dey
-	sta (@stack),y		; scroll
-	dey
-
-@copytostack:
-	; copy the the data for this GUI from its definition
-@l0:	lda (@src),y
-	sta (@stack),y
-	dey
-	bpl @l0
-
-	; fall through to __gui_activate
-.endproc
-
-;*******************************************************************************
-; ACTIVATE
-; Activates the most recently created (top of the GUI stack) GUI window.
-.export __gui_activate
-.proc __gui_activate
-	lda stackdepth
+	ldx num
 	bne :+
+	stx scroll	; no items: home the selection
+	stx select
+	rts
 
-	; no windows active
-	jmp beep::short
+:	dex		; .X = index of the last item
+	txa
+	cmp hght
+	bcs @scrl
+	stx select	; all items fit: select the last one
+	lda #$00
+	sta scroll
+	rts
 
-:	; copy the persistent GUI state to the zeropage
-	jsr copyvars
+@scrl:	;sec
+	sbc hght	; .A = last - hght
+	adc #$00	; scroll = last - hght + 1
+	sta scroll
+	ldx hght
+	dex
+	stx select	; select the bottom row
+	rts
 
-	; fall through to draw_gui
+@inwin:	lda select
+	cmp hght
+	bcc @done	; select < hght: still within the window
+	;sec
+	sbc hght	; .A = select - hght
+	;sec
+	adc #$00	; .A = select - hght + 1
+	clc
+	adc scroll	; .A = scroll + (select - hght + 1)
+	sta scroll
+	ldx hght
+	dex
+	stx select	; select the bottom row
+@done:	rts
 .endproc
 
 ;*******************************************************************************
-; DRAW GUI
-; Entrypoint for drawing GUI once guidata has been set to the contents of the
-; GUI to draw
-.proc draw_gui
-@stack=r0
-	; draw GUI before entering the main GUI loop
-	dec height
-@loop:	inc height
-	jsr redraw_state
-	dec height
+; LIST SAVEVARS
+; Saves the zeropage scroll/selection state back to the active record
+.proc list_savevars
+	jsr active
+	bcs @done
+	ldy #WIN_SCROLL
+	lda scroll
+	sta (r0),y
+	ldy #WIN_SELECT
+	lda select
+	sta (r0),y
+@done:	rts
+.endproc
 
-	; highlight the current line
+;*******************************************************************************
+; LIST DRAW
+; Draws the contents of the active LIST window (item 0 on the bottom row,
+; increasing upwards) and highlights the selected item
+.proc list_draw
+@row=zp::guitmp
+@i=zp::guitmp+1
+	lda wbot
+	sta @row
+	lda #$00
+	sta @i
+
+@l0:	lda scroll
+	clc
+	adc @i
+	cmp num
+	bcs @blank	; row is past the last item
+
+	jsr @callgetline ; get the next line of data
+
+	lda @row
+	jsr text::print
+	jmp @next
+
+@blank:	lda @row
+	jsr scr::clrline
+
+@next:	ldx @row
+	jsr draw::resetline
+	dec @row
+	inc @i
+	lda @i
+	cmp hght
+	bcc @l0
+
+	; highlight the selected item
 	lda num
-	beq @getkey
-	lda baserow
+	beq @done
+	lda wbot
 	sec
 	sbc select
 	tax
 	lda #COLOR_SELECT
-	jsr draw::hline
+	jmp draw::hline
+@done:	rts
 
-@getkey:
-	jsr key::waitch
-	pha		; save the key
+@callgetline:
+	jmp (getline)
+.endproc
 
-	; unhighlight the current line in case we move lines
+;*******************************************************************************
+; LIST ENTER
+; The interaction loop shared by all LIST windows.  Handles selection
+; movement and the common window keys; all other keys are passed to the
+; window's key handler.
+; OUT:
+;   - .A: the GUI_RET_x code to return to the manager
+.proc list_enter
+@loop:	jsr key::waitch
+	pha
+
+	; unhighlight the selection in case we move
 	lda num
 	beq :+
-	lda baserow
+	lda wbot
 	sec
 	sbc select
 	tax
 	jsr draw::resetline
 
-:	pla		; get the key
+:	pla
 	cmp #K_QUIT
-	bne @chkup
+	beq @quit
+	cmp #K_CLOSE_WINDOWS
+	beq @quit
+	cmp #K_SWAP_WINS
+	bne :+
+	jsr list_savevars
+	lda #GUI_RET_CYCLE
+	rts
 
-@quit:	; TODO: copy current state back to (guisp)
-	jmp savevars
+:	cmp #K_WIN_GROW
+	bne :+
+	jsr __gui_grow
+	jmp @loop
+:	cmp #K_WIN_SHRINK
+	bne :+
+	jsr __gui_shrink
+	jmp @loop
 
-@chkup:	jsr key::isup
+:	jsr key::isup
 	bne @chkdown
 @up:	lda select
 	clc
 	adc scroll
-	adc #$01		; need to check num-1
+	adc #$01	; need to check num-1
 	cmp num
-	bcs @loop		; out of bounds
-
-	lda select
-	cmp height
-	bcc @goup		; if selection is < maxheight, just move cursor
-
-@scrollup:
-	lda select
-	cmp height
-	bcc @goup		; if < maxheight, just move cursor
-	clc
+	bcs @redraw	; out of bounds: rehighlight (it was cleared above)
+	ldx select
+	inx
+	cpx hght
+	bcc @goup	; if selection is below the top row, just move it
 	inc scroll
-	bne @loop		; redraw the scrolled display
+	jmp @redraw
 @goup:	inc select
-	bne @loop
+	jmp @redraw
 
 @chkdown:
 	jsr key::isdown
-	bne @getch		; if not down, call handler for all other keys
-
+	bne @getch
 	lda select
-	beq @scrolldown
-
+	beq @scrolldn
 	dec select
-	bpl @loop
-@scrolldown:
-	clc
-	adc scroll
-	beq @loop		; can't move
-
+	jmp @redraw
+@scrolldn:
+	lda scroll
+	beq @redraw	; can't move: rehighlight (it was cleared above)
 	dec scroll
-	bpl @loop		; redraw the scrolled display
+
+@redraw:
+	jsr list_savevars
+	jsr draw_all
+	jmp @loop
+
+@quit:	jsr list_savevars
+	lda #GUI_RET_QUIT
+	rts
 
 ;-------------------------------------------------------------------------------
-@getch: jsr @keycallback
-	bcs @quit
-	jsr savevars
-	jsr __gui_refresh
-	jmp draw_gui
+@getch:	pha
+	jsr list_savevars	; the handler may change the active window
+	pla
+	jsr @keycallback
+	bcc @redraw		; if the handler didn't exit, redraw & continue
+	rts			; return the handler's GUI_RET_x code
 
-;-------------------------------------------------------------------------------
 @keycallback:
-	; get the item index
+	; get the selected item's index
 	pha
 	lda scroll
 	clc
@@ -388,215 +651,285 @@ __gui_reenter = __gui_activate
 .endproc
 
 ;*******************************************************************************
-; REFRESH
-; Redraws the active GUI. This should be called after making changes that
-; would affect the state of the GUI window, e.g. setting a breakpoint could
-; cause the breakpoints GUI to populate with new data.
-.export __gui_refresh
-.proc __gui_refresh
-	lda stackdepth
-	beq exit
+; ENTER
+; Gives focus to the active window until the user returns focus to the
+; editor.  Beeps if no windows are open.
+.export __gui_enter
+.proc __gui_enter
+	lda depth
+	bne :+
+	jmp beep::short	; no windows are open
 
-	; copy the persistent GUI state to the zeropage
-	jsr copyvars
-	bcc redraw_state
+:	lda zp::curx
+	sta __gui_cursave_x
+	lda zp::cury
+	sta __gui_cursave_y
+	lda #$01
+	sta infocus
 
-	; fall through to exit
-.endproc
+@loop:	jsr draw_all
+	jsr dispatch_enter
+	cmp #GUI_RET_CYCLE
+	beq @cycle
+	cmp #GUI_RET_SWITCH
+	beq @loop
 
-exit:	rts				; no GUI to draw
-
-;*******************************************************************************
-; REDRAW STATE
-; entrypoint to draw the already copied zeropage state
-.proc redraw_state
-@row     = guitmp
-@rowstop = guitmp+1
-@i       = zp::gui+$c
-@getline = zp::jmpvec
-	; resize the main editor window to fit the GUI (may increase editor
-	; size if the GUI window has shrunk since the last call)
-	lda baserow
-	sec
-	sbc height
-	sbc #$01
-	jsr edit::resize
-
-	lda baserow
-	sta @row
-	sec
-	sbc height
-	sta @rowstop
-
-	; draw the title
-	ldxy title
-	jsr text::print
-
-	ldx @rowstop
-	jsr draw::hiline
-
-	inc @rowstop
-
+	; GUI_RET_QUIT: return focus to the editor
 	lda #$00
-	sta @i
+	sta infocus
+	jsr cur::unlimit
+	lda __gui_cursave_x
+	sta zp::curx
+	lda __gui_cursave_y
+	sta zp::cury
+	rts
 
-@dloop: lda @row
-	cmp @rowstop			; are we at the top row yet?
-	bcc @highlight_selection	; if so, continue to highlight selected
-
-	; copy address for getline
-	lda getdata
-	sta @getline
-	lda getdata+1
-	sta @getline+1
-
-	lda @i
-	clc
-	adc scroll
-
-	jsr zp::jmpaddr ; get the next line of data
-
-	lda @row
-	jsr text::print
-
-	ldx @row
-	jsr draw::resetline
-
-	dec @row
-	inc @i
-	bne @dloop
-
-;-------------------------------------------------------------------------------
-@highlight_selection:
-	lda num
-	beq exit
-	lda baserow
-	sec
-	sbc select
-	tax
-	lda #COLOR_SELECT
-	jmp draw::hline
+@cycle:	jsr rotate
+	jmp @loop
 .endproc
 
 ;*******************************************************************************
-; DEACTIVATE
-; Exits the GUI that is at the top of the GUI stack
-.export __gui_deactivate
-.proc __gui_deactivate
-	lda stackdepth
-	beq @done		; do nothing if stack is empty
-	lda guisp
-	sec
-	sbc #guidata_size+1
-	sta guisp
-	bcs :+
-	dec guisp+1
-:	dec stackdepth
+; DISPATCH ENTER
+; Runs the active window's interaction handler
+; OUT:
+;   - .A: the GUI_RET_x code it returned
+.proc dispatch_enter
+	jsr active
+	ldy #WIN_CLASS
+	lda (r0),y
+	beq @list
+	ldy #WIN_V1
+	jmp callvec
+@list:	jmp list_enter
+.endproc
+
+;*******************************************************************************
+; ROTATE
+; Moves the active window to the bottom of the stack, making the next most
+; recently used window active
+.proc rotate
+	lda depth
+	cmp #$02
+	bcc @done	; nothing to rotate
+
+	; save the active record
+	ldx depth
+	dex
+	jsr recptr
+	ldy #WIN_SIZE-1
+:	lda (r0),y
+	sta rectmp,y
+	dey
+	bpl :-
+
+	; shift every other record up one slot
+	ldx depth
+	lda recoffs,x
+	tax
+	dex
+@l0:	lda windows-WIN_SIZE,x
+	sta windows,x
+	dex
+	cpx #WIN_SIZE
+	bcs @l0
+
+	; and put the old active window on the bottom
+	ldx #WIN_SIZE-1
+:	lda rectmp,x
+	sta windows,x
+	dex
+	bpl :-
 @done:	rts
 .endproc
+
+;*******************************************************************************
+; SELECT
+; Makes the window for the given descriptor the active window without giving
+; it focus.  If a window of the descriptor's type is already open it is
+; raised (keeping its state); otherwise a new window is created.
+; IN:
+;   - .XY: address of the window descriptor
+.export __gui_select
+.proc __gui_select
+@desc=r2
+@type=zp::guitmp
+@end=zp::guitmp+1
+	stxy @desc
+
+	; look for an open window of this type
+	ldy #WIN_TYPE
+	lda (@desc),y
+	sta @type
+	ldx #$00
+@find:	cpx depth
+	bcs @create
+	jsr recptr
+	ldy #WIN_TYPE
+	lda (r0),y
+	cmp @type
+	beq @found
+	inx
+	bne @find
+
+;-------------------------------------------------------------------------------
+; not open yet; create a new window on top of the stack
+@create:
+	ldx depth
+	cpx #MAX_WINDOWS
+	bcs @done	; too many windows
+	jsr recptr
+
+	; copy the descriptor
+	ldy #WIN_DESC_SIZE-1
+:	lda (@desc),y
+	sta (r0),y
+	dey
+	bpl :-
+
+	; initialize scroll and selection offsets
+	lda #$00
+	ldy #WIN_SCROLL
+	sta (r0),y
+	ldy #WIN_SELECT
+	sta (r0),y
+
+	inc depth
+	bne @settype	; branch always
+@done:	rts
+
+;-------------------------------------------------------------------------------
+; window .X is already open; raise it to the top of the stack
+@found:	txa
+	tay
+	iny
+	cpy depth
+	beq @settype	; already active
+
+	; save the record
+	jsr recptr
+	ldy #WIN_SIZE-1
+:	lda (r0),y
+	sta rectmp,y
+	dey
+	bpl :-
+
+	; shift the records above it down one slot
+	ldy depth
+	dey
+	lda recoffs,y
+	sta @end	; byte offset of the top record
+	lda recoffs,x
+	tax
+@l0:	lda windows+WIN_SIZE,x
+	sta windows,x
+	inx
+	cpx @end
+	bcc @l0
+
+	; and put the raised window on top
+	ldy #$00
+:	lda rectmp,y
+	sta windows,x
+	inx
+	iny
+	cpy #WIN_SIZE
+	bcc :-
+
+@settype:
+	lda @type
+	sta __gui_active_type
+	rts
+.endproc
+
+;*******************************************************************************
+; OPEN
+; Opens (or raises) the window for the given descriptor and gives it focus
+; until the user returns focus to the editor
+; IN:
+;   - .XY: address of the window descriptor
+.export __gui_open
+.proc __gui_open
+	jsr __gui_select
+	jmp __gui_enter
+.endproc
+
+;*******************************************************************************
+; GROW
+; Grows the active window by one row (if it has one to grow by and the
+; editor retains at least one row).  Redraws the window area.
+; OUT:
+;   - .A: the top content row of the active window
+;   - .X: the bottom content row of the active window
+.export __gui_grow
+.proc __gui_grow
+	jsr active
+	bcs geom
+	ldy #WIN_HEIGHT
+	lda (r0),y
+	ldy #WIN_MAXH
+	cmp (r0),y
+	bcs geom	; already at max height
+
+	adc #$01	; (.C clear)
+	ldy #WIN_HEIGHT
+	sta (r0),y
+
+	jsr layout
+	bcc @revert	; window doesn't fit
+	cmp #$01
+	bcs redraw	; editor keeps at least one row
+
+@revert:
+	ldy #WIN_HEIGHT
+	lda (r0),y
+	sec
+	sbc #$01
+	sta (r0),y
+	jsr layout	; restore the active geometry
+	jmp geom
+.endproc
+
+;*******************************************************************************
+; SHRINK
+; Shrinks the active window by one row (if it is above its minimum height).
+; Redraws the window area.
+; OUT:
+;   - .A: the top content row of the active window
+;   - .X: the bottom content row of the active window
+.export __gui_shrink
+.proc __gui_shrink
+	jsr active
+	bcs geom
+	ldy #WIN_HEIGHT
+	lda (r0),y
+	ldy #WIN_MINH
+	cmp (r0),y
+	beq geom	; already at min height
+	bcc geom
+
+	sec
+	sbc #$01
+	ldy #WIN_HEIGHT
+	sta (r0),y
+
+	; fall through to redraw
+.endproc
+
+;*******************************************************************************
+; redraw the window area and return the active window's geometry
+redraw:	jsr draw_all
+geom:	lda wtop
+	ldx wbot
+	rts
 
 ;*******************************************************************************
 ; CLOSEALL
-; Frees the GUI stack by setting it back to its base.
+; Closes all windows.  Restoring the editor's size is left to the caller.
 .export __gui_closeall
 .proc __gui_closeall
-	ldxy #guistack
-	stxy guisp		; reset stack
 	lda #$00
-	sta stackdepth
+	sta depth
+	sta __gui_active_type
+	sta infocus
 	rts
-.endproc
-
-;*******************************************************************************
-; SAVEVARS
-; Saves the state for the active GUI vars (guidata) to the top of the GUI stack
-.proc savevars
-@stack=r0
-	; peek the address of the top element and set @stack to it
-	lda guisp
-	sec
-	sbc #guidata_size+1
-	sta @stack
-	lda guisp+1
-	sbc #$00
-	sta @stack+1
-
-	; copy the data from the zeropage area to the GUI stack
-	ldy #guidata_size
-@l0:	lda guidata-1,y		; -1 because we don't store 1st byte (TYPE)
-	sta (@stack),y
-	dey
-	bne @l0
-	rts
-.endproc
-
-;*******************************************************************************
-; COPYVARS
-; Copies the GUI state to the zeropage
-; OUT:
-;  - .C: set if there is no GUI active
-.proc copyvars
-@stack=r0
-	lda stackdepth
-	beq @done
-
-	; peek the address of the top element and set @stack to it
-	lda guisp
-	sec
-	sbc #guidata_size+1
-	sta @stack
-	lda guisp+1
-	sbc #$00
-	sta @stack+1
-
-	; copy the data from the GUI stack to the zeropage area
-	ldy #guidata_size
-@l0:	lda (@stack),y
-	sta guidata-1,y	; -1 because we don't store 1st byte (TYPE)
-	dey
-	bne @l0
-
-	; get the number of items in the GUI (may change between activations)
-	lda (numptr),y
-	sta num
-
-	cmp maxh
-	bcc :+		; if # of items is > max height, use full height
-	lda maxh	; else, only resize to the size needed to fit all items
-:	clc		; ok
-	sta height
-
-	; clamp scroll/selection to the item count, which may have shrunk
-	; since the state was saved (e.g. an item was deleted)
-	lda scroll
-	clc
-	adc select
-	cmp num
-	bcc @done	; scroll+select < num: still valid
-
-	ldx num
-	bne :+
-	stx scroll	; no items: home the selection
-	stx select
-	clc
-	rts
-
-:	dex		; .X = index of the last item
-	txa
-	cmp height
-	bcs @scrl
-	stx select	; all items fit: select the last one
-	lda #$00
-	sta scroll
-	clc
-	rts
-
-@scrl:	sbc height	; (.C set) .A = last - height
-	adc #$00	; (.C still set) scroll = last - height + 1
-	sta scroll
-	ldx height
-	dex
-	stx select	; select the bottom row
-	clc
-@done:	rts
 .endproc

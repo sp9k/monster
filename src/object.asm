@@ -44,6 +44,7 @@
 .include "ram.inc"
 .include "target.inc"
 .include "text.inc"
+.include "util.inc"
 .include "vmem.inc"
 .include "zeropage.inc"
 
@@ -99,7 +100,7 @@ reloc_tables:
 .ifdef vic20
 	.res $3000
 .else
-	.res $1000	; TODO:
+	.res $8000	; REU-virtual (bank FINAL_BANK_LINKER); costs no real RAM
 .endif
 reloc_tables_end=*
 
@@ -1686,7 +1687,6 @@ __obj_close_section = close_section
 ;   - .C: set on error
 .proc load_export
 @namebuff=$120
-@offset=r0
 	; get the name of a symbol
 	ldy #$00
 :	jsr krn::chrin
@@ -1698,39 +1698,7 @@ __obj_close_section = close_section
 	RETURN_ERR ERR_LABEL_TOO_LONG		; corrupt object file
 
 @addexport:
-	jsr krn::chrin				; get SEGMENT id for EXPORT
-	cmp #SEG_ABS				; is ID $FF (ABS)?
-	bne @rel				; if not, resolve segment base
-
-	; ABS symbols have no segment base; their value is absolute
-	sta zp::label_segmentid
-	lda #$01				; absolute address mode
-	sta zp::label_mode
-	lda #$00
-	sta @offset
-	sta @offset+1
-	beq @value				; branch always
-
-@rel:	; find the global segment id from the object-local one
-	tax
-	lda segments_type-1,x
-	jsr type_to_mode
-	sta zp::label_mode			; set address mode for label
-	lda __obj_segment_ids-1,x		; get GLOBAL segment id
-	sta zp::label_segmentid			; and store with the symbol
-	jsr link::segsize_by_id			; get this obj's offset in seg
-	stxy @offset
-
-@value:	; store the segment-relative value (obj offset in seg + offset)
-	jsr krn::chrin				; get LSB of symbol offset
-	clc
-	adc @offset
-	sta zp::label_value
-	php
-	jsr krn::chrin				; get MSB of symbol offset
-	plp
-	adc @offset+1
-	sta zp::label_value+1
+	jsr load_symbol_value
 
 	ldxy #@namebuff
 	CALLMAIN lbl::find			; was label already added?
@@ -1766,7 +1734,6 @@ __obj_close_section = close_section
 ;   - .C: set on error
 .proc load_local
 @namebuff=$120
-@offset=r0
 	; read symbol name
 	ldy #$00
 	lda #'@'
@@ -1780,9 +1747,23 @@ __obj_close_section = close_section
 	bcc :-
 	RETURN_ERR ERR_LABEL_TOO_LONG	; corrupt object file
 
-@cont:	jsr krn::chrin				; get SEGMENT id
-	cmp #SEG_ABS
-	bne @rel				; if not ABS, resolve seg base
+@cont:	jsr load_symbol_value
+
+	ldxy #@namebuff
+	JUMPMAIN lbl::add
+.endproc
+
+;*******************************************************************************
+; LOAD SYMBOL VALUE
+; Reads the SEGMENT id and offset for a symbol from the open OBJECT file and
+; stores the corresponding address mode, global SEGMENT id, and
+; segment-relative value to zp::label_mode/zp::label_segmentid/zp::label_value
+; (as consumed by lbl::add/lbl::set)
+.proc load_symbol_value
+@offset=r0
+	jsr krn::chrin				; get SEGMENT id
+	cmp #SEG_ABS				; is ID $FF (ABS)?
+	bne @rel				; if not, resolve segment base
 
 	; ABS symbols have no segment base; their value is absolute
 	sta zp::label_segmentid
@@ -1803,7 +1784,8 @@ __obj_close_section = close_section
 	jsr link::segsize_by_id			; get this obj's offset in seg
 	stxy @offset
 
-@value:	jsr krn::chrin				; get LSB of symbol offset
+@value:	; store the segment-relative value (obj offset in seg + offset)
+	jsr krn::chrin				; get LSB of symbol offset
 	clc
 	adc @offset
 	sta zp::label_value
@@ -1812,9 +1794,7 @@ __obj_close_section = close_section
 	plp
 	adc @offset+1
 	sta zp::label_value+1
-
-	ldxy #@namebuff
-	JUMPMAIN lbl::add
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -2183,14 +2163,7 @@ __obj_close_section = close_section
 
 ;*******************************************************************************
 ; INLINE HELPERS
-.ifdef vic20
-.proc is_ws
-	.include "inline/is_ws.asm"
-.endproc
-.else
-	.include "util.inc"
-	is_ws = util::is_whitespace
-.endif
+inline_proc is_ws, util::is_whitespace
 
 ;*******************************************************************************
 ; IS BSS
@@ -2432,7 +2405,7 @@ __obj_close_section = close_section
 	sta @ret+1
 
 	ldxy #@buff
-	CALLMAIN text::render_ind	; render the string
+	RENDER_STR			; render the string
 	CALLMAIN log::out		; and log it
 
 	lda @ret+1

@@ -412,6 +412,46 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 .endproc
 
 ;*******************************************************************************
+; CLASSIFY CHAR
+; Tests whether the given character ends the line being written and tracks
+; whether we are inside a quoted literal (in `quote`): inside one, ';' is not
+; a comment and only the matching closing quote is special.
+; IN:
+;  - .A: the character to classify
+; OUT:
+;  - .A: the character (unchanged)
+;  - .C: set if the character ends the line (CR or comment ';')
+; CLOBBERS: .X
+.proc classify_char
+	cmp #$0d
+	beq @eol
+	ldx quote	; inside a string/char literal?
+	beq @unquoted
+
+	; inside a literal only the matching closing quote is special
+	cmp quote
+	bne @keep	; not the closing quote -> store verbatim
+	ldx #$00
+	stx quote	; leaving the literal
+	beq @keep	; branch always (store the closing quote too)
+
+@unquoted:
+	cmp #';'
+	beq @eol	; comment (outside any literal) ends the line
+	cmp #'"'
+	beq @openq
+	cmp #$27	; single quote
+	bne @keep
+@openq:	sta quote	; entering a quoted literal
+
+@keep:	clc
+	rts
+
+@eol:	sec
+	rts
+.endproc
+
+;*******************************************************************************
 ; WRITE PARENT
 ; Writes the given line to parent of the current context's line buffer
 ; Comments are ignored to save space in the context buffer.
@@ -442,30 +482,9 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 @write: ldy #$00
 	lda (@line),y
 	beq @done
-	cmp #$0d
-	beq @done
-	ldx quote	; inside a string/char literal?
-	beq @unquoted
-
-	; inside a literal only the matching closing quote is special
-	cmp quote
-	bne @store	; not the closing quote -> store verbatim
-
-	; reset quote flag
-	ldx #$00
-	stx quote
-	beq @store	; branch always
-
-@unquoted:
-	cmp #';'
-	beq @done	; comment ends the line
-	cmp #'"'
-	beq @openq
-	cmp #$27	; single quote
-	bne @store
-@openq:	sta quote	; set quote flag
-
-@store:	STOREB_Y parent
+	jsr classify_char
+	bcs @done
+	STOREB_Y parent
 
 	incw @line
 	incw parent
@@ -522,29 +541,9 @@ __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 
 @write: lda (@line),y
 	beq @done
-	cmp #$0d
-	beq @done
-	ldx quote	; inside a string/char literal?
-	beq @unquoted
-
-	; inside a literal only the matching closing quote is special
-	; (a ';' in "a;b" or ';' is NOT a comment)
-	cmp quote
-	bne @store	; not the closing quote -> store verbatim
-	ldx #$00
-	stx quote	; leaving the literal
-	beq @store	; branch always (store the closing quote too)
-
-@unquoted:
-	cmp #';'
-	beq @done	; comment (outside any literal) ends the line
-	cmp #'"'
-	beq @openq
-	cmp #$27	; single quote
-	bne @store
-@openq:	sta quote	; entering a quoted literal
-
-@store:	STOREB_Y cur
+	jsr classify_char
+	bcs @done
+	STOREB_Y cur
 
 	incw @line
 

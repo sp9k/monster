@@ -37,9 +37,6 @@
 HEIGHT = WATCHVIEW_STOP-WATCHVIEW_START-1
 MAX_WATCHPOINTS = 8	; max number of watchpoints that may be set
 
-.importzp scroll
-.importzp select
-
 ;*******************************************************************************
 .segment "SHAREBSS"
 __watches_num:  .byte 0		    ; number of active watches
@@ -82,48 +79,42 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 ; Begins the breakpoint editor
 .export __watches_edit
 .proc __watches_edit
-	; display the title
 	ldxy #@menu
-	lda #WATCHVIEW_STOP
-	jmp gui::listmenu
+	jmp gui::open
 
 .PUSHSEG
 .RODATA
 @menu:
 .byte GUI_WATCHES		; id for watches editor
-.byte HEIGHT			; max height
+.byte GUI_CLASS_LIST
+.byte HEIGHT			; initial height
+.byte 1				; min height
+.byte 12			; max height
+.word strings::watches_title	; title
 .word @getkey			; key handler
 .word ui::render_watch		; get line handler
-.word __watches_num		; # of breakpoints pointer
-.word strings::watches_title	; title
+.word __watches_num		; # of watches pointer
 
 ;--------------------------------------
 @getkey:
 	cmp #K_RETURN
 	bne @chkdel
 
-	; invoke the memory editor at the selected watch's address
-	lda select
-	clc
-	adc scroll
-	tax
+	; open the memory editor at the selected watch's address
 	lda __watches_watcheslo,x
 	sta view::addr
 	lda __watches_watcheshi,x
 	sta view::addr+1
-	jsr view::edit		; invoke the memory editor
-	jsr edit::refresh
-	sec			; after returning from mem editor, quit
+	jsr view::select	; make the memory viewer the active window
+	lda #GUI_RET_SWITCH
+	sec			; exit the watch window's loop
 	rts
 
 @chkdel:
 	cmp #K_DEL		; DEL
 	bne @done
 
-	lda select
-	clc
-	adc scroll
-	tax
+	txa
 	jsr __watches_remove
 
 @done:	RETURN_OK

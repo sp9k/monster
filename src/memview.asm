@@ -3,6 +3,8 @@
 ; This file contains the code for the memory viewer/editor.  This editor is
 ; invoked via the debugger and allows the user to inspect memory or change its
 ; contents through a visual interface.
+; It is implemented as a CUSTOM window (see gui.asm): the window manager
+; calls back into this file to draw the view and to interact with it.
 ;*******************************************************************************
 
 .include "beep.inc"
@@ -14,6 +16,8 @@
 .include "errors.inc"
 .include "expr.inc"
 .include "flags.inc"
+.include "gui.inc"
+.include "guis.inc"
 .include "key.inc"
 .include "keycodes.inc"
 .include "layout.inc"
@@ -42,13 +46,10 @@ COL_START = 7
 .endif
 COL_STOP  = COL_START+(3*BYTES_TO_DISPLAY)-1
 
-TOTAL_BYTES = BYTES_TO_DISPLAY*(MEMVIEW_STOP-MEMVIEW_START)
+DEFAULT_HEIGHT = MEMVIEW_STOP-MEMVIEW_START-1
 
-.ifdef hard8x8
-TITLE_ADDR_START = 12
-.else
-TITLE_ADDR_START = 18
-.endif
+; offset of the address within the title string ("memory[$....]")
+TITLE_ADDR_START = 8
 
 .BSS
 ;*******************************************************************************
@@ -56,36 +57,86 @@ TITLE_ADDR_START = 18
 __view_addr:
 memaddr: .word 0
 
+wintop: .byte 0		; first (top) row of the view's contents
+winbot: .byte 0		; last (bottom) row of the view's contents
+
+.RODATA
+;*******************************************************************************
+; WINDOW
+; The window descriptor for the memory viewer
+window:
+.byte GUI_MEMVIEW		; id for the memory viewer
+.byte GUI_CLASS_CUSTOM
+.byte DEFAULT_HEIGHT		; initial height
+.byte 2				; min height
+.byte 12			; max height
+.word strings::memview_title	; title
+.word windraw			; draw handler
+.word enter			; enter handler
+.word 0				; unused
+
 .CODE
 ;*******************************************************************************
 ; EDIT
-; Starts the memory editor
+; Opens the memory editor window and gives it focus
 .export __view_edit
 .proc __view_edit
+	ldxy #window
+	jmp gui::open
+.endproc
+
+;*******************************************************************************
+; SELECT
+; Makes the memory editor the active window without giving it focus.
+; The window manager will draw it and (if focus is being handed over via
+; GUI_RET_SWITCH) interact with it.
+.export __view_select
+.proc __view_select
+	ldxy #window
+	jmp gui::select
+.endproc
+
+;*******************************************************************************
+; SETBOUNDS
+; Limits the cursor to the view's contents
+.proc setbounds
+	ldx #COL_START
+	ldy wintop
+	jsr cur::setmin
+
+	ldy winbot
+	iny
+	ldx #COL_STOP
+	jmp cur::setmax
+.endproc
+
+;*******************************************************************************
+; ENTER
+; The window manager's "enter" handler: interacts with the memory editor
+; until the user exits it
+; IN:
+;   - .A: the first row of the view's contents
+;   - .X: the last row of the view's contents
+; OUT:
+;   - .A: the GUI_RET_x code for the manager
+.proc enter
 @dst=r0
 @odd=r4
 @dstoffset=r6
 @src=r8
-	ldx #COL_START
-	ldy #MEMVIEW_START+1
-	jsr cur::setmin
+	sta wintop
+	stx winbot
+	jsr setbounds
 
-	ldy #MEMVIEW_STOP
-	ldx #COL_STOP
-	jsr cur::setmax
-
-	ldy #MEMVIEW_START+1
+	ldy wintop
 	ldx #COL_START
 	jsr cur::set
 
 	lda #TEXT_REPLACE
 	sta text::insertmode
 
-	jsr __view_mem
-
-; until user exits (<- or RETURN), get input and update memory
-@edit:
-	jsr cur::on
+; until user exits, get input and update memory
+@edit:	jsr cur::on
 	ldxy memaddr
 	stxy @src
 
@@ -97,12 +148,42 @@ memaddr: .word 0
 	cmp #K_UP_ARROW
 	bne :+
 	jsr getset_addr
-	jmp __view_edit	; reactivate editor at new address
+	jsr setbounds		; restore the cursor's bounds
+	jsr __view_refresh	; redraw at the new address
+	jmp @edit
 
-:	cmp #K_QUIT	; <- (done)
-	beq @done
+:	cmp #K_QUIT
+	beq @quit
+	cmp #K_CLOSE_WINDOWS	; <- (done)
+	bne @chkcycle
+@quit:	jmp @done
 
-	jsr key::isup
+@chkcycle:
+	cmp #K_SWAP_WINS
+	bne :+
+	lda #GUI_RET_CYCLE	; activate the next window
+	rts
+
+:	cmp #K_WIN_GROW
+	bne :+
+	jsr gui::grow
+	jmp @resize
+
+:	cmp #K_WIN_SHRINK
+	bne :+
+	jsr gui::shrink
+@resize:
+	jsr setbounds
+	; move the cursor back in bounds if the window shrank
+	lda zp::cury
+	cmp wintop
+	bcs @edit
+	ldy wintop
+	ldx zp::curx
+	jsr cur::set
+	jmp @edit
+
+:	jsr key::isup
 	bne :+
 @up:	jsr up
 	jmp @edit
@@ -130,7 +211,8 @@ memaddr: .word 0
 :	jsr key::ishex
 	bcs @replace_val
 	cmp #K_SET_WATCH
-	bcc @edit
+	beq @setwatch
+	jmp @edit
 
 @setwatch:
 	jsr get_addr	; get the address of the byte under the cursor
@@ -150,13 +232,13 @@ memaddr: .word 0
 	jsr beep::short	; beep to confirm add
 	jmp @edit
 
-@done:	jmp cur::unlimit
+@done:	lda #GUI_RET_QUIT
+	rts
 
 @replace_val:
 	jsr @set_nybble	; replace the nybble under cursor
 	jsr @next_x	; advance the cursor (if we can)
-	ldxy @src
-	jsr __view_mem	; update the display
+	jsr __view_refresh
 	jmp @edit
 
 ;--------------------------------------
@@ -168,7 +250,7 @@ memaddr: .word 0
 	; get the base address for the row that the cursor is on
 	lda zp::cury
 	sec
-	sbc #MEMVIEW_START+1
+	sbc wintop
 	asl		; *8 (each row is 8 bytes)
 	asl
 	asl
@@ -311,7 +393,9 @@ memaddr: .word 0
 @word:	jsr find_word		; find the word we're looking for
 @cont:	bcs @reset
 	stxy memaddr		; set address of word to memaddr
-@reset: jmp __view_edit		; restart the viewer at the word's address
+@reset:	jsr gui::refresh	; redraw (the find prompt may have hit a row)
+	jsr setbounds		; restore the cursor's bounds
+	jmp @edit
 .endproc
 
 ;*******************************************************************************
@@ -320,17 +404,17 @@ memaddr: .word 0
 .proc up
 	; are we at the top of the editor?
 	lda zp::cury
-	cmp #MEMVIEW_START+1
+	cmp wintop
 	bne :+
 
 	; we're at the top, scroll
 	lda memaddr
-	sbc #$08	; # of bytes per row (.C is always set)
+	sec
+	sbc #$08	; # of bytes per row
 	sta memaddr
 	bcs @done
 	dec memaddr+1
-@done:	sta memaddr
-	jmp __view_mem	; refresh the display
+@done:	jmp __view_refresh	; refresh the display
 
 :	dec zp::cury
 	rts
@@ -342,17 +426,17 @@ memaddr: .word 0
 .proc down
 	; are we at the bottom of the editor?
 	lda zp::cury
-	cmp #MEMVIEW_STOP-1
+	cmp winbot
 	bcc :+
 
 	; we're at the bottom, scroll
 	lda memaddr
-	adc #$07	; # of bytes per row - 1 (.C is always set)
+	clc
+	adc #$08	; # of bytes per row
 	sta memaddr
 	bcc @done
 	inc memaddr+1
-@done:	sta memaddr
-	jmp __view_mem	; refresh the display
+@done:	jmp __view_refresh	; refresh the display
 
 :	inc zp::cury
 	rts
@@ -364,9 +448,6 @@ memaddr: .word 0
 ; the memory view to render that area of memory.
 .proc getset_addr
 	pushcur
-
-	ldx #MEMVIEW_START
-	jsr draw::hiline
 
 	; copy title to linebuffer
 	ldx #TITLE_ADDR_START-2
@@ -391,8 +472,10 @@ memaddr: .word 0
 	lda #TITLE_ADDR_START+4
 	sta cur::maxx
 
-	lda #MEMVIEW_START
-	sta zp::cury
+	; edit the address on the title row (directly above the contents)
+	ldx wintop
+	dex
+	stx zp::cury
 
 	ldxy #key::gethex
 	jsr edit::gets
@@ -407,15 +490,32 @@ memaddr: .word 0
 .endproc
 
 ;*******************************************************************************
-; MEM
-; Displays the contents of memory in a large block beginning with the
-; address in memaddr
-; The address is that which was set with the most recent call to mem::edit
-.export __view_mem
-.proc __view_mem
+; REFRESH
+; Redraws the contents of the memory view at its current position
+.export __view_refresh
+.proc __view_refresh
+	lda wintop
+	ldx winbot
+
+	; fall through to draw
+.endproc
+
+;*******************************************************************************
+; WINDRAW
+; The window manager's draw handler: displays the contents of memory in the
+; given rows, beginning with the address in memaddr.
+; Also renders the current address into the window's title string.
+; IN:
+;   - .A: the first row to draw at
+;   - .X: the last row to draw at
+.proc windraw
 @src=ra
-@col=rc
 @row=rd
+	sta wintop
+	stx winbot
+	sta @row
+
+	; render the current address into the title
 	lda memaddr
 	sta @src
 	jsr util::hextostr
@@ -428,16 +528,6 @@ memaddr: .word 0
 	stx strings::memview_title+TITLE_ADDR_START+1
 	sty strings::memview_title+TITLE_ADDR_START
 
-	; draw the title for the memory display
-	ldxy #strings::memview_title
-	lda #MEMVIEW_START
-	jsr text::print
-	ldx #MEMVIEW_START
-	jsr draw::hiline
-
-	lda #MEMVIEW_START+1
-	sta @row
-
 @l0:	ldxy @src
 	jsr ui::memline
 
@@ -445,10 +535,13 @@ memaddr: .word 0
 	jsr text::print		; draw the row of rendered bytes
 	ldx @row
 	jsr draw::resetline
+
+	; (ui::memline advanced @src to the next row's address)
 	inc @row
 	lda @row
-	cmp #MEMVIEW_STOP	; have we drawn all rows?
-	bcc @l0			; repeat til we have
+	cmp winbot
+	bcc @l0			; have we drawn all rows?
+	beq @l0
 	rts
 .endproc
 
@@ -464,7 +557,7 @@ memaddr: .word 0
 @dst=r0
 	lda zp::cury
 	sec
-	sbc #MEMVIEW_START+1
+	sbc wintop
 	asl		; *8 (each row is 8 bytes)
 	asl
 	asl

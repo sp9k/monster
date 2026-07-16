@@ -141,6 +141,8 @@ status_row: .byte 0
 
 autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 
+getsvec: .word 0		; key handler for gets
+
 .CODE
 
 ;*******************************************************************************
@@ -278,17 +280,15 @@ main:	jsr key::getch
 
 ;*******************************************************************************
 ; MONITOR
-; Activates the monitor and restores the editor when it exits.
+; Activates the monitor fullscreen and restores the editor when it exits.
 ; If the monitor is open as a window, re-activates the window instead.
 .proc monitor
 	lda debugging
 	bne @fullscreen		; always use the full screen while debugging
-	lda mon::wintop
+	lda mon::windowed
 	bne monitor_win		; monitor window is open; re-enter it
 
 @fullscreen:
-	lda #$00
-	sta mon::wintop		; close the monitor window (if any)
 	jsr scr::save
 	pushcur
 	jsr __edit_enter_monitor
@@ -299,97 +299,17 @@ main:	jsr key::getch
 
 ;*******************************************************************************
 ; MONITOR WIN
-; Activates the monitor as a window at the bottom of the screen, leaving the
-; editor visible above it.
+; Opens (or re-activates) the monitor as a window at the bottom of the
+; screen, leaving the editor visible above it.
 .proc monitor_win
 	lda debugging
 	bne monitor		; always use the full screen while debugging
 
-	lda mon::wintop
-	bne :+			; window already open; re-enter it in place
+	ldxy #mon::window
+	jsr gui::open
 
-	; close any other windows (e.g. the error log) and redraw the editor
-	; at max size so that the monitor saves a clean screen when it opens
-	jsr close_windows
-
-:	CALL FINAL_BANK_MONITOR, mon::enter_win
-
-	; leave the window onscreen; make sure the editor still fits above it
-	jsr __edit_monwin_resize
 	jsr refresh_line
 	jmp draw_status_bar
-.endproc
-
-;*******************************************************************************
-; MONWIN GROW
-; Grows the monitor window (if one is open) by one row and shrinks the
-; editor to fit above it
-.proc monwin_grow
-	lda mon::wintop
-	beq @done		; no monitor window open
-
-	; the monitor draws the border and the revealed row of its history
-	; (bounds are checked there)
-	CALL FINAL_BANK_MONITOR, mon::win_grow
-
-	jsr __edit_monwin_resize
-	jmp draw_status_bar
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; MONWIN SHRINK
-; Shrinks the monitor window (if one is open) by one row and grows the
-; editor to fit above it
-.proc monwin_shrink
-	lda mon::wintop
-	beq @done		; no monitor window open
-	cmp #SCREEN_HEIGHT-1
-	bcs @done		; don't shrink past the monitor's input line
-	inc mon::wintop
-
-	; draw the revealed row (the old border row) with its source line
-	lda mon::wintop
-	sec
-	sbc #$02
-	pha
-	tax
-	jsr draw::resetline	; clear the border color from the row
-	pla
-	jsr __edit_render_row
-
-	jsr __edit_monwin_resize	; grow the editor (rows already drawn)
-
-	; draw the border at its new position
-	CALL FINAL_BANK_MONITOR, mon::draw_border
-	jmp draw_status_bar
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; MONWIN RESIZE
-; Resizes the editor to fit above the monitor window and moves the status
-; row to the window's border row.  Called (also by the monitor) whenever the
-; monitor window's size changes.
-.export __edit_monwin_resize
-.proc __edit_monwin_resize
-	lda mon::wintop
-	sec
-	sbc #$01
-	sta status_row		; border row above the window is the status row
-	sbc #$01		; editor rows end above the status row
-	cmp height
-	sta height
-	bcs @done	; if the editor grew, the screen contents are already
-			; valid (the monitor restores/renders revealed rows)
-
-	; the editor shrank; move the cursor up until it is in range
-@l0:	lda zp::cury
-	cmp height
-	bcc @done
-	jsr ccup
-	bcc @l0
-@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -467,13 +387,8 @@ main:	jsr key::getch
 
 :	jsr enter_command
 	inc debugging
-	lda #$00
-	sta mon::wintop	; close the monitor window (if open)
-	jsr reset_size
-	inc readonly	; enable read-only mode
-
-	lda #DEBUG_MESSAGE_LINE
-	sta status_row
+	jsr close_windows	; close any open windows (also resizes)
+	inc readonly		; enable read-only mode
 
 	ldxy @addr
 	jmp dbg::start	; start debugging at address in .XY
@@ -823,8 +738,7 @@ main:	jsr key::getch
 	lda errlog::numerrs
 	beq @printresult
 
-@err:	lda height
-	jsr errlog::activate
+@err:	jsr errlog::activate
 
 	jsr log::close
 	sec			; assembly failed
@@ -973,7 +887,7 @@ main:	jsr key::getch
 .proc __edit_gets
 @result_offset=r8
 @len=r9
-	stxy zp::jmpvec
+	stxy getsvec
 
 	; save insert mode etc.
 	lda zp::editor_mode
@@ -994,7 +908,7 @@ main:	jsr key::getch
 @getloop:
 	jsr text::update
 
-@getk:	jsr zp::jmpaddr		; call key-get func
+@getk:	jsr @callgets		; call key-get func
 	cmp #$00
 	beq @getloop
 
@@ -1065,6 +979,9 @@ main:	jsr key::getch
 	sta zp::editor_mode	; restore editor mode
 	lda @len
 	rts
+
+@callgets:
+	jmp (getsvec)
 .endproc
 
 ;*******************************************************************************
@@ -1242,12 +1159,11 @@ cancel = enter_command
 
 ;*******************************************************************************
 ; CLOSE WINDOWS
-; Closes the active GUI (if there is one) and restores the editor to occupy
-; the full screen
+; Closes all open windows and restores the editor to occupy the full screen
 .proc close_windows
 	jsr gui::closeall		; close any open windows
 	lda #$00
-	sta mon::wintop			; close the monitor window (if open)
+	sta mon::windowed		; the monitor window (if any) is closed
 	; fall through to reset_size
 .endproc
 
@@ -1259,6 +1175,7 @@ cancel = enter_command
 	beq :+
 	lda #DEBUG_MESSAGE_LINE-1
 	sta height
+	sta gui::baserow	; windows sit above the debug info rows
 	lda #DEBUG_MESSAGE_LINE
 	sta status_row
 	rts
@@ -1266,6 +1183,8 @@ cancel = enter_command
 	sta status_row
 	lda #EDITOR_HEIGHT
 	sta height
+	lda #STATUS_ROW-1
+	sta gui::baserow	; windows sit above the status row
 	jmp refresh
 .endproc
 
@@ -2944,19 +2863,8 @@ __edit_refresh:
 	jmp @clr
 
 @done:	ldx #STATUS_ROW
-	lda mon::wintop		; if the monitor window is open, the bottom
-	beq @rvs		; rows belong to it; color the border row
-	ldx status_row
-	lda debugging
-	beq @rvs
-	; while debugging, the monitor window's border is a bitmap
-	; separator; leave its color normal
-	jsr draw::resetline
-	jmp @coloron
-
-@rvs:	lda #COLOR_RVS
+	lda #COLOR_RVS
 	jsr draw::hline		; re-init status row's color
-@coloron:
 	lda #$01
 	sta mem::coloron	; enable color
 
@@ -3193,21 +3101,20 @@ goto_buffer:
 ; is closed upon exiting or selecting a buffer
 .proc show_buffers
 	ldxy #@menu
-	lda height
-	jsr gui::listmenu
-
-	; we don't need to keep this window open, close it
-	jmp close_windows
+	jmp gui::open
 
 .PUSHSEG
 .RODATA
 @menu:
 .byte GUI_BUFFERS	; id for this GUI
-.byte 8			; max height
+.byte GUI_CLASS_LIST
+.byte 8			; initial height
+.byte 1			; min height
+.byte 12		; max height
+.word strings::buffers	; title
 .word @getkey		; key handler
 .word @getdata		; get line handler
 .word src::numbuffers	; num ptr
-.word strings::buffers	; title
 
 ;--------------------------------------
 @getdata:
@@ -3265,6 +3172,14 @@ goto_buffer:
 	sbc #'1'
 @gotobuff:
 	jsr goto_buffer
+
+	; update saved cursor to new position in opened buffer
+	lda zp::curx
+	sta gui::cursave_x
+	lda zp::cury
+	sta gui::cursave_y
+
+	lda #GUI_RET_QUIT
 	sec		; flag to exit GUI
 	rts
 :	clc		; flag to get more keys
@@ -6124,8 +6039,8 @@ ro_commands:
 	.byte K_GETCMD		; get command
 	.byte K_MONITOR		; enter console
 	.byte K_MONITOR_WIN	; enter console in a window
-	.byte K_MONWIN_GROW	; grow the console window
-	.byte K_MONWIN_SHRINK	; shrink the console window
+	.byte K_WIN_GROW	; grow the active window
+	.byte K_WIN_SHRINK	; shrink the active window
 	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
 	.byte K_CLOSE_WINDOWS	; <- (close windows)
@@ -6139,13 +6054,13 @@ numcommands=*-commands
 	paste_below, paste_above, delete_char, \
 	open_line_above, open_line_below, join_line, comment_out, \
 	enter_visual, enter_visual_line, command_yank, sub_char, sub_line, \
-	dirview, gui::reenter, ccleft, ccright, ccup, ccdown, endofword, \
+	dirview, gui::enter, ccleft, ccright, ccup, ccdown, endofword, \
 	beginword, word_advance, home_col, last_line, \
 	home_line, ccdel, ccright, goto_end, goto_start, find_next, find_prev, \
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
 	command_find, next_drive, prev_drive, get_command, monitor, \
-	monitor_win, monwin_grow, monwin_shrink, next_err, \
+	monitor_win, gui::grow, gui::shrink, next_err, \
 	help::show, close_windows
 .linecont -
 
