@@ -518,7 +518,7 @@ window:
 @row=rd
 	sta wintop
 	stx winbot
-	sta @row
+	stx @row
 
 	; render the current address into the title
 	lda memaddr
@@ -533,6 +533,24 @@ window:
 	stx strings::memview_title+TITLE_ADDR_START+1
 	sty strings::memview_title+TITLE_ADDR_START
 
+	; the bottom row's address: memaddr + (winbot-wintop)*BYTES_TO_DISPLAY
+	lda winbot
+	sec
+	sbc wintop
+.ifdef hard8x8
+	asl
+	asl			; *4
+.else
+	asl
+	asl
+	asl			; *8
+.endif
+	clc
+	adc @src
+	sta @src
+	bcc @l0
+	inc @src+1
+
 @l0:	ldxy @src
 	jsr ui::memline
 
@@ -541,13 +559,22 @@ window:
 	ldx @row
 	jsr draw::resetline
 
-	; (ui::memline advanced @src to the next row's address)
-	inc @row
 	lda @row
-	cmp winbot
-	bcc @l0			; have we drawn all rows?
-	beq @l0
-	rts
+	cmp wintop
+	beq @done		; the top row was just drawn
+
+	; move up a row (ui::memline advanced @src to the next row's address,
+	; so step back two rows' worth of bytes)
+	dec @row
+	lda @src
+	sec
+	sbc #2*BYTES_TO_DISPLAY
+	sta @src
+	bcs @l0
+	dec @src+1
+	jmp @l0
+
+@done:	rts
 .endproc
 
 ;*******************************************************************************

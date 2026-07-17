@@ -571,15 +571,15 @@ __monitor_window:
 ; REDRAW WIN
 ; Redraws the window's rows from the monitor's screen buffer
 .proc redraw_win
-	lda wintop
+	lda winbot
 	sta winrow
 @l0:	jsr draw_row
-	inc winrow
 	lda winrow
-	cmp winbot
-	bcc @l0
-	beq @l0
-	rts
+	cmp wintop
+	beq @done
+	dec winrow
+	jmp @l0
+@done:	rts
 .endproc
 
 ;******************************************************************************

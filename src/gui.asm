@@ -370,12 +370,12 @@ __gui_refresh:
 	; draw one title row per open window; the active window's title is
 	; directly above its contents (centered), older windows' titles are
 	; drawn above it at the far left of their rows
-	lda wtop
-	sec
-	sbc depth
-	sta @row
-	lda #$00
-	sta @i
+	ldx wtop
+	dex
+	stx @row
+	ldx depth
+	dex
+	stx @i
 @t0:	lda @row
 	jsr scr::clrline
 	ldx @i
@@ -426,11 +426,9 @@ __gui_refresh:
 	ldx @row
 	lda #COLOR_RVS
 	jsr draw::hline
-	inc @row
-	inc @i
-	lda @i
-	cmp depth
-	bcc @t0
+	dec @row
+	dec @i
+	bpl @t0
 
 	; update the active window type
 	jsr active
