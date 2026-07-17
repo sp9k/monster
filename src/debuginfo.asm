@@ -214,7 +214,6 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 ;   - line: the address of the line program for the new block
 ;   - .C: set if an error occurred
 .proc new_block
-@tmp=r0
 	stxy addr		; init addr pointer
 
 	lda block_open		; is there a block already open?
@@ -357,8 +356,8 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 
 	; compute number of lines and write updated value
 	; numlines = (linestop - linebase) + 1
-	; linestop is the highest line stored (see store_line); srcline may be
-	; lower if lines were stored out of order (e.g. by a macro)
+	; linestop is the highest line stored (see store_line); srcline can't
+	; be used: the .INC handlers overwrite it before calling end_block
 	lda linestop
 	sec
 	sbc blocklinebase
@@ -466,7 +465,7 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 	sta @daddr+1
 
 	; check if address is encodable in basic instruction
-	; in order to use a basic instruction, both must be in range [$01, $0f]
+	; both deltas must be in [$00, $0f] and at least one must be nonzero
 	ora @dline+1
 	bne @extended	; if either delta's MSB is !0, need extended
 
@@ -492,10 +491,35 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 
 @extended:
 	ldy #$00
+@advanceaddr:
+	lda @daddr
+	ora @daddr+1
+	beq @advanceline	; skip if addr delta is 0
+
+	lda #$00		; extended instruction opcode byte 0
+	STOREB_Y line
+
+	iny
+	lda #OP_ADVANCE_ADDR	; extended instruction opcode byte 1
+	STOREB_Y line
+
+	; get 16 bit signed offset for target address
+	iny
+	lda @daddr
+	STOREB_Y line		; write LSB
+	iny
+	lda @daddr+1
+	STOREB_Y line		; write MSB
+
+	iny
+
+	lda #$04		; advance 4 bytes
+	sta @isize
+
 @advanceline:
 	lda @dline
 	ora @dline+1
-	beq @advanceaddr	; skip if line delta is 0
+	beq @done		; no need for instruction if line delta is 0 - skip
 
 	lda #$00		; extended instruction opcode byte 0
 	STOREB_Y line
@@ -511,31 +535,6 @@ blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 	iny
 	lda @dline+1
 	STOREB_Y line		; write MSB of line delta
-
-	iny
-
-	lda #$04		; advance 4 bytes
-	sta @isize
-
-@advanceaddr:
-	lda @daddr
-	ora @daddr+1
-	beq @done	; no need for instruction if addr delta is 0 - skip
-
-	lda #$00		; extended instruction opcode byte 0
-	STOREB_Y line
-
-	iny
-	lda #OP_ADVANCE_ADDR	; extended instruction opcode byte 1
-	STOREB_Y line
-
-	; get 16 bit signed offset for target address
-	iny
-	lda @daddr
-	STOREB_Y line	; write LSB
-	iny
-	lda @daddr+1
-	STOREB_Y line	; write MSB
 
 	lda #$04	; advance 4 bytes
 	clc
@@ -850,9 +849,8 @@ get_filename = get_filename_addr
 .else
 .proc get_filename
 @buff=$140
-	cmp numfiles		; set .C if file ID is >= numfiles
-	bcs @done
 	jsr get_filename_addr
+	bcs @done
 	stxy zp::bankaddr0
 	ldxy #@buff
 	stxy zp::bankaddr1
@@ -1373,7 +1371,6 @@ get_filename = get_filename_addr
 .proc __debuginfo_load
 @header    = r0
 @freeptr   = r0
-@segname   = r0
 @offset    = r0
 @block_i   = zp::tmp10
 @nblocks   = zp::tmp11
