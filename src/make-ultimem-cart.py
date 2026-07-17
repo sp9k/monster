@@ -16,4 +16,3 @@ with open(sys.argv[1], 'rb') as file:
 with open(sys.argv[2], 'wb') as file:
 	file.write(bin)
 	file.write(bytearray([0]*(IMG_SIZE-len(bin))))
-

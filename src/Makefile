@@ -1,116 +1,78 @@
 TARGET ?= vic20
 REGION ?= NTSC
 
-# for Vic-20, which expansion to use
-# Valid values: ultimem
-ifeq ($(TARGET),vic20)
-EXPANSION ?= ultimem
-else
-EXPANSION =
-endif
+SCREEN_MODE ?= soft4x8
+#SCREEN_MODE ?= hard8x8
 
 # default device # (for cart image)
 DEFAULT_DEVICE=8
 
 # emulators
-XVIC=xvic
 X64=x64sc
 
-SCREEN_MODE=soft4x8
-#SCREEN_MODE=hard8x8
+# name of the UltiMem flash image to produce
+CART_IMAGE=monster.bin
 
-ASMFLAGS=--asm-define $(TARGET) --asm-define $(REGION) --asm-define $(SCREEN_MODE) --asm-define DEFAULT_DEVICE=$(DEFAULT_DEVICE)
-ifneq ($(EXPANSION),)
-ASMFLAGS+=--asm-define $(EXPANSION)
-endif
+# name of the test suite flash image to produce
+TEST_IMAGE=test.bin
 
-# set KERNAL based on configured TARGET and REGION
-ifeq ($(TARGET),vic20)
-	ifeq ($(REGION),NTSC)
-		KERNAL_JIFFY=JiffyDOS_VIC-20_6.01_NTSC.bin
-		KERNAL=kernal.901486-06.bin
-	endif
-	ifeq ($(REGION),PAL)
-		KERNAL_JIFFY=JiffyDOS_VIC-20_PAL.bin
-		KERNAL=kernal.901486-07.bin
-	endif
-	LINK_FILE=link-vic20-$(EXPANSION)
-endif
-ifeq ($(TARGET),c64)
-	KERNAL=JiffyDOS_C64.bin
-	LINK_FILE=link-c64
-endif
-
-# get emulator flags based on REGION
-ifeq ($(REGION),PAL)
-	EMU_REGION="-pal"
-endif
-ifeq ($(REGION),NTSC)
-	EMU_REGION="-ntsc"
-endif
-
-# set emulator based on the configured TARGET
-ifeq ($(TARGET),vic20)
-	EMU=$(XVIC)
-endif
-ifeq ($(TARGET),c64)
-	EMU=$(X64)
-endif
-
-
-CART_IMAGE=monster.bin	# name of cart binary to produce
-TEST_IMAGE=test.bin	# name of test suite cart binary to produce
 PYTHON=python3
 CL65=cl65
 C1541=c1541
 EXOMIZER=exomizer
 
+ASMFLAGS=--asm-define $(TARGET) --asm-define $(REGION) --asm-define $(SCREEN_MODE) --asm-define DEFAULT_DEVICE=$(DEFAULT_DEVICE)
+
+# target specific configuration
+ifeq ($(TARGET),vic20)
+# the vic20 build always targets the UltiMem expansion
+ASMFLAGS+=--asm-define ultimem
+LINK_FILE=link-vic20-ultimem
+EXP_SRC=$(wildcard vic20/ultimem/*.asm)
+endif
+ifeq ($(TARGET),c64)
+LINK_FILE=link-c64
+EXP_SRC=
+# the c64 boots from disk; its boot image is written to the test disk
+BOOT_DEP=boot.prg
+BOOT_WRITE=-write boot.prg
+endif
+
+# emulator flags for the configured REGION
+ifeq ($(REGION),PAL)
+EMU_REGION=-pal
+endif
+ifeq ($(REGION),NTSC)
+EMU_REGION=-ntsc
+endif
+
 BOOTSRC=$(TARGET)/boot.asm
 
 # platform specific source files
-TARGET_SRC=$(filter-out $BOOTSRC, $(wildcard $(TARGET)/*.asm))
-
-ifdef EXPANSION
-	TARGET_EXP_SRC=$(wildcard $(TARGET)/$(EXPANSION)/*.asm)
-else
-	TARGET_EXP_SRC=
-endif
+TARGET_SRC=$(filter-out $(BOOTSRC), $(wildcard $(TARGET)/*.asm))
 MODE_SRC=$(wildcard $(TARGET)/$(SCREEN_MODE)/*.asm)
 
 # platform independent source files
 PI_SRC=$(wildcard *.asm)
 
-SRC=$(TARGET_SRC) $(PI_SRC) $(MODE_SRC) $(TARGET_EXP_SRC)
-TEST_TXTS=$(wildcard tests/*.txt)
+SRC=$(TARGET_SRC) $(PI_SRC) $(MODE_SRC) $(EXP_SRC)
 
 UNIT=$(wildcard *.a65)
-TEST_INCS=$(wildcard tests/*.inc)
 TESTS=$(wildcard tests/*.s)
-
-#TESTS=$(wildcard tests/wg/*.s)
-#TEST_INCS=$(wildcard tests/wg/*.inc)
-
-#TESTS=$(wildcard tests/SLOELECTRIC/*.a65)
-#TEST_INCS=$(wildcard tests/SLOELECTRIC/*.inc)
-
+TEST_INCS=$(wildcard tests/*.inc)
+TEST_TXTS=$(wildcard tests/*.txt)
 TEST_FILES=$(TESTS) $(TEST_INCS) $(TEST_TXTS) tests/link
 
 all: test.d81
 
-disk: boot.prg monster-disk.prg
-ifeq ($(TARGET),vic20)
-	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write boot.prg -write masm.prg
-endif
-ifeq ($(TARGET),c64)
-	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write boot.prg
-endif
-
-cart: monster.bin
-
-ultimem: monster.bin
-	$(PYTHON) make-ultimem-cart.py monster-cart.prg $(CART_IMAGE)
+cart: $(CART_IMAGE)
+ultimem: $(CART_IMAGE)
 
 suite: $(TEST_IMAGE)
+
+# c64 only: build the boot disk (there is no vic20 disk build)
+disk: boot.prg monster-disk.prg
+	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write boot.prg
 
 installer.prg: installer/install.asm
 	$(CL65) -t $(TARGET) -o $@ -C installer/link-installer.config $^
@@ -121,64 +83,33 @@ monster-cart.prg: $(BOOTSRC) $(SRC)
 monster-cart-test.prg: $(BOOTSRC) $(SRC) $(UNIT)
 	$(CL65) -t $(TARGET) -o $@ --asm-define TEST --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $^ -Ln labels.txt -v -m map.txt
 
+# the linker output is already laid out bank-by-bank for the UltiMem's flash
+# (see the MEMORY areas in the link config); pad it to the full image size
 $(CART_IMAGE): monster-cart.prg
-	$(PYTHON) makecart.py labels.txt monster-cart.prg $(CART_IMAGE)
+	$(PYTHON) make-ultimem-cart.py $< $@
 
 $(TEST_IMAGE): monster-cart-test.prg
-	$(PYTHON) makecart.py labels.txt monster-cart-test.prg $(TEST_IMAGE)
+	$(PYTHON) make-ultimem-cart.py $< $@
 
 monster-disk.prg: $(BOOTSRC) $(SRC)
 	$(CL65) -t $(TARGET) -o $@ $(ASMFLAGS) -C $(LINK_FILE)-disk.config $^ -Ln labels.txt -v -m map.txt
 
+# Split the image around the $$D000-$$DFFF I/O gap so the exomizer
+# decruncher has free RAM to work in (see makeboot-c64.py).
 boot.prg: monster-disk.prg
-ifeq ($(TARGET),vic20)
-	$(PYTHON) makeboot.py labels.txt monster-disk.prg bootloader.prg masm.prg
-	$(EXOMIZER) sfx basic -t55 -n -o $@ bootloader.prg
-endif
-ifeq ($(TARGET),c64)
-	# Split the image around the $D000-$DFFF I/O gap so the exomizer
-	# decruncher has free RAM to work in (see makeboot-c64.py).
 	$(PYTHON) makeboot-c64.py monster-disk.prg boot-lo.prg boot-hi.prg
 	$(EXOMIZER) sfx basic -t64 -n -o $@ boot-lo.prg boot-hi.prg
-endif
 
-test-disk: $(TESTS_FILES)
+test-disk: $(TEST_FILES)
 	$(C1541) -format test,1 d81 test.d81 -attach test.d81 $(addprefix -write , $(TEST_FILES))
 
-test.d81: boot.prg $(TESTS) $(TEST_INCS) $(TEST_TXTS)
-ifeq ($(TARGET),vic20)
-	# create the test disk image
-	$(C1541) -format test,1 d81 test.d81 -attach test.d81 $(addprefix -write , $(TEST_FILES))
-endif
-ifeq ($(TARGET),c64)
-	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write boot.prg $(addprefix -write , $(TEST_FILES))
-endif
-
-start-cart: $(CART_IMAGE) test.d81
-	$(C1541) -format disk,1 d81 empty.d81
-	$(XVIC) -default -kernal $(KERNAL) +warp -sound -cartfe $(CART_IMAGE) -memory all $(EMU_REGION) -dos1581 JiffyDOS_1581.bin -drive8type 1581 -8 test.d81 -moncommands moncommands
-
-start-cart-jiffy: $(CART_IMAGE) test.d81
-	$(C1541) -format disk,1 d81 empty.d81
-	$(XVIC) +warp -kernal $(KERNAL_JIFFY) -sound -cartfe $(CART_IMAGE) -memory all $(EMU_REGION) -drive8type 1581 -8 test.d81 -dos1581 JiffyDOS_1581.bin -8 empty.d81 -moncommands moncommands
-
+test.d81: $(BOOT_DEP) $(TESTS) $(TEST_INCS) $(TEST_TXTS)
+	$(C1541) -format test,1 d81 test.d81 -attach test.d81 $(BOOT_WRITE) $(addprefix -write , $(TEST_FILES))
 
 start-disk-jiffy64: test.d81
 	$(X64) -default +warp -kernal JiffyDOS_C64.bin -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384  -moncommands moncommands -8 test.d81
-	#$(X64) -default +warp -kernal JiffyDOS_C64.bin -sound $(EMU_REGION) -drive8type 1581 -dos1581 JiffyDOS_1581.bin -reu -reusize 16384  -moncommands moncommands -8 test.d81
-
-
-start-install: install.d81
-	cp fe3vice.bin fw-test.bin
-	$(XVIC) +warp -sound -cartfe fw-test.bin -fewriteback -memory all $(EMU_REGION) -drive8type 1581 -8 install.d81
-
-start-test: $(TEST_IMAGE) test.d81
-	$(XVIC) +warp -sound -cartfe $(TEST_IMAGE) -memory all $(EMU_REGION) -drive8type 1581 -8 test.d81 -moncommands moncommands
 
 clean:
-	rm -f *.prg *.o test.d81 $(CART_IMAGE) monster.d81
-	rm -rf vic20/*.o
-	rm -rf vic20/ultimem/*.o
-	rm -rf vic20/hard8x8.o/*.o
-	rm -rf vic20/soft4x8.o/*.o
-	rm -rf c64/*.o
+	rm -f *.prg *.o test.d81 monster.d81
+	rm -f $(CART_IMAGE) $(TEST_IMAGE)
+	rm -f vic20/*.o vic20/ultimem/*.o vic20/hard8x8/*.o vic20/soft4x8/*.o c64/*.o
