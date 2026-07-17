@@ -10,6 +10,7 @@
 .include "../settings.inc"
 .include "../../debug.inc"
 .include "../../edit.inc"
+.include "../../guis.inc"
 .include "../../irq.inc"
 .include "../../macros.inc"
 .include "../../monitor.inc"
@@ -446,7 +447,9 @@ go_pre_run:
 	; from BASIC)
 	lda #$00
 	sta zp::banksp
-	CALL FINAL_BANK_MONITOR, mon::reenter
+@mon0:	CALL FINAL_BANK_MONITOR, mon::reenter
+	cmp #GUI_RET_CYCLE	; no window manager here to cycle windows;
+	beq @mon0		; just re-prompt
 
 	; return to the editor or monitor (whichever is active)
 	lda edit::debugging

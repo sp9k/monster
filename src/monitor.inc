@@ -1,5 +1,4 @@
 .import __monitor_clear
-.import __monitor_enter
 .import __monitor_getch
 .import __monitor_init
 .import __monitor_int
@@ -14,7 +13,6 @@
 
 .scope mon
 	clear     = __monitor_clear
-	enter     = __monitor_enter
 	getch     = __monitor_getch
 	init	  = __monitor_init
 	int	  = __monitor_int

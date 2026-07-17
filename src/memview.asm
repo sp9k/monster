@@ -169,6 +169,11 @@ window:
 	jsr gui::grow
 	jmp @resize
 
+:	cmp #K_WIN_MAXIMIZE
+	bne :+
+	jsr gui::maximize
+	jmp @resize
+
 :	cmp #K_WIN_SHRINK
 	bne :+
 	jsr gui::shrink

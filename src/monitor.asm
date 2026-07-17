@@ -3,10 +3,10 @@
 ; This file contains procedures for interacting with the "monitor".
 ; The monitor is a text-based interface that can be used for interacting with
 ; program state as well as debugging.
-; It may run fullscreen or as a window managed by the window manager (see
-; gui.asm).  When windowed, the monitor's screen buffer is anchored to the
-; bottom of the window: buffer row (HEIGHT-1) is displayed on the window's
-; bottom row and "winoff" maps buffer rows to screen rows.
+; It runs as a window managed by the window manager (see gui.asm).  The
+; monitor's screen buffer is anchored to the bottom of the window: buffer row
+; (HEIGHT-1) is displayed on the window's bottom row and "winoff" maps buffer
+; rows to screen rows.
 ;*******************************************************************************
 
 .include "asm.inc"
@@ -59,8 +59,7 @@ CMD_BUFF: .res LINESIZE		; written by edit::gets
 
 ;*******************************************************************************
 ; WINDOWED
-; If nonzero, the monitor is displayed as a window (see gui.asm).
-; If zero, the monitor takes the entire screen.
+; Nonzero while the monitor window is open (see gui.asm)
 .export __monitor_windowed
 __monitor_windowed: .byte 0
 
@@ -73,9 +72,6 @@ cyclereq: .byte 0
 __monitor_line:
 line:      .byte 0	; the buffer row that the monitor's input is on
 repeatcmd: .byte 0	; if set, empty line repeats last command
-
-cursave_x: .byte 0
-cursave_y: .byte 0
 
 wintop: .byte 0		; first screen row of the monitor's contents
 winbot: .byte 0		; last screen row (the input line's row)
@@ -153,16 +149,17 @@ __monitor_window:
 
 :	cmp #K_WIN_GROW
 	bne :+
-	lda __monitor_windowed
-	beq @handled		; fullscreen; nothing to resize
 	jsr gui::grow
 	jmp @redrawline
 
 :	cmp #K_WIN_SHRINK
 	bne :+
-	lda __monitor_windowed
-	beq @handled		; fullscreen; nothing to resize
 	jsr gui::shrink
+	jmp @redrawline
+
+:	cmp #K_WIN_MAXIMIZE
+	bne :+
+	jsr gui::maximize
 @redrawline:
 	lda zp::cury
 	jsr text::drawline	; redraw the input line being edited
@@ -170,8 +167,6 @@ __monitor_window:
 
 :	cmp #K_SWAP_WINS
 	bne :+
-	lda __monitor_windowed
-	beq @handled		; fullscreen; no other windows
 	inc cyclereq
 	lda #K_QUIT		; force the input to end
 	rts
@@ -179,9 +174,6 @@ __monitor_window:
 :	cmp #K_SWAP_USERMEM_TUI
 	bne :+
 	jsr dbg::swapusermem
-	lda __monitor_windowed
-	bne @handled		; windowed: leave per-row color enabled
-	dec mem::coloron	; (re-disable color)
 	jmp @handled
 
 :	cmp #K_GO_BASIC_TUI
@@ -338,13 +330,7 @@ __monitor_window:
 .export __monitor_clear
 .proc __monitor_clear
 @scr=r0
-	; clear the screen (or just the window's rows if windowed)
-	lda __monitor_windowed
-	bne @clrwin
-	CALLMAIN scr::clr
-	jmp @clrbuff
-
-@clrwin:
+	; clear the window's rows
 	lda wintop
 :	pha
 	CALLMAIN scr::clrline
@@ -355,7 +341,6 @@ __monitor_window:
 	bcc :-
 	beq :-
 
-@clrbuff:
 	; clear the monitor buffer
 	ldxy #screen
 	stxy @scr
@@ -374,18 +359,11 @@ __monitor_window:
 :	dex
 	bne @l0
 
-	; move back to the first line (bottom row if windowed)
-	lda __monitor_windowed
-	beq @full
+	; move the input back to the window's bottom row
 	lda #HEIGHT-1
 	sta line
 	lda winbot
 	sta zp::cury
-	jmp @prompt
-@full:	lda #$00
-	sta line
-	sta zp::cury
-@prompt:
 	lda #$01
 	sta zp::curx
 	lda #MONITOR_PROMPT
@@ -396,73 +374,9 @@ __monitor_window:
 .endproc
 
 ;******************************************************************************
-; ENTER
-; Activates the monitor fullscreen.
-.export __monitor_enter
-.proc __monitor_enter
-@scr=r0
-@line=r2
-@linebuff=mem::spare
-	CALLMAIN scr::clr
-	CALLMAIN asm::reset
-
-	; fullscreen geometry
-	lda #$00
-	sta __monitor_windowed
-	sta wintop
-	sta winoff
-	lda #HEIGHT-1
-	sta winbot
-
-	lda line
-	beq @cont
-
-	; restore the contents of the monitor screen buffer
-	lda #$00
-	sta @line
-	ldxy #screen
-	stxy @scr
-
-@l0:	ldy #$00
-:	lda (@scr),y
-	sta @linebuff,y
-	beq @linedone
-	iny
-	cpy #40
-	bne :-
-
-@linedone:
-	; redraw the line
-	lda @line
-	ldxy #@linebuff
-	CALLMAIN text::print
-
-	; move to next line
-	lda @scr
-	clc
-	adc #LINESIZE
-	sta @scr
-	bcc :+
-	inc @scr+1
-:	inc @line
-	lda @line
-	cmp line
-	bne @l0
-
-@cont:	; save cursor state of caller
-	lda zp::curx
-	sta cursave_x
-	lda zp::cury
-	sta cursave_y
-
-	; fall through to __monitor_reenter
-.endproc
-
-;******************************************************************************
 ; REENTER
 ; Activates the monitor without clearing the screen.
-; When the monitor is windowed, returns a GUI_RET_x code for the window
-; manager in .A
+; Returns a GUI_RET_x code for the window manager in .A
 .export __monitor_reenter
 .proc __monitor_reenter
 @err=r0
@@ -589,22 +503,9 @@ __monitor_window:
 
 @done:	TRACE_OFF
 
-	lda __monitor_windowed
-	beq @fullscreen
-
 	; the window manager restores the editor's state
 	lda #GUI_RET_QUIT
 	rts
-
-@fullscreen:
-	; restore the cursor
-	lda cursave_x
-	sta zp::curx
-	lda cursave_y
-	sta zp::cury
-
-	; debug interface changed back to GUI, refresh editor
-	JUMPMAIN edit::refresh
 .endproc
 
 ;******************************************************************************

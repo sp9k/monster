@@ -271,31 +271,13 @@ main:	jsr key::getch
 .endproc
 
 ;*******************************************************************************
-; ENTER MONITOR
-; Activates the monitor
-.export __edit_enter_monitor
-.proc __edit_enter_monitor
-	JUMP FINAL_BANK_MONITOR, mon::enter
-.endproc
-
-;*******************************************************************************
 ; MONITOR
-; Activates the monitor fullscreen and restores the editor when it exits.
-; If the monitor is open as a window, re-activates the window instead.
+; Opens (or re-activates) the monitor as a maximized window
 .proc monitor
-	lda debugging
-	bne @fullscreen		; always use the full screen while debugging
-	lda mon::windowed
-	bne monitor_win		; monitor window is open; re-enter it
-
-@fullscreen:
-	; Save the editor screen WITHOUT reinitializing it (savebuf, not save)
-	jsr scr::savebuf
-	pushcur
-	jsr __edit_enter_monitor
-	inc mem::coloron		; restore per-row color
-	popcur
-	jmp scr::restore
+	ldxy #mon::window
+	jsr gui::select
+	jsr gui::maximize
+	; fall through to monitor_win
 .endproc
 
 ;*******************************************************************************
@@ -303,14 +285,19 @@ main:	jsr key::getch
 ; Opens (or re-activates) the monitor as a window at the bottom of the
 ; screen, leaving the editor visible above it.
 .proc monitor_win
-	lda debugging
-	bne monitor		; always use the full screen while debugging
-
 	ldxy #mon::window
 	jsr gui::open
 
 	jsr refresh_line
 	jmp draw_status_bar
+.endproc
+
+;*******************************************************************************
+; MAXIMIZE WIN
+; Maximizes (or restores) the active window and gives it focus
+.proc maximize_win
+	jsr gui::maximize
+	jmp gui::enter
 .endproc
 
 ;*******************************************************************************
@@ -6042,9 +6029,10 @@ ro_commands:
 	.byte K_MONITOR_WIN	; enter console in a window
 	.byte K_WIN_GROW	; grow the active window
 	.byte K_WIN_SHRINK	; shrink the active window
+	.byte K_WIN_MAXIMIZE	; maximize/restore the active window
 	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
-	.byte K_CLOSE_WINDOWS	; <- (close windows)
+	.byte K_WIN_MAXIMIZE	; <- (close windows)
 numcommands=*-commands
 
 ; command tables for COMMAND mode key commands
@@ -6061,7 +6049,7 @@ numcommands=*-commands
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
 	command_find, next_drive, prev_drive, get_command, monitor, \
-	monitor_win, gui::grow, gui::shrink, next_err, \
+	monitor_win, gui::grow, gui::shrink, maximize_win, next_err, \
 	help::show, close_windows
 .linecont -
 

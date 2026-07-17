@@ -455,10 +455,13 @@ blank   = scr::blank
 	beq @iface_gui		; if interface is GUI, continue
 
 @debugloop_tui:
-	; if the monitor is windowed, update the source view above it to
-	CALL FINAL_BANK_MONITOR, mon::update_pc_view
+	; make sure the monitor window is open and update the source view
+	; above it
 	lda mon::windowed
-	beq @tui_fullscreen
+	bne :+
+	ldxy #mon::window
+	jsr gui::select
+:	CALL FINAL_BANK_MONITOR, mon::update_pc_view
 
 	; hand the editor's cursor (synced to the PC by update_pc_view) to
 	; the window manager; the live cursor may still be a window row
@@ -475,10 +478,6 @@ blank   = scr::blank
 	lda #$00
 	sta __debug_interface
 	jmp @enter_iface
-
-@tui_fullscreen:
-	CALL FINAL_BANK_MONITOR, mon::reenter	; re-enter monitor (get input)
-	jmp @enter_iface	; monitor quit
 
 @iface_gui:
 	; restore the debug view's layout (windows stay open; the window
@@ -1627,8 +1626,20 @@ __debug_remove_breakpoint:
 
 ;*******************************************************************************
 ; ACTIVATE MONITOR
-; Activates the text user interface debugger (monitor) as a window
+; Activates the text user interface debugger (monitor) as a maximized window
 .proc activate_monitor
+	jsr bsp::save_debug_state
+	ldxy #mon::window
+	jsr gui::select
+	jsr gui::maximize
+	jmp gui::enter
+.endproc
+
+;*******************************************************************************
+; ACTIVATE MONITOR WIN
+; Activates the monitor as a window at its last height, leaving the source
+; view visible above it
+.proc activate_monitor_win
 	jsr bsp::save_debug_state
 	ldxy #mon::window
 	jmp gui::open
@@ -1643,7 +1654,10 @@ __debug_remove_breakpoint:
 .export __debug_update_pc_view
 .proc __debug_update_pc_view
 	lda mon::windowed
-	beq @done		; fullscreen monitor; no source view
+	beq @done		; monitor window not open; no view to update
+	lda zp::editor_height
+	cmp #$ff
+	beq @done		; the window covers the source view
 
 	; highlight the selected line
 	jsr cur::off
@@ -1911,7 +1925,7 @@ num_commands=*-commands
 	__debug_go, jump, __debug_step_out, __debug_trace, edit_source, \
 	edit_mem, edit_breakpoints, __debug_edit_watches, \
 	__debug_swap_user_mem, reset_stopwatch, edit_state, \
-	goto_pc, activate_monitor, activate_monitor, toggle_extended_info
+	goto_pc, activate_monitor, activate_monitor_win, toggle_extended_info
 .linecont -
 command_vectorslo: .lobytes command_vectors
 command_vectorshi: .hibytes command_vectors

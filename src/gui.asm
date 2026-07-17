@@ -75,7 +75,8 @@ WIN_V1     = 9		; LIST: getline handler CUSTOM: enter handler
 WIN_V2     = $b		; LIST: pointer to number of items
 WIN_SCROLL = $d		; LIST: scroll offset
 WIN_SELECT = $e		; LIST: selection offset
-WIN_SIZE   = $f
+WIN_PREMAX = $f		; height before the window was maximized (0 if none)
+WIN_SIZE   = $10
 
 WIN_DESC_SIZE = WIN_SCROLL	; the part initialized from the descriptor
 
@@ -212,17 +213,29 @@ recoffs:
 ; LAYOUT
 ; Computes the geometry for the active window: its content rows
 ; [wtop, wbot] and the editor height that leaves room for the window and
-; one title row per open window.
+; one title row per open window.  The height is clamped so that the title
+; rows never leave the screen; a maximized window leaves the editor no rows
+; at all (.A = $ff).
 ; IN:
 ;   - r0: address of the active record
 ; OUT:
 ;   - wtop/wbot/hght: geometry of the active window's contents
 ;   - .A: the new editor height (index of its last row)
-;   - .C: clear if the window does not fit above the baserow
+;   - .C: clear if the editor keeps no rows
 .proc layout
 	jsr height
 	sta hght
+
+	; clamp to the rows above the baserow not needed for title rows
 	lda baserow
+	sec
+	sbc depth
+	adc #$00	; .A = baserow - depth + 1 (.C was set)
+	cmp hght
+	bcs :+
+	sta hght
+
+:	lda baserow
 	sta wbot
 	sec
 	sbc hght	; .A = the active window's title row
@@ -272,11 +285,31 @@ __gui_refresh:
 	rts		; no windows are open
 
 :	jsr layout
+	bcc @hide	; the windows fill every row above the baserow
+	cmp #$01
+	bcs @gotedh
+
+@hide:	; the editor keeps no rows; blank the row above the titles (if any)
+	tax
+	bmi :+		; $ff: the titles begin at row 0
+	lda #$00
+	jsr scr::clrline
+	ldx #$00
+	jsr draw::resetline
+:	lda #$ff
+
+@gotedh:
 	sta @edh
 
 	; resize the editor to fit above the windows
 	cmp zp::editor_height
 	beq @content
+	cmp #$ff
+	beq @edhide
+	ldx zp::editor_height
+	inx		; was the editor hidden?
+	beq @edunhide
+	cmp zp::editor_height
 	bcs @edgrow
 
 @edshrink:
@@ -286,14 +319,27 @@ __gui_refresh:
 	jsr swapcur
 	jmp @content
 
+@edhide:
+	; hide the editor; its cursor is reflowed when it is revealed again
+	sta zp::editor_height
+	jmp @content
+
+@edunhide:
+	; the editor had no rows: reflow the cursor and render every row
+	jsr swapcur
+	lda @edh
+	jsr edit::resize	; treats the hidden height ($ff) as a shrink
+	ldx #$00
+	beq @grow1		; render rows 0..@edh (branch always)
+
 @edgrow:
 	; render the source rows revealed by the shrinking window area
 	jsr swapcur
 	ldx zp::editor_height
 	inx
-	stx @row
 	lda @edh
 	sta zp::editor_height
+@grow1:	stx @row
 @grow0:	ldx @row
 	lda #$00
 	sta mem::breakpoint_rows,x
@@ -592,6 +638,10 @@ __gui_refresh:
 	bne :+
 	jsr __gui_shrink
 	jmp @loop
+:	cmp #K_WIN_MAXIMIZE
+	bne :+
+	jsr __gui_maximize
+	jmp @loop
 
 :	jsr key::isup
 	bne @chkdown
@@ -675,6 +725,7 @@ __gui_refresh:
 	beq @loop
 
 	; GUI_RET_QUIT: return focus to the editor
+	jsr unhide_editor	; give the editor its rows back if it has none
 	lda #$00
 	sta infocus
 	jsr cur::unlimit
@@ -786,11 +837,13 @@ __gui_refresh:
 	dey
 	bpl :-
 
-	; initialize scroll and selection offsets
+	; initialize scroll/selection offsets and pre-maximize height
 	lda #$00
 	ldy #WIN_SCROLL
 	sta (r0),y
 	ldy #WIN_SELECT
+	sta (r0),y
+	ldy #WIN_PREMAX
 	sta (r0),y
 
 	inc depth
@@ -921,6 +974,89 @@ redraw:	jsr draw_all
 geom:	lda wtop
 	ldx wbot
 	rts
+
+;*******************************************************************************
+; MAXIMIZE
+; Maximizes the active window: gives it every row above the baserow not
+; needed for the open windows' title rows.  LIST windows are still limited
+; to their item count (see height).  The editor keeps no rows while a
+; window is maximized; they are given back when the window shrinks or when
+; focus returns to the editor.
+; If the window is already maximized, restores the height it had before.
+; OUT:
+;   - .A: the top content row of the active window
+;   - .X: the bottom content row of the active window
+.export __gui_maximize
+.proc __gui_maximize
+	jsr active
+	bcs geom
+
+	; biggest height that leaves a row for each open window's title
+	lda baserow
+	sec
+	sbc depth
+	adc #$00	; .A = baserow - depth + 1 (.C was set)
+	ldy #WIN_HEIGHT
+	cmp (r0),y
+	beq @restore	; already maximized: put back the saved height
+	bcc @restore
+
+	; save the current height (if the editor is visible at it) and maximize
+	pha
+	ldx zp::editor_height
+	inx
+	beq :+		; editor already hidden: not a height worth restoring
+	lda (r0),y
+	ldy #WIN_PREMAX
+	sta (r0),y
+:	pla
+	ldy #WIN_HEIGHT
+	sta (r0),y
+	jmp redraw
+
+@restore:
+	jsr restore_height
+	jmp redraw
+.endproc
+
+;*******************************************************************************
+; RESTORE HEIGHT
+; Returns the active window to the height it had before it was maximized.
+; Falls back to the minimum height if no height was saved or if the saved
+; one no longer leaves the editor a row.
+; IN:
+;   - r0: address of the active record
+.proc restore_height
+	ldy #WIN_PREMAX
+	lda (r0),y
+	beq @min
+	ldy #WIN_HEIGHT
+	sta (r0),y
+	jsr layout
+	bcc @min	; editor still has no rows
+	cmp #$01
+	bcs @done
+@min:	ldy #WIN_MINH
+	lda (r0),y
+	ldy #WIN_HEIGHT
+	sta (r0),y
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; UNHIDE EDITOR
+; If the active window covers the entire window area, shrinks it back so
+; that the editor regains its rows.  Called when focus returns to the editor
+.proc unhide_editor
+	lda zp::editor_height
+	cmp #$ff
+	bne @done
+	jsr active
+	bcs @done
+	jsr restore_height
+	jmp draw_all
+@done:	rts
+.endproc
 
 ;*******************************************************************************
 ; CLOSEALL

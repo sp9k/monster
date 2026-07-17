@@ -96,6 +96,7 @@ K_DEL_WATCH = $ac	; C= + d
 ; WINDOW KEYS
 K_WIN_GROW		= $a1	; C= + k (grow the active window)
 K_WIN_SHRINK		= $b5	; C= + j (shrink the active window)
+K_WIN_MAXIMIZE		= $ad	; C= + z (maximize/restore the active window)
 
 ;*******************************************************************************
 ; MONITOR KEYS
