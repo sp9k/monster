@@ -410,18 +410,24 @@ window:
 	; are we at the top of the editor?
 	lda zp::cury
 	cmp wintop
-	bne :+
+	bne @movecur
 
-	; we're at the top, scroll
+	; we're at the top; move back a row, scroll contents down, and
+	; draw new top row
 	lda memaddr
 	sec
-	sbc #$08	; # of bytes per row
+	sbc #BYTES_TO_DISPLAY
 	sta memaddr
-	bcs @done
+	bcs :+
 	dec memaddr+1
-@done:	jmp __view_refresh	; refresh the display
+:	lda wintop
+	ldx winbot
+	jsr text::scrolldown
+	lda wintop
+	jmp draw_row
 
-:	dec zp::cury
+@movecur:
+	dec zp::cury
 	rts
 .endproc
 
@@ -432,18 +438,24 @@ window:
 	; are we at the bottom of the editor?
 	lda zp::cury
 	cmp winbot
-	bcc :+
+	bcc @movecur
 
-	; we're at the bottom, scroll
+	; we're at the bottom; advance a row, scroll contents up, and draw new
+	; bottom row
 	lda memaddr
 	clc
-	adc #$08	; # of bytes per row
+	adc #BYTES_TO_DISPLAY
 	sta memaddr
-	bcc @done
+	bcc :+
 	inc memaddr+1
-@done:	jmp __view_refresh	; refresh the display
+:	ldx wintop
+	lda winbot
+	jsr text::scrollup
+	lda winbot
+	jmp draw_row
 
-:	inc zp::cury
+@movecur:
+	inc zp::cury
 	rts
 .endproc
 
@@ -514,7 +526,6 @@ window:
 ;   - .A: the first row to draw at
 ;   - .X: the last row to draw at
 .proc windraw
-@src=ra
 @row=rd
 	sta wintop
 	stx winbot
@@ -522,59 +533,57 @@ window:
 
 	; render the current address into the title
 	lda memaddr
-	sta @src
 	jsr util::hextostr
 	stx strings::memview_title+TITLE_ADDR_START+3
 	sty strings::memview_title+TITLE_ADDR_START+2
 
 	lda memaddr+1
-	sta @src+1
 	jsr util::hextostr
 	stx strings::memview_title+TITLE_ADDR_START+1
 	sty strings::memview_title+TITLE_ADDR_START
 
-	; the bottom row's address: memaddr + (winbot-wintop)*BYTES_TO_DISPLAY
-	lda winbot
-	sec
-	sbc wintop
-.ifdef hard8x8
-	asl
-	asl			; *4
-.else
-	asl
-	asl
-	asl			; *8
-.endif
-	clc
-	adc @src
-	sta @src
-	bcc @l0
-	inc @src+1
-
-@l0:	ldxy @src
-	jsr ui::memline
-
-	lda @row
-	jsr text::print		; draw the row of rendered bytes
-	ldx @row
-	jsr draw::resetline
-
+@l0:	lda @row
+	jsr draw_row
 	lda @row
 	cmp wintop
 	beq @done		; the top row was just drawn
-
-	; move up a row (ui::memline advanced @src to the next row's address,
-	; so step back two rows' worth of bytes)
 	dec @row
-	lda @src
-	sec
-	sbc #2*BYTES_TO_DISPLAY
-	sta @src
-	bcs @l0
-	dec @src+1
 	jmp @l0
-
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; DRAW ROW
+; Renders a row of memory at the given screen row.  The address displayed is
+; (memaddr + BYTES_TO_DISPLAY) for each row below the top of the window.
+; IN:
+;   - .A: the screen row to draw at (in [wintop, winbot])
+.proc draw_row
+	pha
+	sec
+	sbc wintop	; # of rows below the top of the window
+.ifdef hard8x8
+	asl
+	asl		; *4
+.else
+	asl
+	asl
+	asl		; *8
+.endif
+	clc
+	adc memaddr	; .XY = the address of the row's first byte
+	tax
+	lda memaddr+1
+	adc #$00
+	tay
+	jsr ui::memline
+
+	pla
+	pha
+	jsr text::print	; draw the row of rendered bytes
+	pla
+	tax
+	jmp draw::resetline
 .endproc
 
 ;*******************************************************************************
