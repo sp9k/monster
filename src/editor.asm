@@ -2671,7 +2671,7 @@ cancel = enter_command
 :	ora @cnt+1		; are LSB and MSB of @cnt 0?
 	bne @delsel
 @deldone:
-	beq refresh		; done, refresh to clear deleted text
+	jmp refresh		; done, refresh to clear deleted text
 
 ;-------------------------------------------------------------------------------
 ; get a key to decide what to delete
@@ -2738,11 +2738,16 @@ cancel = enter_command
 	beq @done	; same size
 	bcs refresh	; new size is bigger, redraw screen
 
-; new screen size is smaller, adjust cursor as needed so that it is in range
+; New screen size is smaller: move the cursor up until it is in range.
+; The view stays anchored (ccup moves the source with the cursor), and the
+; rows ccup redraws show the lines they already display.  Callers that run
+; this while the editor's rows aren't all its own must redraw them (see
+; gui.asm, which falls back to a full redraw when the editor is unhidden)
 @smaller:
 @l0:	lda zp::cury
 	cmp height
 	bcc @done	; cursor is in new height's range
+	beq @done	; the last row (height) is a valid position
 	jsr ccup
 	bcc @l0		; loop until cursor is on screen
 @done:	rts
@@ -5950,6 +5955,8 @@ unblank = scr::unblank
 ;******************************************************************************
 ; REFRESH LINE
 ; Reloads the linebuffer with its correct contents from the source buffer
+.export __edit_refreshline
+__edit_refreshline:
 .proc refresh_line
 	jsr src::pushp
 	jsr src::home

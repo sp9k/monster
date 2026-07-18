@@ -73,7 +73,9 @@ window:
 .word strings::memview_title	; title
 .word windraw			; draw handler
 .word enter			; enter handler
-.word 0				; unused
+.word 0				; no resize handler: the contents are anchored
+				; at the TOP (memaddr), so every row changes
+				; when the window is resized: full redraw
 
 .CODE
 ;*******************************************************************************

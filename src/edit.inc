@@ -12,6 +12,7 @@
 .import __edit_init
 .import __edit_load
 .import __edit_refresh
+.import __edit_refreshline
 .import __edit_render_row
 .import __edit_resize
 .import __edit_run
@@ -35,6 +36,7 @@
 	init           = __edit_init
 	load           = __edit_load
 	refresh        = __edit_refresh
+	refreshline    = __edit_refreshline
 	render_row     = __edit_render_row
 	resize         = __edit_resize
 	run            = __edit_run

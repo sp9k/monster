@@ -109,11 +109,12 @@ __monitor_window:
 .byte GUI_CLASS_CUSTOM
 .byte WIN_DEFAULT_HEIGHT	; initial height
 .byte 2				; min height (input line + 1 row of history)
-.byte SCREEN_HEIGHT-4		; max height
+.byte SCREEN_HEIGHT		; max height (layout clamps to the rows that
+				; fit; at full height the editor is hidden)
 .word strings::monitor_title	; title
 .word __monitor_windraw		; draw handler
 .word __monitor_winenter	; enter handler
-.word 0				; unused
+.word __monitor_winresize	; resize handler
 
 .CODE
 ;******************************************************************************
@@ -127,6 +128,11 @@ __monitor_window:
 .export __monitor_winenter
 .proc __monitor_winenter
 	JUMP FINAL_BANK_MONITOR, winenter
+.endproc
+
+.export __monitor_winresize
+.proc __monitor_winresize
+	JUMP FINAL_BANK_MONITOR, winresize
 .endproc
 
 ;******************************************************************************
@@ -565,6 +571,35 @@ __monitor_window:
 	jsr set_geometry
 
 	; fall through to redraw_win
+.endproc
+
+;******************************************************************************
+; WINRESIZE
+; The window manager's resize handler: called with the new geometry after
+; the window grows or shrinks.  The screen buffer is anchored at the
+; window's bottom row, so the rows that remain on screen already hold the
+; right contents; only the rows revealed by growing need to be drawn.
+; IN:
+;   - .A: the first row of the window's contents
+;   - .X: the last row of the window's contents
+.proc winresize
+@oldtop=zp::monitor+1
+	ldy wintop	; the pre-resize top row
+	sty @oldtop
+	jsr set_geometry
+
+	; if the window grew, draw the newly revealed rows [wintop, oldtop)
+	lda @oldtop
+@l0:	sec
+	sbc #$01
+	bcc @done	; the old top was row 0
+	cmp wintop
+	bcc @done	; below the new top: nothing (more) was revealed
+	sta winrow
+	jsr draw_row
+	lda winrow
+	jmp @l0
+@done:	rts
 .endproc
 
 ;******************************************************************************

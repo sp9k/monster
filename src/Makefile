@@ -70,7 +70,7 @@ ultimem: $(CART_IMAGE)
 
 suite: $(TEST_IMAGE)
 
-# c64 only: build the boot disk (there is no vic20 disk build)
+# c64 only: build the boot disk
 disk: boot.prg monster-disk.prg
 	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write boot.prg
 

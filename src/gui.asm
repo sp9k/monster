@@ -20,7 +20,7 @@
 ;	LIST class:                     CUSTOM class:
 ;	7: key handler                  7: draw handler
 ;	9: get line handler             9: enter handler
-;	B: pointer to number of items   B: unused
+;	B: pointer to number of items   B: resize handler (0 for none)
 ;
 ; LIST handlers:
 ;  key handler:  IN:  .A: the key code, .X: the selected item's index
@@ -34,9 +34,16 @@
 ; editor's cursor on purpose (e.g. navigating to an error's line) must update
 ; the saved cursor to match.
 ;
-; CUSTOM handlers (both called with .A: top content row, .X: bottom row):
-;  draw handler:  draws the full contents of the window
-;  enter handler: interacts until done; returns a GUI_RET_x code in .A
+; CUSTOM handlers (all called with .A: top content row, .X: bottom row):
+;  draw handler:   draws the full contents of the window
+;  enter handler:  interacts until done; returns a GUI_RET_x code in .A
+;  resize handler: (optional) called instead of the draw handler when the
+;                  window grows or shrinks.  The window's contents are
+;                  anchored at the bottom row, so rows that remain on screen
+;                  keep their contents; the handler only needs to draw the
+;                  rows revealed by growing (its own saved geometry still
+;                  holds the pre-resize rows when it is called).  A window
+;                  with no resize handler (0) gets a full draw instead
 ;
 ; All handler vectors must reside in the MAIN bank.  Windows implemented in
 ; another bank (e.g. the monitor) must register MAIN-bank stubs that forward
@@ -45,6 +52,7 @@
 ;*******************************************************************************
 
 .include "beep.inc"
+.include "config.inc"
 .include "cursor.inc"
 .include "draw.inc"
 .include "edit.inc"
@@ -100,7 +108,13 @@ rectmp:  .res WIN_SIZE			; scratch record for reordering
 ; dispatch vector for window handlers.  zp::jmpvec must NOT be used here:
 ; edit::gets keeps its key handler there across calls, and window handlers
 ; (e.g. the monitor's) invoke the manager from within a gets loop
-gvec: .res 2
+gvec: .word 0
+
+; the active window's effective height before a grow/shrink (see resized)
+oldh: .byte 0
+
+; save area for the focused window's input line (see savelb/restorelb)
+lbsave: .res LINESIZE
 
 ; cursor position of the editor, saved while a window has focus.
 ; window code that redraws the editor behind the manager's back (e.g. the
@@ -220,8 +234,8 @@ recoffs:
 ;   - r0: address of the active record
 ; OUT:
 ;   - wtop/wbot/hght: geometry of the active window's contents
-;   - .A: the new editor height (index of its last row)
-;   - .C: clear if the editor keeps no rows
+;   - .A: new editor height (index of its last row)
+;   - .C: clear if editor is completely hidden by GUI window(s)
 .proc layout
 	jsr height
 	sta hght
@@ -267,6 +281,35 @@ recoffs:
 .endproc
 
 ;*******************************************************************************
+; SAVELB / RESTORELB
+; If a window has focus, saves/restores the linebuffer.  The focused window's
+; input line (edit::gets) lives in the linebuffer, which editor reflows
+; overwrite (they read the new current source line into it).
+; The editor's own linebuffer contents are reloaded from the source when
+; focus returns to it (see enter)
+.proc savelb
+	lda infocus
+	beq @done
+	ldx #LINESIZE-1
+:	lda mem::linebuffer,x
+	sta lbsave,x
+	dex
+	bpl :-
+@done:	rts
+.endproc
+
+.proc restorelb
+	lda infocus
+	beq @done
+	ldx #LINESIZE-1
+:	lda lbsave,x
+	sta mem::linebuffer,x
+	dex
+	bpl :-
+@done:	rts
+.endproc
+
+;*******************************************************************************
 ; DRAW ALL
 ; Redraws the entire window area: resizes the editor (rendering any rows it
 ; gains), draws the active window's contents, and draws the title row of
@@ -275,35 +318,48 @@ recoffs:
 .export __gui_refresh
 __gui_refresh:
 .proc draw_all
-@row=zp::guitmp
-@i=zp::guitmp+1
-@edh=zp::guitmp+2
-@off=zp::guitmp+2	; (@edh is done with by the time titles are drawn)
-@title=r2
 	jsr active
 	bcc :+
 	rts		; no windows are open
 
 :	jsr layout
-	bcc @hide	; the windows fill every row above the baserow
-	cmp #$01
-	bcs @gotedh
+	jsr update_editor
 
-@hide:	; the editor keeps no rows; blank the row above the titles (if any)
-	tax
-	bmi :+		; $ff: the titles begin at row 0
-	lda #$00
-	jsr scr::clrline
-	ldx #$00
-	jsr draw::resetline
-:	lda #$ff
+	; draw the active window's contents
+	jsr active
+	ldy #WIN_CLASS
+	lda (r0),y
+	beq @list
+	ldy #WIN_V0
+	jsr callvec
+	jmp draw_titles
+
+@list:	jsr list_loadvars
+	jsr list_draw
+	jmp draw_titles
+.endproc
+
+;*******************************************************************************
+; UPDATE EDITOR
+; Resizes the editor to the height computed by layout, rendering any new rows
+; as needed.
+; Must be called with the .A and .C values returned by layout intact.
+; IN:
+;   - .A: the new editor height (index of its last row)
+;   - .C: set if the editor should have at least one row; clear if the windows
+;         cover every row and the editor must be hidden (.A is then invalid)
+.proc update_editor
+@row=zp::guitmp
+@edh=zp::guitmp+2
+	bcs @gotedh	; the editor keeps at least one row (0 = only row 0)
+	lda #$ff	; the windows fill every row above the baserow
 
 @gotedh:
 	sta @edh
 
 	; resize the editor to fit above the windows
 	cmp zp::editor_height
-	beq @content
+	beq @done
 	cmp #$ff
 	beq @edhide
 	ldx zp::editor_height
@@ -313,24 +369,35 @@ __gui_refresh:
 	bcs @edgrow
 
 @edshrink:
+	; the reflow (edit::resize) reads the new current line into the
+	; linebuffer, which the focused window's input may live in: save it
+	; around the call.  The editor's linebuffer is reloaded when focus
+	; returns (see enter)
 	jsr swapcur
+	jsr savelb
 	lda @edh
 	jsr edit::resize	; shrink: reflows the cursor, no redraw
-	jsr swapcur
-	jmp @content
+	jsr restorelb
+	jmp swapcur
 
 @edhide:
-	; hide the editor; its cursor is reflowed when it is revealed again
+	; hide the editor; its cursor is clamped when it is revealed again
 	sta zp::editor_height
-	jmp @content
+@done:	rts
 
 @edunhide:
-	; the editor had no rows: reflow the cursor and render every row
+	; The editor had no rows: reflow its cursor into the new height and
+	; render every row.  The reflow may redraw rows below the new height
+	; as it walks the cursor up, so this path must only run when the
+	; whole window area is redrawn afterwards (see resized, which falls
+	; back to draw_all for the unhide transition)
 	jsr swapcur
+	jsr savelb	; protect the focused window's input line
 	lda @edh
-	jsr edit::resize	; treats the hidden height ($ff) as a shrink
+	jsr edit::resize
+	jsr restorelb
 	ldx #$00
-	beq @grow1		; render rows 0..@edh (branch always)
+	beq @grow1	; render rows 0..@edh (branch always)
 
 @edgrow:
 	; render the source rows revealed by the shrinking window area
@@ -351,25 +418,20 @@ __gui_refresh:
 	cmp @edh
 	bcc @grow0
 	beq @grow0
-	jsr swapcur
+	jmp swapcur
+.endproc
 
-@content:
-	; draw the active window's contents
-	jsr active
-	ldy #WIN_CLASS
-	lda (r0),y
-	beq @list
-	ldy #WIN_V0
-	jsr callvec
-	jmp @titles
-
-@list:	jsr list_loadvars
-	jsr list_draw
-
-@titles:
-	; draw one title row per open window; the active window's title is
-	; directly above its contents (centered), older windows' titles are
-	; drawn above it at the far left of their rows
+;*******************************************************************************
+; DRAW TITLES
+; Draws one title row per open window; the active window's title is directly
+; above its contents (centered), older windows' titles are drawn above it at the
+; far left of their rows.
+; Also updates the active window type.
+.proc draw_titles
+@row=zp::guitmp
+@i=zp::guitmp+1
+@off=zp::guitmp+2
+@title=r2
 	ldx wtop
 	dex
 	stx @row
@@ -552,12 +614,26 @@ __gui_refresh:
 ; Draws the contents of the active LIST window (item 0 on the bottom row,
 ; increasing upwards) and highlights the selected item
 .proc list_draw
+	lda #$00	; draw from the bottom row
+
+	; fall through to list_draw_from
+.endproc
+
+;*******************************************************************************
+; LIST DRAW FROM
+; Draws the active LIST window's contents from the given item offset up to
+; the top of the window and highlights the selected item.  Used to draw only
+; the rows revealed by growing the window (the rows below are unchanged)
+; IN:
+;   - .A: the item offset (number of rows above the bottom) to draw from
+.proc list_draw_from
 @row=zp::guitmp
 @i=zp::guitmp+1
-	lda wbot
-	sta @row
-	lda #$00
 	sta @i
+	lda wbot
+	sec
+	sbc @i
+	sta @row
 
 @l0:	lda scroll
 	clc
@@ -581,8 +657,17 @@ __gui_refresh:
 	lda @i
 	cmp hght
 	bcc @l0
+	jmp list_highlight
 
-	; highlight the selected item
+@callgetline:
+	jmp (getline)
+.endproc
+
+;*******************************************************************************
+; LIST HIGHLIGHT
+; Highlights the selected item of the active LIST window (does nothing if
+; the window has no items)
+.proc list_highlight
 	lda num
 	beq @done
 	lda wbot
@@ -592,9 +677,6 @@ __gui_refresh:
 	lda #COLOR_SELECT
 	jmp draw::hline
 @done:	rts
-
-@callgetline:
-	jmp (getline)
 .endproc
 
 ;*******************************************************************************
@@ -631,10 +713,11 @@ __gui_refresh:
 :	cmp #K_WIN_GROW
 	bne :+
 	jsr __gui_grow
-	jmp @loop
+	jmp @rehl
 :	cmp #K_WIN_SHRINK
 	bne :+
 	jsr __gui_shrink
+@rehl:	jsr list_highlight	; rehighlight (it was cleared above)
 	jmp @loop
 :	cmp #K_WIN_MAXIMIZE
 	bne :+
@@ -731,7 +814,9 @@ __gui_refresh:
 	sta zp::curx
 	lda __gui_cursave_y
 	sta zp::cury
-	rts
+	; reload the editor's line: resizes during the session may have moved
+	; the cursor, and the window's input shared the linebuffer
+	jmp edit::refreshline
 
 @cycle:	jsr rotate
 	jmp @loop
@@ -906,8 +991,8 @@ __gui_refresh:
 
 ;*******************************************************************************
 ; GROW
-; Grows the active window by one row (if it has one to grow by and the
-; editor retains at least one row).  Redraws the window area.
+; Grows the active window by one row (if it has room to grow by).
+; Redraws only what the resize changed on screen (see resized).
 ; OUT:
 ;   - .A: the top content row of the active window
 ;   - .X: the bottom content row of the active window
@@ -915,6 +1000,9 @@ __gui_refresh:
 .proc __gui_grow
 	jsr active
 	bcs geom
+	jsr layout	; get the effective height before growing
+	lda hght
+	sta oldh
 	ldy #WIN_HEIGHT
 	lda (r0),y
 	ldy #WIN_MAXH
@@ -926,9 +1014,23 @@ __gui_refresh:
 	sta (r0),y
 
 	jsr layout
-	bcc @revert	; window doesn't fit
-	cmp #$01
-	bcs redraw	; editor keeps at least one row
+	bcs @ok		; the editor keeps at least one row
+
+	; editor would be hidden: allow it only if the window has focus
+	; and the new height is displayable
+	lda infocus
+	beq @revert	; the editor is active: make sure it has > 0 rows
+
+	lda hght
+	ldy #WIN_HEIGHT
+	cmp (r0),y
+	bne @revert	; the new height exceeds the displayable rows
+
+	lda oldh	; save the pre-grow height so un-maximizing
+	ldy #WIN_PREMAX	; (or returning focus to the editor) restores it
+	sta (r0),y
+	jsr layout	; restore .A/.C (the editor height)
+@ok:	jmp resized
 
 @revert:
 	ldy #WIN_HEIGHT
@@ -943,7 +1045,7 @@ __gui_refresh:
 ;*******************************************************************************
 ; SHRINK
 ; Shrinks the active window by one row (if it is above its minimum height).
-; Redraws the window area.
+; Redraws only what the resize changed on screen (see resized).
 ; OUT:
 ;   - .A: the top content row of the active window
 ;   - .X: the bottom content row of the active window
@@ -951,6 +1053,9 @@ __gui_refresh:
 .proc __gui_shrink
 	jsr active
 	bcs geom
+	jsr layout	; get the effective height before shrinking
+	lda hght
+	sta oldh
 	ldy #WIN_HEIGHT
 	lda (r0),y
 	ldy #WIN_MINH
@@ -963,15 +1068,93 @@ __gui_refresh:
 	ldy #WIN_HEIGHT
 	sta (r0),y
 
-	; fall through to redraw
+	jsr layout
+	jmp resized
 .endproc
 
 ;*******************************************************************************
+; REDRAW
 ; redraw the window area and return the active window's geometry
 redraw:	jsr draw_all
 geom:	lda wtop
 	ldx wbot
 	rts
+
+;*******************************************************************************
+; RESIZED
+; Redraws only what a grow/shrink of the active window changed on screen.
+; The window's contents are anchored at the baserow, so rows that remain in
+; the window keep their contents: growing draws the newly revealed top rows
+; and shrinking draws no content at all (the title rows and the editor
+; absorb the difference).
+; Must be entered with the .A and .C values returned by layout intact (they
+; are forwarded to update_editor).
+; IN:
+;   - oldh: effective height before the resize
+;   - .A:   new editor height (index of its last row)
+;   - .C:   set if the editor should keet at least one row; clear if not
+; OUT:
+;   - .A: the top content row of the active window
+;   - .X: the bottom content row of the active window
+.proc resized
+	; if the editor is coming back from hidden, its cursor reflow may
+	; draw on rows that still belong to the windows: use a full redraw,
+	; which repaints the whole window area afterwards
+	bcc :+		; the editor stays hidden
+	ldx zp::editor_height
+	inx		; was the editor hidden ($ff)?
+	beq redraw	; unhide: redraw everything
+
+:	jsr update_editor
+	jsr active
+	ldy #WIN_CLASS
+	lda (r0),y
+	bne @custom
+
+	; LIST: if clamping the scroll/selection to the new height moved
+	; them, the contents shift: redraw them all
+	jsr list_loadvars
+	ldy #WIN_SCROLL
+	lda (r0),y
+	cmp scroll
+	bne @full
+	ldy #WIN_SELECT
+	lda (r0),y
+	cmp select
+	bne @full
+
+	lda hght
+	cmp oldh
+	beq geom	; same effective height: nothing changed
+	bcc @titles	; shrank: the remaining rows are unchanged
+	lda oldh	; grew: draw only the revealed top rows
+	jsr list_draw_from
+	jmp @titles
+
+@full:	jsr list_draw
+	jmp @titles
+
+@custom:
+	lda hght
+	cmp oldh
+	beq geom	; same effective height: nothing changed
+	ldy #WIN_V2
+	lda (r0),y
+	iny
+	ora (r0),y
+	beq @fulldraw	; no resize handler: draw the full contents
+	ldy #WIN_V2
+	jsr callvec	; the resize handler draws only the delta
+	jmp @titles
+
+@fulldraw:
+	ldy #WIN_V0
+	jsr callvec
+
+@titles:
+	jsr draw_titles	; the title rows moved with the resize
+	jmp geom
+.endproc
 
 ;*******************************************************************************
 ; MAXIMIZE
@@ -1031,9 +1214,7 @@ geom:	lda wtop
 	ldy #WIN_HEIGHT
 	sta (r0),y
 	jsr layout
-	bcc @min	; editor still has no rows
-	cmp #$01
-	bcs @done
+	bcs @done	; editor gets at least one row back
 @min:	ldy #WIN_MINH
 	lda (r0),y
 	ldy #WIN_HEIGHT
