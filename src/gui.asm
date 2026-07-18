@@ -71,16 +71,17 @@
 ;*******************************************************************************
 MAX_WINDOWS = 6
 
-; window record offsets
+;*******************************************************************************
+; WINdow record offsets
 WIN_TYPE   = 0		; window type id (GUI_x)
 WIN_CLASS  = 1		; GUI_CLASS_LIST or GUI_CLASS_CUSTOM
 WIN_HEIGHT = 2		; current content height in rows
 WIN_MINH   = 3		; minimum content height
 WIN_MAXH   = 4		; maximum content height
 WIN_TITLE  = 5		; address of the title string
-WIN_V0     = 7		; LIST: key handler     CUSTOM: draw handler
-WIN_V1     = 9		; LIST: getline handler CUSTOM: enter handler
-WIN_V2     = $b		; LIST: pointer to number of items
+WIN_V0     = 7		; LIST: key handler           CUSTOM: draw handler
+WIN_V1     = 9		; LIST: getline handler       CUSTOM: enter handler
+WIN_V2     = $b		; LIST: pointer to # of items CUSTOM: resize handler
 WIN_SCROLL = $d		; LIST: scroll offset
 WIN_SELECT = $e		; LIST: selection offset
 WIN_PREMAX = $f		; height before the window was maximized (0 if none)
@@ -105,12 +106,10 @@ wbot    = zp::gui+$b	; last (bottom) row of the active window's contents
 windows: .res MAX_WINDOWS*WIN_SIZE	; the window stack (0 = bottom)
 rectmp:  .res WIN_SIZE			; scratch record for reordering
 
-; dispatch vector for window handlers.  zp::jmpvec must NOT be used here:
-; edit::gets keeps its key handler there across calls, and window handlers
-; (e.g. the monitor's) invoke the manager from within a gets loop
+; dispatch vector for window handlers
 gvec: .word 0
 
-; the active window's effective height before a grow/shrink (see resized)
+; active window's effective height before a grow/shrink (see resized)
 oldh: .byte 0
 
 ; save area for the focused window's input line (see savelb/restorelb)
@@ -218,6 +217,7 @@ recoffs:
 @custom:
 	ldy #WIN_HEIGHT
 	lda (r0),y
+
 @clamp:	bne @done
 	lda #$01	; at least 1 row
 @done:	rts
@@ -704,6 +704,7 @@ __gui_refresh:
 	beq @quit
 	cmp #K_CLOSE_WINDOWS
 	beq @quit
+
 	cmp #K_SWAP_WINS
 	bne :+
 	jsr list_savevars
@@ -714,9 +715,11 @@ __gui_refresh:
 	bne :+
 	jsr __gui_grow
 	jmp @rehl
+
 :	cmp #K_WIN_SHRINK
 	bne :+
 	jsr __gui_shrink
+
 @rehl:	jsr list_highlight	; rehighlight (it was cleared above)
 	jmp @loop
 :	cmp #K_WIN_MAXIMIZE
@@ -1100,10 +1103,10 @@ geom:	lda wtop
 	; if the editor is coming back from hidden, its cursor reflow may
 	; draw on rows that still belong to the windows: use a full redraw,
 	; which repaints the whole window area afterwards
-	bcc :+		; the editor stays hidden
+	bcc :+			; if editor hidden -> continue
 	ldx zp::editor_height
-	inx		; was the editor hidden ($ff)?
-	beq redraw	; unhide: redraw everything
+	inx			; WAS the editor hidden ($ff)?
+	beq redraw		; unhide: redraw everything
 
 :	jsr update_editor
 	jsr active
@@ -1143,8 +1146,9 @@ geom:	lda wtop
 	iny
 	ora (r0),y
 	beq @fulldraw	; no resize handler: draw the full contents
-	ldy #WIN_V2
-	jsr callvec	; the resize handler draws only the delta
+
+	dey		; .Y=WIN_V2
+	jsr callvec	; call resize handler
 	jmp @titles
 
 @fulldraw:
@@ -1215,10 +1219,13 @@ geom:	lda wtop
 	sta (r0),y
 	jsr layout
 	bcs @done	; editor gets at least one row back
-@min:	ldy #WIN_MINH
+
+@min:	; resize window to its minimum height
+	ldy #WIN_MINH
 	lda (r0),y
 	ldy #WIN_HEIGHT
 	sta (r0),y
+
 @done:	rts
 .endproc
 

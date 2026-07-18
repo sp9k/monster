@@ -105,16 +105,21 @@ screen: .res LINESIZE*HEIGHT
 ; The window descriptor for the monitor (see gui.asm)
 .export __monitor_window
 __monitor_window:
-.byte GUI_MONITOR		; id for the monitor
-.byte GUI_CLASS_CUSTOM
-.byte WIN_DEFAULT_HEIGHT	; initial height
-.byte 2				; min height (input line + 1 row of history)
-.byte SCREEN_HEIGHT		; max height (layout clamps to the rows that
+.byte GUI_MONITOR		; 0 id for the monitor
+.byte GUI_CLASS_CUSTOM		; 1
+.byte WIN_DEFAULT_HEIGHT	; 2 initial height
+.byte 2				; 3 min height (input line + 1 row of history)
+.byte SCREEN_HEIGHT		; 4 max height (layout clamps to the rows that
 				; fit; at full height the editor is hidden)
-.word strings::monitor_title	; title
-.word __monitor_windraw		; draw handler
-.word __monitor_winenter	; enter handler
-.word __monitor_winresize	; resize handler
+.word strings::monitor_title	; 5 title
+.word __monitor_windraw		; 7 draw handler
+.word __monitor_winenter	; 9 enter handler
+.word __monitor_winresize	; $b resize handler
+.byte 0				; $d unused
+.byte 0				; $e unused
+.byte 0				; $f pre-maximized height
+.byte 0				; $10 unused
+.byte 0
 
 .CODE
 ;******************************************************************************
@@ -574,6 +579,21 @@ __monitor_window:
 .endproc
 
 ;******************************************************************************
+; REDRAW WIN
+; Redraws the window's rows from the monitor's screen buffer
+.proc redraw_win
+	lda winbot
+	sta winrow
+@l0:	jsr draw_row
+	lda winrow
+	cmp wintop
+	beq @done
+	dec winrow
+	jmp @l0
+@done:	rts
+.endproc
+
+;******************************************************************************
 ; WINRESIZE
 ; The window manager's resize handler: called with the new geometry after
 ; the window grows or shrinks.  The screen buffer is anchored at the
@@ -598,21 +618,6 @@ __monitor_window:
 	sta winrow
 	jsr draw_row
 	lda winrow
-	jmp @l0
-@done:	rts
-.endproc
-
-;******************************************************************************
-; REDRAW WIN
-; Redraws the window's rows from the monitor's screen buffer
-.proc redraw_win
-	lda winbot
-	sta winrow
-@l0:	jsr draw_row
-	lda winrow
-	cmp wintop
-	beq @done
-	dec winrow
 	jmp @l0
 @done:	rts
 .endproc

@@ -65,17 +65,19 @@ winbot: .byte 0		; last (bottom) row of the view's contents
 ; WINDOW
 ; The window descriptor for the memory viewer
 window:
-.byte GUI_MEMVIEW		; id for the memory viewer
-.byte GUI_CLASS_CUSTOM
-.byte DEFAULT_HEIGHT		; initial height
-.byte 2				; min height
-.byte 12			; max height
-.word strings::memview_title	; title
-.word windraw			; draw handler
-.word enter			; enter handler
-.word 0				; no resize handler: the contents are anchored
-				; at the TOP (memaddr), so every row changes
-				; when the window is resized: full redraw
+.byte GUI_MEMVIEW		; 0 id for the memory viewer
+.byte GUI_CLASS_CUSTOM		; 1
+.byte DEFAULT_HEIGHT		; 2 initial height
+.byte 2				; 3 min height
+.byte 12			; 4 max height
+.word strings::memview_title	; 5 title
+.word windraw			; 7 draw handler
+.word enter			; 9 enter handler
+.word 0				; $b no resize handler (redraw all on resize)
+.byte 0				; $d unused
+.byte 0				; $e unused
+.byte 0				; $f pre-maximized height
+.byte 0				; $10 unused
 
 .CODE
 ;*******************************************************************************
