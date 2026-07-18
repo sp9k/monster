@@ -50,6 +50,7 @@ DEFAULT_HEIGHT = MEMVIEW_STOP-MEMVIEW_START-1
 
 ; offset of the address within the title string ("memory[$....]")
 TITLE_ADDR_START = 8
+TITLE_VAL_OFFSET = 13
 
 .BSS
 ;*******************************************************************************
@@ -153,6 +154,9 @@ window:
 	bne :+
 	jsr getset_addr
 	jsr setbounds		; restore the cursor's bounds
+	ldy wintop
+	ldx #COL_START
+	jsr cur::set		; move back to home row/col
 	jsr __view_refresh	; redraw at the new address
 	jmp @edit
 
@@ -471,26 +475,31 @@ window:
 	pushcur
 
 	; copy title to linebuffer
+	lda #' '
+	ldx #$00
+:	sta mem::linebuffer,x
+	inx
+	cpx #TITLE_VAL_OFFSET
+	bne :-
+
 	ldx #TITLE_ADDR_START-2
 :	lda strings::memview_title,x
-	sta mem::linebuffer,x
+	sta mem::linebuffer+TITLE_VAL_OFFSET,x
 	dex
 	bpl :-
 
 	; clear the existing value
-	lda #']'
-	sta mem::linebuffer+TITLE_ADDR_START+4
 	lda #$00
-	sta mem::linebuffer+TITLE_ADDR_START+5
+	sta mem::linebuffer+TITLE_ADDR_START+5+TITLE_VAL_OFFSET
 
 	lda #'$'
-	sta mem::linebuffer+TITLE_ADDR_START-1
+	sta mem::linebuffer+TITLE_ADDR_START-1+TITLE_VAL_OFFSET
 
 	; set bounds for the input
-	lda #TITLE_ADDR_START
+	lda #TITLE_ADDR_START+TITLE_VAL_OFFSET
 	sta cur::minx
 	sta zp::curx
-	lda #TITLE_ADDR_START+4
+	lda #TITLE_ADDR_START+TITLE_VAL_OFFSET+4
 	sta cur::maxx
 
 	; edit the address on the title row (directly above the contents)
@@ -501,12 +510,18 @@ window:
 	ldxy #key::gethex
 	jsr edit::gets
 
-	ldxy #mem::linebuffer+TITLE_ADDR_START-1
+	ldxy #mem::linebuffer+TITLE_ADDR_START+TITLE_VAL_OFFSET-1
 	stxy zp::line
 	jsr expr::eval
 	bcs :+			; on invalid input, leave address unchanged
 	stxy memaddr
-:	popcur
+
+:	lda #']'
+	sta mem::linebuffer+TITLE_ADDR_START+4+TITLE_VAL_OFFSET
+	lda zp::cury
+	jsr text::drawline
+
+	popcur
 	rts
 .endproc
 

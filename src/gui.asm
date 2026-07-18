@@ -80,7 +80,7 @@ WIN_V2     = $b		; LIST: pointer to # of items CUSTOM: resize handler
 WIN_SCROLL = $d		; LIST: scroll offset
 WIN_SELECT = $e		; LIST: selection offset
 WIN_PREMAX = $f		; height before the window was maximized (0 if none)
-WIN_SIZE   = $10
+WIN_SIZE   = $10	; size of window record
 
 WIN_DESC_SIZE = WIN_SCROLL	; the part initialized from the descriptor
 
@@ -122,8 +122,7 @@ __gui_cursave_y: .byte 0
 ;*******************************************************************************
 depth: .byte 0		; number of open windows
 
-; The bottom row of the window area.  Windows are anchored here; rows below
-; belong to the status bar (and, while debugging, the debug info rows)
+; bottom row of the window area
 .export __gui_baserow
 __gui_baserow:
 baserow: .byte STATUS_ROW-1
@@ -139,6 +138,7 @@ infocus: .byte 0
 .RODATA
 
 ; byte offset of each window record in the stack
+; e.g. WIN_SIZE, WIN_SIZE*2, ... WIN_SIZE*(MAX_WINDOWS+1)
 recoffs:
 .repeat MAX_WINDOWS+1, i
 	.byte i*WIN_SIZE
@@ -277,12 +277,8 @@ recoffs:
 .endproc
 
 ;*******************************************************************************
-; SAVELB / RESTORELB
-; If a window has focus, saves/restores the linebuffer.  The focused window's
-; input line (edit::gets) lives in the linebuffer, which editor reflows
-; overwrite (they read the new current source line into it).
-; The editor's own linebuffer contents are reloaded from the source when
-; focus returns to it (see enter)
+; SAVELB
+; Saves the line buffer temporarily
 .proc savelb
 	lda infocus
 	beq @done
@@ -294,6 +290,9 @@ recoffs:
 @done:	rts
 .endproc
 
+;*******************************************************************************
+; RESTORELB
+; Restores the linebuffer from temporary storage
 .proc restorelb
 	lda infocus
 	beq @done

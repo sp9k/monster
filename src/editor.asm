@@ -2737,16 +2737,12 @@ cancel = enter_command
 	sta height
 	bne :+
 
-	; same size, just refresh the line
+	; same size, just refresh the line (in case we're resizing from 0 rows)
 	jmp  print_current_line
 
 :	bcs refresh	; new size is bigger, redraw screen
 
-; New screen size is smaller: move the cursor up until it is in range.
-; The view stays anchored (ccup moves the source with the cursor), and the
-; rows ccup redraws show the lines they already display.  Callers that run
-; this while the editor's rows aren't all its own must redraw them (see
-; gui.asm, which falls back to a full redraw when the editor is unhidden)
+; new screen size is smaller: move the cursor up until it is in range.
 @smaller:
 @l0:	lda zp::cury
 	cmp height
