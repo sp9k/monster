@@ -3096,6 +3096,7 @@ goto_buffer:
 	ldxy #@menu
 	jmp gui::open
 
+;-------------------------------------------------------------------------------
 .PUSHSEG
 .RODATA
 @menu:
@@ -3109,7 +3110,7 @@ goto_buffer:
 .word @getdata		; get line handler
 .word src::numbuffers	; num ptr
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @getdata:
 @offset=r9
 	sta @offset
@@ -3150,7 +3151,7 @@ goto_buffer:
 
 @buffer_line:  .byte ESCAPE_CHAR, ESCAPE_BYTE," :",ESCAPE_CHAR, ESCAPE_STRING, 0
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @getkey:
 	cmp #K_RETURN
 	bne :+
@@ -3167,21 +3168,22 @@ goto_buffer:
 	jsr goto_buffer
 
 	; update saved cursor to new position in opened buffer
+	; move up as needed
 	lda zp::curx
 	sta gui::cursave_x
 	lda zp::cury
 	sta gui::cursave_y
 
 	lda #GUI_RET_QUIT
-	sec		; flag to exit GUI
+	sec			; flag to exit GUI
 	rts
-:	clc		; flag to get more keys
+
+:	clc			; flag to get more keys
 @done:	rts
 .endproc
-
 .POPSEG
 
-;******************************************************************************
+;*******************************************************************************
 ; COMMAND RENAME
 ; :r <filename>
 ; Renames the current source buffer to the given name. Does NOT save the

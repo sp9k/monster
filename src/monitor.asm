@@ -119,7 +119,6 @@ __monitor_window:
 .byte 0				; $e unused
 .byte 0				; $f pre-maximized height
 .byte 0				; $10 unused
-.byte 0
 
 .CODE
 ;******************************************************************************

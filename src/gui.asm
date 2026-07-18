@@ -29,11 +29,6 @@
 ;  get line:     IN:  .A: the item index to get the line of data for
 ;                OUT: .XY: the rendered line to display
 ;
-; While a window has focus, gui::cursave_x/y hold the editor's cursor (the
-; actual cursor belongs to the focused window).  Handlers that move the
-; editor's cursor on purpose (e.g. navigating to an error's line) must update
-; the saved cursor to match.
-;
 ; CUSTOM handlers (all called with .A: top content row, .X: bottom row):
 ;  draw handler:   draws the full contents of the window
 ;  enter handler:  interacts until done; returns a GUI_RET_x code in .A
@@ -142,6 +137,7 @@ infocus: .byte 0
 
 .PUSHSEG
 .RODATA
+
 ; byte offset of each window record in the stack
 recoffs:
 .repeat MAX_WINDOWS+1, i
@@ -387,7 +383,7 @@ __gui_refresh:
 
 @edunhide:
 	; The editor had no rows: reflow its cursor into the new height and
-	; render every row.  The reflow may redraw rows below the new height
+	; render every row. The reflow may redraw rows below the new height
 	; as it walks the cursor up, so this path must only run when the
 	; whole window area is redrawn afterwards (see resized, which falls
 	; back to draw_all for the unhide transition)
@@ -848,6 +844,12 @@ __gui_refresh:
 	lda depth
 	cmp #$02
 	bcc @done	; nothing to rotate
+
+	; restore physical cursor before entering the next window
+	lda __gui_cursave_x
+	sta zp::curx
+	lda __gui_cursave_y
+	sta zp::cury
 
 	; save the active record
 	ldx depth
