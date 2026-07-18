@@ -2735,8 +2735,12 @@ cancel = enter_command
 .proc __edit_resize
 	cmp height	; is the new height bigger or smaller?
 	sta height
-	beq @done	; same size
-	bcs refresh	; new size is bigger, redraw screen
+	bne :+
+
+	; same size, just refresh the line
+	jmp  print_current_line
+
+:	bcs refresh	; new size is bigger, redraw screen
 
 ; New screen size is smaller: move the cursor up until it is in range.
 ; The view stays anchored (ccup moves the source with the cursor), and the

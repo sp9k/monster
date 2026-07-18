@@ -353,27 +353,25 @@ __gui_refresh:
 @gotedh:
 	sta @edh
 
-	; resize the editor to fit above the windows
+	; check if we need to grow, shrink, hide, or unhide the editor
 	cmp zp::editor_height
 	beq @done
 	cmp #$ff
 	beq @edhide
 	ldx zp::editor_height
-	inx		; was the editor hidden?
+	inx			; was the editor hidden?
 	beq @edunhide
 	cmp zp::editor_height
 	bcs @edgrow
 
+;-------------------------------------------------------------------------------
+; SHRINK editor
 @edshrink:
-	; the reflow (edit::resize) reads the new current line into the
-	; linebuffer, which the focused window's input may live in: save it
-	; around the call.  The editor's linebuffer is reloaded when focus
-	; returns (see enter)
 	jsr swapcur
-	jsr savelb
+	jsr savelb		; save line buffer (clobbered by resize)
 	lda @edh
 	jsr edit::resize	; shrink: reflows the cursor, no redraw
-	jsr restorelb
+	jsr restorelb		; restore line buffer
 	jmp swapcur
 
 @edhide:
@@ -381,12 +379,11 @@ __gui_refresh:
 	sta zp::editor_height
 @done:	rts
 
+;-------------------------------------------------------------------------------
+; UNHIDE editor
 @edunhide:
-	; The editor had no rows: reflow its cursor into the new height and
-	; render every row. The reflow may redraw rows below the new height
-	; as it walks the cursor up, so this path must only run when the
-	; whole window area is redrawn afterwards (see resized, which falls
-	; back to draw_all for the unhide transition)
+	; The editor was closed (window maximized), restore it
+	stx zp::editor_height	; editor_height = 0
 	jsr swapcur
 	jsr savelb	; protect the focused window's input line
 	lda @edh
@@ -395,6 +392,8 @@ __gui_refresh:
 	ldx #$00
 	beq @grow1	; render rows 0..@edh (branch always)
 
+;-------------------------------------------------------------------------------
+; GROW editor
 @edgrow:
 	; render the source rows revealed by the shrinking window area
 	jsr swapcur
