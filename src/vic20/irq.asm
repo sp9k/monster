@@ -242,24 +242,52 @@ savebank2: .byte 0
         lda $f6
 	pha
 
-	jsr $eb1e               ; scan keyboard
+	jsr $eb1e               ; scan keyboard (a TAB may be entered with
+				; CTRL+I; see keydecode)
 
-	; inject TAB ($09) into keyboard buffer if the CTRL key is pressed
-	lda $028d		; get CTRL flag reg
-	cmp $028e		; debounce
-	beq @keydone
-	and #$04		; is bit 2 (CTRL) pressed?
-	beq @keydone		; if 0, no
-	ldx #$09		; TAB
-	jsr $ebba		; store to keyboard table
-
-@keydone:
 	pla
 	sta $f6
 	pla
         sta $f5
 	jmp beep::update
 .endproc
+
+;*******************************************************************************
+; KEYDECODE
+; Custom keyboard decode logic, installed at the KERNAL's decode-logic
+; vector ($028f) and called by its keyscan ($eb1e).
+; Uses a custom CTRL decode tabl
+.export __irq_keydecode
+.proc __irq_keydecode
+	lda $028d	; get the modifier flags
+	and #$04	; is CTRL held?
+	bne @ctrl
+	jmp $ebdc	; stock decode logic
+
+@ctrl:	; set custom decode table for CTRL
+	lda #<ctrltab
+	sta $f5
+	lda #>ctrltab
+	sta $f6
+	jmp $eb74	; continue keyscan with new table installed
+.endproc
+
+;*******************************************************************************
+; CTRLTAB
+; CTRL keyboard decode table: the KERNAL's table ($eda3) with additions to allow
+; use of CTRL+letter keys.
+; NOTE: there are some omissions due to overlap with other keys, for example:
+; C ($03 STOP), M ($0d RETURN), Q ($11 down), S ($13 HOME) and T ($14 DEL)
+ctrltab:
+	.byte $90,$1c,$9c,$1f,$12,$ff,$ff,$ff	; 1 3 5 7 9 + pound DEL
+	.byte $06,$17,$12,$19,$09,$10,$ff,$ff	; larrow W R Y I P * RETURN
+	.byte $ff,$01,$04,$07,$0a,$0c,$ff,$ff	; CTRL A D G J L ; CRSR-R
+	.byte $ff,$ff,$18,$16,$0e,$ff,$ff,$ff	; STOP SHIFT X V N , / CRSR-D
+	.byte $ff,$1a,$ff,$02,$ff,$ff,$ff,$ff	; SPACE Z C B M . SHIFT F1
+	.byte $ff,$ff,$06,$08,$0b,$ff,$ff,$ff	; C= S F H K : = F3
+	.byte $ff,$05,$ff,$15,$0f,$ff,$ff,$ff	; Q E T U O @ uarrow F5
+	.byte $05,$9f,$1e,$9e,$92,$ff,$ff,$ff	; 2 4 6 8 0 - HOME F7
+	.byte $ff				; no key
 
 ;*******************************************************************************
 ; ROW HANDLER

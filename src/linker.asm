@@ -1467,7 +1467,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @ok:	; fall through
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SEGADDR BY ID
 ; Returns the (current) base address for the given SEGMENT id.
 ; IN:
@@ -1489,7 +1489,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SEGSIZE BY ID
 ; Returns the accumulated size of the given SEGMENT.
 ; During pass 1 this is the sum of the given SEGMENT's usage by the object
@@ -1508,7 +1508,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SET SEGMENT TYPE
 ; Sets the type for the segment of the given ID.
 ; IN:

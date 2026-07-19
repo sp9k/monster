@@ -290,10 +290,10 @@ cart_start:
 	jsr run::clr		; init user state (run BASIC startup proc)
 
 	; init some BASIC variables that are used (keyboard ptrs/delay)
-	lda #<$ebdc	; get keyboard decode logic pointer low byte
-	sta $028f	; set keyboard decode logic pointer low byte
-	lda #>$ebdc	; get keyboard decode logic pointer high byte
-	sta $0290	; set keyboard decode logic pointer high byte
+	lda #<irq::keydecode	; custom decode logic (maps CTRL+key combos)
+	sta $028f		; set keyboard decode logic pointer low byte
+	lda #>irq::keydecode
+	sta $0290		; set keyboard decode logic pointer high byte
 	lda #$0a
 	sta $0289	; set maximum size of keyboard buffer
 	sta $028c	; set repeat delay counter

@@ -2563,8 +2563,8 @@ cancel = enter_command
 	.byte K_GOTO_BUFF7	; go-to buffer 7
 	.byte K_GOTO_BUFF8 	; go-to buffer 8
 
-	.byte K_NEXT_BUFF	; C= + > next buffer
-	.byte K_PREV_BUFF	; C= + < previous buffer
+	.byte K_NEXT_BUFF	; CTRL + l next buffer
+	.byte K_PREV_BUFF	; CTRL + h previous buffer
 	.byte K_UDG_EDIT	; C= + U activate udg editor
 	.byte K_QUIT		; RUN/STOP (return to COMMAND mode)
 	.byte K_GO_BASIC	; F1 (enter BASIC)
