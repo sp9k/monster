@@ -13,6 +13,7 @@
 .include "file.inc"
 .include "kernal.inc"
 .include "labels.inc"
+.include "limits.inc"
 .include "line.inc"
 .include "log.inc"
 .include "macros.inc"
@@ -35,7 +36,6 @@
 ;*******************************************************************************
 ; CONSTANTS
 MAX_SECTIONS         = 8	; max number of memory sections
-MAX_SEGMENTS         = 8	; max number of segments across all objects
 MAX_OBJS             = 16	; max number of object files that may be used
 MAX_SECTION_NAME_LEN = 8	; max length of a single section name
 MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
@@ -636,14 +636,19 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @keybuff=$100
 @valbuff=$100
 	; get address to store new segment name to
+	lda #$00
+	sta @name+1
 	lda numsegments
 	asl			; *2
+	rol @name+1
 	asl			; *4
+	rol @name+1
 	asl			; *8
+	rol @name+1
 	adc #<segment_names
 	sta @name
-	lda #>segment_names
-	adc #$00
+	lda @name+1
+	adc #>segment_names
 	sta @name+1
 
 	; read the segment name (string terminated by ':')
@@ -1429,7 +1434,9 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	clc
 	adc #$08
 	sta @other
-	ldx @cnt
+	bcc :+
+	inc @other+1
+:	ldx @cnt
 	inx
 	stx @cnt
 	cpx numsections
@@ -1551,7 +1558,9 @@ __link_get_segment_by_name:
 	clc
 	adc #$08
 	sta @other
-	ldx @cnt
+	bcc :+
+	inc @other+1
+:	ldx @cnt
 	inx
 	stx @cnt
 	cpx numsegments

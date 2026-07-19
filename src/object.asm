@@ -52,7 +52,10 @@
 
 ;*******************************************************************************
 ; CONSTANTS (see limits.inc for others)
-MAX_SECTIONS         = 8	; max number of memory sections per OBJ file
+; max number of memory sections per OBJ file.
+; Must be >= MAX_SEGMENTS (limits.inc): every SEGMENT has at least one
+; SECTION and the per-object segment tables are sized by MAX_SECTIONS
+MAX_SECTIONS         = MAX_SEGMENTS
 MAX_OBJS             = 16	; max number of object files that may be used
 MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
 
@@ -271,14 +274,21 @@ __obj_close_section = close_section
 	lda #ERR_TOO_MANY_SEGMENTS
 	rts
 
-:	lda numsegments
+:	; get the address for the new name (16-bit: the offset exceeds
+	; 8 bits for segment ids >= 32)
+	lda #$00
+	sta @dst+1
+	lda numsegments
 	asl
+	rol @dst+1
 	asl
+	rol @dst+1
 	asl			; * MAX_SEGMENT_NAME_LEN
+	rol @dst+1
 	adc #<segments
 	sta @dst
-	lda #>segments
-	adc #$00
+	lda @dst+1
+	adc #>segments
 	sta @dst+1
 
 	ldy #$00
@@ -979,14 +989,20 @@ __obj_close_section = close_section
 	sta @i
 @dump_headers:
 	; get offset to name for this section name (*8)
+	; (16-bit: the offset exceeds 8 bits for segment ids >= 32)
+	lda #$00
+	sta @name+1
 	lda @i
 	asl
+	rol @name+1
 	asl
+	rol @name+1
 	asl
+	rol @name+1
 	adc #<segments
 	sta @name
-	lda #>segments
-	adc #$00
+	lda @name+1
+	adc #>segments
 	sta @name+1
 
 	; write the name of the SEGMENT
@@ -2107,7 +2123,9 @@ __obj_close_section = close_section
 	clc
 	adc #MAX_SEGMENT_NAME_LEN
 	sta @other
-	ldx @cnt
+	bcc :+
+	inc @other+1
+:	ldx @cnt
 	inx
 	stx @cnt
 	cpx numsegments

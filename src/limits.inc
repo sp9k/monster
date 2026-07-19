@@ -10,7 +10,7 @@
 	.define MAX_MACROS 128
 
 ; LINKER
-	.define MAX_SEGMENTS 8
+	.define MAX_SEGMENTS 64
 	.define MAX_IMPORTS  128
 	.define MAX_EXPORTS  32
 .elseif .defined(c64)
