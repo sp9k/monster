@@ -10,6 +10,7 @@
 .import __gui_refresh
 .import __gui_select
 .import __gui_shrink
+.import __gui_togglehide
 
 .scope gui
 	active_type	= __gui_active_type
@@ -24,4 +25,5 @@
 	refresh		= __gui_refresh
 	select		= __gui_select
 	shrink		= __gui_shrink
+	togglehide	= __gui_togglehide
 .endscope

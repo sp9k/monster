@@ -6042,6 +6042,7 @@ ro_commands:
 	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
 	.byte K_WIN_MAXIMIZE	; <- (close windows)
+	.byte K_WIN_HIDE	; toggle rendering of the windows
 numcommands=*-commands
 
 ; command tables for COMMAND mode key commands
@@ -6059,7 +6060,7 @@ numcommands=*-commands
 	command_move_scr, \
 	command_find, next_drive, prev_drive, get_command, monitor, \
 	monitor_win, gui::grow, gui::shrink, maximize_win, next_err, \
-	help::show, close_windows
+	help::show, close_windows, gui::togglehide
 .linecont -
 
 command_vecs_lo: .lobytes cmd_vecs

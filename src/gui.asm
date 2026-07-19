@@ -91,7 +91,7 @@ getkey  = zp::gui+1	; LIST: key handler
 getline = zp::gui+3	; LIST: get line handler
 numptr  = zp::gui+5	; LIST: pointer to the number of items
 num     = zp::gui+7	; LIST: number of items (loaded from numptr)
-hght    = zp::gui+8	; effective content height of the active window
+wheight = zp::gui+8	; effective content height of the active window
 scroll  = zp::gui+9	; LIST: scroll offset
 select  = zp::gui+$a	; LIST: selection offset
 wbot    = zp::gui+$b	; last (bottom) row of the active window's contents
@@ -133,6 +133,9 @@ __gui_active_type: .byte 0
 
 ; set while a window has focus (used to keep the editor's cursor saved)
 infocus: .byte 0
+
+; if !0 windows are not rendered
+hidden:  .byte 0
 
 .PUSHSEG
 .RODATA
@@ -229,26 +232,26 @@ recoffs:
 ; IN:
 ;   - r0: address of the active record
 ; OUT:
-;   - wtop/wbot/hght: geometry of the active window's contents
+;   - wtop/wbot/wheight: geometry of the active window's contents
 ;   - .A: new editor height (index of its last row)
 ;   - .C: clear if editor is completely hidden by GUI window(s)
 .proc layout
 	jsr height
-	sta hght
+	sta wheight
 
 	; clamp to the rows above the baserow not needed for title rows
 	lda baserow
 	sec
 	sbc depth
 	adc #$00	; .A = baserow - depth + 1 (.C was set)
-	cmp hght
+	cmp wheight
 	bcs :+
-	sta hght
+	sta wheight
 
 :	lda baserow
 	sta wbot
 	sec
-	sbc hght	; .A = the active window's title row
+	sbc wheight	; .A = the active window's title row
 	tax
 	inx
 	stx wtop	; contents begin below the title
@@ -313,9 +316,11 @@ recoffs:
 .export __gui_refresh
 __gui_refresh:
 .proc draw_all
+	lda hidden
+	bne @ret
 	jsr active
 	bcc :+
-	rts		; no windows are open
+@ret:	rts		; hidden or no windows are open
 
 :	jsr layout
 	jsr update_editor
@@ -332,6 +337,28 @@ __gui_refresh:
 @list:	jsr list_loadvars
 	jsr list_draw
 	jmp draw_titles
+.endproc
+
+;*******************************************************************************
+; TOGGLEHIDE
+; Toggles rendering of the window area.  While hidden, the open windows keep
+; their state but are not drawn and the editor occupies the entire window
+; area.
+.export __gui_togglehide
+.proc __gui_togglehide
+	lda depth
+	beq @done	; no windows are open
+
+	lda hidden
+	eor #$01
+	sta hidden
+	beq draw_all	; toggled back on: redraw the whole window area
+
+	; hide: give the editor the entire window area
+	lda baserow	; the editor's last row when no windows are drawn
+	sec		; flag editor should be drawn
+	jmp update_editor
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -373,6 +400,8 @@ __gui_refresh:
 	jsr restorelb		; restore line buffer
 	jmp swapcur
 
+;-------------------------------------------------------------------------------
+; HIDE editor
 @edhide:
 	; hide the editor; its cursor is clamped when it is revealed again
 	sta zp::editor_height
@@ -556,7 +585,7 @@ __gui_refresh:
 
 :	dex		; .X = index of the last item
 	txa
-	cmp hght
+	cmp wheight
 	bcs @scrl
 	stx select	; all items fit: select the last one
 	lda #$00
@@ -564,25 +593,25 @@ __gui_refresh:
 	rts
 
 @scrl:	;sec
-	sbc hght	; .A = last - hght
-	adc #$00	; scroll = last - hght + 1
+	sbc wheight	; .A = last - hght
+	adc #$00	; scroll = last - wheight + 1
 	sta scroll
-	ldx hght
+	ldx wheight
 	dex
 	stx select	; select the bottom row
 	rts
 
 @inwin:	lda select
-	cmp hght
-	bcc @done	; select < hght: still within the window
+	cmp wheight
+	bcc @done	; select < wheight: still within the window
 	;sec
-	sbc hght	; .A = select - hght
+	sbc wheight	; .A = select - hght
 	;sec
-	adc #$00	; .A = select - hght + 1
+	adc #$00	; .A = select - wheight + 1
 	clc
-	adc scroll	; .A = scroll + (select - hght + 1)
+	adc scroll	; .A = scroll + (select - wheight + 1)
 	sta scroll
-	ldx hght
+	ldx wheight
 	dex
 	stx select	; select the bottom row
 @done:	rts
@@ -649,7 +678,7 @@ __gui_refresh:
 	dec @row
 	inc @i
 	lda @i
-	cmp hght
+	cmp wheight
 	bcc @l0
 	jmp list_highlight
 
@@ -731,7 +760,7 @@ __gui_refresh:
 	bcs @redraw	; out of bounds: rehighlight (it was cleared above)
 	ldx select
 	inx
-	cpx hght
+	cpx wheight
 	bcc @goup	; if selection is below the top row, just move it
 	inc scroll
 	jmp @redraw
@@ -792,6 +821,8 @@ __gui_refresh:
 	sta __gui_cursave_x
 	lda zp::cury
 	sta __gui_cursave_y
+	lda #$00
+	sta hidden	; giving a window focus turns rendering back on
 	lda #$01
 	sta infocus
 
@@ -1001,10 +1032,14 @@ __gui_refresh:
 ;   - .X: the bottom content row of the active window
 .export __gui_grow
 .proc __gui_grow
-	jsr active
+	lda hidden
+	beq :+
+	jmp geom	; hidden; do nothing
+
+:	jsr active
 	bcs geom
 	jsr layout	; get the effective height before growing
-	lda hght
+	lda wheight
 	sta oldh
 	ldy #WIN_HEIGHT
 	lda (r0),y
@@ -1024,7 +1059,7 @@ __gui_refresh:
 	lda infocus
 	beq @revert	; the editor is active: make sure it has > 0 rows
 
-	lda hght
+	lda wheight
 	ldy #WIN_HEIGHT
 	cmp (r0),y
 	bne @revert	; the new height exceeds the displayable rows
@@ -1054,10 +1089,13 @@ __gui_refresh:
 ;   - .X: the bottom content row of the active window
 .export __gui_shrink
 .proc __gui_shrink
+	lda hidden
+	bne geom	; hidden -> don't render
+
 	jsr active
 	bcs geom
 	jsr layout	; get the effective height before shrinking
-	lda hght
+	lda wheight
 	sta oldh
 	ldy #WIN_HEIGHT
 	lda (r0),y
@@ -1078,10 +1116,23 @@ __gui_refresh:
 ;*******************************************************************************
 ; REDRAW
 ; redraw the window area and return the active window's geometry
-redraw:	jsr draw_all
-geom:	lda wtop
+.proc redraw
+	jsr draw_all
+
+	; fall through to geom
+.endproc
+
+;*******************************************************************************
+; GEOM
+; Entrypoint to get current window dimensions
+; OUT:
+;   - .A: window's top row
+;   - .X: window's bottom row
+.proc geom
+	lda wtop
 	ldx wbot
 	rts
+.endproc
 
 ;*******************************************************************************
 ; RESIZED
@@ -1126,7 +1177,7 @@ geom:	lda wtop
 	cmp select
 	bne @full
 
-	lda hght
+	lda wheight
 	cmp oldh
 	beq geom	; same effective height: nothing changed
 	bcc @titles	; shrank: the remaining rows are unchanged
@@ -1138,7 +1189,7 @@ geom:	lda wtop
 	jmp @titles
 
 @custom:
-	lda hght
+	lda wheight
 	cmp oldh
 	beq geom	; same effective height: nothing changed
 	ldy #WIN_V2
@@ -1173,6 +1224,8 @@ geom:	lda wtop
 ;   - .X: the bottom content row of the active window
 .export __gui_maximize
 .proc __gui_maximize
+	lda hidden
+	bne geom	; the windows aren't rendered
 	jsr active
 	bcs geom
 
@@ -1253,5 +1306,6 @@ geom:	lda wtop
 	sta depth
 	sta __gui_active_type
 	sta infocus
+	sta hidden
 	rts
 .endproc
