@@ -317,7 +317,7 @@ __monitor_window:
 	JUMPMAIN text::print
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INIT
 ; Initializes the monitor
 .export __monitor_init
@@ -334,7 +334,7 @@ __monitor_window:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; CLEAR
 ; Clears the monitor's contents
 .export __monitor_clear
@@ -383,7 +383,7 @@ __monitor_window:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; REENTER
 ; Activates the monitor without clearing the screen.
 ; Returns a GUI_RET_x code for the window manager in .A
@@ -518,7 +518,7 @@ __monitor_window:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; WINENTER
 ; The window manager's "enter" handler: interacts with the monitor until the
 ; user quits it or asks to cycle windows
@@ -667,7 +667,7 @@ __monitor_window:
 	JUMPMAIN draw::resetline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; UPDATE PC VIEW
 ; Updates the source view above the monitor window to follow the debugger's
 ; PC (see dbg::update_pc_view).
@@ -701,7 +701,7 @@ __monitor_window:
 	rts
 .endproc
 
-;******************************************************************************
+;*****************************************************************************
 ; ANCHOR BOTTOM
 ; Moves the contents of the monitor's screen buffer down so that the last line
 ; of history is just above the input line, which is moved to the bottom row
@@ -776,7 +776,7 @@ __monitor_window:
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; ROWPTR
 ; Returns the address of the given row in the monitor's screen buffer
 ; IN:
@@ -861,8 +861,8 @@ __monitor_window:
 	adc #$00
 	tay
 	CALLMAIN file::open_w
-
 	bcs @err
+
 	sta __monitor_outfile
 @done:	RETURN_OK
 

@@ -399,6 +399,11 @@ blank   = scr::blank
 @enter: ; disable anything that could steal control
 	TRACE_OFF
 
+	; undo any I/O reconfiguration done by the user program; the keyboard
+	; and serial bus need the KERNAL's setup (SAVE_IO has already captured
+	; the user's values)
+	RESTORE_IO
+
 	tsx
 	stx sim::reg_sp
 

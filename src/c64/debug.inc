@@ -25,4 +25,11 @@ C64_DEBUG_INC = 1
 .macro SAVE_IO
 .endmacro
 
+;*******************************************************************************
+; RESTORE IO
+; This macro restores the I/O configuration that the debugger and KERNAL
+; depend on after the user program has run
+.macro RESTORE_IO
+.endmacro
+
 .endif

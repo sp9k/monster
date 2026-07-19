@@ -42,6 +42,25 @@
 .endmacro
 
 ;*******************************************************************************
+; RESTORE IO
+; This macro restores the I/O configuration that the debugger and KERNAL
+; depend on.
+.macro RESTORE_IO
+	lda #$00
+	sta $911f		; release ATN
+	sta $9112		; VIA1 DDRB: all inputs
+	sta $9123		; VIA2 DDRA: all inputs (keyboard rows)
+	lda #$80
+	sta $9113		; VIA1 DDRA: PA7 (serial ATN) out, rest in
+	lda #$ff
+	sta $9122		; VIA2 DDRB: all outputs (keyboard columns)
+	lda #$fe
+	sta $911c		; VIA1 PCR: cassette motor off, CA1 neg. edge
+	lda #$de
+	sta $912c		; VIA2 PCR: serial CLK/DATA out released
+.endmacro
+
+;*******************************************************************************
 ; SAVE IO
 ; This macro saves Vic-20 specific I/O (VIAs etc.) upon returning to the
 ; debugger from a "GO" command
