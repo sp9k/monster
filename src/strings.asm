@@ -86,7 +86,7 @@ __str_saveall: .byte "save all buffers? ", yes_no, 0
 
 .export __str_watch_triggered
 __str_watch_triggered:
-.byte "watch triggered",0
+.byte "watch @ $", ESCAPE_VALUE, "=$", ESCAPE_BYTE, " ", ESCAPE_STRING, " ", ESCAPE_STRING, 0
 
 .export __str_invalid_command
 __str_invalid_command: .byte "invalid command", 0

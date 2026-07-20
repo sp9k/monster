@@ -89,6 +89,13 @@ blank_backup: .res 16
 	; set leftmost column of last row to the blank character
 	jsr set_bp_cell
 
+	; clear the aux character
+	ldx #$10
+	lda #$55
+:	sta $10f0-1,x
+	dex
+	bne :-
+
 	; configure VIC registers
 	ldy #$05
 @l2:	clc
@@ -102,13 +109,7 @@ blank_backup: .res 16
 	lda #$02<<4
 	sta $900e
 
-	; clear the aux character
-	ldx #$10
-	lda #$55
-:	sta $10f0-1,x
-	dex
-	bne :-
-
+	; set border/bg color
 	lda prefs::normal_color
 	sta $900f
 	rts

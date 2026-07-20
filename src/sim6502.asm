@@ -8,6 +8,7 @@
 .include "macros.inc"
 .include "ram.inc"
 .include "vmem.inc"
+.include "watches.inc"
 .include "zeropage.inc"
 
 .ifdef ultimem
@@ -90,6 +91,14 @@ __sim_affected: .byte 0
 ; address that is written/loaded by a given STEP
 .export __sim_effective_addr
 __sim_effective_addr: .word 0
+
+; value that was written/loaded at the effective address by a given STEP.
+.export __sim_effective_val
+__sim_effective_val: .byte 0
+
+; address of the instruction executed by the last STEP (PC before the step)
+.export __sim_prev_pc
+__sim_prev_pc: .word 0
 
 ; depth of simulated (VIA) interrupt handlers currently entered
 .export __sim_irq_depth
@@ -721,6 +730,7 @@ cycles_tab:
 	sta step_cycles
 
 	ldxy __sim_pc
+	stxy __sim_prev_pc
 	jsr vmem_load
 	sta __sim_op
 	tax
@@ -741,13 +751,43 @@ cycles_tab:
 	ora __sim_vital_addr_clobbered
 	ora __sim_illegal
 	cmp #$01
-.ifdef vic20
-	bcs @done			; step failed; skip VIA update
-	jsr update_vias			; tick timers, dispatch IRQ/NMI
-	clc
-@done:
+	bcs @done
+
+	; check if a watch was triggered
+	lda watch::num
+	beq @ok				; if no watches -> done
+	lda __sim_affected
+	and #(OP_LOAD|OP_STORE)
+	beq @ok				; if we didn't load or store -> no watch
+
+	pha
+	ldxy __sim_effective_addr
+	jsr vmem_load
+	sta __sim_effective_val
+	pla
+
+	ldxy __sim_effective_addr	; .XY = address that was accessed
+	CALLMAIN watch::mark		; check if a watch was triggered
+
+.ifdef ultimem
+	lda tracing
+	beq :+
+	lda #VMEM_BLK1_BANK
+	sta $9ff8
+	lda #VMEM_BLK2_BANK
+	sta $9ffa
+	lda #VMEM_BLK3_BANK
+	sta $9ffc
+:
 .endif
-	rts
+	bcs @done			; if it was, exit
+
+.ifdef vic20
+	jsr update_vias			; tick timers, dispatch IRQ/NMI
+.endif
+
+@ok:	clc
+@done:	rts
 
 @go:
 	jmp (r0)

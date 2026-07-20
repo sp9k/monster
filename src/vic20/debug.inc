@@ -4,6 +4,7 @@
 .import __fastcopy_restore_prog_state
 .import __fastcopy_save_debug_state
 .import __fastcopy_save_prog_state
+.import __fastcopy_save_prog_visual
 
 .scope bsp
 	install_tracer      = install_trace_nmi
@@ -12,6 +13,7 @@
 	restore_prog_visual = __fastcopy_restore_prog_visual
 	save_debug_state    = __fastcopy_save_debug_state
 	save_prog_state     = __fastcopy_save_prog_state
+	save_prog_visual    = __fastcopy_save_prog_visual
 
 	; aliases
 	save_debug_visual    = __fastcopy_save_debug_state

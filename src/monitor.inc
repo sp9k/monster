@@ -3,6 +3,7 @@
 .import __monitor_init
 .import __monitor_int
 .import __monitor_line
+.import __monitor_log
 .import __monitor_outfile
 .import __monitor_puts
 .import __monitor_reenter
@@ -17,6 +18,7 @@
 	init	  = __monitor_init
 	int	  = __monitor_int
 	line      = __monitor_line
+	log       = __monitor_log
 	outfile   = __monitor_outfile
 	puts      = __monitor_puts
 	reenter   = __monitor_reenter

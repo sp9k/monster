@@ -318,6 +318,84 @@ __monitor_window:
 .endproc
 
 ;*******************************************************************************
+; LOG
+; Appends the given line to the monitor's screen buffer without drawing to the
+; screen directly.
+; IN:
+;   - .XY: the address of the line to append
+.export __monitor_log
+.proc __monitor_log
+@msg=r0
+@scr0=r2
+@scr1=r4
+@tmp=r6
+	stxy @msg
+
+	; check if we need to scroll
+	lda line
+	cmp #HEIGHT-1
+	bcc @copy
+
+	; scroll the monitor screen buffer (not screen)
+	ldxy #screen
+	stxy @scr0
+	ldxy #screen+LINESIZE
+	stxy @scr1
+
+	ldx #HEIGHT-1
+@scroll:
+	ldy #LINESIZE-1
+:	lda (@scr1),y
+	sta (@scr0),y
+	dey
+	bpl :-
+	lda @scr0
+	clc
+	adc #LINESIZE
+	sta @scr0
+	bcc :+
+	inc @scr0+1
+:	lda @scr0
+	clc
+	adc #LINESIZE
+	sta @scr1
+	bcc :+
+	inc @scr1+1
+:	dex
+	bne @scroll
+
+	dec line
+
+@copy:	; copy text to buffer row line (screen + line*LINESIZE)
+	lda #$00
+	sta @scr0+1
+	lda line
+	asl		; *2
+	sta @tmp
+	asl		; *4
+	asl		; *8
+	adc @tmp	; *10
+	asl		; *20
+	rol @scr0+1
+	asl		; *40
+	rol @scr0+1
+	adc #<screen
+	sta @scr0
+	lda @scr0+1
+	adc #>screen
+	sta @scr0+1
+
+	ldy #LINESIZE-1
+:	lda (@msg),y
+	sta (@scr0),y
+	dey
+	bpl :-
+
+	inc line
+	rts
+.endproc
+
+;*******************************************************************************
 ; INIT
 ; Initializes the monitor
 .export __monitor_init

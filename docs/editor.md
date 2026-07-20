@@ -217,8 +217,8 @@ The following keys are handled in COMMAND mode.
 | HOME       | Home       | moves the cursor to column 0                                           |
 | C= + m     | Goto line  | prompts for a line number and moves the cursor to that line            |
 | C= + [1-8] | Goto Buffer| opens the buffer corresponding to the number key that is pressed       |
-| C= + h     | Prev Buffer| opens the buffer before the active one (if there is one)               |
-| C= + l     | Next Buffer| opens the buffer after the active one (if there is one)                |
+| Ctrl + h   | Prev Buffer| opens the buffer before the active one (if there is one)               |
+| Ctrl + l   | Next Buffer| opens the buffer after the active one (if there is one)                |
 | C= + i     | Jump up    | jumps forward to the next source position that was "jumped" to         |
 | C= + o     | Jump back  | jumps back to the last source position that was "jumped" to            |
 |    $       | End of Line| moves the cursor to the end of the current line                        |

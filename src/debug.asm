@@ -701,23 +701,33 @@ blank   = scr::blank
 
 .ifdef ultimem
 	; swap user's memory in so that it is visible during the trace
-	jsr __debug_swap_in
+	jsr bsp::save_debug_state	; save the debugger's visible state
+	jsr bsp::restore_prog_visual	; make the user program's state visible
 .endif
 
 @trace: ; step until a watch/breakpoint triggers or the user interrupts the
 	; trace
 	TRACE_ON		; enable tracing to catch user interrupt
 	jsr sim::trace
+	bcc @update		; user interrupt; no watch was triggered
 
-	; watches are not checked per-instruction while tracing; do so now so
-	; any that changed are marked dirty ('!')
+	; the simulator stopped the trace; if the CPU didn't fault (BRK, JAM,
+	; etc.), it was stopped by a watch- report it if so
+	lda sim::at_brk
+	ora sim::jammed
+	ora sim::illegal
+	ora sim::vital_addr_clobbered
+	bne @update
+	jsr watch_triggered	; print "watch triggered: ..." message
+
+@update:
+	; refresh watch values so any that changed are marked dirty ('!')
 	jsr watch::update
 
 .ifdef ultimem
 	jsr trace_done		; swap the user's memory back out
 .endif
-	jsr uninstall_breakpoints
-	jmp reenable_irq
+	jmp uninstall_breakpoints
 .endproc
 
 ;*******************************************************************************
@@ -1000,10 +1010,54 @@ __debug_step:
 .ifdef ultimem
 	jsr trace_done		; if user memory is swapped in, swap it out
 .endif
-	; display the watch that was triggered
-	jsr ui::render_watch
+	; disassemble the instruction that did the access (into $0100)
+	lda #$00
+	sta r0
+	lda #$01
+	sta r0+1
+	ldxy sim::prev_pc
+	lda #$00			; disassemble to string
+	jsr asm::disassemble
+	ldxy #$0100
+	bcc :+
+	ldxy #strings::question_marks	; couldn't disassemble
+
+:	tya
+	pha				; instruction string (hi)
+	txa
+	pha				; instruction string (lo)
+
+	; push "load" or "store" based on the type of access
+	ldxy #@load
+	lda sim::affected
+	and #OP_STORE
+	beq :+
+	ldxy #@store
+:	tya
+	pha
+	txa
+	pha
+
+	; push the value that was loaded/stored
+	lda sim::effective_val
+	pha
+
+	; push the address that was accessed
+	lda sim::effective_addr
+	pha
+	lda sim::effective_addr+1
+	pha
+
+	; "watch @ $<address>=<value> <load/store> <instruction>"
+	ldxy #strings::watch_triggered
 
 	; fall through to print_msg
+
+.PUSHSEG
+.RODATA
+@load:	.byte "load",0
+@store:	.byte "store",0
+.POPSEG
 .endproc
 
 ;*******************************************************************************
@@ -1015,17 +1069,21 @@ __debug_step:
 .ifdef ultimem
 	jsr trace_done		; if user memory is swapped in, swap it out
 .endif
+	jsr text::render	; render any escapes/arguments in the message
 	lda __debug_interface
 	beq @gui
 
-@tui:	lda #REGISTERS_LINE-1
-	CALL FINAL_BANK_MONITOR, mon::puts
+@tui:	CALL FINAL_BANK_MONITOR, mon::puts
 	RETURN_OK
 
-@gui:	lda #REGISTERS_LINE-1
+@gui:	; record the message in the monitor as well so it is visible there
+	; the next time the monitor is opened
+	CALL FINAL_BANK_MONITOR, mon::log
+
+	ldxy #mem::linebuffer2	; the rendered message (text::render output)
+	lda #REGISTERS_LINE-1
 	jsr text::print
 	jsr scr::clrcolor
-	jsr unblank
 	jsr key::waitch		; wait for keypress
 	sec
 	rts
@@ -1056,9 +1114,9 @@ __debug_step:
 
 ;*******************************************************************************
 ; TRACE DONE
-; If a TRACE is active (the user's memory is swapped in via __debug_trace),
-; swaps the user's memory back out, restores the debugger's screen state, and
-; reinitializes the debugger's IRQ (swap_in clobbers the VIA config).
+; If a TRACE is active (the user's visible state was swapped in via
+; __debug_trace), saves the program's (possibly updated) visible state and
+; restores the debugger's.
 .ifdef ultimem
 .proc trace_done
 	pha
@@ -1070,8 +1128,11 @@ __debug_step:
 	tya
 	pha
 
-	jsr __debug_swap_out	; save user state, restore debugger's
-	jsr irq::on		; restore the debugger's IRQ
+	jsr bsp::save_prog_visual	; save the program's (updated) screen
+	jsr bsp::restore_debug_state	; restore the debugger's screen
+	jsr irq::on			; restore the debugger's IRQ
+	lda #$00
+	sta sim::tracing
 
 	pla
 	tay

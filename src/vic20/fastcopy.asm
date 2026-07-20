@@ -73,6 +73,14 @@ dbg9400: .res $100	; $9400-$9500
 .endproc
 
 ;******************************************************************************
+; SAVE PROG VISUAL
+; Saves the visible program state (screen, VIC and color)
+.export __fastcopy_save_prog_visual
+.proc __fastcopy_save_prog_visual
+	JUMP FINAL_BANK_FASTCOPY, save_prog_visual
+.endproc
+
+;******************************************************************************
 ; RESTORE PROG STATE
 ; Restores the saved program state
 .export __fastcopy_restore_prog_state
@@ -124,6 +132,9 @@ restore_debug_visual:
 	sta $9000-1,y
 	dey
 	bne :-
+
+	; blank screen while we draw the bitmap.
+	sty $9003		; $9003 = 0 (# of rows)
 
 ; save $9400-$9500
 :	lda @colorsave,y
@@ -276,12 +287,10 @@ save_debug_visual:
 .endproc
 
 ;******************************************************************************
-; SAVE PROG STATE
-; Saves memory clobbered by the debugger (screen, VIC registers and color)
-.export save_prog_state
-.proc save_prog_state
-@internalmem=prog1000
-@colorsave=prog9400
+; SAVE PROG MEM
+; Saves the program memory clobbered by the debugger: the screen ($1000-$2000)
+; and color RAM ($9400-$9800)
+.proc save_prog_mem
 @src=r0
 @dst=r2
 ; save $1000-$2000
@@ -324,6 +333,29 @@ save_debug_visual:
 	lda @src+1
 	cmp #$98
 	bne @savecolor
+	rts
+.endproc
+
+;******************************************************************************
+; SAVE PROG VISUAL
+; Saves the visible state (screen, color and VIC)
+.export save_prog_visual
+.proc save_prog_visual
+	jsr save_prog_mem
+	jmp save_vic_state
+.endproc
+
+;******************************************************************************
+; SAVE PROG STATE
+; Saves memory clobbered by the debugger (screen, color, VIC and VIA)
+.export save_prog_state
+.proc save_prog_state
+	jsr save_prog_mem
+	ldx #$10
+:	lda $9120-1,x
+	sta prog9110+$10-1,x
+	dex
+	bne :-
 
 	; fall through to save_vic_state
 .endproc
@@ -337,8 +369,6 @@ save_debug_visual:
 @savevic:
 	lda $9000-1,x
 	sta @vicsave-1,x
-	lda $9120-1,x
-	sta prog9110+$10-1,x
 	dex
 	bne @savevic
 	rts
