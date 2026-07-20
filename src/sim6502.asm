@@ -755,10 +755,10 @@ cycles_tab:
 
 	; check if a watch was triggered
 	lda watch::num
-	beq @ok				; if no watches -> done
+	beq @update			; if no watches -> continue
 	lda __sim_affected
 	and #(OP_LOAD|OP_STORE)
-	beq @ok				; if we didn't load or store -> no watch
+	beq @update			; if we didn't load or store -> no watch
 
 	pha
 	ldxy __sim_effective_addr
@@ -782,11 +782,12 @@ cycles_tab:
 .endif
 	bcs @done			; if it was, exit
 
+@update:
 .ifdef vic20
 	jsr update_vias			; tick timers, dispatch IRQ/NMI
 .endif
 
-@ok:	clc
+	clc
 @done:	rts
 
 @go:
@@ -1432,7 +1433,7 @@ h_adc_indy:
 do_adc:
 	sta r4
 	lda __sim_reg_p
-	ora #$24			; force I=1 before plp
+	and #$fb			; force I=0
 	pha
 	lda __sim_reg_a
 	plp
@@ -1490,7 +1491,7 @@ h_sbc_indy:
 do_sbc:
 	sta r4
 	lda __sim_reg_p
-	ora #$24
+	and #$fb			; force I=0
 	pha
 	lda __sim_reg_a
 	plp
@@ -1852,7 +1853,7 @@ h_rol_a:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	lda __sim_reg_p
-	ora #$24
+	and #$fb			; force I=0
 	pha
 	lda __sim_reg_a
 	plp
@@ -1887,7 +1888,7 @@ h_rol_absx:
 do_rol_mem:
 	sta r4
 	lda __sim_reg_p
-	ora #$24
+	and #$fb			; force I=0
 	pha
 	lda r4
 	plp
@@ -1903,7 +1904,7 @@ h_ror_a:
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	lda __sim_reg_p
-	ora #$24
+	and #$fb			; force I=0
 	pha
 	lda __sim_reg_a
 	plp
@@ -1938,7 +1939,7 @@ h_ror_absx:
 do_ror_mem:
 	sta r4
 	lda __sim_reg_p
-	ora #$24
+	and #$fb			; force I=0
 	pha
 	lda r4
 	plp

@@ -709,19 +709,10 @@ blank   = scr::blank
 	; trace
 	TRACE_ON		; enable tracing to catch user interrupt
 	jsr sim::trace
-	bcc @update		; user interrupt; no watch was triggered
+	bcc @done		; user interrupt -> continue
+	jsr safety_check	; check if JAM, BRK, etc. occurred
 
-	; the simulator stopped the trace; if the CPU didn't fault (BRK, JAM,
-	; etc.), it was stopped by a watch- report it if so
-	lda sim::at_brk
-	ora sim::jammed
-	ora sim::illegal
-	ora sim::vital_addr_clobbered
-	bne @update
-	jsr watch_triggered	; print "watch triggered: ..." message
-
-@update:
-	; refresh watch values so any that changed are marked dirty ('!')
+@done: ; refresh watch values so any that changed are marked dirty ('!')
 	jsr watch::update
 
 .ifdef ultimem
@@ -940,25 +931,13 @@ __debug_step:
 ; perform the step
 @step:
 	jsr sim::step		; execute the STEP
-	bcc @check_watches	; if ok, continue
+	bcc @done		; if ok, continue
 
 	; display the error explaining why we couldn't STEP
 	jsr safety_check
 	sec			; flag that traces should stop
 	rts
 
-@check_watches:
-	lda sim::affected
-	and #OP_LOAD|OP_STORE		; was there a memory read/write?
-	beq @done			; if not, skip watches check
-	ldxy sim::effective_addr	; if yes, mark the watch if there is one
-	jsr watch::mark			; check if there's a watch at this addr
-	bcc @done			; if there's no watch at addr, done
-
-	; activate the watch window so user sees change
-	jsr watch_triggered	; display a message indicating watch triggered
-	sec
-	rts
 
 @done:	RETURN_OK		; return to the debugger
 .endproc
@@ -989,7 +968,7 @@ __debug_step:
 	lda sim::illegal	; did we hit an undocumented opcode?
 	bne illegal_detected
 
-@ok:	RETURN_OK
+@watch:	jmp watch_triggered	; if nothing else, watch must have triggered
 .endproc
 
 ;*******************************************************************************
@@ -1065,6 +1044,8 @@ __debug_step:
 ; Prints a message for the TUI or GUI (whichever is active)
 ; IN:
 ;   - .XY: the message to print
+; OUT:
+;   - .C: set (flags routines that autorun to stop so user can see message)
 .proc print_msg
 .ifdef ultimem
 	jsr trace_done		; if user memory is swapped in, swap it out
@@ -1074,7 +1055,8 @@ __debug_step:
 	beq @gui
 
 @tui:	CALL FINAL_BANK_MONITOR, mon::puts
-	RETURN_OK
+	sec
+	rts
 
 @gui:	; record the message in the monitor as well so it is visible there
 	; the next time the monitor is opened
