@@ -689,16 +689,14 @@ blank   = scr::blank
 ; or user interrupt)
 .export __debug_trace
 .proc __debug_trace
-	jsr blank
-	jsr bsp::install_tracer
-
 	; run one step (get over breakpoint if there is one)
 	jsr step
 	bcc :+
 	rts
 
-:	jsr install_breakpoints
-
+:	jsr blank
+	jsr bsp::install_tracer
+	jsr install_breakpoints
 .ifdef ultimem
 	; swap user's memory in so that it is visible during the trace
 	jsr bsp::save_debug_state	; save the debugger's visible state
@@ -709,15 +707,15 @@ blank   = scr::blank
 	; trace
 	TRACE_ON		; enable tracing to catch user interrupt
 	jsr sim::trace
+	php
+	jsr trace_done		; swap the user's memory back out
+	plp
 	bcc @done		; user interrupt -> continue
 	jsr safety_check	; check if JAM, BRK, etc. occurred
 
 @done: ; refresh watch values so any that changed are marked dirty ('!')
 	jsr watch::update
 
-.ifdef ultimem
-	jsr trace_done		; swap the user's memory back out
-.endif
 	jmp uninstall_breakpoints
 .endproc
 
@@ -1112,7 +1110,7 @@ __debug_step:
 
 	jsr bsp::save_prog_visual	; save the program's (updated) screen
 	jsr bsp::restore_debug_state	; restore the debugger's screen
-	jsr irq::on			; restore the debugger's IRQ
+	jsr unblank			; restore the debugger's IRQ
 	lda #$00
 	sta sim::tracing
 
