@@ -625,70 +625,70 @@ affected_tab:
 .byte $00				; $ff: ill
 
 cycles_tab:
-.byte 0, 6, 0, 2	; $00: brk,ora_indx,jam,ill
-.byte 2, 3, 5, 2	; $04: ill,ora_zp,asl_zp,ill
-.byte 3, 2, 2, 2	; $08: php,ora_imm,asl_a,ill
-.byte 2, 4, 6, 2	; $0c: ill,ora_abs,asl_abs,ill
-.byte 0, 5, 0, 2	; $10: bpl,ora_indy,jam,ill
-.byte 2, 4, 6, 2	; $14: ill,ora_zpx,asl_zpx,ill
-.byte 2, 4, 2, 2	; $18: clc,ora_absy,ill,ill
-.byte 2, 4, 7, 2	; $1c: ill,ora_absx,asl_absx,ill
-.byte 6, 6, 0, 2	; $20: jsr,and_indx,jam,ill
-.byte 3, 3, 5, 2	; $24: bit_zp,and_zp,rol_zp,ill
-.byte 4, 2, 2, 2	; $28: plp,and_imm,rol_a,ill
-.byte 4, 4, 6, 2	; $2c: bit_abs,and_abs,rol_abs,ill
-.byte 0, 5, 0, 2	; $30: bmi,and_indy,jam,ill
-.byte 2, 4, 6, 2	; $34: ill,and_zpx,rol_zpx,ill
-.byte 2, 4, 2, 2	; $38: sec,and_absy,ill,ill
-.byte 2, 4, 7, 2	; $3c: ill,and_absx,rol_absx,ill
-.byte 6, 6, 0, 2	; $40: rti,eor_indx,jam,ill
-.byte 2, 3, 5, 2	; $44: ill,eor_zp,lsr_zp,ill
-.byte 3, 2, 2, 2	; $48: pha,eor_imm,lsr_a,ill
-.byte 3, 4, 6, 2	; $4c: jmp_abs,eor_abs,lsr_abs,ill
-.byte 0, 5, 0, 2	; $50: bvc,eor_indy,jam,ill
-.byte 2, 4, 6, 2	; $54: ill,eor_zpx,lsr_zpx,ill
-.byte 2, 4, 2, 2	; $58: cli,eor_absy,ill,ill
-.byte 2, 4, 7, 2	; $5c: ill,eor_absx,lsr_absx,ill
-.byte 6, 6, 0, 2	; $60: rts,adc_indx,jam,ill
-.byte 2, 3, 5, 2	; $64: ill,adc_zp,ror_zp,ill
-.byte 4, 2, 2, 2	; $68: pla,adc_imm,ror_a,ill
-.byte 5, 4, 6, 2	; $6c: jmp_ind,adc_abs,ror_abs,ill
-.byte 0, 5, 0, 2	; $70: bvs,adc_indy,jam,ill
-.byte 2, 4, 6, 2	; $74: ill,adc_zpx,ror_zpx,ill
-.byte 2, 4, 2, 2	; $78: sei,adc_absy,ill,ill
-.byte 2, 4, 7, 2	; $7c: ill,adc_absx,ror_absx,ill
-.byte 2, 6, 2, 2	; $80: ill,sta_indx,ill,ill
-.byte 3, 3, 3, 2	; $84: sty_zp,sta_zp,stx_zp,ill
-.byte 2, 2, 2, 2	; $88: dey,ill,txa,ill
-.byte 4, 4, 4, 2	; $8c: sty_abs,sta_abs,stx_abs,ill
-.byte 0, 6, 0, 2	; $90: bcc,sta_indy,jam,ill
-.byte 4, 4, 4, 2	; $94: sty_zpx,sta_zpx,stx_zpy,ill
-.byte 2, 5, 2, 2	; $98: tya,sta_absy,txs,ill
-.byte 2, 5, 2, 2	; $9c: ill,sta_absx,ill,ill
-.byte 2, 6, 2, 2	; $a0: ldy_imm,lda_indx,ldx_imm,ill
-.byte 3, 3, 3, 2	; $a4: ldy_zp,lda_zp,ldx_zp,ill
-.byte 2, 2, 2, 2	; $a8: tay,lda_imm,tax,ill
-.byte 4, 4, 4, 2	; $ac: ldy_abs,lda_abs,ldx_abs,ill
-.byte 0, 5, 0, 2	; $b0: bcs,lda_indy,jam,ill
-.byte 4, 4, 4, 2	; $b4: ldy_zpx,lda_zpx,ldx_zpy,ill
-.byte 2, 4, 2, 2	; $b8: clv,lda_absy,tsx,ill
-.byte 4, 4, 4, 2	; $bc: ldy_absx,lda_absx,ldx_absy,ill
-.byte 2, 6, 2, 2	; $c0: cpy_imm,cmp_indx,ill,ill
-.byte 3, 3, 5, 2	; $c4: cpy_zp,cmp_zp,dec_zp,ill
-.byte 2, 2, 2, 2	; $c8: iny,cmp_imm,dex,ill
-.byte 4, 4, 6, 2	; $cc: cpy_abs,cmp_abs,dec_abs,ill
-.byte 0, 5, 0, 2	; $d0: bne,cmp_indy,jam,ill
-.byte 2, 4, 6, 2	; $d4: ill,cmp_zpx,dec_zpx,ill
-.byte 2, 4, 2, 2	; $d8: cld,cmp_absy,ill,ill
-.byte 2, 4, 7, 2	; $dc: ill,cmp_absx,dec_absx,ill
-.byte 2, 6, 2, 2	; $e0: cpx_imm,sbc_indx,ill,ill
-.byte 3, 3, 5, 2	; $e4: cpx_zp,sbc_zp,inc_zp,ill
-.byte 2, 2, 2, 2	; $e8: inx,sbc_imm,nop,ill
-.byte 4, 4, 6, 2	; $ec: cpx_abs,sbc_abs,inc_abs,ill
-.byte 0, 5, 0, 2	; $f0: beq,sbc_indy,jam,ill
-.byte 2, 4, 6, 2	; $f4: ill,sbc_zpx,inc_zpx,ill
-.byte 2, 4, 2, 2	; $f8: sed,sbc_absy,ill,ill
-.byte 2, 4, 7, 2	; $fc: ill,sbc_absx,inc_absx,ill
+.byte 0, 6, 0, 0	; $00: brk,ora_indx,jam,ill
+.byte 0, 3, 5, 0	; $04: ill,ora_zp,asl_zp,ill
+.byte 3, 2, 2, 0	; $08: php,ora_imm,asl_a,ill
+.byte 0, 4, 6, 0	; $0c: ill,ora_abs,asl_abs,ill
+.byte 0, 5, 0, 0	; $10: bpl,ora_indy,jam,ill
+.byte 0, 4, 6, 0	; $14: ill,ora_zpx,asl_zpx,ill
+.byte 2, 4, 0, 0	; $18: clc,ora_absy,ill,ill
+.byte 0, 4, 7, 0	; $1c: ill,ora_absx,asl_absx,ill
+.byte 6, 6, 0, 0	; $20: jsr,and_indx,jam,ill
+.byte 3, 3, 5, 0	; $24: bit_zp,and_zp,rol_zp,ill
+.byte 4, 2, 2, 0	; $28: plp,and_imm,rol_a,ill
+.byte 4, 4, 6, 0	; $2c: bit_abs,and_abs,rol_abs,ill
+.byte 0, 5, 0, 0	; $30: bmi,and_indy,jam,ill
+.byte 0, 4, 6, 0	; $34: ill,and_zpx,rol_zpx,ill
+.byte 2, 4, 0, 0	; $38: sec,and_absy,ill,ill
+.byte 0, 4, 7, 0	; $3c: ill,and_absx,rol_absx,ill
+.byte 6, 6, 0, 0	; $40: rti,eor_indx,jam,ill
+.byte 0, 3, 5, 0	; $44: ill,eor_zp,lsr_zp,ill
+.byte 3, 2, 2, 0	; $48: pha,eor_imm,lsr_a,ill
+.byte 3, 4, 6, 0	; $4c: jmp_abs,eor_abs,lsr_abs,ill
+.byte 0, 5, 0, 0	; $50: bvc,eor_indy,jam,ill
+.byte 0, 4, 6, 0	; $54: ill,eor_zpx,lsr_zpx,ill
+.byte 2, 4, 0, 0	; $58: cli,eor_absy,ill,ill
+.byte 0, 4, 7, 0	; $5c: ill,eor_absx,lsr_absx,ill
+.byte 6, 6, 0, 0	; $60: rts,adc_indx,jam,ill
+.byte 0, 3, 5, 0	; $64: ill,adc_zp,ror_zp,ill
+.byte 4, 2, 2, 0	; $68: pla,adc_imm,ror_a,ill
+.byte 5, 4, 6, 0	; $6c: jmp_ind,adc_abs,ror_abs,ill
+.byte 0, 5, 0, 0	; $70: bvs,adc_indy,jam,ill
+.byte 0, 4, 6, 0	; $74: ill,adc_zpx,ror_zpx,ill
+.byte 2, 4, 0, 0	; $78: sei,adc_absy,ill,ill
+.byte 0, 4, 7, 0	; $7c: ill,adc_absx,ror_absx,ill
+.byte 0, 6, 0, 0	; $80: ill,sta_indx,ill,ill
+.byte 3, 3, 3, 0	; $84: sty_zp,sta_zp,stx_zp,ill
+.byte 2, 0, 2, 0	; $88: dey,ill,txa,ill
+.byte 4, 4, 4, 0	; $8c: sty_abs,sta_abs,stx_abs,ill
+.byte 0, 6, 0, 0	; $90: bcc,sta_indy,jam,ill
+.byte 4, 4, 4, 0	; $94: sty_zpx,sta_zpx,stx_zpy,ill
+.byte 2, 5, 2, 0	; $98: tya,sta_absy,txs,ill
+.byte 0, 5, 0, 0	; $9c: ill,sta_absx,ill,ill
+.byte 2, 6, 2, 0	; $a0: ldy_imm,lda_indx,ldx_imm,ill
+.byte 3, 3, 3, 0	; $a4: ldy_zp,lda_zp,ldx_zp,ill
+.byte 2, 2, 2, 0	; $a8: tay,lda_imm,tax,ill
+.byte 4, 4, 4, 0	; $ac: ldy_abs,lda_abs,ldx_abs,ill
+.byte 0, 5, 0, 0	; $b0: bcs,lda_indy,jam,ill
+.byte 4, 4, 4, 0	; $b4: ldy_zpx,lda_zpx,ldx_zpy,ill
+.byte 2, 4, 2, 0	; $b8: clv,lda_absy,tsx,ill
+.byte 4, 4, 4, 0	; $bc: ldy_absx,lda_absx,ldx_absy,ill
+.byte 2, 6, 0, 0	; $c0: cpy_imm,cmp_indx,ill,ill
+.byte 3, 3, 5, 0	; $c4: cpy_zp,cmp_zp,dec_zp,ill
+.byte 2, 2, 2, 0	; $c8: iny,cmp_imm,dex,ill
+.byte 4, 4, 6, 0	; $cc: cpy_abs,cmp_abs,dec_abs,ill
+.byte 0, 5, 0, 0	; $d0: bne,cmp_indy,jam,ill
+.byte 0, 4, 6, 0	; $d4: ill,cmp_zpx,dec_zpx,ill
+.byte 2, 4, 0, 0	; $d8: cld,cmp_absy,ill,ill
+.byte 0, 4, 7, 0	; $dc: ill,cmp_absx,dec_absx,ill
+.byte 2, 6, 0, 0	; $e0: cpx_imm,sbc_indx,ill,ill
+.byte 3, 3, 5, 0	; $e4: cpx_zp,sbc_zp,inc_zp,ill
+.byte 2, 2, 2, 0	; $e8: inx,sbc_imm,nop,ill
+.byte 4, 4, 6, 0	; $ec: cpx_abs,sbc_abs,inc_abs,ill
+.byte 0, 5, 0, 0	; $f0: beq,sbc_indy,jam,ill
+.byte 0, 4, 6, 0	; $f4: ill,sbc_zpx,inc_zpx,ill
+.byte 2, 4, 0, 0	; $f8: sed,sbc_absy,ill,ill
+.byte 0, 4, 7, 0	; $fc: ill,sbc_absx,inc_absx,ill
 
 ;******************************************************************************
 ; TRACE
@@ -751,7 +751,7 @@ cycles_tab:
 	ora __sim_vital_addr_clobbered
 	ora __sim_illegal
 	cmp #$01
-	bcs @done
+	bcs @fail
 
 	; check if a watch was triggered
 	lda watch::num
@@ -789,6 +789,23 @@ cycles_tab:
 
 	clc
 @done:	rts
+
+@fail:
+	; the opcode didn't execute, roll back clock and report the failure
+	sec
+	lda __sim_stopwatch
+	sbc step_cycles
+	sta __sim_stopwatch
+	lda __sim_stopwatch+1
+	sbc #$00
+	sta __sim_stopwatch+1
+	lda __sim_stopwatch+2
+	sbc #$00
+	sta __sim_stopwatch+2
+	lda #$00
+	sta step_cycles
+	sec				; err
+	rts
 
 @go:
 	jmp (r0)
@@ -1257,7 +1274,7 @@ h_ill:
 	inc __sim_illegal
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
-	jmp advance1
+	rts				; illegal opcode; abort the step
 
 h_nop:
 	lda #MODE_IMPLIED

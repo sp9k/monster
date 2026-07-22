@@ -936,7 +936,6 @@ __debug_step:
 	sec			; flag that traces should stop
 	rts
 
-
 @done:	RETURN_OK		; return to the debugger
 .endproc
 
@@ -945,7 +944,13 @@ __debug_step:
 ; Checks if the CPU will be jammed after executing the next instruction or if
 ; a critical memory location will be clobbered.
 .proc safety_check
-	; is the next instruction a JAM?
+	lda sim::at_brk
+	beq :+
+	; if at breakpoint, just exit as normal
+	sec
+	rts
+
+:	; is the next instruction a JAM?
 	lda sim::jammed
 	bne jam_detected
 
