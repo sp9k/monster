@@ -1911,8 +1911,7 @@ do_rol_mem:
 	plp
 	rol
 	cld			; don't leak virtual D flag to the host
-	jsr rmw_done
-	rts
+	jmp rmw_done
 
 ;******************************************************************************
 ; ROR - Rotate Right through Carry
@@ -1962,8 +1961,7 @@ do_ror_mem:
 	plp
 	ror
 	cld			; don't leak virtual D flag to the host
-	jsr rmw_done
-	rts
+	jmp rmw_done
 
 ;******************************************************************************
 ; INC - Increment memory; updates N, Z only
