@@ -130,7 +130,7 @@ bufferedkeys: .byte 0		; number of keys "buffered" for current command
 __edit_highlight_en: .byte 0	; highlight flag: if !0 highlight highlight_line
 
 __edit_highlight_line:	.word 0 	; the line we are highlighting
-highlight_file:   	.word 0		; filename of line we are highlighting
+highlight_file:   	.byte 0		; debug file ID of the highlighted line
 highlight_status:	.byte 0		; if !0 highlight is active
 
 ; the status row is where the text status is displayed.
@@ -2892,8 +2892,11 @@ __edit_refresh:
 	beq @done
 
 	; check if the current line is the highlighted one
-	jsr src::currline
-	cmpw __edit_highlight_line
+	jsr __edit_current_file		; .A = file ID, .XY = current line #
+	bcs @done			; no file ID -> not a match
+	cmp highlight_file
+	bne @done			; different file -> not the highlight
+	cmpw __edit_highlight_line	; compare .XY to the highlighted line #
 	bne @done
 	lda #$01
 	sta highlight_status
@@ -5463,18 +5466,28 @@ goto_buffer:
 @was_visible=r4
 	lda __edit_highlight_en
 	beq @done
+
+	; check if the active buffer contains the highlighted line
+	jsr __edit_current_file		; .A = current buffer's file ID
+	bcs @notvisible			; no file ID -> not the highlight's file
+	cmp highlight_file
+	bne @notvisible			; different file -> not visible here
+
 	lda highlight_status
 	sta @was_visible
 
 	; update the status (check if the highlight was scrolled out)
-	; get filename (r0 = id)
-	lda src::activebuff
 	lda #$00
 	sta highlight_status
 	ldxy __edit_highlight_line
 	jsr __edit_src2screen
 	bcc @ok
 @done:	rts
+
+@notvisible:
+	lda #$00
+	sta highlight_status	; highlight is not on this screen
+	rts
 
 @ok:	inc highlight_status	; flag highlight as now visible
 	lda @was_visible
@@ -5814,13 +5827,20 @@ goto_buffer:
 .proc __edit_sethighlight
 @newhighlight=zp::editortmp+6
 	lda highlight_status		; is highlight active?
-	beq :+
+	beq @set
 
 	stxy @newhighlight
 	jsr toggle_highlight		; toggle off old highlight if it's on
 	ldxy @newhighlight
 
-:	stxy __edit_highlight_line
+@set:	stxy __edit_highlight_line
+
+	jsr __edit_current_file		; .A = current buffer's file ID
+	bcc @setfile
+	lda #$ff			; no file ID; use invalid id
+@setfile:
+	sta highlight_file
+
 	lda #$01
 	sta __edit_highlight_en		; flag highlight as ON
 	sta highlight_status		; and flag highlight as on
