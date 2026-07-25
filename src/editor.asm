@@ -4874,7 +4874,6 @@ goto_buffer:
 	lda #$01	; flag search FORWRAD
 
 	skw
-
 	; fall through to FIND LAST SEARCH (skip find_prev)
 .endproc
 
@@ -4884,17 +4883,8 @@ goto_buffer:
 .proc find_prev
 	lda #$00	; flag search BACKWARD
 
-	; fall through to FIND LAST SEARCH
-.endproc
-
-;*******************************************************************************
-; FIND LAST SEARCH
-; Searches for the next/previous occurrence of the string in mem::findbuff
-.proc find_last_search
-	ldxy #mem::findbuff
 	skw
-
-	; fall through to FIND
+	; fall through to FIND LAST SEARCH
 .endproc
 
 ;*******************************************************************************
@@ -4914,18 +4904,18 @@ goto_buffer:
 	lda #$01	; flag search FORWARD
 	sta @forward
 
-	ldxy #strings::null
-	jsr blank	; free up CPU for seeking
-
-	jsr run::install_sigint	; reset SIGINT flag
-
+	ldxy #mem::findbuff
 	stxy @string
 	jsr str::len
 	sta @len
 	bne :+
 	rts		; if 0-length string, don't search
 
-:	jsr src::pushp	; save source position
+:	ldxy #strings::null
+	jsr blank		; free up CPU for seeking
+
+	jsr run::install_sigint	; reset SIGINT flag
+	jsr src::pushp		; save source position
 
 	; set the index to begin storing characters at:
 	; 0 if searching forward, MAX_SEARCH_LEN-1 if searching backward
