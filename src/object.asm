@@ -1687,6 +1687,7 @@ __obj_close_section = close_section
 
 @add:	lda #SEG_UNDEF
 	sta zp::label_segmentid
+	ldxy #@namebuff
 	JUMPMAIN lbl::add
 
 @ok:	RETURN_OK
@@ -2197,7 +2198,7 @@ inline_proc is_ws, util::is_whitespace
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; TYPE TO MODE
 ; Returns the label address mode that corresponds to the given TYPE
 ; IN:
@@ -2391,14 +2392,14 @@ inline_proc is_ws, util::is_whitespace
 @exports: .byte "exports: ", ESCAPE_VALUE_DEC,0
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LOG BANNER
 ; Logs a '*' banner
 .proc log_banner
 	JUMPMAIN log::banner
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LOG MSG
 ; Copies the provided string to shared RAM and logs it
 ; IN:

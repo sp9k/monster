@@ -151,6 +151,10 @@ filenames: .res MAX_FILES * MAX_FILENAME_LEN
 ; map of local (object file) file IDs to global file IDs (used during load)
 filemap: .res MAX_FILES
 
+; map of local (object file) file IDs to global file IDs used when DUMPing an
+objfilemap:  .res MAX_FILES
+numobjfiles: .byte 0
+
 ;*******************************************************************************
 ; BSS
 .segment "DEBUGINFO_BSS"
@@ -1244,16 +1248,46 @@ get_filename = get_filename_addr
 @dbgi=r2
 @progstart=r4
 @cnt=r6
-	ldxy #filenames
-	stxy @name
+;-------------------------------------------------------------------------------
+; build the per-object file map: find the distinct GLOBAL file ids that this
+; assembly's blocks reference and assign them 0-based LOCAL ids
+	lda #$00
+	sta numobjfiles
+	ldx numblocks
+	beq @writefiles
+	stx @cnt
+
+	lda #$00
+	jsr header_addr
+	stxy @dbgi
+@scanfile:
+	ldy #BLOCK_FILE_ID
+	LOADB_Y @dbgi		; .A = block's GLOBAL file id
+	jsr map_objfile		; add it to objfilemap (if not already present)
+
+	lda @dbgi		; advance to the next block header
+	clc
+	adc #SIZEOF_BLOCK_HEADER
+	sta @dbgi
+	bcc :+
+	inc @dbgi+1
+:	dec @cnt
+	bne @scanfile
 
 ;-------------------------------------------------------------------------------
-; dump the filenames
-	ldx numfiles
+; dump the filenames used by this object (in LOCAL-id order)
+@writefiles:
+	lda #$00
+	sta @cnt		; @cnt = local file id being written
+	ldx numobjfiles
 	beq @filesdone
 @fnames:
+	ldx @cnt
+	lda objfilemap,x	; map local id -> global id
+	jsr get_filename	; .XY = filename (0-terminated) in shared RAM
+	stxy @name
+
 	; write the filename (with terminating 0) to the object file
-	; the filename table lives in local RAM (see set_name), so read directly
 	ldy #$00
 :	lda (@name),y
 	jsr krn::chrout
@@ -1261,15 +1295,10 @@ get_filename = get_filename_addr
 	cmp #$00
 	bne :-
 
-	; move @name pointer to the next filename
-	lda @name
-	clc
-	adc #MAX_FILENAME_LEN
-	sta @name
-	bcc :+
-	inc @name+1
-:	dex
-	bne @fnames		; repeat for next filename
+	inc @cnt		; next local file id
+	lda @cnt
+	cmp numobjfiles
+	bne @fnames
 
 @filesdone:
 	lda #$00
@@ -1294,11 +1323,20 @@ get_filename = get_filename_addr
 ; dump the header for the block
 @dump_block_header:
 	ldy #$00
-:	LOADB_Y @dbgi
-	jsr krn::chrout
+@hloop:	cpy #BLOCK_FILE_ID
+	beq @idtranslate
+	LOADB_Y @dbgi
+	jmp @hput
+
+@idtranslate:
+	; translate the byte from the header (global file ID) to the local ID
+	LOADB_Y @dbgi		; .A = GLOBAL file id
+	jsr local_objfile	; get object-LOCAL id
+
+@hput:	jsr krn::chrout
 	iny
 	cpy #SIZEOF_BLOCK_HEADER_OBJ
-	bne :-
+	bne @hloop
 
 	; calculate the size of the line program for the block
 	; (progstop-progstart)
@@ -1349,6 +1387,53 @@ get_filename = get_filename_addr
 	bne :-
 
 @done:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; MAP OBJFILE
+; Adds the given GLOBAL file id to the per-object file map (objfilemap) if it is
+; not already present
+; IN:
+;   - .A: global file id
+; CLOBBERS: .X
+.proc map_objfile
+	ldx numobjfiles
+	beq @add		; empty map -> add as local id 0
+	ldx #$00
+:	cmp objfilemap,x
+	beq @done		; already mapped -> nothing to do
+	inx
+	cpx numobjfiles
+	bne :-
+
+@add:	; not mapped, add to table
+	cpx #MAX_FILES
+	bcs @done		; table full (should not happen) -> ignore
+	sta objfilemap,x
+	inc numobjfiles
+
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; LOCAL OBJFILE
+; Returns the object-LOCAL file id for the given GLOBAL file id from objfilemap
+; IN:
+;   - .A: the global file id
+; OUT:
+;   - .A: the local file id (0 if not found; should not happen)
+; CLOBBERS: .X (.Y is preserved)
+.proc local_objfile
+	ldx #$00
+:	cmp objfilemap,x
+	beq @found
+	inx
+	cpx numobjfiles
+	bne :-
+	lda #$00		; not found -> default to local id 0
+	rts
+@found:	txa
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1494,10 +1579,10 @@ get_filename = get_filename_addr
 	; look up global SEGMENT id and replace the LOCAL one with it
 	CALL FINAL_BANK_LINKER, obj::get_segment_name_by_id
 	bcc :+
-	rts			; not found
+	RETURN_ERR ERR_UNKNOWN_SEGMENT	; no name for this block's segment id
 :	CALL FINAL_BANK_LINKER, link::segid_by_name
 	bcc :+
-	rts			; unknown segment; return error
+	RETURN_ERR ERR_UNKNOWN_SEGMENT	; segment name not in the link config
 :	sta seg_id
 
 	; look up the address offset for this SEGMENT

@@ -1831,7 +1831,7 @@ __debug_remove_breakpoint:
 .endif
 .endproc
 
-;*****************************************************************************
+;*******************************************************************************
 ; RESTORE DEBUG ZP
 ; Restores the $00-$100 values forthe debugger
 .export __debug_restore_debug_zp
@@ -1859,7 +1859,7 @@ __debug_remove_breakpoint:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE DEBUG LOW
 ; Restores the state of the debugger's "low" memory
 ; IN:
@@ -1904,7 +1904,7 @@ __debug_remove_breakpoint:
 
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE DEBUG ZP
 ; Saves the state of the debugger's zeropage
 ; IN:

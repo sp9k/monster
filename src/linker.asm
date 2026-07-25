@@ -1074,10 +1074,12 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	tax
 	jsr krn::chkin			; CHKIN
 	jsr obj::load_headers	; get section sizes and add global labels
+	sta objerr		; save error code
 	pla			; restore file handle
 	php			; save .C (error)
 	CALLMAIN file::close	; close the object file
 	plp			; restore load_headers error
+	lda objerr		; restore error code
 	jcs log_error
 
 	jsr update_segments
@@ -1114,6 +1116,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 	; now that SEGMENT origins are known, finalize the values of the
 	; symbols that were registered (segment-relative) during pass 1
+	ldxy #@resolving_symbols
+	jsr log_msg
 	jsr resolve_symbols
 	jcs log_error
 
@@ -1196,6 +1200,8 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	jmp validate_segments	; validate segments and return error if needed
 
 @done:	rts
+
+@resolving_symbols: .byte "resolving symbols",0
 .endproc
 
 ;*******************************************************************************
@@ -2213,7 +2219,6 @@ __link_get_segment_by_name:
 ; Copies the provided string to shared RAM and logs it
 ; IN:
 ;   - .XY: address of string to log
-;   - r
 .proc log_msg
 @ret=r4
 @str=r4

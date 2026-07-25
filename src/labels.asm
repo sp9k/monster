@@ -1363,8 +1363,20 @@ labelvars_size=*-labelvars
 	cmp #'Z'+1
 	bcs @err
 
-	; make sure string is not an opcode (opcodes are not valid labels)
+	; make sure string is not an opcode (opcodes are not valid labels).
+	lda zp::line
+	pha
+	lda zp::line+1
+	pha
+	lda @name
+	sta zp::line
+	lda @name+1
+	sta zp::line+1
 	CALLMAIN asm::isopcode
+	pla
+	sta zp::line+1
+	pla
+	sta zp::line
 	bcc @err
 
 	; following characters must be between '0' and 'Z'
@@ -1380,7 +1392,8 @@ labelvars_size=*-labelvars
 	cmp #'Z'+1
 	iny
 	bcc @l1
-@err:	RETURN_ERR ERR_ILLEGAL_LABEL
+@err:	jmp *
+	RETURN_ERR ERR_ILLEGAL_LABEL
 @toolong:
 	lda #ERR_LABEL_TOO_LONG
 	;sec
