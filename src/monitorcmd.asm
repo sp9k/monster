@@ -37,10 +37,9 @@
 .include "ram.inc"
 
 .segment "CONSOLE_VARS"
-default_start:     .word 0	; default start address for command
 
-.export __mon_default_start_set
-__mon_default_start_set: .byte 0
+.export __dbgcmd_default_addr
+__dbgcmd_default_addr:     .word 0	; default start address for command
 
 ; buffer for the byte lists parsed by parse_exprs (used by f and h)
 MAX_EXPR_LIST = 32
@@ -629,9 +628,6 @@ exprlist: .res MAX_EXPR_LIST
 ; Example:
 ;  `g $1234`
 .proc goto
-	jsr debugging
-	bcc @done			; can't step if not debugging
-
 	lda (zp::line),y
 	beq :+				; if no argument given, skip setting PC
 
@@ -757,9 +753,6 @@ exprlist: .res MAX_EXPR_LIST
 ; Displays the current contents of the registers.
 .export __dbgcmd_regs
 .proc __dbgcmd_regs
-	jsr debugging
-	bcc @done	; registers aren't meaningful to user if not debugging
-
 	ldxy #strings::debug_registers
 	RENDER_STR
 	jsr mon::puts
@@ -784,8 +777,10 @@ exprlist: .res MAX_EXPR_LIST
 :	jsr mon::puts
 .endif
 
-	clc
-@done:	rts
+	ldxy sim::pc
+	stxy __dbgcmd_default_addr
+
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -815,12 +810,15 @@ exprlist: .res MAX_EXPR_LIST
 
 @ok:	jsr @drawline
 @next:	ldxy @addr
-	stxy default_start		; set current address is new default
 	cmpw @stopaddr
 	bcc @l0
-@done:	clc
+
+@done:	ldxy @addr
+	stxy __dbgcmd_default_addr
+	clc
 @ret:	rts
 
+;-------------------------------------------------------------------------------
 @drawbyte:
 	; unknown instruction
 	ldxy @addr
@@ -835,6 +833,7 @@ exprlist: .res MAX_EXPR_LIST
 	RENDER_STR
 	jmp mon::puts
 
+;-------------------------------------------------------------------------------
 @db_with_addr:
 	; push the address
 	lda @addr
@@ -847,6 +846,7 @@ exprlist: .res MAX_EXPR_LIST
 	RENDER_STR
 	jmp mon::puts
 
+;-------------------------------------------------------------------------------
 @drawline:
 	tax		; save instruction size
 
@@ -866,6 +866,7 @@ exprlist: .res MAX_EXPR_LIST
 	RENDER_STR
 	jmp mon::puts	; if address rendering is off, just print
 
+;-------------------------------------------------------------------------------
 @with_addr:
 	; push the disassembled string
 	lda #>@buff
@@ -890,6 +891,8 @@ exprlist: .res MAX_EXPR_LIST
 :	ldxy #@disasm_msg
 	RENDER_STR
 	jmp mon::puts
+
+;-------------------------------------------------------------------------------
 .PUSHSEG
 .RODATA
 @byte_msg:
@@ -1062,7 +1065,10 @@ exprlist: .res MAX_EXPR_LIST
 	lda @lines
 	ora @lines+1		; count exhausted?
 	bne @l0
-@done:	clc			; OK
+
+@done:	ldxy @addr
+	stxy __dbgcmd_default_addr
+	clc			; OK
 @ret:	rts
 .endproc
 
@@ -1080,11 +1086,7 @@ exprlist: .res MAX_EXPR_LIST
 ; STEP
 ; Steps to the next instruction while debugging
 .proc step
-	jsr debugging
-	bcs :+
-	rts		; can't step if not debugging
-
-:	CALLMAIN dbg::step
+	CALLMAIN dbg::step
 	jsr mon::update_pc_view		; follow the PC in the source view
 	; print the registers
 	jsr __dbgcmd_regs
@@ -1097,8 +1099,6 @@ exprlist: .res MAX_EXPR_LIST
 ; treated as one instruction
 ; instruction
 .proc step_over
-	jsr debugging
-	bcc @done				; can't step if not debugging
 	CALLMAIN dbg::step_over
 	jsr mon::update_pc_view		; follow the PC in the source view
 	jsr __dbgcmd_regs
@@ -1110,9 +1110,6 @@ exprlist: .res MAX_EXPR_LIST
 ; TRACE
 ; Starts TRACE'ing the program.
 .proc trace
-	jsr debugging
-	bcc @done				; can't step if not debugging
-
 	CALLMAIN dbg::trace
 	jsr __dbgcmd_regs
 	jmp put_instruction
@@ -1254,11 +1251,7 @@ exprlist: .res MAX_EXPR_LIST
 ; STEP OUT
 ; Continues execution til the current subroutine returns with an RTS
 .proc step_out
-	jsr debugging
-	bcs :+
-	rts		; can't step if not debugging
-
-:	CALLMAIN dbg::step_out
+	CALLMAIN dbg::step_out
 	jsr mon::update_pc_view		; follow the PC in the source view
 	jsr __dbgcmd_regs
 	jmp put_instruction
@@ -1430,7 +1423,7 @@ exprlist: .res MAX_EXPR_LIST
 	bne :+
 
 	; line is empty use default start address
-	ldxy default_start
+	ldxy __dbgcmd_default_addr
 	stxy @start
 	jmp @default		; jump ahead to compute default stop address
 
@@ -1450,13 +1443,11 @@ exprlist: .res MAX_EXPR_LIST
 	clc
 	adc @start
 	sta @stop
-	sta default_start
+	sta __dbgcmd_default_addr
 	lda @start+1
 	adc #$00
 	sta @stop+1
-	sta default_start+1
-	lda #$01
-	sta __mon_default_start_set
+	sta __dbgcmd_default_addr+1
 	jsr eat_whitespace
 	RETURN_OK
 
@@ -1464,9 +1455,7 @@ exprlist: .res MAX_EXPR_LIST
 	jsr eat_whitespace
 	jsr eval
 	stxy @stop
-	stxy default_start
-	lda #$01
-	sta __mon_default_start_set
+	stxy __dbgcmd_default_addr
 
 	jsr eat_whitespace
 	clc			; ok

@@ -29,6 +29,7 @@
 .include "macros.inc"
 .include "memory.inc"
 .include "runtime.inc"
+.include "sim6502.inc"
 .include "screen.inc"
 .include "settings.inc"
 .include "string.inc"
@@ -40,7 +41,6 @@
 .include "ram.inc"
 
 .import is_whitespace	; from monitorcmd.asm
-.import __mon_default_start_set
 
 NMI_HANDLER_ADDR = mem::spare+120
 
@@ -406,9 +406,11 @@ __monitor_window:
 	sta cyclereq
 	sta wintop
 	sta winoff
-	sta __mon_default_start_set
 	lda #HEIGHT-1
 	sta winbot
+
+	ldxy sim::pc
+	stxy moncmd::default_addr
 	rts
 .endproc
 
