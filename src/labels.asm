@@ -1392,8 +1392,8 @@ labelvars_size=*-labelvars
 	cmp #'Z'+1
 	iny
 	bcc @l1
-@err:	jmp *
-	RETURN_ERR ERR_ILLEGAL_LABEL
+@err:	RETURN_ERR ERR_ILLEGAL_LABEL
+
 @toolong:
 	lda #ERR_LABEL_TOO_LONG
 	;sec

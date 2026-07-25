@@ -10,7 +10,7 @@ data as you execute your program.
 Upon entering the debugger, a view of the system state is displayed at the
 current step or breakpoint.
 
-This include the state of the registers (A, X, Y, P, SP, and PC) as well as
+This includes the state of the registers (A, X, Y, P, SP, and PC) as well as
 any effective address that was calculated for reading/writing by the last
 instruction.  Note that if the last instruction executed did not read or write to memory,
 the effective address field is set to $ffff.
@@ -20,41 +20,38 @@ be set as they would in the editor prior to assembly, and they will be installed
 in realtime.  Other edits are not allowed, however, while the debugger is active.
 
 Both the debugger and the user program's RAM is saved/restored when control
-transfers between the two. That is the screen data ($1000-$2000), the zeropage,
-and color RAM.
+transfers between the two. That is low memory ($00-$4000), the screen data ($1000-$2000), the zeropage,
+I/O state (VIC and VIA's), and color RAM.  This allows the debugger and debugged program
+to operate independently without worrying about writes to one affecting the other.
 
 ---
 
 ## REQUIREMENTS
-In order for the debugger to coexist with your program there are a few small
-requirements.
+In order for the debugger to coexist with your program there are a few small requirements.
 
 #### STACK HAS 6 BYTES FREE
 
 The stack, at its current location for a given step, must have 3 bytes free.
 If your program uses an IRQ (correctly) this shouldn't be an issue because the Vic-20's
-interrupt sequence pushes 6 bytes (the registers, including status, plus the
-interrupt return address).
+IRQ sequence also pushes 6 bytes (the registers, including status, plus the interrupt return address).
 
-#### DON'T USE $7FCE-$8000
+#### DON'T USE $9800-$9FFF
 
-The address range from $7fce to $8000 is used to store the interrupts that
-return control to the debugger.
-If this range is clobbered, a BRK or NMI will not return to the debugger and the
-machine will likely JAM.
-
-The debugger will protect these areas during steps/traces, but if you free-run
-your program, care must be taken.
+The memory above $9800-$9fff is reserved for the debugger.  Avoid it.
+Most of this range ($9800-$9FF0) is made read-only before your program gains control, so it is unlikely you will
+actually crash the system by accessing this range.  Nonetheless, your program will not work as expected if you
+try to read and write to this area.  Writing to the range $9FF0-$9FFF is _especially_ dangerous though, and you
+can expect a system JAM if you access it in your program.
 
 ### DON'T OVERWRITE BRK/NMI VECTORS
 
-This requirement only applies when you are free-running your program.
-During free-run, the NMI vector (via RESTORE) is used to return to the debugger during normal
-execution of your program.
+During free-run, the NMI vector (via RESTORE) is used to return to the debugger during
+execution of your program.  If you overwrite this, the debugger will not be able to take control back when the
+RESTORE NMI occurs.
 
 The BRK vector is used to return to the debugger when a breakpoint is encountered.
 If your program has its own idea of how to handle breakpoints, it may overwrite the BRK
-vector, but the debugger will be unable to handle them consequently.
+vector, but the debugger will be unable to handle them as a result.
 
 ---
 
