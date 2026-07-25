@@ -4857,9 +4857,7 @@ goto_buffer:
 	iny
 	bne :-
 
-@cont:	ldx #<mem::findbuff
-	ldy #>mem::findbuff
-	bne __edit_find		; branch always
+@cont:	; fall through to find_next
 
 .PUSHSEG
 .RODATA
@@ -4874,7 +4872,7 @@ goto_buffer:
 	lda #$01	; flag search FORWRAD
 
 	skw
-	; fall through to FIND LAST SEARCH (skip find_prev)
+	; fall through to FIND (skip find_prev)
 .endproc
 
 ;*******************************************************************************
@@ -4883,8 +4881,7 @@ goto_buffer:
 .proc find_prev
 	lda #$00	; flag search BACKWARD
 
-	skw
-	; fall through to FIND LAST SEARCH
+	; fall through to FIND
 .endproc
 
 ;*******************************************************************************
@@ -4901,7 +4898,6 @@ goto_buffer:
 @cnt=rd
 @forward=re
 @searchbuff=$120	; buffer of bytes to search
-	lda #$01	; flag search FORWARD
 	sta @forward
 
 	ldxy #mem::findbuff
