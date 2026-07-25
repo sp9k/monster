@@ -1,10 +1,10 @@
-;******************************************************************************
+;*******************************************************************************
 ; ERRLOG.ASM
 ; This file contains the code for the error window, which displays a log of
 ; errors to the user. It is activated by the editor when an error occurs and
 ; is closed by the editor when the errors have all been addressed or when the
 ; user closes it.
-;******************************************************************************
+;*******************************************************************************
 
 .include "asm.inc"
 .include "debug.inc"
@@ -24,7 +24,7 @@
 .include "text.inc"
 .include "zeropage.inc"
 
-;******************************************************************************
+;*******************************************************************************
 ; CONSTANTS
 MAX_ERRORS = 8
 MAX_HEIGHT = 4
@@ -41,7 +41,7 @@ numerrs: .byte 0
 
 .CODE
 
-;******************************************************************************
+;*******************************************************************************
 ; ACTIVATE
 ; Displays the error window and resizes the editor to fit it.
 .export __errlog_activate
@@ -106,7 +106,7 @@ numerrs: .byte 0
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; CLEAR
 ; Removes all errors and closes the error window (if it's active)
 .export __errlog_clear
@@ -116,7 +116,7 @@ numerrs: .byte 0
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LOG
 ; Adds the given error to the error log.  The current source line number and
 ; file is mapped to it if applicable
@@ -172,7 +172,7 @@ numerrs: .byte 0
 .POPSEG
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RENDER ERROR
 ; Renders the given error for display
 ; IN:
@@ -215,7 +215,7 @@ numerrs: .byte 0
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; NEXT
 ; Returns the line number of the next error after the current source line
 ; OUT:

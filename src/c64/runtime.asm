@@ -250,7 +250,7 @@ nop_handler:
 	jmp __run_go
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INSTALL TRAMPOLINE
 ; Installs the "trampoline" code at the top of the user and debug RAM
 ; This code lets us switch to the user bank and begin executing code there
@@ -264,7 +264,7 @@ nop_handler:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INSTALL NMI
 ; Installs the NMI handler
 .proc install_nmi
@@ -276,7 +276,7 @@ nop_handler:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INSTALL EDIT NMI
 ; Installs the NMI used to return from BASIC to the editor (or monitor)
 .proc install_edit_nmi
@@ -290,7 +290,7 @@ nop_handler:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; NMI EDIT
 ; This is the NMI handler for invoking BASIC from the editor.
 ; It simply saves the state of BASIC and jumps back to the editor main loop
@@ -393,7 +393,7 @@ nop_handler:
 .endproc
 
 .segment "NMI_HANDLER"
-;******************************************************************************
+;*******************************************************************************
 ; NMI HANDLER
 ; Handles an NMI (RESTORE key) or BRK to return to the debugger
 nmi_handler:
@@ -436,7 +436,7 @@ nmi_handler:
 nmi_handler_size=*-nmi_handler
 
 .segment "TRAMPOLINE"
-;******************************************************************************
+;*******************************************************************************
 ; TRAMPOLINE
 ; Swaps memory and then jumps to the simulated PC
 trampoline:

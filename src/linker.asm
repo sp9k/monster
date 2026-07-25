@@ -1414,7 +1414,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GET SECTION BY NAME
 ; Returns the ID of the section from its name
 ; IN:
@@ -1456,7 +1456,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SEGADDR FOR FILE BY NAME
 ; Returns the (current) base address for the given SEGMENT by its name
 ; IN:
@@ -1537,7 +1537,7 @@ OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 @done:	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GET SEGMENT BY NAME
 ; Returns the ID of the segment from its name
 ; IN:

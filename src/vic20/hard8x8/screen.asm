@@ -406,7 +406,7 @@ SCREEN_ROWS = 12	; number of physical rows per column
 win_scroll: .byte 0	; current scroll
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; PUTCH
 ; Puts the character given at the current cursor position
 ; IN:
@@ -427,7 +427,7 @@ win_scroll: .byte 0	; current scroll
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; PUTS
 ; Displays the given string at the given row.  Regardless of the contents of
 ; the string, NUM_COLS characters are displayed (including 0's etc.)
@@ -482,13 +482,13 @@ __text_puts:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SHL
 .export __scr_shl
 .proc __scr_shl
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SHR
 .export __scr_shr
 .proc __scr_shr

@@ -91,7 +91,7 @@ PROGRAM_STACK_START = $1e0
 	jmp __bsp_save_debug_visual
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE PROG STATE
 .export __bsp_restore_prog_state
 .proc __bsp_restore_prog_state
@@ -109,7 +109,7 @@ PROGRAM_STACK_START = $1e0
 	jmp __bsp_restore_prog_visual
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE DEBUG VISUAL
 .export __bsp_save_debug_visual
 .proc __bsp_save_debug_visual
@@ -133,7 +133,7 @@ PROGRAM_STACK_START = $1e0
 	jmp reu::store
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE DEBUG VISUAL
 .export __bsp_restore_debug_visual
 .proc __bsp_restore_debug_visual
@@ -157,7 +157,7 @@ PROGRAM_STACK_START = $1e0
 	jmp reu::load
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE PROG VISUAL
 .export __bsp_save_prog_visual
 .proc __bsp_save_prog_visual
@@ -181,7 +181,7 @@ PROGRAM_STACK_START = $1e0
 	jmp reu::store
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE PROG VISUAL
 .export __bsp_restore_prog_visual
 .proc __bsp_restore_prog_visual
@@ -206,7 +206,7 @@ PROGRAM_STACK_START = $1e0
 	jmp reu::load
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE PROG STATE
 ; Saves memory clobbered by the debugger (screen, I/O registers and color)
 .export __bsp_save_prog_state

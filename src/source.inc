@@ -55,7 +55,7 @@
 .import __src_setflags
 .import __src_start
 
-;******************************************************************************
+;*******************************************************************************
 ; CONSTANTS
 ; NOTE: these must match the definitions in source.asm
 MAX_SOURCES = 8			; maximum number of user source buffers

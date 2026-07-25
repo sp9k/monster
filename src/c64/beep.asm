@@ -1,5 +1,5 @@
 .CODE
-;******************************************************************************
+;*******************************************************************************
 ; BEEP_SHORT
 ; Plays a short beep. Call beep::update to run the sounds player
 .export __beep_short
@@ -8,7 +8,7 @@
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; BEEP_UPDATE
 ; Runs one step of the sound player. Call this every frame if you are playing
 ; sounds.

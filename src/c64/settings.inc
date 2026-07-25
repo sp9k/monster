@@ -1,16 +1,16 @@
-;******************************************************************************
+;*******************************************************************************
 ; VIDEO SETTINGS
 
-;******************************************************************************
+;*******************************************************************************
 ; available color schemes
 COLORSCHEME_DEFAULT = 1
 COLORSCHEME_BW      = 2
 
-;******************************************************************************
+;*******************************************************************************
 COLORSCHEME = COLORSCHEME_DEFAULT	; colorscheme
 ;COLORSCHEME = COLORSCHEME_BW
 
-;******************************************************************************
+;*******************************************************************************
 ; DEFAULT COLORSCHEME
 .if COLORSCHEME=COLORSCHEME_DEFAULT
 TEXT_COLOR	        = $07
@@ -26,7 +26,7 @@ DEBUG_LINE_COLOR        = ($70|BORDER_COLOR)		; row cursor color during debug
 ASM_SUCCESS_COLOR       = ($0d<<4 | BORDER_COLOR)	; color for asm done message
 DEBUG_REG_CHANGED_COLOR = 2				; color for register that was changed during STEP
 
-;******************************************************************************
+;*******************************************************************************
 ; B/W COLORSCHEME
 .elseif COLORSCHEME = COLORSCHEME_BW
 TEXT_COLOR	 = $01	      		; text color for the editor
@@ -43,7 +43,7 @@ ASM_SUCCESS_COLOR       = ($0d<<4 | BORDER_COLOR)	; color for asm done message
 DEBUG_REG_CHANGED_COLOR = 2				; color for register that was changed during STEP
 .endif
 
-;******************************************************************************
+;*******************************************************************************
 ; BEEP SETTINGS
 BEEP_TONE           = $dd
 BEEP_ERR_TONE       = $a4

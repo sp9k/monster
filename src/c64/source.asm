@@ -195,7 +195,7 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 @done:	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; NEXT
 ; Moves the cursor up one character in the gap buffer
 ; OUT:

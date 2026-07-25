@@ -241,7 +241,7 @@ main:	jsr key::getch
 :	; fall through to draw_status_bar
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; DRAW STATUS BAR
 ; Draws the row of status data
 .proc draw_status_bar
@@ -2088,7 +2088,7 @@ cancel = enter_command
 @done:	jmp enter_command	; done YANKing, return to COMMAND mode
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GET SELECTION BOUNDS
 ; Returns the start and stop source positions for the current selection
 ; Leaves the source buffer cursor at the end of the selection
@@ -2393,7 +2393,7 @@ cancel = enter_command
 	jmp sync_cur
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; OPEN LINE ABOVE NO INDENT
 ; Opens a line above the cursor without indenting
 .proc open_line_above_noindent
@@ -2407,7 +2407,7 @@ cancel = enter_command
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 .proc open_line_above
 	jsr enter_insert
 	jsr home
@@ -2429,7 +2429,7 @@ cancel = enter_command
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; OPEN_LINE_BELOW_NO_INDENT
 ; See OPEN_LINE_BELOW.  This entry point will not indent regardless of the
 ; contents of the current line
@@ -2444,7 +2444,7 @@ cancel = enter_command
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; OPEN_LINE_BELOW
 ; Creates a new empty line below the current one. This entry point will indent
 ; based on the contents of the current line.  If it starts with a TAB, the new
@@ -2613,7 +2613,7 @@ cancel = enter_command
 	; fall through to home
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; HOME
 ; Moves the cursor to start of the current line
 .proc home
@@ -2622,7 +2622,7 @@ cancel = enter_command
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; CLEAR
 ; Clears the screen as well as any relevant state
 .export __edit_clear
@@ -3311,7 +3311,7 @@ goto_buffer:
 .POPSEG
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; EDIT
 ; Configures the cursor/screen/etc. for editing
 .proc edit
@@ -3333,7 +3333,7 @@ goto_buffer:
 	jmp cur::setmax
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; COMMAND LOADDBG
 ; :L <filename>
 ; Loads the given DEBUG file (program binary, global symbol table, and debug
@@ -3420,7 +3420,7 @@ goto_buffer:
 @ret:	jmp unblank
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE D
 ; :D <filename>
 ; Stores the program binary, the global symbol table, and debug information
@@ -3488,7 +3488,7 @@ goto_buffer:
 :	jmp unblank			; <- command_saveprg
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE PRG
 ; :P <filename>
 ; Stores the assembled program as a .PRG file to <filename>. This is the
@@ -3518,7 +3518,7 @@ goto_buffer:
 	jmp write_asm		; write the assembled program
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE BIN
 ; :B <filename>
 ; Stores the assembled program as raw binary to <filename>
@@ -3539,7 +3539,7 @@ goto_buffer:
 	; fall through
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; WRITE_ASM
 ; Writes the assembled program to the file in r0 and then closes the file
 ; IN:
@@ -3564,7 +3564,7 @@ goto_buffer:
 @done:	jmp unblank
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; COMMAND SAVE
 ; :s[@] <filename>
 ; Saves the active source buffer to the given filename.  If the overwrite
@@ -3638,7 +3638,7 @@ goto_buffer:
 	jmp key::getch
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; COMMAND SCRATCH
 ; :x <filename>
 ; Deletes the given file
@@ -3661,7 +3661,7 @@ goto_buffer:
 	jmp report_drive_error
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LOAD
 ; Loads the file from disk into the source buffer
 ; IN:
@@ -3742,7 +3742,7 @@ goto_buffer:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; FMT LINE
 ; Attempts to compile the line entered in (mem::linebuffer)
 ; If successful, formats the source according to the type of the assembled line
@@ -3967,7 +3967,7 @@ goto_buffer:
 	; fall through to insert
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INSERT
 ; Adds a character at the cursor position.  Depending on the insertion mode,
 ; either REPLACEs or INSERTs the character. The source buffer and text buffer
@@ -4215,7 +4215,7 @@ goto_buffer:
 @done:	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SRC RIGHT
 ; Calls the appropriate src::right procedure based on the current editor mode
 .proc src_right
@@ -4226,7 +4226,7 @@ goto_buffer:
 :	jmp src::right
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; DELCH
 ; Delete the character under the cursor
 ; If the character can not be deleted does nothing and returns .C set.
@@ -4253,7 +4253,7 @@ goto_buffer:
 	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; CCLEFT
 ; Handles the left cursor key
 ; OUT:
@@ -4353,7 +4353,7 @@ goto_buffer:
 :	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; CCRIGHT
 ; Handles the right cursor key
 ; OUT:
@@ -4430,7 +4430,7 @@ goto_buffer:
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RVS CURRENT LINE
 ; Reverses from column 0 to the end of the line (text::rendered_line_len) at
 ; the current cursor Y position
@@ -4441,7 +4441,7 @@ goto_buffer:
 	jmp scr::rvsline_part
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; CCDOWN
 ; Handles the down cursor key
 ; OUT:
@@ -4578,7 +4578,7 @@ goto_buffer:
 ; fall through to ccdown_highlight
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; CCDOWN HIGHLIGHT
 ; Highlights the line that the cursor is on if the editor is in VISUAL mode
 ; This is called after the ccdown logic
@@ -4641,7 +4641,7 @@ goto_buffer:
 @done:	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; CCDEL
 ; Handles the DEL key
 .proc ccdel
@@ -4664,7 +4664,7 @@ goto_buffer:
 	jmp ccleft
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; BACKSPACE
 ; Deletes the previous character in the source and moves the cursor as needed.
 ; If this command would effectively join two lines that would be too large
@@ -4702,7 +4702,7 @@ goto_buffer:
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; BUMP UP
 ; Bumps the screen up 1 row starting at zp::cury, erasing the contents of that
 ; row in the process
@@ -4739,7 +4739,7 @@ goto_buffer:
 	jmp refresh_line	; restore buffer
 .endproc
 
-;*****************************************************************************
+;*******************************************************************************
 ; SCROLLUP_WHOLE_SCREEN
 ; Scrolls the entire editor display (EDITOR_ROW_START to height) up
 .proc scrollup_whole_screen
@@ -4749,7 +4749,7 @@ goto_buffer:
 	; fall through to scrollup
 .endproc
 
-;*****************************************************************************
+;*******************************************************************************
 ; SCROLLUP
 ; scrolls everything in the given range of rows and highlights the row that
 ; is scrolled in (if highlight is enabled)
@@ -4775,7 +4775,7 @@ goto_buffer:
 	jmp highlight	; handle highlight (if enabled)
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; COMMAND_GOTOLINE
 ; Converts the given string to a line number and navigates to it (if possible)
 ; IN:
@@ -4791,7 +4791,7 @@ goto_buffer:
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; DRAW SRC LINE
 ; Draws the linebuffer to the given row and updates the color based on
 ; properties of the current source line
@@ -4816,7 +4816,7 @@ goto_buffer:
 	jmp text::drawline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; NEXT DRIVE
 .proc next_drive
 	lda zp::device
@@ -4826,7 +4826,7 @@ goto_buffer:
 :	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; PREV DRIVE
 .proc prev_drive
 	lda zp::device
@@ -4838,7 +4838,7 @@ goto_buffer:
 
 .RODATA
 
-;******************************************************************************
+;*******************************************************************************
 ; COMMAND_FIND
 ; Gets a string from the user and searches (forward) for it in the source file
 .proc command_find
@@ -5898,7 +5898,7 @@ unblank = scr::unblank
 :	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INIT LOG
 ; Opens a new log file and prints "pass 1"
 ; filename
@@ -5952,7 +5952,7 @@ unblank = scr::unblank
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GOTO SELECTION START
 ; Moves the source cursor to where the active visual selection began
 .proc goto_selection_start
@@ -5960,7 +5960,7 @@ unblank = scr::unblank
 	jmp src::goto
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; REFRESH LINE
 ; Reloads the linebuffer with its correct contents from the source buffer
 .export __edit_refreshline
@@ -5972,7 +5972,7 @@ __edit_refreshline:
 	jmp src::popgoto
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; TOGGLE VIS WS
 ; Toggles visual TABs.
 .proc toggle_vis_ws
@@ -5982,7 +5982,7 @@ __edit_refreshline:
 	jmp refresh
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; COMMANDS
 ; Table of commands and their corresponding handler vectors
 commands:

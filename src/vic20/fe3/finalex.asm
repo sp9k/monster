@@ -1,10 +1,10 @@
-;******************************************************************************
+;*******************************************************************************
 ; FINALEX.ASM
 ; This file contains routines for reading, writing, and executing code in
 ; different banks.
 ; The bank code itself resides in low RAM, where it is visible regardless of
 ; the active bank.
-;******************************************************************************
+;*******************************************************************************
 
 .include "banks.inc"
 .include "../../config.inc"

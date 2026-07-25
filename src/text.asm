@@ -340,7 +340,7 @@ tempbuff: .res LINESIZE
 	; fall through to __text_print
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; PRINT
 ; displays the format string in (<X,>Y) at the row in .A.
 ; NOTE: you MUST call it with JSR (not JMP) because it manipulates the stack to

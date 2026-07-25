@@ -15,7 +15,7 @@
 	uncompress = __str_uncompress
 .endscope
 
-;******************************************************************************
+;*******************************************************************************
 ; STREQ
 ; Compares the the string in (YX) to the string s.
 .macro streq s, len

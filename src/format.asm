@@ -19,7 +19,7 @@
 
 .BSS
 
-;******************************************************************************
+;*******************************************************************************
 .export __fmt_enable
 __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 
@@ -27,7 +27,7 @@ offset = r7
 
 .CODE
 
-;******************************************************************************
+;*******************************************************************************
 ; LINE
 ; Formats the linebuffer according to the given content type.
 ; IN:
@@ -95,7 +95,7 @@ offset = r7
 @done:  rts			; line is COMMENT, DIRECTIVE, NONE, we're done
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INDENT
 ; Insert one indent at current source position, then refresh the
 ; line buffer and move to the end of it
@@ -115,7 +115,7 @@ offset = r7
 	jmp src::backspace	; delete the TAB
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; LABEL
 ; Formats linebuffer as a label.
 .proc label
@@ -141,7 +141,7 @@ offset = r7
 @done:	; fall through to refresh
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; REFRESH
 ; Refreshses the line
 .proc refresh

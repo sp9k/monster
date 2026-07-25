@@ -69,7 +69,7 @@ ret:     .word 0
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; CLR
 ; Initializes the user state by running the BASIC coldstart process
 .export __run_clr
@@ -205,7 +205,7 @@ ret:     .word 0
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INIT
 ; Sets up the handlers needed to run user programs
 .export __run_init
@@ -219,7 +219,7 @@ ret:     .word 0
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GO BASIC
 .export __run_go_basic
 .proc __run_go_basic
@@ -250,7 +250,7 @@ ret:     .word 0
 	jmp go_trampoline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GO
 ; Runs the user program until the next breakpoint or an NMI occurs
 .export __run_go
@@ -274,7 +274,7 @@ ret:     .word 0
 	; fall through to go_trampoline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GO TRAMPOLINE
 ; Saves the debugger state and begins execution at the current simulator
 ; PC value
@@ -339,7 +339,7 @@ ret:     .word 0
 
 	jmp trampoline
 
-;******************************************************************************
+;*******************************************************************************
 ; INSTALL NMI EDIT
 .proc install_nmi_edit
 	; overwrite the JMP address to go to edit handler
@@ -350,7 +350,7 @@ ret:     .word 0
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; NMI EDIT
 ; This is the NMI handler for invoking BASIC from the editor.
 ; It simply saves the state of BASIC and jumps back to the editor main loop
@@ -453,12 +453,12 @@ ret:     .word 0
 @edit:	jmp edit::init
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INTERRUPT HANDLERS
 .segment "INTS"
 interrupt_handlers:
 
-;******************************************************************************
+;*******************************************************************************
 ; NMI HANDLER
 ; Handles NMI interrupts by returning control to the main bank
 ; and continuing execution there.
@@ -483,7 +483,7 @@ brk_handler:
 brk_handler_size=*-brk_handler
 nmi_handler_size=*-nmi_handler
 
-;******************************************************************************
+;*******************************************************************************
 ; TRAMPOLINE
 trampoline:
 	lda #FINAL_BANK_USER

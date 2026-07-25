@@ -1,20 +1,20 @@
-;******************************************************************************
+;*******************************************************************************
 ; VIDEO SETTINGS
 
-;******************************************************************************
+;*******************************************************************************
 LOGO_HEIGHT=90
 LOGO_WIDTH=90/8
 
-;******************************************************************************
+;*******************************************************************************
 ; available color schemes
 COLORSCHEME_DEFAULT = 1
 COLORSCHEME_BW      = 2
 
-;******************************************************************************
+;*******************************************************************************
 COLORSCHEME = COLORSCHEME_DEFAULT	; colorscheme
 ;COLORSCHEME = COLORSCHEME_BW
 
-;******************************************************************************
+;*******************************************************************************
 ; DEFAULT COLORSCHEME
 .if COLORSCHEME=COLORSCHEME_DEFAULT
 TEXT_COLOR	        = $06
@@ -29,7 +29,7 @@ ERROR_COLOR	        = ($00|$08)			; $900f color of error highlight
 ASM_SUCCESS_COLOR       = ($0d<<4 | BORDER_COLOR)	; color for asm done message
 DEBUG_REG_CHANGED_COLOR = 2				; color for register that was changed during STEP
 
-;******************************************************************************
+;*******************************************************************************
 ; B/W COLORSCHEME
 .elseif COLORSCHEME = COLORSCHEME_BW
 TEXT_COLOR	 = $01	      		; text color for the editor
@@ -46,7 +46,7 @@ ASM_SUCCESS_COLOR       = ($0d<<4 | BORDER_COLOR)	; color for asm done message
 DEBUG_REG_CHANGED_COLOR = 2				; color for register that was changed during STEP
 .endif
 
-;******************************************************************************
+;*******************************************************************************
 ; BEEP SETTINGS
 BEEP_TONE           = $dd
 BEEP_ERR_TONE       = $a4

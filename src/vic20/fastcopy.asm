@@ -22,7 +22,7 @@ JMP_RETURN_ADDR = RETURN_ADDR-5
 .SEGMENT "FASTCOPY_BSS"
 .endif
 
-;******************************************************************************
+;*******************************************************************************
 ; PROG
 ; backup for the user's program during debug
 progsave:
@@ -43,7 +43,7 @@ prog9110: .res $20		; $9110-$9130
 .endif
 prog9400: .res $400		; $9400-$9800
 
-;******************************************************************************
+;*******************************************************************************
 ; DBG
 ; backup for debugger/editor memory
 ; we back up less for debug because we can just re-init some state
@@ -56,7 +56,7 @@ dbg9400: .res $100	; $9400-$9500
 
 .CODE
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE DEBUG STATE
 ; Saves the state of the debugger's zeropage
 .export __fastcopy_save_debug_state
@@ -64,7 +64,7 @@ dbg9400: .res $100	; $9400-$9500
 	JUMP FINAL_BANK_FASTCOPY, save_debug_state
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE PROG STATE
 ; Saves memory clobbered by the debugger (screen, VIC registers and color)
 .export __fastcopy_save_prog_state
@@ -72,7 +72,7 @@ dbg9400: .res $100	; $9400-$9500
 	JUMP FINAL_BANK_FASTCOPY, save_prog_state
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE PROG VISUAL
 ; Saves the visible program state (screen, VIC and color)
 .export __fastcopy_save_prog_visual
@@ -80,7 +80,7 @@ dbg9400: .res $100	; $9400-$9500
 	JUMP FINAL_BANK_FASTCOPY, save_prog_visual
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE PROG STATE
 ; Restores the saved program state
 .export __fastcopy_restore_prog_state
@@ -88,7 +88,7 @@ dbg9400: .res $100	; $9400-$9500
 	JUMP FINAL_BANK_FASTCOPY, restore_prog_state
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE PROG VISUAL
 ; Restores the user program state that affects the screen ($1000-$2000 and
 ; the VIC registers at $9000-$9010)
@@ -97,7 +97,7 @@ dbg9400: .res $100	; $9400-$9500
 	JUMP FINAL_BANK_FASTCOPY, restore_prog_visual
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE DEBUG STATE
 ; Restores the saved debugger state
 .export restore_debug_visual
@@ -113,7 +113,7 @@ restore_debug_visual:
 .SEGMENT "FASTCOPY"
 .endif
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE DEBUG STATE
 ; Restores the saved debugger state
 .export restore_debug_state
@@ -166,7 +166,7 @@ restore_debug_visual:
 	JUMPMAIN scr::init
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE DEBUG STATE
 ; saves memory likely to be clobbered by the user's
 ; program (namely the screen)
@@ -216,7 +216,7 @@ save_debug_visual:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE PROG STATE
 ; restores the saved program state
 .export restore_prog_state
@@ -231,7 +231,7 @@ save_debug_visual:
 	; fall through to RESTORE PROG VISUAL
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE PROG VISUAL
 .proc restore_prog_visual
 ; restore $9000-$9010
@@ -286,7 +286,7 @@ save_debug_visual:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE PROG MEM
 ; Saves the program memory clobbered by the debugger: the screen ($1000-$2000)
 ; and color RAM ($9400-$9800)
@@ -336,7 +336,7 @@ save_debug_visual:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE PROG VISUAL
 ; Saves the visible state (screen, color and VIC)
 .export save_prog_visual
@@ -345,7 +345,7 @@ save_debug_visual:
 	jmp save_vic_state
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE PROG STATE
 ; Saves memory clobbered by the debugger (screen, color, VIC and VIA)
 .export save_prog_state
@@ -360,7 +360,7 @@ save_debug_visual:
 	; fall through to save_vic_state
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SAVE VIC STATE
 ; Saves the VIC
 .proc save_vic_state

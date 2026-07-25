@@ -3759,7 +3759,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	jmp lbl::add
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; TYPE TO MODE
 ; Returns the label address mode that corresponds to the given TYPE
 ; IN:

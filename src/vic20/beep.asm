@@ -2,12 +2,12 @@
 .include "settings.inc"
 
 .BSS
-;******************************************************************************
+;*******************************************************************************
 beep_tmr: .byte 0
 
 .CODE
 
-;******************************************************************************
+;*******************************************************************************
 ; BEEP_SHORT
 ; Plays a short beep. Call beep::update to run the sounds player
 ; Because beeps are typically returned for errors, the .C flag is returned SET
@@ -31,7 +31,7 @@ beep_tmr: .byte 0
 .ifdef ultimem
 .segment "BANKCODE"
 .endif
-;******************************************************************************
+;*******************************************************************************
 ; BEEP_UPDATE
 ; Runs one step of the sound player. Call this every frame if you are playing
 ; sounds.

@@ -221,7 +221,7 @@ exprlist: .res MAX_EXPR_LIST
 	jmp mon::puts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; REMOVE WATCH
 ; wr <id>
 ; Deletes the watch with the given ID. The ID's can be found by listing watches
@@ -395,7 +395,7 @@ exprlist: .res MAX_EXPR_LIST
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; POKE
 ; p <address> <value>
 ; Sets the given address to the provided value
@@ -422,7 +422,7 @@ exprlist: .res MAX_EXPR_LIST
 @ret:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; FILL
 ; f <start> <stop> a [, b, c, ...]
 ; Fills the range between the two addresses/expressions with the given fill

@@ -486,7 +486,7 @@ labelvars_size=*-labelvars
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; ADDRMODE
 ; Returns the "address mode" for the label of the given ID
 ; IN:
@@ -501,7 +501,7 @@ labelvars_size=*-labelvars
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SETADDR
 ; Overwrites the address, segment-id, and mode for the given label with the
 ; provided values
@@ -516,7 +516,7 @@ labelvars_size=*-labelvars
 	; fall through to set_addr
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SET ADDR
 ; Updates address related fields (FLAGS, ADDR) and indices with the new value
 ; for the label that is already loaded (via "loadlabel")
@@ -591,7 +591,7 @@ labelvars_size=*-labelvars
 	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SET
 ; Set adds the label, but doesn't produce an error if the label already exists
 ; IN:
@@ -606,7 +606,7 @@ labelvars_size=*-labelvars
 	; fallthrough to ADD
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; ADD
 ; Adds a label to the internal label state.
 ; IN:
@@ -620,7 +620,7 @@ labelvars_size=*-labelvars
 	; fallthrough to ADDLABEL
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; ADDLABEL
 ; Adds a label to the internal label state.
 ; IN:
@@ -1307,7 +1307,7 @@ labelvars_size=*-labelvars
 	jmp find_sorted
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; ID BY ADDR INDEX
 ; Returns the ID of the nth label sorted by address.
 ; IN:

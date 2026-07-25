@@ -121,7 +121,7 @@ __monitor_window:
 .byte 0				; $10 unused
 
 .CODE
-;******************************************************************************
+;*******************************************************************************
 ; WINDRAW / WINENTER
 ; MAIN-bank stubs for the window manager's handler vectors
 .export __monitor_windraw
@@ -139,7 +139,7 @@ __monitor_window:
 	JUMP FINAL_BANK_MONITOR, winresize
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GETCH
 ; Handles the key (called by the keyboard gets handler)
 .export __monitor_getch
@@ -624,7 +624,7 @@ __monitor_window:
 	jmp __monitor_reenter
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SET GEOMETRY
 ; Sets the window geometry from the rows given by the window manager
 ; IN:
@@ -642,7 +642,7 @@ __monitor_window:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; WINDRAW
 ; The window manager's draw handler: draws the monitor's screen buffer in
 ; the window's rows (the last "height" rows of the buffer)
@@ -655,7 +655,7 @@ __monitor_window:
 	; fall through to redraw_win
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; REDRAW WIN
 ; Redraws the window's rows from the monitor's screen buffer
 .proc redraw_win
@@ -670,7 +670,7 @@ __monitor_window:
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; WINRESIZE
 ; The window manager's resize handler: called with the new geometry after
 ; the window grows or shrinks.  The screen buffer is anchored at the
@@ -699,7 +699,7 @@ __monitor_window:
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; DRAW ROW
 ; Draws the screen row given in "winrow" from the monitor's screen buffer.
 ; The input row is drawn as an empty prompt (its live contents are managed
@@ -779,7 +779,7 @@ __monitor_window:
 	rts
 .endproc
 
-;*****************************************************************************
+;*******************************************************************************
 ; ANCHOR BOTTOM
 ; Moves the contents of the monitor's screen buffer down so that the last line
 ; of history is just above the input line, which is moved to the bottom row

@@ -14,7 +14,7 @@ COLOR_SELECT  = 6
 
 .CODE
 
-;******************************************************************************
+;*******************************************************************************
 ; HILINE
 ; Highlights the given line by setting it to the reverse of the
 ; default color (DEFAULT_RVS)
@@ -26,7 +26,7 @@ COLOR_SELECT  = 6
 	bne __draw_hline	; branch always
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RESETLINE
 ; Resets the given line by setting its color to the default one
 ; (prefs::normal_color)
@@ -39,7 +39,7 @@ COLOR_SELECT  = 6
 	; fall through to __draw_hline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; HLINE
 ; Sets the color for the row given in .A
 ; IN:
@@ -69,7 +69,7 @@ COLOR_SELECT  = 6
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; REFRESH COLORS
 ; Reads the current values for each row from the active palette and refreshes
 ; them
@@ -84,7 +84,7 @@ COLOR_SELECT  = 6
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SCROLLCOLORSU
 ; Scrolls all colors from the given start row to the given stop row up by the
 ; given amount
@@ -127,7 +127,7 @@ COLOR_SELECT  = 6
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SCROLLCOLORSD1
 ; Scrolls all colors in the given range down by 1. See __draw_scrollcolorsd1
 ; IN:
@@ -140,7 +140,7 @@ COLOR_SELECT  = 6
 	; fall through to __draw_scrollcolorsd
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; SCROLLCOLORSD
 ; Scrolls all colors from the given start row to the given stop row down by the
 ; given amount
@@ -189,7 +189,7 @@ COLOR_SELECT  = 6
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; COLOROFF
 ; Disables color in the interrupt and sets the background to its default color
 .export __draw_coloroff

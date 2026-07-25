@@ -48,7 +48,7 @@ TRAMPOLINE_ADDR = TRAMPOLINE+13
 
 .CODE
 
-;******************************************************************************
+;*******************************************************************************
 ; CLR
 ; Initializes the user state by running the BASIC coldstart process
 .export __run_clr
@@ -145,7 +145,7 @@ TRAMPOLINE_ADDR = TRAMPOLINE+13
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INIT
 ; Sets up the handlers needed to run user programs
 .export __run_init
@@ -154,7 +154,7 @@ TRAMPOLINE_ADDR = TRAMPOLINE+13
 	jmp install_trampoline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GO BASIC
 .export __run_go_basic
 .proc __run_go_basic
@@ -188,7 +188,7 @@ TRAMPOLINE_ADDR = TRAMPOLINE+13
 	jmp go_trampoline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GO
 ; Runs the user program until the next breakpoint or an NMI occurs
 .export __run_go
@@ -212,7 +212,7 @@ TRAMPOLINE_ADDR = TRAMPOLINE+13
 	; fall through to go_trampoline
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; GO TRAMPOLINE
 ; Saves the debugger state and begins execution at the current simulator
 ; PC value
@@ -284,7 +284,7 @@ go_pre_run:
 
 	jmp TRAMPOLINE
 
-;******************************************************************************
+;*******************************************************************************
 ; INSTALL BRK EDIT
 .proc install_brk_edit
 	jsr install_brk
@@ -297,7 +297,7 @@ go_pre_run:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INSTALL BRK
 ; Installs the debugger BRK handler to the BRK and NMI vectors and copies the
 ; code to enter the handler to the user program's RAM at BRK_HANDLER_ADDR.
@@ -336,7 +336,7 @@ go_pre_run:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INSTALL TRAMPOLINE
 ; Installs the "trampoline" code at the top of the user and debug RAM
 ; This code lets us switch to the user bank and begin executing code there
@@ -363,7 +363,7 @@ go_pre_run:
 	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; NMI EDIT
 ; This is the NMI handler for invoking BASIC from the editor.
 ; It simply saves the state of BASIC and jumps back to the editor main loop
@@ -466,7 +466,7 @@ go_pre_run:
 @edit:	jmp edit::init
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; BRKHANDLER
 ; Handles the BRK interrupt by returning control to the main bank
 ; and continuing execution there.
@@ -525,7 +525,7 @@ brkhandler2:
 	; jmp nmi_edit (when installed for editor)
 brkhandler2_size=*-brkhandler2
 
-;******************************************************************************
+;*******************************************************************************
 ; TRAMPOLINE
 trampoline:
 	lda #FINAL_BANK_USER

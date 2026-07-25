@@ -84,7 +84,7 @@ DEBUG_IFACE_TEXT = 1	; text interface (returns to TUI)
 ;*******************************************************************************
 debugtmp = zp::debuggertmp	; scratchpad
 
-;******************************************************************************
+;*******************************************************************************
 .ifdef ultimem
 .segment "SIMRAM_INTERNAL"
 .else
@@ -129,7 +129,7 @@ __debug_is_brk: .byte 0
 step_out_depth: .byte 0 ; # of RTS's to wait for when "stepping out"
 
 .segment "SHAREBSS"
-;******************************************************************************
+;*******************************************************************************
 ; ENABLE EXPANSION
 ; This flag controls how BASIC is initialized with the NEW command. Setting it
 ; to 0 will initialize BASIC as if a 8+K expansion is installed.
@@ -141,7 +141,7 @@ __debug_enable_expansion: .byte 0
 .export __debug_numbreakpoints
 __debug_numbreakpoints: .byte 0
 
-;******************************************************************************
+;*******************************************************************************
 ; BREAKPOINTS
 .export __debug_breakpointslo
 .export __debug_breakpointshi
@@ -149,7 +149,7 @@ __debug_numbreakpoints: .byte 0
 .export __debug_breakpoint_lineshi
 .export __debug_breakpoint_fileids
 
-;******************************************************************************
+;*******************************************************************************
 ; The following tables must be stored together and
 ; NUM_BREAKPOINT_TABLES must be set to the number of them
 ; We iteratively modify the values within these tables
@@ -174,11 +174,11 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 .CODE
 .endif
 
-;******************************************************************************
+;*******************************************************************************
 unblank = scr::unblank
 blank   = scr::blank
 
-;******************************************************************************
+;*******************************************************************************
 ; START
 ; Begins debugging at the given address
 ; Execution will continue until a BRK instruction occurs at which point the
@@ -232,7 +232,7 @@ blank   = scr::blank
 	jmp return_to_debugger		; enter the debugger
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INIT BREAKPOINTS
 ; Initializes breakpoints by looking up the address at their source position
 ; and mapping them to it.
@@ -267,7 +267,7 @@ blank   = scr::blank
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; INSTALL_BREAKPOINTS
 ; Install all breakpoints from "breakpoints" EXCEPT for those at the current
 ; PC. This is to prevent a loop of breakpoints being repeatedly set and
@@ -312,7 +312,7 @@ blank   = scr::blank
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; UNINSTALL_BREAKPOINTS
 ; Restores the source code by removing all breakpoints installed by the
 ; debugger
@@ -348,7 +348,7 @@ blank   = scr::blank
 @done:	rts
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; DEBUG REENTER
 ; Reenters the debugger.
 ; This is the entrypoint that the platform specific runtime returns to when
@@ -446,7 +446,7 @@ blank   = scr::blank
 	; fall through to return_to_debugger
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; RETURN TO DEBUGGER
 ; Entrypoint to the debugger
 .export return_to_debugger
@@ -1128,7 +1128,7 @@ __debug_step:
 .endproc
 .endif
 
-;******************************************************************************
+;*******************************************************************************
 ; SWAPOUT
 ; Swaps *out* the user memory that needs to be saved in order to restore the
 ; debug state.
@@ -1768,7 +1768,7 @@ __debug_remove_breakpoint:
 .endproc
 
 .ifdef ultimem
-;******************************************************************************
+;*******************************************************************************
 ; RESET BLK5 AND RET (ULTIMEM ONLY)
 ; Resets the BLK5 configuration to its default
 .proc reset_blk5_and_ret
@@ -1782,7 +1782,7 @@ __debug_remove_breakpoint:
 .endproc
 .endif
 
-;******************************************************************************
+;*******************************************************************************
 ; RESTORE USER ZP
 ; Restores the state of the user's zeropage
 ; IN:

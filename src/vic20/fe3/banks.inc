@@ -1,28 +1,28 @@
-;******************************************************************************
+;*******************************************************************************
 ; BANK LAYOUT
 ; These definitions describe which banks store the code/data for their
 ; corresponding item.
 
 FINAL_BANK_ROM0	= $00		; ROM address $000000
 
-;******************************************************************************
+;*******************************************************************************
 ; This is the default bank while the editor has control of the CPU
 ; MAIN bank ($01)
 FINAL_BANK_MAIN    = $a0|1	; where the editor/assembler/etc code is stored
 
-;******************************************************************************
+;*******************************************************************************
 ; USER bank ($02)
 ; The assembled user program is stored in this bank. When debugging the program
 ; this bank is activated.
 FINAL_BANK_USER    = $a0|2	; where the user's program is stored
 
-;******************************************************************************
+;*******************************************************************************
 ; DEBUG bank ($03)
 ; This bank stores debug information (file ID's, line numbers and addresses
 ; as well as the code to access them
 FINAL_BANK_DEBUG = $a0|3	; where debug info is stored
 
-;******************************************************************************
+;*******************************************************************************
 ; SOURCE banks ($04-$0B)
 ; There are 8 source banks. Each stores the text for one buffer of source.
 ; The text is stored in $2000-$8000.
@@ -47,7 +47,7 @@ FINAL_BANK_MONITOR = $a0|7	; monitor ($a000-$c000)
 FINAL_BANK_BUFF    = $a0|8	; copy buffer ($a000-$c000)
 FINAL_BANK_SYMVIEW = $a0|9	; symbol viewer ($a000-$c000)
 
-;******************************************************************************
+;*******************************************************************************
 ; FAST bank ($0C)
 ; Used for the unrolled bitmap clear routine and backups for bitmap columns
 ;  $2000-$727f: screen shift routines and backup buffers (screen.asm)
@@ -57,7 +57,7 @@ FINAL_BANK_SYMVIEW = $a0|9	; symbol viewer ($a000-$c000)
 FINAL_BANK_VSCREEN = $a0|$0c
 FINAL_BANK_FAST    = $a0|$0c
 
-;******************************************************************************
+;*******************************************************************************
 ; SYMBOLS bank ($0D)
 ; The SYMBOLS bank stores the label names for the progam's labels in $2000-$8000
 ; $a000-$b000 is used to store the addresses that these names correspond to.
@@ -66,11 +66,11 @@ FINAL_BANK_FAST    = $a0|$0c
 FINAL_BANK_SYMBOLS = $a0|$d	; symbols bank (label names and their addresses)
 FINAL_BANK_SYMBOL_NAMES = $a0|$d	; symbols names
 
-;******************************************************************************
+;*******************************************************************************
 ; LINKER ($0E)
 FINAL_BANK_LINKER  = $a0|$e	; linker ($2000-$8000)
 
-;******************************************************************************
+;*******************************************************************************
 ; FASTCOPY ($0F)
 ; This holds routines/data for saving machine state as well
 ; as the virtual memory for the user program that resides within

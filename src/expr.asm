@@ -1411,7 +1411,7 @@ operands: .res $100
 	JUMPMAIN util::chtohex
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; TYPE TO MODE
 ; Returns the label address mode that corresponds to the given TYPE
 ; IN:

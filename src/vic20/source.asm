@@ -346,7 +346,7 @@ data: .res BUFFER_SIZE
 	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; NEXT
 ; Moves the cursor up one character in the gap buffer
 ; OUT:

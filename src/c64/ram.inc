@@ -6,7 +6,7 @@ C64_RAM_INC = 1
 
 .import __ram_call
 
-;******************************************************************************
+;*******************************************************************************
 ; BANKS
 ; These are the data banks for various logical components
 FINAL_BANK_EXPR         = $00
@@ -57,7 +57,7 @@ FINAL_BANK_LOG          = $15
 	jmp proc
 .endmacro
 
-;******************************************************************************
+;*******************************************************************************
 ; LDA24
 ; Loads the value from the given 24 bit address and returns it in .A
 .macro lda24 bank, addr
@@ -92,7 +92,7 @@ FINAL_BANK_LOG          = $15
 	lda zp::banktmp
 .endmacro
 
-;******************************************************************************
+;*******************************************************************************
 ; STA24
 ; Stores the value in .A to the given 24 bit address
 ; CLOBBERS:
@@ -130,7 +130,7 @@ FINAL_BANK_LOG          = $15
 	lda zp::banktmp	; restore byte that we stored
 .endmacro
 
-;******************************************************************************
+;*******************************************************************************
 ; MOV
 ; Moves the value from the given 24-bit source to the given 24-bit destination
 .macro mov dst24, src24

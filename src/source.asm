@@ -668,7 +668,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	RETURN_OK
 .endproc
 
-;******************************************************************************
+;*******************************************************************************
 ; POPP
 ; Returns the the most recent source position pushed in .YX
 ; OUT:
