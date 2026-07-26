@@ -5784,6 +5784,8 @@ goto_buffer:
 ; Checks if the source cursor is on the line that the visual selection began
 ; on.  Assumes that we are in VISUAL/(LINE) mode
 ; OUT:
+;   - .Z: set if the source cursor is on the line the selection began at
+;   - .C: set if the source cursor is on a line >= to line selection began at
 .proc cmp_vis_start
 	jsr src::currline
 	cmpw visual_start_line

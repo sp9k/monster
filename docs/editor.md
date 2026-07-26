@@ -1,18 +1,18 @@
 ## EDITOR OVERVIEW
 
-The editor provideds powerful facilities for loading, saving, and modifying source code.
-Text is displayed in a 40 columns to provide a much higher density interface than the Vic-20's native BASIC line editor.
+The editor provides powerful facilities for loading, saving, and modifying source code.
+Text is displayed in 40 columns to provide a much higher density interface than the Vic-20's native BASIC line editor.
 
 Navigation will be familiar to vi users.  There are also a variety of commands to handle things like assembly, disassembly, etc.
 
-As with all work you do on your Vic-20, save often.
+As with all work you do on your Vic-20, if you care about it, save often.
 
 ### BUFFERS
 
-Up to 8 source buffers may be stored in memory at a time, each up to 16KB
+Up to 8 source buffers may be stored in memory at a time, each up to 24KB
 in size. These are accessed via a key chord comprised of `C=` and the number
 key for the corresponding buffer.  You can also navigate to the _previous_
-buffer with `C= + h` and the _next_ buffer with `C= + l`.
+buffer with `Ctrl + h` and the _next_ buffer with `Ctrl + l`.
 
 ### COMMAND SHORTCUTS
 
@@ -22,20 +22,21 @@ below for more info on modes).
 
 |  key   | name          |   description                                                          |
 |--------|---------------|------------------------------------------------------------------------|
-| C= + b | Set Breakpoint| sets a breakpoint at the current line                                  |
-| C= + c | Refresh       | refrehshes the screen by redrawing the source buffer                   |
-|    -   | File Viewer   | list directory, shows the files on the current disk                    |
-| C= + n | New buffer    | creates a new source buffer and sets it as the active buffer           |
-| C= + q | Close buffer  | closes the current buffer and opens the next one that is open          |
-| C= + v | MemView       | enters the memory viewer/editor (press <- to exit)                     |
-| C= + y | Show Symbols  | lists the symbol table for the assembled program                       |
-| C= + e | Next Error    | if there are errors from the last assembly, navigatest to the next one |
-|   F3   | Assemble      | assembles the code in the buffer to memory                             |
-|   F4   | Debug         | assembles the code in the buffer to memory _with_ debug info           |
-|   F5   | Show buffers  | displays a list of the currently open buffers                          |
-| C= + + | Next Drive    | Selects the next drive (limited to #15)                                |
-| C= + - | Prev Drive    | Selects the previous drive (limited to #8)                             |
-|    :   | Ex Command    | Enteres "EX" mode (see the EX COMMANDS section below for more on this) |
+| C= + b | Set Breakpoint    | sets a breakpoint at the current line (or removes it if one exists)     |
+| C= + c | Refresh           | refreshes the screen by redrawing the source buffer                    |
+|    -   | File Viewer       | list directory, shows the files on the current disk                    |
+| C= + n | New buffer        | creates a new source buffer and sets it as the active buffer           |
+| C= + q | Close buffer      | closes the current buffer and opens the next one that is open          |
+| C= + y | Show Symbols      | lists the symbol table for the assembled program                       |
+| C= + m | Macro Viewer      | lists the macros defined in the assembled program                      |
+| C= + e | Next Error        | if there are errors from the last assembly, navigates to the next one  |
+| C= + w | Swap Window       | swaps to an open "window" (e.g. error window) or back to the editor    |
+| C= + l | Open Log          | opens (or closes) the log of the last assembly/link                    |
+| C= + f | Toggle Autoformat | toggles auto-formatting on/off                                         |
+| C= + v | Visible Whitespace| toggles display of TAB characters (rendered as a small dot)            |
+| C= + + | Next Drive        | Selects the next drive (limited to #15)                                |
+| C= + - | Prev Drive        | Selects the previous drive (limited to #8)                             |
+|    :   | Ex Command        | enters "EX" mode (see the EX COMMANDS section below for more on this)  |
 
 #### DRIVE SELECTION
 
@@ -62,16 +63,17 @@ The up/down cursor keys navigate between pages of symbols. Press RESTORE to retu
 
 #### FUNCTION (f KEY) COMMANDS
 
-|  key   | name             |   description                                                         |
-|--------|------------------|-----------------------------------------------------------------------|
-|   f1   | Assemble Project | assembles current project                                             |
-|   f2   | Assemble File    | assembles the current file to memory (must specify .org)              |
-|   f4   | Debug BASIC      | initializes BASIC and begins debugging at the lowest defined origin   |
-|   f5   | Show buffers     | displays a list of the currently open buffers                         |
-|   f6   | Show project     | displays the current project configuration                            |
-|   f7   | Link project     | using the LINK file on disk, links all object files in the project    |
+|  key   | name             |   description                                                                                |
+|--------|------------------|----------------------------------------------------------------------------------------------|
+|   f1   | Run              | saves Monster's state and transfers control to the last assembly (or enters BASIC if none)   |
+|   f3   | Assemble         | assembles the current source buffer to memory                                                |
+|   f4   | Link project     | using the LINK file on disk, links all object files (`*.o`) on the disk                       |
+|   f5   | Show buffers     | displays a list of the currently open buffers                                                |
+|   f6   | Show project     | displays the current project configuration                                                   |
+|   f7   | Monitor          | opens the text-based monitor as a window (see the _Monitor_ section)                          |
+|   f8   | Monitor (full)   | opens the text-based monitor maximized (`SHIFT + f7`)                                         |
 
-While debugging, f-keys 1-4 have different functionality, as described in the _Debug Commands_ section
+While debugging, the f-keys have different functionality, as described in the _Debug Commands_ section.
 
 ### EX COMMANDS
 
@@ -87,8 +89,11 @@ The table below details the available commands in _EX_ mode.
 |    B    | export Binary                | Filename                        | exports the active assembly to a binary file (no .PRG header)                                   |
 |    d    | Start Debugger               | Symbol to debug at (optional)   | begins debugging at the given label                                                             |
 |    db   | Start Debugger (with init)   | Symbol to debug at (optional)   | begins debugging at the given label. Initializes target state with the BASIC cold start handler |
+|    D    | export Debug file            | Filename                        | exports the loaded assembly, debug info, and symbol table as a debug (`.D`) file                |
+|    L    | Load Debug file              | Filename                        | loads the given debug (`.D`) file (symbol table, debug info, and program data)                  |
 |    e    | Edit                         | Filename                        | loads the buffer with the contents of the given file                                            |
 |    g    | Goto                         | Symbol to run at (optional)     | executes the program at the address of the given symbol                                         |
+|    o    | assemble to Object           | Filename                        | assembles the current source buffer to an object file with the given filename                   |
 |    P    | export .PRG                  | Filename                        | exports the active assembly to a .PRG file                                                      |
 |    r    | Rename                       | Name                            | renames the buffer to the given name                                                            |
 |    s    | Save                         | Filename                        | saves the buffer to the given filename                                                          |
@@ -145,12 +150,42 @@ details on debugging.
 Example:
 `:db START`
 
+#### EXPORT DEBUG FILE :D [filename]
+
+Exports the loaded assembly, debug-information, and symbol table as a debug
+(`.D`) file.  You may think of these as debuggable versions of your release
+binaries: a `.D` file can be loaded (`:L`) and debugged without having to
+reassemble/relink it.  This command should be run after a successful assembly
+or link.
+
+Example:
+`:D HELLO.D`
+
+#### LOAD DEBUG FILE :L [filename]
+
+Loads the given debug (`.D`) file.  The symbol table, debug information, and
+program data are all loaded into virtual memory so you can begin debugging,
+view symbols, etc. as if you had just assembled the program.
+
+Example:
+`:L HELLO.D`
+
 #### EDIT :e [filename]
 
 Loads the given filename to a new buffer and activates it.
 
 Example:
 `:e HELLO.S`
+
+#### ASSEMBLE TO OBJECT :o [filename]
+
+Assembles the current source buffer to an object file with the given name.
+The filename must have a `.o` (or `.O`) extension if you want the linker to
+pick it up at link time.  See the [Linker](linker.md) document for more on
+object files and linking.
+
+Example:
+`:o HELLO.O`
 
 #### EXPORT .PRG :P [filename]
 
@@ -215,7 +250,7 @@ The following keys are handled in COMMAND mode.
 |  key       | name       | description                                                            |
 |------------|------------|------------------------------------------------------------------------|
 | HOME       | Home       | moves the cursor to column 0                                           |
-| C= + m     | Goto line  | prompts for a line number and moves the cursor to that line            |
+| :_n_       | Goto line  | at the EX prompt (`:`), enter a line number to move the cursor to it   |
 | C= + [1-8] | Goto Buffer| opens the buffer corresponding to the number key that is pressed       |
 | Ctrl + h   | Prev Buffer| opens the buffer before the active one (if there is one)               |
 | Ctrl + l   | Next Buffer| opens the buffer after the active one (if there is one)                |
@@ -281,12 +316,13 @@ When text is deleted (delete line, delete word) or _yanked_, it is stored to a b
 it may be recalled by the paste commands (`p`, paste below and `P` paste above).
 When the paste command is executed, the buffer is cleared.
 
-The copy buffer is $1e00 bytes, which is enough for ~3.5 completely full screens
-of text (22 rows and 40 columns).
+The copy buffer is stored in a separate bank, so a selection may be as big as a
+source buffer (24KB).
 
 Because the editor is limited to 40 columns in width, the first and last lines are handled
-specially.  If the first line will not fit, the paste is aborted.  If the last line will not
-fit, it is broken into two lines.
+specially.  If the first or last line will not fit, the paste is aborted.  This is similar to
+how the BACKSPACE and JOIN LINE commands behave, which will error with a beep if the resulting
+line would not fit on screen.
 
 ### LINE ENDINGS
 
@@ -302,9 +338,9 @@ that were "jumped" from are two commands: _jump-forward_ (`C= + i`) and _jump-ba
 Lines are checked and formatted according to their contents each time they
 are completed (RETURN is pressed).
 While this should reduce the number of errors you encounter when assembling,
-it does not guarantee it.  The following assumptions are made when checking
-the syntax of a line:
-    - macros are defined
+it does not guarantee it.  The following permissions are granted in order to
+provide a smoother editing experience for common cases that are invalid at
+assembly time:
     - labels may not be defined
     - origin may not be set
 This means that lines using undefined labels are treated as valid.  If
@@ -328,7 +364,7 @@ following commands:
 |  Plot Color 2 |    2    | Sets the selected position to the character color (hires mode) or the border color (multicolor mode) |
 |  Plot Color 3 |    3    | Multicolor mode only. Sets the selected position to the character color                              |
 |  Plot Color 4 |    4    | Multicolor mode only. Sets the selected position to the auxiliary color                              |
-|  Clear        |SHIFT+CLR| Multicolor mode only. Sets the selected position to the auxiliary color                              |
+|  Clear        |SHIFT+CLR| Sets all pixels in the UDG to the background color                                                   |
 |  Done         | RETURN  | Exits the editor and enters (or updates) the .db commands to create the graphic in the editor        |
 |  Quit         | STOP    | Exits the editor without creating/updating the graphic contained in the editor                       |
 | Toggle Mode   |   M     | If in hires mode, switches to multicolor mode or vise-versa                                          |

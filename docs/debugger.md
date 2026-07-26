@@ -20,8 +20,8 @@ be set as they would in the editor prior to assembly, and they will be installed
 in realtime.  Other edits are not allowed, however, while the debugger is active.
 
 Both the debugger and the user program's RAM is saved/restored when control
-transfers between the two. That is low memory ($00-$4000), the screen data ($1000-$2000), the zeropage,
-I/O state (VIC and VIA's), and color RAM.  This allows the debugger and debugged program
+transfers between the two. That is the screen data ($1000-$2000), the zeropage,
+and color RAM.  This allows the debugger and debugged program
 to operate independently without worrying about writes to one affecting the other.
 
 ---
@@ -29,29 +29,51 @@ to operate independently without worrying about writes to one affecting the othe
 ## REQUIREMENTS
 In order for the debugger to coexist with your program there are a few small requirements.
 
-#### STACK HAS 6 BYTES FREE
+#### $28 BYTES OF STACK
 
-The stack, at its current location for a given step, must have 3 bytes free.
-If your program uses an IRQ (correctly) this shouldn't be an issue because the Vic-20's
-IRQ sequence also pushes 6 bytes (the registers, including status, plus the interrupt return address).
+The debugger sets the stack pointer to $d8 before starting your program.  It is
+advisable to not set the stack pointer to anything higher than this in your
+program.  If you write to the stack above $1d8 you risk clobbering the stack and
+the 4-byte NMI handler used for tracing.
 
 #### DON'T USE $9800-$9FFF
 
-The memory above $9800-$9fff is reserved for the debugger.  Avoid it.
-Most of this range ($9800-$9FF0) is made read-only before your program gains control, so it is unlikely you will
-actually crash the system by accessing this range.  Nonetheless, your program will not work as expected if you
-try to read and write to this area.  Writing to the range $9FF0-$9FFF is _especially_ dangerous though, and you
-can expect a system JAM if you access it in your program.
+The I/O address range $9800-$9fff is used to store the interrupts that return
+control to the debugger.  If this range is clobbered, a BRK or NMI will not
+return to the debugger and the machine will likely JAM.
 
-### DON'T OVERWRITE BRK/NMI VECTORS
+This area is configured to be read-only when executing your program, but
+naturally, if you free-run your program, this protection can be disabled by
+clobbering the write-protect registers that also reside in this address space.
 
-During free-run, the NMI vector (via RESTORE) is used to return to the debugger during
-execution of your program.  If you overwrite this, the debugger will not be able to take control back when the
-RESTORE NMI occurs.
+### DON'T OVERWRITE BRK/NMI VECTORS ($316-$319)
+
+This requirement only applies when you are free-running your program.  During
+free-run, the NMI vector is used to return to the debugger during normal
+execution of your program when the RESTORE key is pressed.
 
 The BRK vector is used to return to the debugger when a breakpoint is encountered.
 If your program has its own idea of how to handle breakpoints, it may overwrite the BRK
-vector, but the debugger will be unable to handle them as a result.
+vector, but the debugger will be unable to handle them as a result.  If tracing or
+stepping through your program, the BRK instruction is simulated so breakpoints
+will work as expected, though it is generally good practice to leave it alone
+regardless.
+
+---
+
+## RECOVERY
+
+In the event that you free run your program and it crashes, Monster will attempt
+to recover the existing state if it can.  Upon reset, you will be presented with
+the option to try recovery or to reinitialize (unless the state was clobbered to
+such an extent that the "warm" state cannot be detected).
+
+Recovery is not guaranteed to work, but if it does, your open source buffers and
+previous debugger state will be restored.  The state of the program you were
+debugging upon crash in the expanded memory area ($400-$1000 and $2000-$8000)
+will also be available for you to debug with the monitor or visual debugger.  The
+internal memory area ($00-$400 and $1000-$2000) will retain its values from when
+the free-run that crashed the system was initiated.
 
 ---
 
@@ -66,6 +88,9 @@ respective Key in the table below.
 |  F2          | Register Editor | enters the register editor                                                           |
 |  F3          | Mem View        | activates the memory window, which takes control until `<-` is pressed               |
 |  F5          | Break View      | displays the breakpoints that have been set and allows them to be enabled/disabled   |
+|  F6          | Watch View      | displays the watches that have been set (see the _Watch Viewer_ section)             |
+|  F7          | Monitor         | opens the text-based monitor as a window over the debug view                         |
+|  F8          | Monitor (full)  | opens the text-based monitor maximized (`SHIFT + F7`)                                |
 |  s           | Step Over      | steps to the next instruction. If it is a JSR, continues AFTER the target subroutine |
 |  y           | Step Out        | steps until the next RTS instruction                                                 |
 |  z           | Step            | steps to the next instruction.                                                       |
@@ -73,7 +98,6 @@ respective Key in the table below.
 |  C= + g      | Go              | begins execution at the cursor                                                       |
 |  C= + p      | Jump to         | sets the PC to the address corresponding to the line the cursor is on                |
 |  C= + r      | Reset Stopwatch | resets the value of the stopwatch to 0                                               |
-| C= + t       | Enter monitor   | enters the text-based debug interface (see the monitor commands section for more info|
 | C= + x       | Quit Debugger   | Prompts the user for confirmation then quits the debugger upon receiving it          |
 |   <-         | Exit            | exits the debugger and returns to the editor                                         |
 | SPACE        | Swap prog       | swaps in the internal memory for the user program (allows user to see screen state)  |
@@ -83,7 +107,7 @@ respective Key in the table below.
 
 Pressing F2 moves the cursor to the register contents and allows the user to enter
 new values for them.  Pressing `RETURN` will confirm the new register values
-and update them to those values the next time the user program is invoked.
+and update them to those values immediately.
 Pressing `<-` will abort this process and leave the old register values
 intact.
 
@@ -127,8 +151,8 @@ instruction _after_ the `JSR` (after the subroutine returns).
 
 #### STEP OUT (`y`)
 
-The step out command traces the program until the next RTS instruction.
-The RTS instruction is run and control then returns to the debugger.
+The step out command traces the program until the current subroutine returns
+(via an RTS instruction).  The RTI instruction also returns execution to the debugger.
 
 #### TRACE (`t`)
 
@@ -160,8 +184,8 @@ between steps and saves these values in between calls to the program.  Values
 that will be used by the user program are then swapped in so that the program
 behaves as if the debugger is not running.
 The full internal state of the user program and debugger occupy buffers in the
-debugger and are available to be swapped in/out on command with the `C= + SPACE`
-key combination.  This is useful if you'd like to see what the internal RAM
+debugger and are available to be swapped in/out on command with the `SPACE`
+key.  This is useful if you'd like to see what the internal RAM
 state, which is the _only_ place that the screen state may live, looks like
 at the current step in the program.
 
@@ -240,7 +264,7 @@ Note that breakpoints correspond to the debug information generated with
 the F4 command.  If the line numbers change after this information is generated,
 breakpoints are unlikely to behave in expected ways.
 
-### WATCH VIEWER (`F7` WHILE DEBUGGING)
+### WATCH VIEWER (`F6` WHILE DEBUGGING)
 
 The watch viewer displays all watches that have been set in the memory
 viewer.  The current value of a watch is shown along with its previous
@@ -306,7 +330,7 @@ desired byte to watch, the press `C= + w` to add a watch to the address of the
 byte under the cursor.  A beep will confirm that the watch
 was added.
 
-The watch editor (`F7`) shows all active watches. This window displays the old
+The watch editor (`F6`) shows all active watches. This window displays the old
 value of a watch and what it was changed to when it is updated.
 
 When a value is changed the watch view is activated to alert the user to the

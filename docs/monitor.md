@@ -2,31 +2,30 @@
 
 The monitor is a text based interface for debugging programs and manipulating
 program state.  It offers the same functionality as the GUI debugger plus a plethora of other commands to
-manipulate the program state.
+manipulate the program state.  The monitor and graphical debugger share state, so changes made in one
+(e.g. creating a watch) will be reflected in the other.
+
+For the most part, input in the monitor is buffered.  As with BASIC commands (but unlike the graphical
+debugger), you enter the command you wish to run, press `RETURN`, and the command executes.
 
 ---
 
 ### ACTIVATION
 
-The monitor is activated with the `F7` key. It can be activated from the editor both during
-normal editing and while debugging.
+The monitor is activated as a window with the `F7` key.  In this mode the editor (or, while debugging,
+the source view) remains visible above the monitor window.  The window may be resized with `C= + k`
+(grow) and `C= + j` (shrink).  These keys work both while the monitor is active and from the editor
+while the window is open.
+
+Pressing `F8` (`SHIFT + F7`) opens the monitor _maximized_ (fullscreen) instead.
+
+The monitor can be activated from the editor both during normal editing and while debugging.
 If activated while debugging, a number of additional commands related to the state of the debugged program
-become available.
-
-### WINDOWED MODE
-
-The monitor may also be activated as a window that takes up only the bottom portion of the screen
-with the `F8` (`SHIFT + F7`) key.  In this mode the editor remains visible above the monitor window.
-The window may be resized with `C= + j` (grow) and `C= + k` (shrink).  These keys work both while
-the monitor is active and from the editor while the window is open.
+become available.  If these are invoked while not debugging, you will get a `NOT DEBUGGING` error message.
 
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
 Pressing `F7` or `F8` while the window is open re-activates it in place.  The monitor window is
-closed, just as other windows, are with the `<-` key.
-
-While debugging, `F7`/`F8` open the monitor as a window over the bottom of the debug view (covering
-the register/state display), leaving the source view visible above it.  The window may be resized as
-usual.  When the monitor is quit, the window is dismissed and the debug view is redrawn in its place.
+closed, just as other windows are, with the `<-` key.
 
 ### FILE REDIRECTION
 The output from a given monitor command can be redirected to file instead of the screen by using the
@@ -76,7 +75,7 @@ Most parameters may be expressions (e.g. `label+10`).
 |    z     | step                    |                                    |                      | runs the next instrcution and returns to the the monitor prompt                                                               |
 |    zo    | step-out                |                                    |                      | runs the program that is being debugged until the current subroutine is RTS'd from                                            |
 |    F1    | view screen             |                                    |                      | toggles the view of the user-memory (swaps the the  $1000-$2000 range monitor <-> program                                     |
-|    F2    | enter BASIC             |                                    |                      | drops into the stock KERNAL BASIC interpreter                                                                                 |
+|    F2    | enter user program      |                                    |                      | enters the actively running program (or the default KERNAL BASIC interpreter if nothing has been debugged yet)                |
 |    C= + l| clear                   |                                    |                      | shortcut to clear the screen (equivalent to the clear command)                                                                |
-|    C= + j| grow window             |                                    |                      | grows the monitor window by one row (windowed mode only)                                                                      |
-|    C= + k| shrink window           |                                    |                      | shrinks the monitor window by one row (windowed mode only)                                                                    |
+|    C= + k| grow window             |                                    |                      | grows the monitor window by one row (windowed mode only)                                                                      |
+|    C= + j| shrink window           |                                    |                      | shrinks the monitor window by one row (windowed mode only)                                                                    |

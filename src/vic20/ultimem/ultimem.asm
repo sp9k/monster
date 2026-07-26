@@ -52,7 +52,7 @@ __ultimem_bank: .byte 0
 ; SELECT BANK
 ; Selects the given logical bank, configuring BLK 1,2,3, and 5 with the
 ; preset RAM/ROM configuration for that "bank".
-; Takes 69+6=75 cycles (counting the JSR to call this routine)
+; Takes 69 cycles on stock Ultimem or 19 with Ultimme + profile extension
 ; IN:
 ;   - .A: the bank to activate
 .export __ultimem_select_bank
@@ -73,6 +73,10 @@ __ultimem_bank: .byte 0
 	rts
 
 :	sta __ultimem_bank	; 4 (9)
+.ifdef ultimem_p
+	sta $9ff3		; 4 (13) UltiMem-P: load this bank's profile
+	rts			; 6 (19)
+.else
 	stx @savex		; 4 (13)
 	sta @savea		; 4 (17)
 	tax			; 2 (19)
@@ -93,7 +97,96 @@ __ultimem_bank: .byte 0
 @savea=*+1
 	lda #$00		; 2 (63)
 	rts			; 6 (69)
+.endif
 .endproc
+
+.ifdef ultimem_p
+;*******************************************************************************
+; INIT PROFILES
+; Populates the UltiMem-P profile SRAM with one register profile per virtual
+; bank plus one profile per source buffer
+; Each profile contains a configuration for the complete range $9ff1,...,$9fff.
+; NOTE: all profiles keep RAM123 and IO2/3 as shared RAM (bank 0).
+.export __ultimem_init_profiles
+.proc __ultimem_init_profiles
+	; enable SAVEMODE - writes to $9ff3 now save the live registers into
+	; the addressed profile instead of loading from it
+	lda $9ff0
+	ora #$20		; set bit5 (savemode)
+	and #$bf		; keep bit6 (reset) clear
+	sta $9ff0
+
+	; trigger the profile command with the $55,$aa sequence
+	lda #$55
+	sta $9ff3
+	lda #$aa
+	sta $9ff3
+
+	; write register values shared by every profile
+	lda #$3f
+	sta $9ff1		; RAM123, IO2, IO3 all RAM r/w
+	lda #$00
+	sta $9ff4		; RAM123 bank = 0
+	sta $9ff5
+	sta $9ff6		; IO bank = 0
+	sta $9ff7
+	sta $9ff9		; BLK1/2/3/5 bank MSB's
+	sta $9ffb
+	sta $9ffd
+	sta $9fff
+
+	ldx #$01		; profile index
+@l0:	lda cfg-1,x
+	sta $9ff2		; BLK 1/2/3/5 RAM/ROM config
+	lda blk1-1,x
+	sta $9ff8		; BLK1 bank
+	lda blk2-1,x
+	sta $9ffa		; BLK2 bank
+	lda blk3-1,x
+	sta $9ffc		; BLK3 bank
+	lda blk5-1,x
+	sta $9ffe		; BLK5 bank
+	txa
+	sta $9ff3		; save profile
+	inx			; move to next profile
+	cpx #NUM_BANKS+1
+	bne @l0			; repeat for all profiles
+
+	; generate source-buffer profiles (consecutive area in BLKs 1/2/3
+	lda #$7f
+	sta $9ff2		; BLK1/2/3 RAM r/w, BLK5 ROM
+	lda #$04
+	sta $9ffe		; BLK5 = MAIN ROM bank
+
+	ldx #FINAL_BANK_SOURCE0				; .X=BLK1 for src bank 0
+	ldy #(FINAL_BANK_LOG-FINAL_BANK_SOURCE0)/3+1	; .Y=# of source buffers
+
+@l1:	stx $9ff8		; BLK1 = buffer base bank
+	inx
+	stx $9ffa		; BLK2 = base+1
+	inx
+	stx $9ffc		; BLK3 = base+2
+	txa
+	sec
+	sbc #$02		; .A = base bank
+	sta $9ff3		; snapshot live registers -> profile <base>
+	inx			; advance to next buffer base
+	dey
+	bne @l1
+
+	; turn SAVEMODE off: writes to $9ff3 now load profiles again
+	lda $9ff0
+	and #$df		; clear bit5 (savemode)
+	sta $9ff0
+
+	; restore the boot ROM mapping so that the init procedure can continue
+	lda #$00
+	sta $9ffe		; set BLK5 to boot ROM (bank 0)
+	lda #$55
+	sta $9ff2		; BLK 1/2/3/5 config (all ROM)
+	rts
+.endproc
+.endif	; ultimem_p
 
 ;*******************************************************************************
 ; VIRTUAL BANK CONFIG MAP

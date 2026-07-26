@@ -16,22 +16,25 @@ The linker loads this file before beginning the link process and uses it to init
 #### EXAMPLE
 Below is a simple LINK file example to demonstrate its configuration format
 
+Each item (SECTION or SEGMENT) is terminated with a `;` character. Note that this
+does _not_ denote a comment as it does in assembly files; comments are not valid in
+the LINK file.
+
 ```
 MEMORY [
 SECTIONA:
  START=$0400
  END=$1000
- FILL=1
+ FILL=1;
 SECTIONB:
  START=$1000
- END=$1200
+ END=$1200;
 ]
 
 SEGMENTS [
  SEGA:
    LOAD=SECTIONA
-   RUN=SECTIONB
-   TYPE=BSS
+   RUN=SECTIONB;
 ]
 ```
 

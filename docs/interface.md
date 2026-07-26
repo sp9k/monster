@@ -11,7 +11,7 @@ commands.
 
 | COMMAND  |  KEY     |  DESCRIPTION
 |----------|----------|----------------------------------------------------------------------------------------------------
-| NEXT WIN | CTRL-W   | Cycles to the next available window (if already in the editor, enters the active window)
+| NEXT WIN | C= + W   | Cycles to the next available window (if already in the editor, enters the active window)
 | EXIT     | RUN/STOP | If window is active, exits it, returning to editor
 | HIDE     | C= + H   | Toggles the display of windows entirely
 
@@ -21,6 +21,6 @@ the following keys
 | COMMAND  |  KEY     |  DESCRIPTION
 |----------|----------|-----------------------------------------------------------------------------------------------------
 | GROW     | C= + K   | Enlarges the active window
-| SHRINK   | C= + L   | Shrinks the active window
+| SHRINK   | C= + J   | Shrinks the active window
 | MAXIMIZE | C= + Z   | Toggles between full screen (if currently not maximized) or its last un-maximized size (if maximized)
 

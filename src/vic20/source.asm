@@ -554,7 +554,13 @@ data: .res BUFFER_SIZE
 .ifdef ultimem
 ;*******************************************************************************
 ; ACTIVATE SOURCE
+; Maps the active source buffer's 3 banks into BLK1/2/3
 .proc activate_source
+.ifdef ultimem_p
+	ldx __src_bank
+	stx $9ff3	; load the source buffer's profile
+	rts
+.else
 	; bank in the source buffer
 	ldx __src_bank
 	stx $9ff8	; BLK1 = base of source bank
@@ -565,6 +571,7 @@ data: .res BUFFER_SIZE
 	ldx #$7f
 	stx $9ff2	; RAM in BLK 1/2/3
 	rts
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -579,8 +586,13 @@ data: .res BUFFER_SIZE
 
 ;*******************************************************************************
 ; DEACTIVATE SOURCE
+; Restores the MAIN bank
 .proc deactivate_source
-	; restore MAIN bank
+.ifdef ultimem_p
+	ldx #FINAL_BANK_MAIN
+	stx $9ff3		; restore the MAIN profile
+	rts
+.else
 	ldx #$01
 	stx $9ff8
 	inx
@@ -590,6 +602,7 @@ data: .res BUFFER_SIZE
 	ldx #$55		; ROM in BLK 1/2/3
 	stx $9ff2
 	rts
+.endif
 .endproc
 
 .segment "BANKCODE"

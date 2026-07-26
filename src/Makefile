@@ -27,6 +27,13 @@ ASMFLAGS=--asm-define $(TARGET) --asm-define $(REGION) --asm-define $(SCREEN_MOD
 ifeq ($(TARGET),vic20)
 # the vic20 build always targets the UltiMem expansion
 ASMFLAGS+=--asm-define ultimem
+# UltiMem Profile extension (1) or stock ULTIMEM (0)
+ULTIMEM_P?=1
+
+ifeq ($(ULTIMEM_P),1)
+ASMFLAGS+=--asm-define ultimem_p
+endif
+
 LINK_FILE=link-vic20-ultimem
 EXP_SRC=$(wildcard vic20/ultimem/*.asm)
 endif

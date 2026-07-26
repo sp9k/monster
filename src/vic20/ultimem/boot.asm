@@ -32,6 +32,9 @@
 .import __BSS_SIZE__
 
 .import enter
+.ifdef ultimem_p
+.import __ultimem_init_profiles
+.endif
 
 .segment "CART"
 
@@ -189,6 +192,10 @@
 	sta $028c	; set repeat delay counter
 	lda #$04
 	sta $028b	; set repeat timer
+
+.ifdef ultimem_p
+	jsr __ultimem_init_profiles
+.endif
 
 	; activate the main CODE bank and begin the app
 	lda #$4c		; JMP
