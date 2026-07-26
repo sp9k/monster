@@ -7,10 +7,11 @@ K_HOME      = $13	; HOME
 
 K_UP_ARROW  = $5e	; up arrow
 
-K_PREV_BUFF  = $08	; Ctrl + h
-K_NEXT_BUFF  = $0c	; Ctrl + l
-K_NEW_BUFF   = $aa	; C=   + n
-K_CLOSE_BUFF = $ab	; C=   + q
+K_PREV_BUFF    = $08	; Ctrl + h
+K_NEXT_BUFF    = $0c	; Ctrl + l
+K_NEW_BUFF     = $aa	; C=   + n
+K_CLOSE_BUFF   = $ab	; C=   + q
+K_SHOW_BUFFERS = $a3	; C=   + t
 
 K_UDG_EDIT         = $b8	; C= + u
 K_UDG_TOGGLE_MODE  = $6d	; m
@@ -24,10 +25,9 @@ K_DEL       = $14	; DELETE
 ; EDITOR KEYS
 K_GO_BASIC       = $85	; F1
 ;                = $89	; F2
-K_ASM_DEBUG      = $86	; F3
+K_ASM_DEBUG      = $b0	; C= + a (assemble with debug info)
+			; up for the universal MEMVIEW binding)
 K_LINK           = $8a  ; F4 (shift + F3)
-K_SHOW_BUFFERS   = $87	; F5
-K_SHOW_PROJECT	 = $8b	; F6
 K_MONITOR_WIN    = $88	; F7
 K_MONITOR        = $8c	; F8 (SHIFT + F7)
 K_CLOSE_WINDOWS  = $5f	; <-
@@ -39,7 +39,6 @@ K_TOGGLE_FMT     = $bb
 K_HELP           = $3f	; ?
 
 K_SET_BREAKPOINT = $bf	; C= + B
-K_ASM_FILE       = $b0	; C= + a
 K_VIEW_LOG       = $b6	; C= + l
 K_VIEW_MACROS    = $a7	; C= + m
 K_REFRESH        = $bc  ; C= + c

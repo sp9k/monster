@@ -55,6 +55,7 @@
 .include "text.inc"
 .include "util.inc"
 .include "vmem.inc"
+.include "watches.inc"
 .include "zeropage.inc"
 
 .macpack longbranch
@@ -2544,6 +2545,9 @@ cancel = enter_command
 	;.byte K_ASM 		; assemble
 	.byte K_ASM_DEBUG	; debug
 	.byte K_SHOW_BUFFERS	; show buffers
+	.byte K_MEMVIEW		; mem viewer/editor (same as while debugging)
+	.byte K_BRKVIEW		; breakpoint viewer/editor (same as while debugging)
+	.byte K_WATCHVIEW	; watch viewer/editor (same as while debugging)
 	.byte K_REFRESH		; refresh
 	.byte K_LIST_SYMBOLS	; list symbols
 	.byte K_VIEW_MACROS	; open macro viewer
@@ -2577,7 +2581,9 @@ cancel = enter_command
 .linecont +
 .define specialvecs ccleft, ccright, ccup, ccdown, \
 	home, \
-	command_asmdbg, show_buffers, refresh, \
+	command_asmdbg, show_buffers, \
+	view::edit, brkpt::edit, watch::edit, \
+	refresh, \
 	view_symbols, view_macros, show_log, command_link, \
 	close_buffer, new_buffer, set_breakpoint, jumpback, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\

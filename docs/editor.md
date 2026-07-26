@@ -22,17 +22,19 @@ below for more info on modes).
 
 |  key   | name          |   description                                                          |
 |--------|---------------|------------------------------------------------------------------------|
+| C= + a | Assemble+Debug| assembles the code in the buffer with debug info and enters the debugger|
 | C= + b | Set Breakpoint| sets a breakpoint at the current line                                  |
 | C= + c | Refresh       | refrehshes the screen by redrawing the source buffer                   |
 |    -   | File Viewer   | list directory, shows the files on the current disk                    |
 | C= + n | New buffer    | creates a new source buffer and sets it as the active buffer           |
 | C= + q | Close buffer  | closes the current buffer and opens the next one that is open          |
-| C= + v | MemView       | enters the memory viewer/editor (press <- to exit)                     |
 | C= + y | Show Symbols  | lists the symbol table for the assembled program                       |
 | C= + e | Next Error    | if there are errors from the last assembly, navigatest to the next one |
-|   F3   | Assemble      | assembles the code in the buffer to memory                             |
-|   F4   | Debug         | assembles the code in the buffer to memory _with_ debug info           |
-|   F5   | Show buffers  | displays a list of the currently open buffers                          |
+| C= + t | Show buffers  | displays a list of the currently open buffers                          |
+|   F4   | Link          | links the object files in the project using the LINK file on disk      |
+|   F3   | MemView       | opens the memory viewer/editor (same as while debugging; press <- to exit)|
+|   F5   | BrkView       | opens the breakpoint viewer/editor (same as while debugging)           |
+|   F6   | WatchView     | opens the watch viewer/editor (same as while debugging)                |
 | C= + + | Next Drive    | Selects the next drive (limited to #15)                                |
 | C= + - | Prev Drive    | Selects the previous drive (limited to #8)                             |
 |    :   | Ex Command    | Enteres "EX" mode (see the EX COMMANDS section below for more on this) |

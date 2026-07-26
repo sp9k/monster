@@ -66,6 +66,7 @@ respective Key in the table below.
 |  F2          | Register Editor | enters the register editor                                                           |
 |  F3          | Mem View        | activates the memory window, which takes control until `<-` is pressed               |
 |  F5          | Break View      | displays the breakpoints that have been set and allows them to be enabled/disabled   |
+|  F6          | Watch View      | displays the watches that have been set and their current/previous values           |
 |  s           | Step Over      | steps to the next instruction. If it is a JSR, continues AFTER the target subroutine |
 |  y           | Step Out        | steps until the next RTS instruction                                                 |
 |  z           | Step            | steps to the next instruction.                                                       |
@@ -188,7 +189,7 @@ Pressing the `<-` key will return the user from the auxiliary editor to the
 source code editor.  And `F1` will hide the active view to maximize the
 source editor's screen size.
 
-### MEMORY VIEWER (`F3` WHILE DEBUGGING)
+### MEMORY VIEWER (`F3`)
 
 The memory viewer displays the contents of RAM at a given address.  The memory
 viewer is updated upon reentry to the debugger (if active).
@@ -229,7 +230,7 @@ Moves the cursor to the address of the viewer, then prompts the user for a new
 value to set the memory viewer to.  Pressing `RETURN` confirms the new address
 and `<-` cancels and returns the user to the editor without changing the address
 
-### BREAKPOINT VIEWER (`F5` WHILE DEBUGGING)
+### BREAKPOINT VIEWER (`F5`)
 
 The breakpoint viewer displays all the breakpoints that have been set by the
 user.  A circle is displayed next to those that are currently active.
@@ -240,7 +241,7 @@ Note that breakpoints correspond to the debug information generated with
 the F4 command.  If the line numbers change after this information is generated,
 breakpoints are unlikely to behave in expected ways.
 
-### WATCH VIEWER (`F7` WHILE DEBUGGING)
+### WATCH VIEWER (`F6`)
 
 The watch viewer displays all watches that have been set in the memory
 viewer.  The current value of a watch is shown along with its previous
@@ -306,7 +307,7 @@ desired byte to watch, the press `C= + w` to add a watch to the address of the
 byte under the cursor.  A beep will confirm that the watch
 was added.
 
-The watch editor (`F7`) shows all active watches. This window displays the old
+The watch editor (`F6`) shows all active watches. This window displays the old
 value of a watch and what it was changed to when it is updated.
 
 When a value is changed the watch view is activated to alert the user to the
