@@ -212,7 +212,7 @@ Pressing the `<-` key will return the user from the auxiliary editor to the
 source code editor.  And `F1` will hide the active view to maximize the
 source editor's screen size.
 
-### MEMORY VIEWER (`F3` WHILE DEBUGGING)
+### MEMORY VIEWER (`F3`)
 
 The memory viewer displays the contents of RAM at a given address.  The memory
 viewer is updated upon reentry to the debugger (if active).
@@ -253,7 +253,7 @@ Moves the cursor to the address of the viewer, then prompts the user for a new
 value to set the memory viewer to.  Pressing `RETURN` confirms the new address
 and `<-` cancels and returns the user to the editor without changing the address
 
-### BREAKPOINT VIEWER (`F5` WHILE DEBUGGING)
+### BREAKPOINT VIEWER (`F5`)
 
 The breakpoint viewer displays all the breakpoints that have been set by the
 user.  A circle is displayed next to those that are currently active.
@@ -264,7 +264,7 @@ Note that breakpoints correspond to the debug information generated with
 the F4 command.  If the line numbers change after this information is generated,
 breakpoints are unlikely to behave in expected ways.
 
-### WATCH VIEWER (`F6` WHILE DEBUGGING)
+### WATCH VIEWER (`F6`)
 
 The watch viewer displays all watches that have been set in the memory
 viewer.  The current value of a watch is shown along with its previous

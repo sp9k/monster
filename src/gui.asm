@@ -461,9 +461,7 @@ __gui_refresh:
 	ldx depth
 	dex
 	stx @i
-@t0:	lda @row
-	jsr scr::clrline
-	ldx @i
+@t0:	ldx @i
 	jsr recptr
 	ldy #WIN_TITLE
 	lda (r0),y
@@ -780,6 +778,14 @@ __gui_refresh:
 	dec scroll
 
 @redraw:
+	; a plain selection move only changes the list contents; leave the
+	; title rows alone (redrawing them every keypress flickers them)
+	jsr list_savevars
+	jsr list_draw
+	jmp @loop
+
+; full redraw (titles included) for when the active window may have changed
+@fullredraw:
 	jsr list_savevars
 	jsr draw_all
 	jmp @loop
@@ -793,7 +799,7 @@ __gui_refresh:
 	jsr list_savevars	; the handler may change the active window
 	pla
 	jsr @keycallback
-	bcc @redraw		; if the handler didn't exit, redraw & continue
+	bcc @fullredraw		; if the handler didn't exit, redraw & continue
 	rts			; return the handler's GUI_RET_x code
 
 @keycallback:

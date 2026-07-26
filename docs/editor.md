@@ -22,21 +22,21 @@ below for more info on modes).
 
 |  key   | name          |   description                                                          |
 |--------|---------------|------------------------------------------------------------------------|
-| C= + b | Set Breakpoint    | sets a breakpoint at the current line (or removes it if one exists)     |
-| C= + c | Refresh           | refreshes the screen by redrawing the source buffer                    |
-|    -   | File Viewer       | list directory, shows the files on the current disk                    |
-| C= + n | New buffer        | creates a new source buffer and sets it as the active buffer           |
-| C= + q | Close buffer      | closes the current buffer and opens the next one that is open          |
-| C= + y | Show Symbols      | lists the symbol table for the assembled program                       |
-| C= + m | Macro Viewer      | lists the macros defined in the assembled program                      |
-| C= + e | Next Error        | if there are errors from the last assembly, navigates to the next one  |
-| C= + w | Swap Window       | swaps to an open "window" (e.g. error window) or back to the editor    |
-| C= + l | Open Log          | opens (or closes) the log of the last assembly/link                    |
-| C= + f | Toggle Autoformat | toggles auto-formatting on/off                                         |
-| C= + v | Visible Whitespace| toggles display of TAB characters (rendered as a small dot)            |
-| C= + + | Next Drive        | Selects the next drive (limited to #15)                                |
-| C= + - | Prev Drive        | Selects the previous drive (limited to #8)                             |
-|    :   | Ex Command        | enters "EX" mode (see the EX COMMANDS section below for more on this)  |
+| C= + b | Set Breakpoint| sets a breakpoint at the current line                                  |
+| C= + c | Refresh       | refrehshes the screen by redrawing the source buffer                   |
+|    -   | File Viewer   | list directory, shows the files on the current disk                    |
+| C= + n | New buffer    | creates a new source buffer and sets it as the active buffer           |
+| C= + q | Close buffer  | closes the current buffer and opens the next one that is open          |
+| C= + y | Show Symbols  | lists the symbol table for the assembled program                       |
+| C= + e | Next Error    | if there are errors from the last assembly, navigatest to the next one |
+| C= + t | Show buffers  | displays a list of the currently open buffers                          |
+|   F4   | Link          | links the object files in the project using the LINK file on disk      |
+|   F3   | MemView       | opens the memory viewer/editor (same as while debugging; press <- to exit)|
+|   F5   | BrkView       | opens the breakpoint viewer/editor (same as while debugging)           |
+|   F6   | WatchView     | opens the watch viewer/editor (same as while debugging)                |
+| C= + + | Next Drive    | Selects the next drive (limited to #15)                                |
+| C= + - | Prev Drive    | Selects the previous drive (limited to #8)                             |
+|    :   | Ex Command    | Enteres "EX" mode (see the EX COMMANDS section below for more on this) |
 
 #### DRIVE SELECTION
 
