@@ -461,9 +461,7 @@ __gui_refresh:
 	ldx depth
 	dex
 	stx @i
-@t0:	lda @row
-	jsr scr::clrline
-	ldx @i
+@t0:	ldx @i
 	jsr recptr
 	ldy #WIN_TITLE
 	lda (r0),y
