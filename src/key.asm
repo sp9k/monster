@@ -78,6 +78,8 @@ CURSOR_LR_MASK = 2
 	.byte $ba	; SHIFT @
 	.byte $a9	; Shift-£
 	.byte $c0	; Shift *
+	.byte $94	; SHIFT DEL (INS)
+	.byte $8d	; SHIFT RETURN
 	;.byte $xx	; Shift left-arrow TODO: ?
 @translated:
 	.byte 95	; _
@@ -85,6 +87,8 @@ CURSOR_LR_MASK = 2
 	.byte 123	; {
 	.byte 124	; |
 	.byte 125	; }
+	.byte $14	; DEL
+	.byte $0d	; RETURN
 	;.byte 126	; ~
 @num_translate=*-@translated
 .POPSEG
