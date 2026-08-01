@@ -73,6 +73,15 @@
 	jmp irq::on
 .endproc
 
+;*******************************************************************************
+; DRAW GUTTER
+; No-op on the C64: breakpoints are rendered via the raster IRQ
+.export __screen_draw_gutter
+.export __screen_draw_gutter_row
+__screen_draw_gutter:
+__screen_draw_gutter_row
+	rts
+
 .CODE
 ;*******************************************************************************
 ; CLR

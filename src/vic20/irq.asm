@@ -26,7 +26,7 @@ CYCLES_PER_LINE = 65
 .ifdef soft4x8
 IRQ_START_LINE = $0e
 .else
-IRQ_START_LINE = $11
+IRQ_START_LINE = $10
 .endif
 
 .endif

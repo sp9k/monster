@@ -1873,6 +1873,9 @@ __debug_step:
 ; SHOWSTATE
 ; Shows the current debug state (registers and BRK line)
 .proc showstate
+.ifdef hard8x8
+	jsr scr::draw_gutter	; refresh the text-mode breakpoint gutter
+.endif
 	jsr showbrk
 
 	; fall through to showregs

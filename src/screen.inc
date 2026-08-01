@@ -5,6 +5,8 @@ SCREEN_INC = 1
 .import __screen_clr
 .import __screen_clrcolor
 .import __screen_clrline
+.import __screen_draw_gutter
+.import __screen_draw_gutter_row
 .import __screen_init
 .import __screen_save
 .import __screen_savebuf
@@ -25,6 +27,8 @@ SCREEN_INC = 1
 	clr          = __screen_clr
 	clrcolor     = __screen_clrcolor
 	clrline      = __screen_clrline
+	draw_gutter     = __screen_draw_gutter
+	draw_gutter_row = __screen_draw_gutter_row
 	init         = __screen_init
 	save         = __screen_save
 	savebuf      = __screen_savebuf

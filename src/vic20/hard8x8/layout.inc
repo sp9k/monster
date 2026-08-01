@@ -1,6 +1,11 @@
 SCREEN_WIDTH = 22
 SCREEN_HEIGHT = 23
 
+; Physical screen geometry; the GUTTER is reserved for breakpoints
+GUTTER_COL  = 0
+CONTENT_COL = 1
+PHYS_COLS   = SCREEN_WIDTH + 1		; 23 = gutter + 22 content columns
+
 ERROR_ROW = 20
 STATUS_ROW = 22
 STATUS_COL = 0

@@ -4893,6 +4893,9 @@ goto_buffer:
 	tax
 	tya
 	sta mem::breakpoint_rows,x
+.ifdef hard8x8
+	jsr scr::draw_gutter_row	; .X = row; refresh its text-mode gutter cell
+.endif
 	txa			; restore the row
 	jmp text::drawline
 .endproc

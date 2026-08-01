@@ -2,9 +2,11 @@
 ; SCREEN23.ASM
 ;*******************************************************************************
 
+.include "layout.inc"
 .include "../fastcopy.inc"
 .include "../prefs.inc"
 .include "../../config.inc"
+.include "../../irq.inc"
 .include "../../macros.inc"
 .include "../../memory.inc"
 .include "../../settings.inc"
@@ -17,6 +19,9 @@ COLMEM_ADDR = $9400	; page 1
 ;COLMEM_ADDR2 = $9600	; page 2
 
 SCREEN_ADDR = $1800	; page 1
+
+; offset from a screen cell to its color-RAM cell (low byte is 0)
+COLMEM_OFFSET = COLMEM_ADDR - SCREEN_ADDR
 
 ;NUM_COLS    = 22	; number of 8-pixel columns
 ;NUM_ROWS    = 23	; number of 8-pixel rows
@@ -40,30 +45,45 @@ SCREEN_ROWS = 12	; number of physical rows per column
 
 .CODE
 ;*******************************************************************************
+; INIT
 .export __screen_init
 .proc __screen_init
-	jsr $e5c3
+	jsr $e5c3		; set up base screen matrix
 
-	lda #$e2	; lowercase chars / screen @ $1800
+	lda #$e2		; lowercase chars / screen @ $1800
 	sta $9005
+
+	lda #PHYS_COLS		; $17: bit 7 clear + 23 columns
+	sta $9002
+	lda #$03		; horizontal pos
+	sta $9000
 
 	lda prefs::normal_color
 	sta $900f
-	rts
+
+	jmp __screen_draw_gutter
 .endproc
 
 .CODE
 ;*******************************************************************************
 ; CLR
-; Clears the screen
+; Clears the screen's content columns.
 .export __screen_clr
 .proc __screen_clr
-	ldx #$00
+@dst=r0
+	ldx #NUM_ROWS-1
+@l0:	lda __screen_rowslo,x	; content start (physical column CONTENT_COL)
+	sta @dst
+	lda __screen_rowshi,x
+	sta @dst+1
+
 	lda #$20
-:	sta SCREEN_ADDR,x
-	sta SCREEN_ADDR+$100,x
+	ldy #NUM_COLS-1
+:	sta (@dst),y
+	dey
+	bpl :-
 	dex
-	bne :-
+	bpl @l0
 
 	; fall through to clrcolor
 .endproc
@@ -72,16 +92,27 @@ SCREEN_ROWS = 12	; number of physical rows per column
 ; CLRCOLOR
 ; Reverts all color memory to the given color
 ; IN:
-;  - .A: the color to fill the screen with
+;  - .A: the color to fill the screen with (currently ignored; uses TEXT_COLOR)
 .export __screen_clrcolor
 .proc __screen_clrcolor
-	ldy #$00
+@dst=r0
+	ldx #NUM_ROWS-1
+@l0:	; color cell = content screen cell + (COLMEM_ADDR - SCREEN_ADDR)
+	lda __screen_rowslo,x
+	sta @dst
+	lda __screen_rowshi,x
+	clc
+	adc #>COLMEM_OFFSET
+	sta @dst+1
+
 	lda #TEXT_COLOR
-@l0:    sta COLMEM_ADDR,y
-        sta COLMEM_ADDR+$100,y
+	ldy #NUM_COLS-1
+:	sta (@dst),y
 	dey
-        bne @l0
-        rts
+	bpl :-
+	dex
+	bpl @l0
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -198,15 +229,46 @@ SCREEN_ROWS = 12	; number of physical rows per column
 .endproc
 
 ;*******************************************************************************
+; BLANK
+; Prepares the screen for sensitive work that requires the IRQ to be disabled.
+; The per-row color raster IRQ is turned off; to avoid leaving the screen in
+; whatever color the last raster split happened to set, $900f is forced to the
+; normal color so the whole screen is uniform while blanked.
+.export __screen_blank
+.proc __screen_blank
+	jsr irq::off
+	lda prefs::normal_color
+	sta $900f
+	rts
+.endproc
+
+;*******************************************************************************
+; UNBLANK
+; Ends a "blank"; call when sensitive IRQ disabled work has finished
+.export __screen_unblank
+.proc __screen_unblank
+	jmp irq::on
+.endproc
+
+;*******************************************************************************
 ; SAVE
-; Saves the screen to the backup buffer. It may then be restored with a call
-; to scr::restore
+; Saves the screen to the backup buffer and reinitializes it. It may then be
+; restored with a call to scr::restore
 .export __screen_save
 .proc __screen_save
-	; TODO:
-	;CALL FINAL_BANK_VSCREEN, save
+	jsr __screen_savebuf
+	jmp __screen_init
+.endproc
 
-	; save colors
+;*******************************************************************************
+; SAVEBUF
+; Saves the screen to the backup buffer WITHOUT reinitializing it (used when
+; overlaying another full-screen view that shares the same layout).
+.export __screen_savebuf
+.proc __screen_savebuf
+	; TODO: back up the screen text (see __screen_save's VSCREEN TODO)
+
+	; save the per-row colors and reset them to the default
 	ldx #SCREEN_ROWS*2-1
 :	lda mem::rowcolors,x
 	sta mem::rowcolors_save,x
@@ -214,8 +276,7 @@ SCREEN_ROWS = 12	; number of physical rows per column
 	sta mem::rowcolors,x
 	dex
 	bpl :-
-
-	jmp __screen_init
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -262,6 +323,89 @@ SCREEN_ROWS = 12	; number of physical rows per column
 .endproc
 
 ;*******************************************************************************
+BRK_NONE = $a0			; reverse space (blends into border)
+BRK_OFF  = $02			; lowercase b (disabled breakpoint)
+BRK_ON   = $42			; capital 'B' (enabled breakpoint)
+
+GUTTER_BG_COLOR  = BORDER_COLOR & $07	; border color
+BRK_OFF_COLOR    = $02			; red
+BRK_ON_COLOR     = $02			; red
+
+;*******************************************************************************
+; DRAW GUTTER ROW
+; Redraws the breakpoint gutter cell (physical column 0) for a single row from
+; mem::breakpoint_rows. The gutter glyph is XORed with $80 on reverse-cleared
+; rows so it renders uniformly whether the line is "reversed"
+; or not
+; IN:
+;  - .X: the row whose gutter cell to redraw
+; PRESERVES: .A, .X
+.export __screen_draw_gutter_row
+.proc __screen_draw_gutter_row
+@dst=r0
+@col=r2
+@row=r4
+@glyph=r5
+	pha
+	stx @row
+
+	; physical column 0 of row .X is CONTENT_COL to the left of its content
+	lda __screen_rowslo,x
+	sec
+	sbc #CONTENT_COL
+	sta @dst
+	sta @col
+	lda __screen_rowshi,x
+	sbc #$00
+	sta @dst+1
+	clc
+	adc #>COLMEM_OFFSET	; color cell = screen cell + $7c00 (low byte 0)
+	sta @col+1
+
+	; select glyph + color for the breakpoint state (0/1/2)
+	ldy mem::breakpoint_rows,x
+	lda gutter_glyphs,y
+	sta @glyph
+	lda gutter_colors,y
+	ldy #$00
+	sta (@col),y
+
+	; if the row is drawn NON-reversed (rowcolors bit 3 clear), flip the glyph
+	ldx @row
+	lda mem::rowcolors,x
+	and #$08
+	bne :+
+	lda @glyph
+	eor #$80
+	sta @glyph
+:	lda @glyph
+	ldy #$00
+	sta (@dst),y
+
+	ldx @row
+	pla
+	rts
+.endproc
+
+;*******************************************************************************
+; gutter glyphs and colors, indexed by mem::breakpoint_rows (0/1/2)
+gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
+gutter_colors: .byte GUTTER_BG_COLOR, BRK_OFF_COLOR, BRK_ON_COLOR
+
+;*******************************************************************************
+; DRAW GUTTER
+; Redraws the breakpoint gutter (physical column 0) for every content row from
+; mem::breakpoint_rows.
+.export __screen_draw_gutter
+.proc __screen_draw_gutter
+	ldx #NUM_ROWS-1
+@l0:	jsr __screen_draw_gutter_row
+	dex
+	bpl @l0
+	rts
+.endproc
+
+;*******************************************************************************
 ; CHAR ADDR
 ; Returns the address for the "character row" of the given row.
 ; IN:
@@ -285,28 +429,49 @@ SCREEN_ROWS = 12	; number of physical rows per column
 ;  - .A: the bottom line that is scrolled
 .proc __text_scrollup
 .export __text_scrollup
+	ldy #$01
+
+	; fall through to __text_scrollupn
+.endproc
+
+;*******************************************************************************
+; SCROLLUPN
+; Scrolls all lines from .X to .A up by .Y rows
+; IN:
+;  - .X: the top line that characters are scrolled to
+;  - .A: the bottom line that is scrolled
+;  - .Y: the number of rows to scroll by
+.export __text_scrollupn
+.proc __text_scrollupn
 @src=zp::text
 @dst=zp::text+2
-@numrows=zp::text+4
-	stx @numrows
-	cmp @numrows
-	bcc @done
-
+@cnt=zp::text+4
+@n=zp::text+5
+	sty @n
+	stx @cnt		; temporarily store the top row
 	sec
-	sbc @numrows
-	sta @numrows
+	sbc @cnt		; .A = bottom - top
+	bcc @done
+	sec
+	sbc @n			; .A = bottom - top - n
+	bcc @done		; range is smaller than scroll amount
+	sta @cnt		; # of rows to copy (-1)
 
 	lda __screen_rowslo,x
 	sta @dst
 	lda __screen_rowshi,x
 	sta @dst+1
 
-	lda __screen_rowslo+1,x
+	txa
+	clc
+	adc @n
+	tax
+	lda __screen_rowslo,x
 	sta @src
-	lda __screen_rowshi+1,x
+	lda __screen_rowshi,x
 	sta @src+1
 
-	ldx @numrows
+	ldx @cnt
 @l0:	ldy #NUM_COLS-1
 @l1:	lda (@src),y
 	sta (@dst),y
@@ -325,10 +490,9 @@ SCREEN_ROWS = 12	; number of physical rows per column
 	sta @dst
 	bcc :+
 	inc @dst+1
-	ldy #$00
 
 :	dex
-	bne @l0
+	bpl @l0
 @done:	rts
 .endproc
 
@@ -359,10 +523,18 @@ SCREEN_ROWS = 12	; number of physical rows per column
 @rowstart=zp::text+4
 @offset=zp::text+5
 	sta @rowstart
-	cpx @rowstart
-	beq @done	; if first and last rows are equal, no scroll
-
 	sty @offset
+
+	; .X is the last row to scroll INTO. Work from the last destination
+	; down so no source row is overwritten before it is copied, and so
+	; nothing below .X is ever touched. The first source is (last-offset).
+	txa
+	sec
+	sbc @offset
+	bcc @done		; offset > last: nothing fits
+	cmp @rowstart
+	bcc @done		; range smaller than the scroll amount
+	tax
 
 @l0:	lda __screen_rowslo,x
 	sta @src
@@ -371,10 +543,7 @@ SCREEN_ROWS = 12	; number of physical rows per column
 	txa
 	clc
 	adc @offset
-	cmp #NUM_ROWS-1
-	bcs @next		; destination is off screen, skip
-
-	tay
+	tay			; dst = src + offset (always <= last)
 	lda __screen_rowslo,y
 	sta @dst
 	lda __screen_rowshi,y
@@ -386,7 +555,7 @@ SCREEN_ROWS = 12	; number of physical rows per column
 	dey
 	bpl @l1
 
-@next:	dex		; decrement row counter
+	dex		; decrement row counter
 	bmi @done
 	cpx @rowstart
 	bcs @l0
@@ -448,37 +617,17 @@ __text_puts:
 	lda __screen_rowshi,x
 	sta @dst+1
 
+	; render exactly NUM_COLS characters into the row's content columns.
+	; The row table points at CONTENT_COL, so this never touches the gutter
+	; (physical column 0); reverse rows are handled by the per-row $900f
+	; color in the IRQ, not here.
 	ldy #$00
-	ldx #1+((LINESIZE-1)/NUM_COLS)	; # of extra pages to render
 @l0:	lda (@src),y
 	jsr asc2scr
 	sta (@dst),y
 	iny
 	cpy #NUM_COLS
 	bne @l0
-
-	; move to next destination page
-	inc @dst+1
-	inc @dst+1
-	lda @src
-	clc
-	adc #NUM_COLS
-	sta @src
-	bcc :+
-	inc @src+1
-	ldy #$00	; reset column
-	dex		; decrement page count
-	bne @l0		; repeat for all pages
-
-.if (LINESIZE .mod NUM_COLS) <> 0
-	; fill all spaces past line length
-	ldy #(LINESIZE .mod NUM_COLS)-1
-	lda #$ff	; symbol to fill uneditable spaces with
-:	sta (@dst),y
-	iny
-	cpy #NUM_COLS
-	bne :-
-.endif
 	rts
 .endproc
 
@@ -544,31 +693,34 @@ __text_puts:
 
 .RODATA
 ;*******************************************************************************
+; Each content row starts at physical column CONTENT_COL (1) of its matrix row,
+; leaving physical column 0 (GUTTER_COL) as the breakpoint gutter.  The matrix
+; row stride is PHYS_COLS (23).
 .linecont +
 .define rows \
-	SCREEN_ADDR+$000, \
-	SCREEN_ADDR+$016, \
-	SCREEN_ADDR+$02c, \
-	SCREEN_ADDR+$042, \
-	SCREEN_ADDR+$058, \
-	SCREEN_ADDR+$06e, \
-	SCREEN_ADDR+$084, \
-	SCREEN_ADDR+$09a, \
-	SCREEN_ADDR+$0b0, \
-	SCREEN_ADDR+$0c6, \
-	SCREEN_ADDR+$0dc, \
-	SCREEN_ADDR+$0f2, \
-	SCREEN_ADDR+$108, \
-	SCREEN_ADDR+$11e, \
-	SCREEN_ADDR+$134, \
-	SCREEN_ADDR+$14a, \
-	SCREEN_ADDR+$160, \
-	SCREEN_ADDR+$176, \
-	SCREEN_ADDR+$18c, \
-	SCREEN_ADDR+$1a2, \
-	SCREEN_ADDR+$1b8, \
-	SCREEN_ADDR+$1ce, \
-	SCREEN_ADDR+$1e4
+	SCREEN_ADDR+PHYS_COLS*0+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*1+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*2+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*3+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*4+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*5+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*6+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*7+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*8+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*9+CONTENT_COL,  \
+	SCREEN_ADDR+PHYS_COLS*10+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*11+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*12+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*13+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*14+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*15+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*16+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*17+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*18+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*19+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*20+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*21+CONTENT_COL, \
+	SCREEN_ADDR+PHYS_COLS*22+CONTENT_COL
 .linecont -
 
 .linecont +

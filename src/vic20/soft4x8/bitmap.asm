@@ -170,6 +170,17 @@ blank_backup: .res 16
 .endproc
 
 ;*******************************************************************************
+; DRAW GUTTER
+; No-op in the soft4x8 bitmap mode: breakpoints are rendered in the leftmost
+; bitmap column via the raster IRQ (DYNAMIC_CHAR), not a text gutter (see the
+; hard8x8 port).  Provided so the screen interface is uniform across targets.
+.export __screen_draw_gutter
+.export __screen_draw_gutter_row
+__screen_draw_gutter:
+__screen_draw_gutter_row:
+	rts
+
+;*******************************************************************************
 ; BLANK
 ; Simplifies the screen to avoid artifacts when the IRQ is disabled
 ; IN:

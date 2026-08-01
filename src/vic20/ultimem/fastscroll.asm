@@ -5,6 +5,11 @@
 .include "../ram.inc"
 .include "banks.inc"
 
+; The fast bitmap scroller only applies to the soft4x8 (bitmap) display mode.
+; In hard8x8 (true text) mode the character-based scroll routines in
+; vic20/hard8x8/screen.asm provide these symbols instead.
+.ifndef hard8x8
+
 .define BITMAP_ADDR $1100
 .define HEIGHT      192
 .define ROWS        23
@@ -406,3 +411,5 @@
 	bne @l0
 @done:	rts
 .endproc
+
+.endif	; .ifndef hard8x8

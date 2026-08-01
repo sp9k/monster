@@ -4,6 +4,10 @@
 .include "../memory.inc"
 .include "../zeropage.inc"
 
+.ifdef hard8x8
+.import __screen_draw_gutter_row
+.endif
+
 COLOR_NORMAL  = 1
 COLOR_RVS     = 2
 COLOR_BRKON   = 3
@@ -48,8 +52,10 @@ COLOR_SELECT  = 6
 .export __draw_hline
 .proc __draw_hline
 @savey=zp::text
+@row=zp::text+1
 	sta mem::rowcolors_idx,x
 	sty @savey
+	stx @row
 
 	; look up real color from palette
 	tay
@@ -65,7 +71,14 @@ COLOR_SELECT  = 6
 	bne @done
 	dex
 	bne :-
-@done:	ldy @savey
+@done:
+.ifdef hard8x8
+	; the row's reverse state may have changed; repaint its gutter cell so
+	; column 0 stays consistent (see __screen_draw_gutter_row)
+	ldx @row
+	jsr __screen_draw_gutter_row
+.endif
+	ldy @savey
 	rts
 .endproc
 
