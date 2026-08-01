@@ -302,7 +302,9 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	; TODO: shift debug info line programs after the current line
 
 	; shift breakpoints; line to shift from is current line+1
-	jsr edit::currentfile	; .A=file id, .XY=current line
+	; edit::currentfile lives in MIDRAM: on the cart build this callback can
+	; run from a banked context (e.g. the log writing to the LOG buffer)
+	CALLMAIN edit::currentfile	; .A=file id, .XY=current line
 	inx
 	bne :+
 	iny

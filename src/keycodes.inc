@@ -27,7 +27,7 @@ K_GO_BASIC       = $85	; F1
 ;                = $89	; F2
 K_ASM_DEBUG      = $b0	; C= + a (assemble with debug info)
 			; up for the universal MEMVIEW binding)
-K_LINK           = $8a  ; F4 (shift + F3)
+K_LINK           = $b6  ; C= + l (link)
 K_MONITOR_WIN    = $88	; F7
 K_MONITOR        = $8c	; F8 (SHIFT + F7)
 K_CLOSE_WINDOWS  = $5f	; <-
@@ -39,7 +39,7 @@ K_TOGGLE_FMT     = $bb
 K_HELP           = $3f	; ?
 
 K_SET_BREAKPOINT = $bf	; C= + B
-K_VIEW_LOG       = $b6	; C= + l
+K_VIEW_LOG       = $8a	; f4 (SHIFT + f3)
 K_VIEW_MACROS    = $a7	; C= + m
 K_REFRESH        = $bc  ; C= + c
 K_RENAME         = $b2  ; C= + r

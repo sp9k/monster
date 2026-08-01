@@ -65,60 +65,49 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 
 .CODE
 ;*******************************************************************************
-; INIT
-; Initializes the watch editor
+; MAIN-bank entry points
+; NOTE: MARK (and its helpers) are kept in CODE as the simulator calls it per
+; traced instruction.
 .export __watches_init
-.proc __watches_init
-	lda #$00
-	sta __watches_num
-	rts
-.endproc
-
-;*******************************************************************************
-; EDIT
-; Begins the breakpoint editor
 .export __watches_edit
-.proc __watches_edit
-	ldxy #@menu
-	jmp gui::open
+.export __watches_add
+.export __watches_update
+.export __watches_remove
+.export __watches_getdata
+
+.if .defined(CART) .and .defined(c64)
+__watches_init:    JUMP FINAL_BANK_DBGUI, init
+__watches_edit:    JUMP FINAL_BANK_DBGUI, watchedit
+__watches_add:     JUMP FINAL_BANK_DBGUI, add
+__watches_update:  JUMP FINAL_BANK_DBGUI, update
+__watches_remove:  JUMP FINAL_BANK_DBGUI, remove
+__watches_getdata: JUMP FINAL_BANK_DBGUI, getdata
+getkey_vec:        JUMP FINAL_BANK_DBGUI, getkey
+.else
+__watches_init    = init
+__watches_edit    = watchedit
+__watches_add     = add
+__watches_update  = update
+__watches_remove  = remove
+__watches_getdata = getdata
+getkey_vec        = getkey
+.endif
 
 .PUSHSEG
 .RODATA
-@menu:
+;*******************************************************************************
+; MENU
+; The window descriptor for the watch viewer
+menu:
 .byte GUI_WATCHES		; id for watches editor
 .byte GUI_CLASS_LIST
 .byte HEIGHT			; initial height
 .byte 1				; min height
 .byte 12			; max height
 .word strings::watches_title	; title
-.word @getkey			; key handler
+.word getkey_vec		; key handler
 .word ui::render_watch		; get line handler
 .word __watches_num		; # of watches pointer
-
-;--------------------------------------
-@getkey:
-	cmp #K_RETURN
-	bne @chkdel
-
-	; open the memory editor at the selected watch's address
-	lda __watches_watcheslo,x
-	sta view::addr
-	lda __watches_watcheshi,x
-	sta view::addr+1
-	jsr view::select	; make the memory viewer the active window
-	lda #GUI_RET_SWITCH
-	sec			; exit the watch window's loop
-	rts
-
-@chkdel:
-	cmp #K_DEL		; DEL
-	bne @done
-
-	txa
-	jsr __watches_remove
-
-@done:	RETURN_OK
-.endproc
 .POPSEG
 
 ;*******************************************************************************
@@ -223,6 +212,90 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 .endproc
 
 ;*******************************************************************************
+; GETWATCH
+; Returns the index of the watch at the given address
+; IN:
+;  - r0: the stop address of the watch
+;  - r2: the address of the watch
+; OUT:
+;  - .C: set if the watch exists
+;  - .X: the id of the watch
+.export getwatch
+.proc getwatch
+@stop=r0
+@addr=r2
+	ldx __watches_num
+	beq @none
+@l0:	lda @addr
+	cmp __watches_watcheslo-1,x
+	bne @next
+	lda @addr+1
+	cmp __watches_watcheshi-1,x
+	bne @next
+	lda @stop
+	cmp __watches_watches_stoplo-1,x
+	bne @next
+	lda @stop+1
+	cmp __watches_watches_stophi-1,x
+	beq @found
+@next:	dex
+	bne @l0
+@none:	clc			; no watch exists
+	rts
+
+@found:	dex			; .X = id of the matching watch
+	sec			; watch exists
+	rts
+.endproc
+
+BANKED_CODE "DBGUI"
+	SET_CUR_BANK FINAL_BANK_DBGUI
+
+;*******************************************************************************
+; INIT
+; Initializes the watch editor
+.proc init
+	lda #$00
+	sta __watches_num
+	rts
+.endproc
+
+;*******************************************************************************
+; EDIT
+; Begins the breakpoint editor
+.proc watchedit
+	ldxy #menu
+	JUMPMAIN gui::open
+.endproc
+
+;*******************************************************************************
+; GETKEY
+; callback to handle keypress in the watch window
+.proc getkey
+	cmp #K_RETURN
+	bne @chkdel
+
+	; open the memory editor at the selected watch's address
+	lda __watches_watcheslo,x
+	sta view::addr
+	lda __watches_watcheshi,x
+	sta view::addr+1
+	jsr view::select	; make the memory viewer the active window
+	lda #GUI_RET_SWITCH
+	sec			; exit the watch window's loop
+	rts
+
+@chkdel:
+	cmp #K_DEL		; DEL
+	bne @done
+
+	txa
+	jsr remove
+
+@done:	RETURN_OK
+.endproc
+
+;*******************************************************************************
 ; ADD
 ; Adds a watch for the given memory location.
 ; IN:
@@ -231,8 +304,7 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 ;  - .A:  the type of watch (WATCH_LOAD, WATCH_STORE, or WATCH_LOAD_STORE)
 ; OUT:
 ;   - .C: set if the watch was not added
-.export __watches_add
-.proc __watches_add
+.proc add
 @stop=r0
 @addr=r2
 @flags=r4
@@ -280,8 +352,7 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 ; Used after a TRACE, where watches are not checked per-instruction.
 ; OUT:
 ;   - .C: set if any watch was marked dirty
-.export __watches_update
-.proc __watches_update
+.proc update
 @i=r6
 @dirty=r7
 	lda #$00
@@ -318,8 +389,7 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 ; Removes the watch with the given ID
 ; IN:
 ;  - .A: the ID of the watch to remove
-.export __watches_remove
-.proc __watches_remove
+.proc remove
 @id=r6
 @data=r7
 	cmp __watches_num
@@ -370,8 +440,7 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 ;   - r6: the stop address of the watch
 ;   - r8: the current value of the watched address
 ;   - r9: the previous value of the watched address
-.export __watches_getdata
-.proc __watches_getdata
+.proc getdata
 @start=r4
 @stop=r6
 @val=r8
@@ -396,42 +465,5 @@ __watches_watches_stophi:    .res MAX_WATCHPOINTS ; end address of watch range
 
 	lda __watches_watch_flags,x
 	ldx __watches_num
-	rts
-.endproc
-
-;*******************************************************************************
-; GETWATCH
-; Returns the index of the watch at the given address
-; IN:
-;  - r0: the stop address of the watch
-;  - r2: the address of the watch
-; OUT:
-;  - .C: set if the watch exists
-;  - .X: the id of the watch
-.export getwatch
-.proc getwatch
-@stop=r0
-@addr=r2
-	ldx __watches_num
-	beq @none
-@l0:	lda @addr
-	cmp __watches_watcheslo-1,x
-	bne @next
-	lda @addr+1
-	cmp __watches_watcheshi-1,x
-	bne @next
-	lda @stop
-	cmp __watches_watches_stoplo-1,x
-	bne @next
-	lda @stop+1
-	cmp __watches_watches_stophi-1,x
-	beq @found
-@next:	dex
-	bne @l0
-@none:	clc			; no watch exists
-	rts
-
-@found:	dex			; .X = id of the matching watch
-	sec			; watch exists
 	rts
 .endproc

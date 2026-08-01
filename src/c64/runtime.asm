@@ -76,6 +76,13 @@ nop_handler:
 	jsr nmi::disable
 	sei
 
+.ifdef CART
+	lda #$36
+	sta $01
+	lda #$80
+	sta $de00	; hide the cartridge from the KERNAL RAM probe
+.endif
+
 	lda #$37
 	sta $01		; expose KERNAL
 
@@ -208,6 +215,8 @@ nop_handler:
 
 	lda prog00+1
 	sta TRAMPOLINE_PROG01
+	lda prog00
+	sta TRAMPOLINE_PROG00
 
 	lda #$36			; expose REU registers
 	sta $01
@@ -250,6 +259,72 @@ nop_handler:
 	jmp __run_go
 .endproc
 
+.ifdef CART
+;*******************************************************************************
+; CART RESTORE
+; Streams a code template from the cartridge ROM back to its run address.
+; The templates live at the start of the resident image (bank 1) and must not
+; straddle the bank boundary (see link-c64-cart.config)
+; IN:
+;  - .XY: the flash offset of the template (must be < $2000)
+;  - r0:  the run (destination) address
+;  - .A:  the number of bytes to copy
+.proc cart_restore
+@src=r2
+	php
+	sei
+	stx @src
+	sty @src+1
+	tay
+	lda @src+1
+	ora #$80	; window offset -> $8000-$9fff
+	sta @src+1
+
+	lda #$37
+	sta $01		; expose I/O and the cartridge ROM
+	lda #$01
+	sta $de00	; resident image starts in bank 1
+
+	dey
+@l0:	lda (@src),y
+	sta (r0),y
+	dey
+	cpy #$ff
+	bne @l0
+
+	lda #$34
+	sta $01
+	plp
+	rts
+.endproc
+
+;*******************************************************************************
+; INSTALL TRAMPOLINE
+; Installs the "trampoline" code at the top of the user and debug RAM
+; This code lets us switch to the user bank and begin executing code there
+.proc install_trampoline
+	ldxy #__TRAMPOLINE_RUN__
+	stxy r0
+	ldx #<__TRAMPOLINE_LOAD__
+	ldy #>__TRAMPOLINE_LOAD__
+	lda #<trampoline_size
+	jmp cart_restore
+.endproc
+
+;*******************************************************************************
+; INSTALL NMI
+; Installs the NMI handler
+.proc install_nmi
+	ldxy #__NMI_HANDLER_RUN__
+	stxy r0
+	ldx #<__NMI_HANDLER_LOAD__
+	ldy #>__NMI_HANDLER_LOAD__
+	lda #<nmi_handler_size
+	jmp cart_restore
+.endproc
+
+.else
+
 ;*******************************************************************************
 ; INSTALL TRAMPOLINE
 ; Installs the "trampoline" code at the top of the user and debug RAM
@@ -275,6 +350,7 @@ nop_handler:
 	bpl @l0
 	rts
 .endproc
+.endif
 
 ;*******************************************************************************
 ; INSTALL EDIT NMI
@@ -406,6 +482,11 @@ nmi_handler:
 	lda #$36
 	sta $01
 
+.ifdef CART
+	lda #$00
+	sta $de00	; bring the cartridge back
+.endif
+
 	; save the current state of the program
 	; ($0800-$ceff)
 	lda #$00
@@ -442,9 +523,18 @@ nmi_handler_size=*-nmi_handler
 trampoline:
 	sta $df01	; load program state from REU
 
+.ifdef CART
+	lda #$80
+	sta $de00	; hide the cartridge while the user program runs
+.endif
+
 TRAMPOLINE_PROG01=*+1
 	lda #$00
 	sta $01		; set bank register to user's value
+
+TRAMPOLINE_PROG00=*+1
+	lda #$00
+	sta $00		; set data direction register to user's value
 
 	lda #<nmi_handler
 	sta $0318

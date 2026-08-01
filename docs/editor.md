@@ -22,9 +22,11 @@ below for more info on modes).
 
 |  key   | name          |   description                                                          |
 |--------|---------------|------------------------------------------------------------------------|
+| C= + a | Assemble      | assembles the active program                                           |
 | C= + b | Set Breakpoint| sets a breakpoint at the current line                                  |
 | C= + c | Refresh       | refrehshes the screen by redrawing the source buffer                   |
 |    -   | File Viewer   | list directory, shows the files on the current disk                    |
+| C= + l | Link          | links all .o files on disk using the LINK file                         |
 | C= + n | New buffer    | creates a new source buffer and sets it as the active buffer           |
 | C= + q | Close buffer  | closes the current buffer and opens the next one that is open          |
 | C= + y | Show Symbols  | lists the symbol table for the assembled program                       |
@@ -66,14 +68,12 @@ The up/down cursor keys navigate between pages of symbols. Press RESTORE to retu
 |  key   | name             |   description                                                                                |
 |--------|------------------|----------------------------------------------------------------------------------------------|
 |   f1   | Run              | saves Monster's state and transfers control to the last assembly (or enters BASIC if none)   |
-|   f3   | Assemble         | assembles the current source buffer to memory                                                |
-|   f4   | Link project     | using the LINK file on disk, links all object files (`*.o`) on the disk                       |
+|   f3   | Memory Viewer    | activates the memory viewer                                                                  |
+|   f4   | Log              | displays the active log file (if any)                                                         |
 |   f5   | Show buffers     | displays a list of the currently open buffers                                                |
 |   f6   | Show project     | displays the current project configuration                                                   |
 |   f7   | Monitor          | opens the text-based monitor as a window (see the _Monitor_ section)                          |
 |   f8   | Monitor (full)   | opens the text-based monitor maximized (`SHIFT + f7`)                                         |
-
-While debugging, the f-keys have different functionality, as described in the _Debug Commands_ section.
 
 ### EX COMMANDS
 

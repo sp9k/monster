@@ -17,6 +17,7 @@
 .include "keycodes.inc"
 .include "log.inc"
 .include "macros.inc"
+.include "ram.inc"
 .include "screen.inc"
 .include "source.inc"
 .include "string.inc"
@@ -40,39 +41,70 @@ __errlog_numerrs:
 numerrs: .byte 0
 
 .CODE
-
 ;*******************************************************************************
-; ACTIVATE
-; Displays the error window and resizes the editor to fit it.
+; MAIN-bank entry points
 .export __errlog_activate
-.proc __errlog_activate
-	ldxy #@menu
-	jmp gui::open
+.export __errlog_clear
+.export __errlog_log
+.export __errlog_next
+
+.if .defined(CART) .and .defined(c64)
+__errlog_activate: JUMP FINAL_BANK_DBGUI, activate
+__errlog_clear:    JUMP FINAL_BANK_DBGUI, clear
+__errlog_log:      JUMP FINAL_BANK_DBGUI, logerr
+__errlog_next:     JUMP FINAL_BANK_DBGUI, next
+keyhandler_vec:    JUMP FINAL_BANK_DBGUI, keyhandler
+getline_vec:       JUMP FINAL_BANK_DBGUI, getline
+.else
+__errlog_activate = activate
+__errlog_clear    = clear
+__errlog_log      = logerr
+__errlog_next     = next
+keyhandler_vec    = keyhandler
+getline_vec       = getline
+.endif
 
 .PUSHSEG
 .RODATA
-@menu:
+;*******************************************************************************
+; MENU
+; The window descriptor for the error log (read by the window manager from
+; the MAIN bank)
+menu:
 .byte GUI_ERRLOG	; id for errlog
 .byte GUI_CLASS_LIST
 .byte MAX_HEIGHT	; initial height
 .byte 1			; min height
 .byte 12		; max height
 .word strings::errors	; title
-.word @keyhandler	; key handler
-.word @getline		; get line handler
+.word keyhandler_vec	; key handler
+.word getline_vec	; get line handler
 .word numerrs		; pointer to number of errors
 .POPSEG
 
-;--------------------------------------
+BANKED_CODE "DBGUI"
+	SET_CUR_BANK FINAL_BANK_DBGUI
+
+;*******************************************************************************
+; ACTIVATE
+; Displays the error window and resizes the editor to fit it.
+.proc activate
+	ldxy #menu
+	JUMPMAIN gui::open
+.endproc
+
+;*******************************************************************************
+; GETLINE
 ; callback to get the item in .A
-@getline:
+getline:
 	cmp numerrs
 	bcc render_error
 	rts			; out of range
 
-;--------------------------------------
+;*******************************************************************************
+; KEYHANDLER
 ; callback to handle keypress
-@keyhandler:
+.proc keyhandler
 	cmp #K_RETURN
 	beq :+
 @ret:	clc			; flag to stay in menu
@@ -93,7 +125,8 @@ numerrs: .byte 0
 	tax
 	cmpw #0
 	beq @ret
-	jsr edit::gotoline	; go to the line # corresponding to the error
+	; edit::gotoline lives in MIDRAM (unreadable from this banked context)
+	CALLMAIN edit::gotoline	; go to the line # corresponding to the error
 
 	; update saved cursor to new position after gotoline
 	lda zp::curx
@@ -109,8 +142,7 @@ numerrs: .byte 0
 ;*******************************************************************************
 ; CLEAR
 ; Removes all errors and closes the error window (if it's active)
-.export __errlog_clear
-.proc __errlog_clear
+.proc clear
 	lda #$00
 	sta numerrs
 	rts
@@ -125,8 +157,7 @@ numerrs: .byte 0
 ; OUT:
 ;  - .C: set if MAX_ERRORS have been logged since log was cleared
 ;        or if the error we provided is considered fatal
-.export __errlog_log
-.proc __errlog_log
+.proc logerr
 	ldx numerrs
 	cpx #MAX_ERRORS
 	bcs @ret		; if already at max errors, return with .C set
@@ -164,12 +195,9 @@ numerrs: .byte 0
 	plp
 @ret:	rts
 
-.PUSHSEG
-.RODATA
 @fatal_errors:
 	.byte ERR_NO_ORIGIN
 @num_fatal_errors=*-@fatal_errors
-.POPSEG
 .endproc
 
 ;*******************************************************************************
@@ -202,7 +230,7 @@ numerrs: .byte 0
 
 	; get the filename and push it
 	lda errfileids,x
-	jsr dbgi::get_filename
+	CALLMAIN dbgi::get_filename
 	bcc :+
 	ldxy #strings::question_marks
 :	tya
@@ -211,7 +239,7 @@ numerrs: .byte 0
 	pha
 
 	ldxy #strings::edit_line_err
-	jsr text::render
+	RENDER_STR
 	rts
 .endproc
 
@@ -221,13 +249,13 @@ numerrs: .byte 0
 ; OUT:
 ;   - .XY: the line number of the next errror
 ;   - .Z:  set if no next error
-.export __errlog_next
-.proc __errlog_next
+.proc next
 @min=r0
 @found=r2
 @matchfile=r3
 @fileid=r4
-	jsr edit::currentfile
+	; edit::currentfile lives in MIDRAM (unreadable from this banked context)
+	CALLMAIN edit::currentfile
 	sta @fileid
 
 	ldxy #$ffff

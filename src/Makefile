@@ -12,6 +12,7 @@ X64=x64sc
 
 # name of the UltiMem flash image to produce
 CART_IMAGE=monster.bin
+CART_TOOL=make-ultimem-cart.py
 
 # name of the test suite flash image to produce
 TEST_IMAGE=test.bin
@@ -40,6 +41,9 @@ endif
 ifeq ($(TARGET),c64)
 LINK_FILE=link-c64
 EXP_SRC=
+# the c64 cart build produces a Magic Desk CRT
+CART_IMAGE=monster.crt
+CART_TOOL=make-magicdesk-crt.py
 # the c64 boots from disk; its boot image is written to the test disk
 BOOT_DEP=boot.prg
 BOOT_WRITE=-write boot.prg
@@ -90,10 +94,10 @@ monster-cart.prg: $(BOOTSRC) $(SRC)
 monster-cart-test.prg: $(BOOTSRC) $(SRC) $(UNIT)
 	$(CL65) -t $(TARGET) -o $@ --asm-define TEST --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $^ -Ln labels.txt -v -m map.txt
 
-# the linker output is already laid out bank-by-bank for the UltiMem's flash
-# (see the MEMORY areas in the link config); pad it to the full image size
+# the linker output is already laid out bank-by-bank for the target's flash
+# (see the MEMORY areas in the link config); pack it into the image format
 $(CART_IMAGE): monster-cart.prg
-	$(PYTHON) make-ultimem-cart.py $< $@
+	$(PYTHON) $(CART_TOOL) $< $@
 
 $(TEST_IMAGE): monster-cart-test.prg
 	$(PYTHON) make-ultimem-cart.py $< $@
@@ -115,6 +119,9 @@ test.d81: $(BOOT_DEP) $(TESTS) $(TEST_INCS) $(TEST_TXTS)
 
 start-disk-jiffy64: test.d81
 	$(X64) -default +warp -kernal JiffyDOS_C64.bin -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384  -moncommands moncommands -8 test.d81
+
+start-cart-c64: monster.crt test-disk
+	$(X64) -default -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384 -cartcrt monster.crt -moncommands moncommands -8 test.d81
 
 clean:
 	rm -f *.prg *.o test.d81 monster.d81

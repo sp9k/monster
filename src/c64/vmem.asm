@@ -10,6 +10,7 @@
 
 ;*******************************************************************************
 savexy: .word 0
+save01: .byte 0
 
 .CODE
 
@@ -25,6 +26,13 @@ savexy: .word 0
 .proc __vmem_load
 @tmp=zp::banktmp
 	stxy savexy
+
+	; translate and the prog00 buffer need all RAM visible (prog00 lives
+	; under the I/O space); callers may be in a banked context ($01=$37)
+	lda $01
+	sta save01
+	lda #$34
+	sta $01
 
 	jsr __vmem_translate
 	cmp #FINAL_BANK_MAIN
@@ -56,7 +64,11 @@ savexy: .word 0
 :	sta reu::reuaddr+2
 	jsr reu::load1
 
-@done:	ldx savexy
+@done:	pha
+	lda save01
+	sta $01			; restore caller's memory context
+	pla
+	ldx savexy
 	ldy savexy+1
 	clc
 	pha
@@ -102,6 +114,14 @@ savexy: .word 0
 	stxy savexy
 
 	pha
+
+	; translate and the prog00 buffer need all RAM visible (prog00 lives
+	; under the I/O space); callers may be in a banked context ($01=$37)
+	lda $01
+	sta save01
+	lda #$34
+	sta $01
+
 	jsr __vmem_translate
 	cmp #FINAL_BANK_MAIN
 	bne :+
@@ -117,7 +137,11 @@ savexy: .word 0
 	pla
 	jsr reu::store1
 
-@done:	ldxy savexy		; restore .XY
+@done:	pha
+	lda save01
+	sta $01			; restore caller's memory context
+	pla
+	ldxy savexy		; restore .XY
 	rts
 .endproc
 

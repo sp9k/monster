@@ -1,15 +1,16 @@
 .ifndef C64_RAM_INC
 C64_RAM_INC = 1
 
+.include "cartbanks.inc"
 .include "macros.inc"
 .include "reu.inc"
 
 .import __ram_call
+.import __ram_init
 
 ;*******************************************************************************
 ; BANKS
 ; These are the data banks for various logical components
-FINAL_BANK_EXPR         = $00
 FINAL_BANK_ROM0	        = $00
 FINAL_BANK_MAIN         = $00
 
@@ -35,26 +36,97 @@ FINAL_BANK_SYMVIEW      = $12
 FINAL_BANK_MONITOR      = $13
 FINAL_BANK_CTX          = $14
 FINAL_BANK_LOG          = $15
+FINAL_BANK_DBGUI        = $16
+FINAL_BANK_FILEDIR      = $17
+FINAL_BANK_ASM          = $18
+FINAL_BANK_EXPR         = $18
+FINAL_BANK_EDIT         = $19
 
-.macro CALLMAIN proc
-	jsr proc
+;*******************************************************************************
+; CUR_BANK
+; The logical bank (the top 8 bits of the 24-bit address space) that the code
+; currently being assembled runs from.  CALL/JUMP compare a target's bank
+; against this to decide whether a call is "near" (same bank -> emit a bare
+; jsr/jmp with no bank switching at all) or "far" (route through the __ram_call
+; trampoline, which switches the REU data bank and, on the cart build, the
+; cartridge ROM bank around the call and restores them afterwards).
+;
+; CUR_BANK is a redefinable (.set) symbol so that a module can declare its bank
+; once near the top of the file, and multi-bank modules can re-declare it before
+; each .segment they switch to.
+;
+; Defaults, chosen so that a module that has NOT opted in behaves exactly as it
+; did before this mechanism existed:
+;  - cart build: BANK_NONE, so every call stays far (the previous behavior was
+;    to always trampoline).  A module opts into near calls with its own
+;    `CUR_BANK .set FINAL_BANK_x`.
+;  - disk build: MAIN, since all code is resident there and only the REU data
+;    bank is ever switched.  This keeps CALLMAIN (and any same-bank call) a bare
+;    jsr, exactly as the old `.else jsr proc` path did.
+BANK_NONE = $ff
+.ifdef CART
+CUR_BANK .set BANK_NONE
+.else
+CUR_BANK .set FINAL_BANK_MAIN
+.endif
+
+;*******************************************************************************
+; SET_CUR_BANK
+; Declares the bank the following code runs from, so that same-bank CALL/JUMP
+; targets collapse to a bare jsr/jmp.  A no-op except on the c64 cart build: on
+; the disk build all code is resident (CUR_BANK stays MAIN) and on the vic20 the
+; c64 bank ids do not apply.  Put it right after the .segment/BANKED_CODE that
+; begins a banked body, and reset with `SET_CUR_BANK BANK_NONE` before any
+; resident (.CODE) block that follows.
+.macro SET_CUR_BANK bank
+.if .defined(CART)
+CUR_BANK .set bank
+.endif
 .endmacro
 
+;*******************************************************************************
+; CALL
+; Calls `proc`, whose code lives in logical bank `bank` (the top 8 bits of its
+; 24-bit address).  Near targets (bank == CUR_BANK) become a plain jsr; far
+; targets go through the trampoline.
 .macro CALL bank, proc
+; the :: forces global-scope lookup: inside a .proc an unqualified reference to
+; a file-scope constant is not resolved as a constant, which .if requires
+.if ::bank = ::CUR_BANK
+	jsr proc
+.else
 	jsr __ram_call
 	.byte bank
 	.word proc
+.endif
 .endmacro
 
+;*******************************************************************************
+; JUMP
+; Tail-call form of CALL (control returns to CALL's caller, not here).
 .macro JUMP bank, proc
+.if ::bank = ::CUR_BANK
+	jmp proc
+.else
 	jsr __ram_call
 	.byte bank
 	.word proc
 	rts
+.endif
+.endmacro
+
+;*******************************************************************************
+; CALLMAIN / JUMPMAIN
+; Convenience forms for targets in the MAIN bank (resident code, C64 RAM data).
+; These are just CALL/JUMP with an implicit MAIN bank: on the cart build a
+; banked caller trampolines into MAIN; a resident (MAIN) caller emits a bare
+; jsr/jmp; on the disk build everything is MAIN so they are always bare.
+.macro CALLMAIN proc
+	CALL FINAL_BANK_MAIN, proc
 .endmacro
 
 .macro JUMPMAIN proc
-	jmp proc
+	JUMP FINAL_BANK_MAIN, proc
 .endmacro
 
 ;*******************************************************************************

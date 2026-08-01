@@ -4,11 +4,27 @@
 .include "layout.inc"
 .include "macros.inc"
 .include "memory.inc"
+.include "ram.inc"
 .include "strings.inc"
 .include "util.inc"
 .include "zeropage.inc"
 
 .CODE
+;*******************************************************************************
+; MAIN-bank entry points
+.export __io_readerr
+.export __iec_seterr
+
+.if .defined(CART) .and .defined(c64)
+__io_readerr: JUMP FINAL_BANK_FILEDIR, readerr
+__iec_seterr: JUMP FINAL_BANK_FILEDIR, seterr
+.else
+__io_readerr = readerr
+__iec_seterr = seterr
+.endif
+
+BANKED_CODE "FILEDIR"
+	SET_CUR_BANK FINAL_BANK_FILEDIR
 
 ;*******************************************************************************
 ; READERR
@@ -16,8 +32,7 @@
 ; OUT:
 ;  - .X:             the error code
 ;  - mem::drive_err: the drive error message
-.export __io_readerr
-.proc __io_readerr
+.proc readerr
 @ch=rf
 	lda #$00		; no filename
 	tax
@@ -39,7 +54,7 @@
 	cmp #$05		; DEVICE NOT PRESENT?
 	bne :+
 	ldxy #strings::device_not_present
-	jmp __iec_seterr
+	jmp seterr
 :	sec
 	rts
 
@@ -77,8 +92,7 @@
 ; This is used to write messages to the drive error buffer directly.
 ; IN:
 ;   - .XY: the address of the 0-terminated string to write to the error buffer
-.export __iec_seterr
-.proc __iec_seterr
+.proc seterr
 @err=r0
 	stxy @err
 	ldy #$00

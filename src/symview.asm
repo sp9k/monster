@@ -57,6 +57,18 @@ sort_by_name_msg: .byte "f1 sort by name",0
 sort_by_addr_msg: .byte "f1 sort by addr",0
 
 .CODE
+;*******************************************************************************
+; MAIN-bank entry point
+.export __symview_enter
+
+.if .defined(CART) .and .defined(c64)
+__symview_enter: JUMP FINAL_BANK_DBGUI, enter
+.else
+__symview_enter = enter
+.endif
+
+BANKED_CODE "DBGUI"
+SET_CUR_BANK FINAL_BANK_DBGUI
 
 ;*******************************************************************************
 ; GET ITEM
@@ -77,11 +89,11 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 	beq @sortalpha
 
 @sortaddr:
-	jsr lbl::idbyaddrindex	; lookup via sorted addresses
+	CALLMAIN lbl::idbyaddrindex	; lookup via sorted addresses
 	jmp @getinfo
 
 @sortalpha:
-	jsr lbl::id_by_alpha_index
+	CALLMAIN lbl::id_by_alpha_index
 
 @getinfo:
 	stxy lbl			; store the ID for the label
@@ -94,18 +106,18 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 
 	lda #>$100
 	sta r0+1
-	jsr lbl::getname	; read the symbol name into buffer ($100)
+	CALLMAIN lbl::getname	; read the symbol name into buffer ($100)
 	ldxy lbl
-	jsr lbl::addr_and_mode	; get the symbol address
+	CALLMAIN lbl::addr_and_mode	; get the symbol address
 	stxy addr
 	sta mode
 
 	; TODO: use line/file directly stored on label struct
-	jsr dbgi::addr2line	; get file and line #
+	CALLMAIN dbgi::addr2line	; get file and line #
 	bcs @done		; if no mapping, skip
 				; (this will filter out constants)
 	stxy line
-	jsr dbgi::get_filename
+	CALLMAIN dbgi::get_filename
 	bcs @done
 	stxy filename
 @done:	rts
@@ -164,16 +176,16 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 	lda lbl+1
 	pha
 
+	RENDER_STR		; .XY = the rendered line
 	lda @row
-	jsr text::print
+	CALLMAIN text::print
 	rts
 .endproc
 
 ;*******************************************************************************
 ; ENTER
 ; Enters the symbol viewer.
-.export __symview_enter
-.proc __symview_enter
+.proc enter
 @scroll    = r8
 @row       = tmp
 @selection = tmp+1
@@ -199,7 +211,7 @@ sort_by_addr_msg: .byte "f1 sort by addr",0
 	beq :+
 	ldxy #sort_by_name_msg
 :	lda #HEIGHT
-	jsr text::print
+	CALLMAIN text::print
 
 	lda lbl::num
 	ora lbl::num+1

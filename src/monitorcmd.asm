@@ -46,6 +46,7 @@ MAX_EXPR_LIST = 32
 exprlist: .res MAX_EXPR_LIST
 
 .segment "CONSOLE"
+SET_CUR_BANK FINAL_BANK_MONITOR
 
 ;*******************************************************************************
 ; DBGCMD RUN

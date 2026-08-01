@@ -168,6 +168,44 @@ __debug_breakpoint_flags:
 breakpoint_flags: .res MAX_BREAKPOINTS ; active state of breakpoints
 breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
+.CODE
+;*******************************************************************************
+; MAIN-bank entry points for the cold UI/logic
+.export __debug_gotoaddr
+.export __debug_load_file
+.export __debug_update_pc_view
+.export __debug_setbrkatline
+.export __debug_setbrkataddr
+.export __debug_brksetaddr
+.export __debug_remove_breakpoint
+.export __debug_removebreakpointbyid
+
+.if .defined(CART) .and .defined(c64)
+__debug_gotoaddr:             JUMP FINAL_BANK_DBGUI, gotoaddr
+__debug_load_file:            JUMP FINAL_BANK_DBGUI, loadfile
+__debug_update_pc_view:       JUMP FINAL_BANK_DBGUI, update_pc_view
+__debug_setbrkatline:         JUMP FINAL_BANK_DBGUI, setbrkatline
+__debug_setbrkataddr:         JUMP FINAL_BANK_DBGUI, setbrkataddr
+__debug_brksetaddr:           JUMP FINAL_BANK_DBGUI, brksetaddr
+__debug_remove_breakpoint:    JUMP FINAL_BANK_DBGUI, remove_breakpoint
+__debug_removebreakpointbyid: JUMP FINAL_BANK_DBGUI, removebreakpointbyid
+edit_state_vec:               JUMP FINAL_BANK_DBGUI, edit_state
+showstate_vec:                JUMP FINAL_BANK_DBGUI, showstate
+safety_check_vec:             JUMP FINAL_BANK_DBGUI, safety_check
+.else
+__debug_gotoaddr             = gotoaddr
+__debug_load_file            = loadfile
+__debug_update_pc_view       = update_pc_view
+__debug_setbrkatline         = setbrkatline
+__debug_setbrkataddr         = setbrkataddr
+__debug_brksetaddr           = brksetaddr
+__debug_remove_breakpoint    = remove_breakpoint
+__debug_removebreakpointbyid = removebreakpointbyid
+edit_state_vec               = edit_state
+showstate_vec                = showstate
+safety_check_vec             = safety_check
+.endif
+
 .ifdef ultimem
 .segment "DEBUGGER"
 .else
@@ -475,7 +513,7 @@ blank   = scr::blank
 	lda gui::cursave_y
 	sta zp::cury
 
-	jsr showstate		; show regs/BRK message below the window
+	jsr showstate_vec	; show regs/BRK message below the window
 	jsr gui::enter		; give focus to the active window
 
 	; focus returned to the editor; if the monitor didn't already switch
@@ -511,7 +549,7 @@ blank   = scr::blank
 	jsr edit::sethighlight
 	inc lineset
 
-@print:	jsr showstate		; show regs/BRK message
+@print:	jsr showstate_vec	; show regs/BRK message
 	jsr cur::on
 
 ; main (graphical) debug loop
@@ -565,54 +603,12 @@ blank   = scr::blank
 .endproc
 
 ;*******************************************************************************
-; LOAD_FILE
-; Loads the file (in the editor) for the given filename
-; IN:
-;  - .A: the file (as returned from dbgi::addr2line)
-; OUT:
-;  - .C: set if the file couldn't be opened
-.export __debug_load_file
-.proc __debug_load_file
-	jsr dbgi::get_filename
-	bcc :+
-	rts
-:	jmp edit::load
-.endproc
-
-;*******************************************************************************
 ; GOTO PC
 ; Navigates the editor to the line that corresponds to the address where the
 ; debugger is currently at in the user program.
 .proc goto_pc
-.endproc
 	ldxy sim::pc
-
-	; fall through to __debug_gotoaddr
-
-;*******************************************************************************
-; GOTOADDR
-; Navigates the editor to the file/line associated with the give address
-; IN:
-;  - .XY: the address to "goto"
-; OUT:
-;  - .C:  set on failure (no line/file could be matched with given address)
-;  - .XY: the line that was navigated to
-.export __debug_gotoaddr
-.proc __debug_gotoaddr
-@line=debugtmp+2
-	jsr dbgi::addr2line	; get the line #
-	bcs @done		; error
-	sta dbgi::file
-	stxy @line
-	jsr __debug_load_file	; load file (if not already)
-	bcs @done		; error
-
-	ldxy @line
-	jsr edit::gotoline
-	ldxy @line
-	clc			; ok
-@done:
-:	rts			; <- __debug_go
+	jmp __debug_gotoaddr
 .endproc
 
 ;*******************************************************************************
@@ -622,13 +618,14 @@ blank   = scr::blank
 .proc __debug_go
 	; run one step to get over breakpoint (if we're on one)
 	jsr step
-	bcs :-		; failed to execute next instruction -> rts
+	bcs @done	; failed to execute next instruction -> rts
 
 	jsr install_breakpoints
 
 	lda #$00
 	sta __debug_sw_valid
 	jmp run::go
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -638,10 +635,11 @@ blank   = scr::blank
 	ldxy sim::pc
 	jsr edit::currentfile	; get current line # (.XY) and file ID (.A)
 	jsr dbgi::line2addr
-	bcs :-			; couldn't resolve address -> RTS
+	bcs @done		; couldn't resolve address -> RTS
 	stxy sim::pc
 	jsr __debug_gotoaddr
 	jmp edit::sethighlight
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -711,7 +709,7 @@ blank   = scr::blank
 	jsr trace_done		; swap the user's memory back out
 	plp
 	bcc @done		; user interrupt -> continue
-	jsr safety_check	; check if JAM, BRK, etc. occurred
+	jsr safety_check_vec	; check if JAM, BRK, etc. occurred
 
 @done: ; refresh watch values so any that changed are marked dirty ('!')
 	jsr watch::update
@@ -786,7 +784,7 @@ blank   = scr::blank
 ; EDIT MEM
 ; Transfers control to the memory viewer/editor until the user exits it
 .proc edit_mem
-	jsr showstate		; restore the state
+	jsr showstate_vec	; restore the state
 	jmp view::edit
 .endproc
 
@@ -794,7 +792,7 @@ blank   = scr::blank
 ; EDIT BREAKPOINTS
 ; Transfers control to the breakpoint viewer/editor until the user exits it
 .proc edit_breakpoints
-	jsr showstate		; restore the state
+	jsr showstate_vec	; restore the state
 	jmp brkpt::edit
 .endproc
 
@@ -803,7 +801,7 @@ blank   = scr::blank
 ; Transfers control to the watch viewer/editor until the user exits it
 .export __debug_edit_watches
 .proc __debug_edit_watches
-	jsr showstate		; restore the state
+	jsr showstate_vec	; restore the state
 	jmp watch::edit
 .endproc
 
@@ -932,157 +930,11 @@ __debug_step:
 	bcc @done		; if ok, continue
 
 	; display the error explaining why we couldn't STEP
-	jsr safety_check
+	jsr safety_check_vec
 	sec			; flag that traces should stop
 	rts
 
 @done:	RETURN_OK		; return to the debugger
-.endproc
-
-;*******************************************************************************
-; SAFETY CHECK
-; Checks if the CPU will be jammed after executing the next instruction or if
-; a critical memory location will be clobbered.
-.proc safety_check
-	lda sim::at_brk
-	beq :+
-	; if at breakpoint, just exit as normal
-	sec
-	rts
-
-:	; is the next instruction a JAM?
-	lda sim::jammed
-	bne jam_detected
-
-	; does the next instruction write to memory?
-	lda sim::vital_addr_clobbered
-	beq @chkillegal
-
-	; an important memory location will be clobbered, print error
-	lda sim::effective_addr
-	pha
-	lda sim::effective_addr+1
-	pha
-	ldx #<strings::vital_addr_clobber
-	ldy #>strings::vital_addr_clobber
-	bne print_msg
-
-@chkillegal:
-	lda sim::illegal	; did we hit an undocumented opcode?
-	bne illegal_detected
-
-@watch:	jmp watch_triggered	; if nothing else, watch must have triggered
-.endproc
-
-;*******************************************************************************
-; JAM DETECTED
-; This procedure is called when STEP (via step, trace, etc.) encounters a JAM
-; instruction
-.proc jam_detected
-	ldx #<strings::jam_detected
-	ldy #>strings::jam_detected
-	bne print_msg			; branch always
-.endproc
-
-;*******************************************************************************
-; WATCH TRIGGERED
-; This procedure is called when STEP (via step, trace, etc.) reads/writes to a
-; memory location that is being watched
-.proc watch_triggered
-.ifdef ultimem
-	jsr trace_done		; if user memory is swapped in, swap it out
-.endif
-	; disassemble the instruction that did the access (into $0100)
-	lda #$00
-	sta r0
-	lda #$01
-	sta r0+1
-	ldxy sim::prev_pc
-	lda #$00			; disassemble to string
-	jsr asm::disassemble
-	ldxy #$0100
-	bcc :+
-	ldxy #strings::question_marks	; couldn't disassemble
-
-:	tya
-	pha				; instruction string (hi)
-	txa
-	pha				; instruction string (lo)
-
-	; push "load" or "store" based on the type of access
-	ldxy #@load
-	lda sim::affected
-	and #OP_STORE
-	beq :+
-	ldxy #@store
-:	tya
-	pha
-	txa
-	pha
-
-	; push the value that was loaded/stored
-	lda sim::effective_val
-	pha
-
-	; push the address that was accessed
-	lda sim::effective_addr
-	pha
-	lda sim::effective_addr+1
-	pha
-
-	; "watch @ $<address>=<value> <load/store> <instruction>"
-	ldxy #strings::watch_triggered
-
-	; fall through to print_msg
-
-.PUSHSEG
-.RODATA
-@load:	.byte "load",0
-@store:	.byte "store",0
-.POPSEG
-.endproc
-
-;*******************************************************************************
-; PRINT MSG
-; Prints a message for the TUI or GUI (whichever is active)
-; IN:
-;   - .XY: the message to print
-; OUT:
-;   - .C: set (flags routines that autorun to stop so user can see message)
-.proc print_msg
-.ifdef ultimem
-	jsr trace_done		; if user memory is swapped in, swap it out
-.endif
-	jsr text::render	; render any escapes/arguments in the message
-	lda __debug_interface
-	beq @gui
-
-@tui:	CALL FINAL_BANK_MONITOR, mon::puts
-	sec
-	rts
-
-@gui:	; record the message in the monitor as well so it is visible there
-	; the next time the monitor is opened
-	CALL FINAL_BANK_MONITOR, mon::log
-
-	ldxy #mem::linebuffer2	; the rendered message (text::render output)
-	lda #REGISTERS_LINE-1
-	jsr text::print
-	jsr scr::clrcolor
-	jsr key::waitch		; wait for keypress
-	sec
-	rts
-.endproc
-
-;*******************************************************************************
-; ILLEGAL DETECTED
-; Prints a message that an illegal opcode was detected and waits for
-; user input
-.proc illegal_detected
-	; illegal instruction detected, give a warning
-	ldx #<strings::illegal_detected
-	ldy #>strings::illegal_detected
-	bne print_msg			 ; branch always
 .endproc
 
 ;*******************************************************************************
@@ -1126,6 +978,10 @@ __debug_step:
 @done:	pla
 	rts
 .endproc
+.else
+.proc trace_done
+	rts
+.endproc
 .endif
 
 ;*******************************************************************************
@@ -1143,169 +999,6 @@ __debug_step:
 	jsr bsp::save_prog_visual
 	jmp bsp::restore_debug_visual
 .endif
-.endproc
-
-;*******************************************************************************
-; SETBRKATLINE
-; Sets a breakpoint at the given line.  If there's already a breakpoint there
-; or there are not enough remaining breakpoints free, does nothing.
-; IN:
-;  - .XY: the line number to set the breakpoint at
-;  - .A:  the file ID to set the breakpoint in
-; OUT:
-;  - .C: set if there are too many breakpoints to add a new one
-;  - .A: the ID of the breakpoint that was added
-.export __debug_setbrkatline
-.proc __debug_setbrkatline
-@line=r0
-	pha				; save file ID
-	stxy @line
-
-	; does the breakpoint already exist?
-	jsr brkpt::getbyline		; get breakpoint # in .X
-	bcs :+				; if no existing breakpoint, continue
-	pla				; clean up saved file ID
-	clc				; there's already a breakpoint here
-	rts
-
-:	; store the line #
-	ldx __debug_numbreakpoints
-	pla				; restore file ID
-	cpx #MAX_BREAKPOINTS
-	bcs @done			; too many breakpoints
-
-	sta __debug_breakpoint_fileids,x
-	lda @line
-	sta __debug_breakpoint_lineslo,x
-	lda @line+1
-	sta __debug_breakpoint_lineshi,x
-	lda #BREAKPOINT_ENABLED
-	sta breakpoint_flags,x
-
-	lda __debug_numbreakpoints
-	inc __debug_numbreakpoints
-	clc
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; SETBRKATADDR
-; Sets a breakpoint at the given address.
-; This can be used while debugging to set breakpoints at addresses directly,
-; even if they don't correspond to a line or file
-; IN:
-;  - .XY: the address to set the breakpoint at
-; OUT:
-;  - .C: set if there are too many breakpoints to add a new one
-.export __debug_setbrkataddr
-.proc __debug_setbrkataddr
-	lda __debug_numbreakpoints
-	cmp #MAX_BREAKPOINTS
-	bcs @done			; too many breakpoints
-
-	txa
-	ldx __debug_numbreakpoints
-	sta breakpointslo,x
-	tya
-	sta breakpointshi,x
-
-	lda #BREAKPOINT_ENABLED
-	sta breakpoint_flags,x
-
-	; set file ID to $ff
-	lda #$ff
-	sta __debug_breakpoint_fileids,x
-
-	inc __debug_numbreakpoints
-	clc
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; BRKSETADDR
-; Replaces the address for the given (existing) breakpoint.
-; If no matching breakpoint is found, does nothing
-; IN:
-;   - .XY: the line # of the breakpoint to set the address for
-;   - .A:  the file ID for the breakpoint to set
-;   - r0:  the address to store for the breakpoint
-; OUT:
-;   - .C: set if there is no breakpoint at the given line/file
-.export __debug_brksetaddr
-.proc __debug_brksetaddr
-@addr=r0
-	jsr brkpt::getbyline	; get breakpoint # in .X
-	bcs @done		; no match
-
-@found:	; store address
-	lda @addr
-	sta breakpointslo,x
-	lda @addr+1
-	sta breakpointshi,x
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; REMOVEBREAKPOINT
-; Removes a breakpoint at the address in .XY
-; IN:
-;  - .XY: the address of the breakpoint to remove
-; OUT:
-;  - .C: set if breakpoint doesn't exist
-.export __debug_remove_breakpoint
-__debug_remove_breakpoint:
-.proc remove_breakpoint
-	jsr get_breakpoint
-	bcs :+			; no breakpoint to remove -> rts
-
-	tax
-	; fall through to removebreakpointbyid
-.endproc
-
-;*******************************************************************************
-; REMOVEBREAKPOINTBYID
-; Removes the ID with the given handle.
-; IN:
-;  - .X: the breakpoint to remove
-; OUT:
-;  - .C: set if no breakpoint was removed
-.export __debug_removebreakpointbyid
-.proc __debug_removebreakpointbyid
-@addr=debugtmp
-@data=debugtmp+2
-@id=debugtmp+4
-	cpx __debug_numbreakpoints
-	bcs :+				; no breakpoint of given ID
-
-	stx @id
-	ldxy #breakpoint_data
-	stxy @data
-
-	ldx #NUM_BREAKPOINT_TABLES
-
-	; shift breakpoints down
-@l0:	ldy @id
-	iny
-@l1:	lda (@data),y
-	dey
-	sta (@data),y
-	iny
-	iny
-	cpy __debug_numbreakpoints
-	bcc @l1
-
-	lda @data
-	; sec
-	adc #MAX_BREAKPOINTS-1
-	sta @data
-	bcc @next
-	inc @data+1
-
-@next:	dex
-	bne @l0
-	dec __debug_numbreakpoints
-@done:	clc
-:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1386,276 +1079,6 @@ __debug_remove_breakpoint:
 .endproc
 
 ;*******************************************************************************
-; GET BREAKPOINT
-; Returns the ID (index) of the breakpoint corresponding to the given address
-; IN:
-;  - .XY: the address of the breakpoint to get the ID of
-; OUT:
-;  - .C: set if no breakpoint is found
-;  - .A: the id of the breakpoint
-.proc get_breakpoint
-@addr=r0
-	stxy @addr
-	ldx __debug_numbreakpoints
-	beq @notfound
-	dex			; last valid index is numbreakpoints-1
-@l0:	lda @addr
-	cmp breakpointslo,x
-	bne @next
-	lda @addr+1
-	cmp breakpointshi,x
-	beq @found
-@next:	dex
-	bpl @l0
-
-@notfound:
-	ldxy @addr
-	sec
-	rts		; not found
-
-@found: txa
-	RETURN_OK
-.endproc
-
-;*******************************************************************************
-; EDIT STATE
-; Moves the cursor to the registers area and allows the user to modify
-; their values with hex input
-.proc edit_state
-	pushcur
-	lda #$00
-	sta zp::curx
-	lda #REGISTERS_LINE+1
-	sta zp::cury
-
-	jsr showstate		; fill linebuffer with register state
-
-@edit:	jsr cur::on
-	jsr key::waitch
-	pha
-	jsr cur::off
-	pla
-
-	jsr key::isleft
-	beq @back
-	cmp #K_DEL
-	bne @ret
-@back:	lda zp::curx
-	beq @edit		; can't move LEFT
-	dec zp::curx
-	ldx #@numoffsets-1
-@prevx:	cmp @offsets,x		; was cursor at start of offset?
-	bcc @prev		; if cursor is < offset, check prev offset
-	bne @ok			; if it was NOT at offset start, it is now
-	lda @offsets-1,x
-	adc #$00		; +1
-	sta zp::curx
-	jmp @refresh
-@prev:	dex
-	bpl @prevx
-	bmi @edit
-
-@ret:	cmp #K_RETURN
-	beq @updatevals
-@quit:	cmp #K_QUIT
-	beq @exit
-@right:	jsr key::isright
-	beq @fwd
-
-@hex:	jsr key::ishex
-	bcc @refresh
-
-	ldx zp::curx
-	sta mem::linebuffer2,x
-
-@fwd:   lda zp::curx
-	cmp #REG_SP_OFFSET+1	; check offset
-	bcs @refresh		; if already at last column, don't advance
-	inc zp::curx		; bump up curx
-	ldx #$00
-; align x-position to either a value in @offsets or a value in @offests+1
-@nextx:	cmp @offsets,x		; was X at the start of the offset?
-	beq @refresh		; if so, incrementing it by 1 was sufficient
-	bcs @next		; if X
-@ok:	lda @offsets,x		; if @offsets,x <= curx, set curx to it
-	sta zp::curx
-	jmp @refresh
-@next:	inx
-	cpx #@numoffsets
-	bne @nextx
-
-@refresh:
-	lda #REGISTERS_LINE+1
-	ldxy #mem::linebuffer2
-	jsr text::print
-	jmp @edit
-
-;--------------------------------------
-; parse the linebuffer2 and update all registers
-@updatevals:
-@val=r0
-	ldxy #mem::linebuffer2
-	stxy @val
-
-	ldx #@numoffsets-1
-@l0:	ldy @offsets,x
-	lda (@val),y
-	jsr util::chtohex	; get MSB
-	asl
-	asl
-	asl
-	asl
-	sta sim::register_state,x
-
-	iny
-	lda (@val),y		; get LSB
-	jsr util::chtohex
-	ora sim::register_state,x
-	sta sim::register_state,x
-
-	dex
-	bpl @l0
-
-	; swap PC LSB and MSB
-	ldx sim::pc
-	lda sim::pc+1
-	sta sim::pc
-	stx sim::pc+1
-
-@exit:	popcur
-	rts
-
-;--------------------------------------
-.PUSHSEG
-.RODATA
-@offsets:
-.byte REG_PC_OFFSET, REG_PC_OFFSET+2, REG_A_OFFSET, REG_X_OFFSET, REG_Y_OFFSET
-.byte REG_SP_OFFSET
-@numoffsets=*-@offsets
-.POPSEG
-.endproc
-
-;*******************************************************************************
-; SHOWSTATE
-; Shows the current debug state (registers and BRK line)
-.proc showstate
-	jsr showbrk
-
-	; fall through to showregs
-.endproc
-
-;*******************************************************************************
-; SHOWREGS
-; prints the contents of the registers in the format
-;   PC  A  X  Y  SP NV-BDIZC ADDR
-;  f59c 02 02 00 f7 00100000 1003
-.proc showregs
-	; display the register names
-	ldxy #strings::debug_registers
-	lda #REGISTERS_LINE
-	jsr text::print
-
-	jsr ui::regs_contents
-
-.ifndef hard8x8
-	lda #REGISTERS_LINE+1
-	jsr text::print
-.else
-	lda #$00
-	sta mem::linebuffer2+16	; break the register contents line
-	lda #REGISTERS_LINE+1
-	jsr text::print
-
-	ldxy #strings::debug_registers2
-	lda #REGISTERS_LINE+2
-	jsr text::print
-
-	jsr ui::regs_contents
-	ldxy #mem::linebuffer2+17
-	lda #REGISTERS_LINE+3
-	jsr text::print
-.endif
-
-	lda show_extended_state
-	bne show_machine_state
-	rts
-.endproc
-
-;*******************************************************************************
-; SHOW MACHINE STATE
-; prints auxiliary (platform specific) state of the machine
-.proc show_machine_state
-	ldxy #strings::machine_state
-	lda #REGISTERS_LINE-2
-	jsr text::print
-
-	jsr ui::machine_state
-	lda #REGISTERS_LINE-1
-	jmp text::print
-.endproc
-
-;*******************************************************************************
-; SHOWBRK
-; Display the BRK line number or address
-.proc showbrk
-	lda lineset		; is the line # known?
-	bne @showline		; if so, show it
-
-@showaddr:
-	; push the address we will disassemble into
-	lda #$01
-	sta r0+1
-	pha
-
-	lda #$00
-	sta r0
-	pha
-
-	; we couldn't find the line #; display 6ke address of the BRK
-
-	ldxy sim::pc
-	lda #$00		; disassemble to string
-	jsr asm::disassemble
-	bcc :+
-
-	; couldn't disassemble (illegal opcode?), just get the hex value for
-	; the byte
-	ldxy sim::pc
-	jsr vmem::load
-	jsr util::hextostr
-	sty $100
-	stx $101
-	lda #$00
-	sta $102
-
-:	lda sim::pc
-	pha
-	lda sim::pc+1
-	pha
-	ldxy #strings::debug_brk_addr
-	jmp @print
-
-@showline:
-	; display the BRK message
-	lda edit::highlight_line	; push line #
-	pha
-	lda edit::highlight_line+1
-	pha
-
-	lda dbgi::file
-	jsr dbgi::get_filename
-	tya
-	pha
-	txa
-	pha
-
-	ldxy #strings::debug_brk_line
-@print:	lda edit::status_row
-	jsr text::print		; break in line <line #>
-	rts
-.endproc
-
-;*******************************************************************************
 ; SHOW AUX
 ; Redraws any open windows (memory viewer, breakpoint viewer, monitor, etc.)
 .proc show_aux
@@ -1694,30 +1117,6 @@ __debug_remove_breakpoint:
 	jsr bsp::save_debug_state
 	ldxy #mon::window
 	jmp gui::open
-.endproc
-
-;*******************************************************************************
-; UPDATE PC VIEW
-; If the monitor window is open, updates the source view above it to show
-; (and highlight) the line that maps to the current PC.
-; Called when stepping/resuming from the monitor so that the source view
-; follows the code being debugged, as it does in the GUI interface.
-.export __debug_update_pc_view
-.proc __debug_update_pc_view
-	lda mon::windowed
-	beq @done		; monitor window not open; no view to update
-	lda zp::editor_height
-	cmp #$ff
-	beq @done		; the window covers the source view
-
-	; highlight the selected line
-	jsr cur::off
-	ldxy sim::pc
-	jsr __debug_gotoaddr	; navigate to the line of the new PC
-	bcs @done		; no line matches the address
-	jsr edit::sethighlight
-	inc lineset
-@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1817,16 +1216,23 @@ __debug_remove_breakpoint:
 
 .else
 	ldx #$00
-:	lda prog00,x
+@l0:	lda prog00,x
+.ifdef c64
+	; don't write $00/$01: storing the user's $01 switches the memory
+	; map mid-loop and the remaining reads hit I/O instead of prog00.
+	; The trampoline applies the user's $00/$01 (c64/runtime.asm)
+	cpx #$02
+	bcc @hi
+.endif
 	sta $00,x
-	lda prog00+$100,x
+@hi:	lda prog00+$100,x
 	sta $100,x
 	lda prog00+$200,x
 	sta $200,x
 	lda prog00+$300,x
 	sta $300,x
 	dex
-	bne :-
+	bne @l0
 	jmp (@ret)
 .endif
 .endproc
@@ -1944,6 +1350,647 @@ __debug_remove_breakpoint:
 	jmp (@ret)
 .endproc
 
+;*******************************************************************************
+; BANKED DEBUG UI
+; Cold UI/logic; on the c64 cart build this runs from its own ROM bank 12
+.segment "DBGUI"
+
+;*******************************************************************************
+; LOAD_FILE
+; Loads the file (in the editor) for the given filename
+; IN:
+;  - .A: the file (as returned from dbgi::addr2line)
+; OUT:
+;  - .C: set if the file couldn't be opened
+.proc loadfile
+	CALLMAIN dbgi::get_filename
+	bcc :+
+	rts
+:	JUMPMAIN edit::load
+.endproc
+
+;*******************************************************************************
+; GOTOADDR
+; Navigates the editor to the file/line associated with the give address
+; IN:
+;  - .XY: the address to "goto"
+; OUT:
+;  - .C:  set on failure (no line/file could be matched with given address)
+;  - .XY: the line that was navigated to
+.proc gotoaddr
+@line=debugtmp+2
+	CALLMAIN dbgi::addr2line	; get the line #
+	bcs @done		; error
+	sta dbgi::file
+	stxy @line
+	jsr loadfile		; load file (if not already)
+	bcs @done		; error
+
+	ldxy @line
+	CALLMAIN edit::gotoline
+	ldxy @line
+	clc			; ok
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; UPDATE PC VIEW
+; If the monitor window is open, updates the source view above it to show
+; (and highlight) the line that maps to the current PC.
+; Called when stepping/resuming from the monitor so that the source view
+; follows the code being debugged, as it does in the GUI interface.
+.proc update_pc_view
+	lda mon::windowed
+	beq @done		; monitor window not open; no view to update
+	lda zp::editor_height
+	cmp #$ff
+	beq @done		; the window covers the source view
+
+	; highlight the selected line
+	jsr cur::off
+	ldxy sim::pc
+	jsr gotoaddr		; navigate to the line of the new PC
+	bcs @done		; no line matches the address
+	CALLMAIN edit::sethighlight
+	inc lineset
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; SETBRKATLINE
+; Sets a breakpoint at the given line.  If there's already a breakpoint there
+; or there are not enough remaining breakpoints free, does nothing.
+; IN:
+;  - .XY: the line number to set the breakpoint at
+;  - .A:  the file ID to set the breakpoint in
+; OUT:
+;  - .C: set if there are too many breakpoints to add a new one
+;  - .A: the ID of the breakpoint that was added
+.proc setbrkatline
+@line=r0
+	pha				; save file ID
+	stxy @line
+
+	; does the breakpoint already exist?
+	jsr brkpt::getbyline		; get breakpoint # in .X
+	bcs :+				; if no existing breakpoint, continue
+	pla				; clean up saved file ID
+	clc				; there's already a breakpoint here
+	rts
+
+:	; store the line #
+	ldx __debug_numbreakpoints
+	pla				; restore file ID
+	cpx #MAX_BREAKPOINTS
+	bcs @done			; too many breakpoints
+
+	sta __debug_breakpoint_fileids,x
+	lda @line
+	sta __debug_breakpoint_lineslo,x
+	lda @line+1
+	sta __debug_breakpoint_lineshi,x
+	lda #BREAKPOINT_ENABLED
+	sta breakpoint_flags,x
+
+	lda __debug_numbreakpoints
+	inc __debug_numbreakpoints
+	clc
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; SETBRKATADDR
+; Sets a breakpoint at the given address.
+; This can be used while debugging to set breakpoints at addresses directly,
+; even if they don't correspond to a line or file
+; IN:
+;  - .XY: the address to set the breakpoint at
+; OUT:
+;  - .C: set if there are too many breakpoints to add a new one
+.proc setbrkataddr
+	lda __debug_numbreakpoints
+	cmp #MAX_BREAKPOINTS
+	bcs @done			; too many breakpoints
+
+	txa
+	ldx __debug_numbreakpoints
+	sta breakpointslo,x
+	tya
+	sta breakpointshi,x
+
+	lda #BREAKPOINT_ENABLED
+	sta breakpoint_flags,x
+
+	; set file ID to $ff
+	lda #$ff
+	sta __debug_breakpoint_fileids,x
+
+	inc __debug_numbreakpoints
+	clc
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; BRKSETADDR
+; Replaces the address for the given (existing) breakpoint.
+; If no matching breakpoint is found, does nothing
+; IN:
+;   - .XY: the line # of the breakpoint to set the address for
+;   - .A:  the file ID for the breakpoint to set
+;   - r0:  the address to store for the breakpoint
+; OUT:
+;   - .C: set if there is no breakpoint at the given line/file
+.proc brksetaddr
+@addr=r0
+	jsr brkpt::getbyline	; get breakpoint # in .X
+	bcs @done		; no match
+
+@found:	; store address
+	lda @addr
+	sta breakpointslo,x
+	lda @addr+1
+	sta breakpointshi,x
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; REMOVEBREAKPOINT
+; Removes a breakpoint at the address in .XY
+; IN:
+;  - .XY: the address of the breakpoint to remove
+; OUT:
+;  - .C: set if breakpoint doesn't exist
+.proc remove_breakpoint
+	jsr get_breakpoint
+	bcs :+			; no breakpoint to remove -> rts
+
+	tax
+	; fall through to removebreakpointbyid
+.endproc
+
+;*******************************************************************************
+; REMOVEBREAKPOINTBYID
+; Removes the ID with the given handle.
+; IN:
+;  - .X: the breakpoint to remove
+; OUT:
+;  - .C: set if no breakpoint was removed
+.proc removebreakpointbyid
+@addr=debugtmp
+@data=debugtmp+2
+@id=debugtmp+4
+	cpx __debug_numbreakpoints
+	bcs :+				; no breakpoint of given ID
+
+	stx @id
+	ldxy #breakpoint_data
+	stxy @data
+
+	ldx #NUM_BREAKPOINT_TABLES
+
+	; shift breakpoints down
+@l0:	ldy @id
+	iny
+@l1:	lda (@data),y
+	dey
+	sta (@data),y
+	iny
+	iny
+	cpy __debug_numbreakpoints
+	bcc @l1
+
+	lda @data
+	; sec
+	adc #MAX_BREAKPOINTS-1
+	sta @data
+	bcc @next
+	inc @data+1
+
+@next:	dex
+	bne @l0
+	dec __debug_numbreakpoints
+@done:	clc
+:	rts
+.endproc
+
+;*******************************************************************************
+; GET BREAKPOINT
+; Returns the ID (index) of the breakpoint corresponding to the given address
+; IN:
+;  - .XY: the address of the breakpoint to get the ID of
+; OUT:
+;  - .C: set if no breakpoint is found
+;  - .A: the id of the breakpoint
+.proc get_breakpoint
+@addr=r0
+	stxy @addr
+	ldx __debug_numbreakpoints
+	beq @notfound
+	dex			; last valid index is numbreakpoints-1
+@l0:	lda @addr
+	cmp breakpointslo,x
+	bne @next
+	lda @addr+1
+	cmp breakpointshi,x
+	beq @found
+@next:	dex
+	bpl @l0
+
+@notfound:
+	ldxy @addr
+	sec
+	rts		; not found
+
+@found: txa
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; SAFETY CHECK
+; Checks if the CPU will be jammed after executing the next instruction or if
+; a critical memory location will be clobbered.
+.proc safety_check
+	lda sim::at_brk
+	beq :+
+	; if at breakpoint, just exit as normal
+	sec
+	rts
+
+:	; is the next instruction a JAM?
+	lda sim::jammed
+	bne jam_detected
+
+	; does the next instruction write to memory?
+	lda sim::vital_addr_clobbered
+	beq @chkillegal
+
+	; an important memory location will be clobbered, print error
+	lda sim::effective_addr
+	pha
+	lda sim::effective_addr+1
+	pha
+	ldx #<strings::vital_addr_clobber
+	ldy #>strings::vital_addr_clobber
+	bne print_msg
+
+@chkillegal:
+	lda sim::illegal	; did we hit an undocumented opcode?
+	bne illegal_detected
+
+@watch:	jmp watch_triggered	; if nothing else, watch must have triggered
+.endproc
+
+;*******************************************************************************
+; JAM DETECTED
+; This procedure is called when STEP (via step, trace, etc.) encounters a JAM
+; instruction
+.proc jam_detected
+	ldx #<strings::jam_detected
+	ldy #>strings::jam_detected
+	bne print_msg			; branch always
+.endproc
+
+;*******************************************************************************
+; ILLEGAL DETECTED
+; Prints a message that an illegal opcode was detected and waits for
+; user input
+.proc illegal_detected
+	; illegal instruction detected, give a warning
+	ldx #<strings::illegal_detected
+	ldy #>strings::illegal_detected
+	bne print_msg			 ; branch always
+.endproc
+
+;*******************************************************************************
+; WATCH TRIGGERED
+; This procedure is called when STEP (via step, trace, etc.) reads/writes to a
+; memory location that is being watched
+.proc watch_triggered
+.ifdef ultimem
+	jsr trace_done		; if user memory is swapped in, swap it out
+.endif
+	; disassemble the instruction that did the access (into $0100)
+	lda #$00
+	sta r0
+	lda #$01
+	sta r0+1
+	ldxy sim::prev_pc
+	lda #$00			; disassemble to string
+	CALLMAIN asm::disassemble
+	ldxy #$0100
+	bcc :+
+	ldxy #strings::question_marks	; couldn't disassemble
+
+:	tya
+	pha				; instruction string (hi)
+	txa
+	pha				; instruction string (lo)
+
+	; push "load" or "store" based on the type of access
+	ldxy #@load
+	lda sim::affected
+	and #OP_STORE
+	beq :+
+	ldxy #@store
+:	tya
+	pha
+	txa
+	pha
+
+	; push the value that was loaded/stored
+	lda sim::effective_val
+	pha
+
+	; push the address that was accessed
+	lda sim::effective_addr
+	pha
+	lda sim::effective_addr+1
+	pha
+
+	; "watch @ $<address>=<value> <load/store> <instruction>"
+	ldxy #strings::watch_triggered
+
+	; fall through to print_msg
+
+; these strings are only dereferenced by text::render (from the MAIN bank),
+; so they must live in memory the MAIN bank can see
+.PUSHSEG
+.RODATA
+@load:	.byte "load",0
+@store:	.byte "store",0
+.POPSEG
+.endproc
+
+;*******************************************************************************
+; PRINT MSG
+; Prints a message for the TUI or GUI (whichever is active)
+; IN:
+;   - .XY: the message to print
+; OUT:
+;   - .C: set (flags routines that autorun to stop so user can see message)
+.proc print_msg
+.ifdef ultimem
+	jsr trace_done		; if user memory is swapped in, swap it out
+.endif
+	RENDER_STR		; render any escapes/arguments in the message
+	lda __debug_interface
+	beq @gui
+
+@tui:	CALL FINAL_BANK_MONITOR, mon::puts
+	sec
+	rts
+
+@gui:	; record the message in the monitor as well so it is visible there
+	; the next time the monitor is opened
+	CALL FINAL_BANK_MONITOR, mon::log
+
+	ldxy #mem::linebuffer2	; the rendered message (text::render output)
+	lda #REGISTERS_LINE-1
+	CALLMAIN text::print
+	jsr scr::clrcolor
+	jsr key::waitch		; wait for keypress
+	sec
+	rts
+.endproc
+
+;*******************************************************************************
+; EDIT STATE
+; Moves the cursor to the registers area and allows the user to modify
+; their values with hex input
+.proc edit_state
+	pushcur
+	lda #$00
+	sta zp::curx
+	lda #REGISTERS_LINE+1
+	sta zp::cury
+
+	jsr showstate		; fill linebuffer with register state
+
+@edit:	jsr cur::on
+	jsr key::waitch
+	pha
+	jsr cur::off
+	pla
+
+	jsr key::isleft
+	beq @back
+	cmp #K_DEL
+	bne @ret
+@back:	lda zp::curx
+	beq @edit		; can't move LEFT
+	dec zp::curx
+	ldx #@numoffsets-1
+@prevx:	cmp @offsets,x		; was cursor at start of offset?
+	bcc @prev		; if cursor is < offset, check prev offset
+	bne @ok			; if it was NOT at offset start, it is now
+	lda @offsets-1,x
+	adc #$00		; +1
+	sta zp::curx
+	jmp @refresh
+@prev:	dex
+	bpl @prevx
+	bmi @edit
+
+@ret:	cmp #K_RETURN
+	beq @updatevals
+@quit:	cmp #K_QUIT
+	beq @exit
+@right:	jsr key::isright
+	beq @fwd
+
+@hex:	jsr key::ishex
+	bcc @refresh
+
+	ldx zp::curx
+	sta mem::linebuffer2,x
+
+@fwd:   lda zp::curx
+	cmp #REG_SP_OFFSET+1	; check offset
+	bcs @refresh		; if already at last column, don't advance
+	inc zp::curx		; bump up curx
+	ldx #$00
+; align x-position to either a value in @offsets or a value in @offests+1
+@nextx:	cmp @offsets,x		; was X at the start of the offset?
+	beq @refresh		; if so, incrementing it by 1 was sufficient
+	bcs @next		; if X
+@ok:	lda @offsets,x		; if @offsets,x <= curx, set curx to it
+	sta zp::curx
+	jmp @refresh
+@next:	inx
+	cpx #@numoffsets
+	bne @nextx
+
+@refresh:
+	lda #REGISTERS_LINE+1
+	ldxy #mem::linebuffer2
+	CALLMAIN text::print
+	jmp @edit
+
+;--------------------------------------
+; parse the linebuffer2 and update all registers
+@updatevals:
+@val=r0
+	ldxy #mem::linebuffer2
+	stxy @val
+
+	ldx #@numoffsets-1
+@l0:	ldy @offsets,x
+	lda (@val),y
+	jsr util::chtohex	; get MSB
+	asl
+	asl
+	asl
+	asl
+	sta sim::register_state,x
+
+	iny
+	lda (@val),y		; get LSB
+	jsr util::chtohex
+	ora sim::register_state,x
+	sta sim::register_state,x
+
+	dex
+	bpl @l0
+
+	; swap PC LSB and MSB
+	ldx sim::pc
+	lda sim::pc+1
+	sta sim::pc
+	stx sim::pc+1
+
+@exit:	popcur
+	rts
+
+;--------------------------------------
+; read by the banked code above (abs,x), so this table stays in-bank
+@offsets:
+.byte REG_PC_OFFSET, REG_PC_OFFSET+2, REG_A_OFFSET, REG_X_OFFSET, REG_Y_OFFSET
+.byte REG_SP_OFFSET
+@numoffsets=*-@offsets
+.endproc
+
+;*******************************************************************************
+; SHOWSTATE
+; Shows the current debug state (registers and BRK line)
+.proc showstate
+	jsr showbrk
+
+	; fall through to showregs
+.endproc
+
+;*******************************************************************************
+; SHOWREGS
+; prints the contents of the registers in the format
+;   PC  A  X  Y  SP NV-BDIZC ADDR
+;  f59c 02 02 00 f7 00100000 1003
+.proc showregs
+	; display the register names
+	ldxy #strings::debug_registers
+	lda #REGISTERS_LINE
+	CALLMAIN text::print
+
+	jsr ui::regs_contents
+
+.ifndef hard8x8
+	lda #REGISTERS_LINE+1
+	CALLMAIN text::print
+.else
+	lda #$00
+	sta mem::linebuffer2+16	; break the register contents line
+	lda #REGISTERS_LINE+1
+	CALLMAIN text::print
+
+	ldxy #strings::debug_registers2
+	lda #REGISTERS_LINE+2
+	CALLMAIN text::print
+
+	jsr ui::regs_contents
+	ldxy #mem::linebuffer2+17
+	lda #REGISTERS_LINE+3
+	CALLMAIN text::print
+.endif
+
+	lda show_extended_state
+	bne show_machine_state
+	rts
+.endproc
+
+;*******************************************************************************
+; SHOW MACHINE STATE
+; prints auxiliary (platform specific) state of the machine
+.proc show_machine_state
+	ldxy #strings::machine_state
+	lda #REGISTERS_LINE-2
+	CALLMAIN text::print
+
+	jsr ui::machine_state
+	lda #REGISTERS_LINE-1
+	CALLMAIN text::print
+	rts
+.endproc
+
+;*******************************************************************************
+; SHOWBRK
+; Display the BRK line number or address
+.proc showbrk
+	lda lineset		; is the line # known?
+	bne @showline		; if so, show it
+
+@showaddr:
+	; push the address we will disassemble into
+	lda #$01
+	sta r0+1
+	pha
+
+	lda #$00
+	sta r0
+	pha
+
+	; we couldn't find the line #; display 6ke address of the BRK
+
+	ldxy sim::pc
+	lda #$00		; disassemble to string
+	CALLMAIN asm::disassemble
+	bcc :+
+
+	; couldn't disassemble (illegal opcode?), just get the hex value for
+	; the byte
+	ldxy sim::pc
+	jsr vmem::load
+	jsr util::hextostr
+	sty $100
+	stx $101
+	lda #$00
+	sta $102
+
+:	lda sim::pc
+	pha
+	lda sim::pc+1
+	pha
+	ldxy #strings::debug_brk_addr
+	jmp @print
+
+@showline:
+	; display the BRK message
+	lda edit::highlight_line	; push line #
+	pha
+	lda edit::highlight_line+1
+	pha
+
+	lda dbgi::file
+	CALLMAIN dbgi::get_filename
+	tya
+	pha
+	txa
+	pha
+
+	ldxy #strings::debug_brk_line
+@print:	RENDER_STR		; render the message (consumes the pushed args)
+	lda edit::status_row
+	CALLMAIN text::print	; break in line <line #>
+	rts
+.endproc
+
 .RODATA
 ;*******************************************************************************
 ; COMMANDS
@@ -1975,7 +2022,7 @@ num_commands=*-commands
 .define command_vectors quit, edit_source, __debug_step, __debug_step_over, \
 	__debug_go, jump, __debug_step_out, __debug_trace, edit_source, \
 	edit_mem, edit_breakpoints, __debug_edit_watches, \
-	__debug_swap_user_mem, reset_stopwatch, edit_state, \
+	__debug_swap_user_mem, reset_stopwatch, edit_state_vec, \
 	goto_pc, activate_monitor, activate_monitor_win, toggle_extended_info
 .linecont -
 command_vectorslo: .lobytes command_vectors

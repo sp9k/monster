@@ -12,6 +12,10 @@
 .include "string.inc"
 .include "text.inc"
 
+.ifdef c64
+.import __ram_mem01
+.endif
+
 .ifdef ultimem
 .include "vic20/ultimem/banks.inc"
 .endif
@@ -379,6 +383,12 @@ err_unknown_err: .byte $aa,$ce,$7d,$ce,$d9,$52,$93,$d2,$0
 ;  -.XY: the address of the error message
 .export __err_get
 .proc __err_get
+.ifdef c64
+	; the error text and its tables live under the KERNAL ROM; make them
+	; readable even when called from banked code on the cart build
+	ldy #$34
+	sty $01
+.endif
 	tax
 	cpx #NUM_ERRORS
 	bcc :+
@@ -418,5 +428,12 @@ err_unknown_err: .byte $aa,$ce,$7d,$ce,$d9,$52,$93,$d2,$0
 .endif
 
 @uncompress:
+.ifdef c64
+	jsr str::uncompress
+	lda __ram_mem01
+	sta $01		; restore the caller's memory context
+	rts
+.else
 	jmp str::uncompress
+.endif
 .endproc

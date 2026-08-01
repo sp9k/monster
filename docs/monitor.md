@@ -2,30 +2,30 @@
 
 The monitor is a text based interface for debugging programs and manipulating
 program state.  It offers the same functionality as the GUI debugger plus a plethora of other commands to
-manipulate the program state.  The monitor and graphical debugger share state, so changes made in one
-(e.g. creating a watch) will be reflected in the other.
+manipulate the program state.  The monitor and graphical debugger affect the same global debug state.
+Changes made in one (e.g. creating a watch) will be reflected in the other.
 
-For the most part, input in the monitor is buffered.  As with BASIC commands (but unlike the graphical
-debugger), you enter the command you wish to run, press `RETURN`, and the command executes.
+Input in the monitor is buffered as with BASIC commands (but unlike the graphical
+debugger). Lines are entered and when you wish to execute them, press `RETURN`.
 
 ---
 
 ### ACTIVATION
 
-The monitor is activated as a window with the `F7` key.  In this mode the editor (or, while debugging,
+The monitor is activated as a window with the `f7` key.  In this mode the editor (or, while debugging,
 the source view) remains visible above the monitor window.  The window may be resized with `C= + k`
 (grow) and `C= + j` (shrink).  These keys work both while the monitor is active and from the editor
 while the window is open.
 
-Pressing `F8` (`SHIFT + F7`) opens the monitor _maximized_ (fullscreen) instead.
+Pressing `f8` (`SHIFT + f7`) opens the monitor _maximized_ (fullscreen) instead.
 
 The monitor can be activated from the editor both during normal editing and while debugging.
-If activated while debugging, a number of additional commands related to the state of the debugged program
-become available.  If these are invoked while not debugging, you will get a `NOT DEBUGGING` error message.
+The default state of the virtual machine when you boot is the state of the Vic right after its normal
+cold start procedure executes, which is what you will see in the monitor if entered without first
+assembling a program.
 
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
-Pressing `F7` or `F8` while the window is open re-activates it in place.  The monitor window is
-closed, just as other windows are, with the `<-` key.
+Press `f7` or `f8` while to re-enter it.  The monitor window is closed, just as other windows are, with the `<-` key.
 
 ### FILE REDIRECTION
 The output from a given monitor command can be redirected to file instead of the screen by using the
@@ -36,7 +36,7 @@ For example:
 
 `r > regs.txt`
 
-Will write the contents of the registers to the file `regs.txt`
+Will write the contents of the simulated 6502's registers to the disk file `regs.txt`
 
 ### COMMANDS
 

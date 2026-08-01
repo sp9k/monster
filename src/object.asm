@@ -202,7 +202,8 @@ export_label_idshi: .res MAX_EXPORTS	; MSB of label ID for exports
 .export __obj_add_reloc
 .export __obj_close_section
 
-.ifdef vic20
+; the cart builds run this code banked, so entry must go through a far-call
+.if .defined(vic20) .or .defined(CART)
 ;*******************************************************************************
 __obj_init:
 	JUMP FINAL_BANK_LINKER, init
@@ -221,6 +222,7 @@ __obj_close_section = close_section
 .endif
 
 .segment "OBJCODE"
+SET_CUR_BANK FINAL_BANK_LINKER
 
 ;*******************************************************************************
 ; INIT

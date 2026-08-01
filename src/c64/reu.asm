@@ -81,7 +81,7 @@ tab_num_elements: .word 0
 	lda #$90	; transfer from c64 -> REU with immediate execution
 	sta $df01	; execute
 
-	lda #$34
+	lda __ram_mem01
 	sta $01
 @ret=*+1
 	jmp $f00d
@@ -105,10 +105,18 @@ tab_num_elements: .word 0
 	ldxy #$400	; prog00 window is $0000-$03ff (1024 bytes)
 	stxy $df07
 
-	lda #$91	; transfer from REU -> c64 with immediate execution
-	sta $df01	; execute
+	; prog00 lives under the I/O space; the transfer must run with all RAM
+	; visible or the DMA would write into the I/O registers
+	lda #$81	; transfer from REU -> c64 (delayed)
+	sta $df01
 
 	lda #$34
+	sta $01
+
+	lda $ff00
+	sta $ff00	; trigger the transfer
+
+	lda __ram_mem01
 	sta $01
 	rts
 .endproc
@@ -291,11 +299,14 @@ tab_num_elements: .word 0
 
 	jsr mapreu
 
-	lda #$34
+	lda #$34	; all RAM visible for the transfer itself
 	sta $01
 
 	lda $ff00
-	sta $ff00
+	sta $ff00	; trigger the transfer
+
+	lda __ram_mem01
+	sta $01
 
 @done:	rts
 .endproc
@@ -321,11 +332,14 @@ tab_num_elements: .word 0
 	lda #$80	; transfer C64 RAM -> REU delayed
 	sta $df01
 
-	lda #$34
+	lda #$34	; all RAM visible for the transfer itself
 	sta $01
 
 	lda $ff00
-	sta $ff00
+	sta $ff00	; trigger the transfer
+
+	lda __ram_mem01
+	sta $01
 
 @done:	rts
 .endproc

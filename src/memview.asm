@@ -61,10 +61,33 @@ memaddr: .word 0
 wintop: .byte 0		; first (top) row of the view's contents
 winbot: .byte 0		; last (bottom) row of the view's contents
 
+.CODE
+;*******************************************************************************
+; MAIN-bank entry points
+.export __view_edit
+.export __view_select
+.export __view_refresh
+
+.if .defined(CART) .and .defined(c64)
+__view_edit:    JUMP FINAL_BANK_DBGUI, viewedit
+__view_select:  JUMP FINAL_BANK_DBGUI, select
+__view_refresh: JUMP FINAL_BANK_DBGUI, refresh
+windraw_vec:    JUMP FINAL_BANK_DBGUI, windraw
+enter_vec:      JUMP FINAL_BANK_DBGUI, enter
+.else
+__view_edit    = viewedit
+__view_select  = select
+__view_refresh = refresh
+windraw_vec    = windraw
+enter_vec      = enter
+.endif
+
+.PUSHSEG
 .RODATA
 ;*******************************************************************************
 ; WINDOW
-; The window descriptor for the memory viewer
+; The window descriptor for the memory viewer (read by the window manager from
+; the MAIN bank)
 window:
 .byte GUI_MEMVIEW		; 0 id for the memory viewer
 .byte GUI_CLASS_CUSTOM		; 1
@@ -72,22 +95,24 @@ window:
 .byte 2				; 3 min height
 .byte 12			; 4 max height
 .word strings::memview_title	; 5 title
-.word windraw			; 7 draw handler
-.word enter			; 9 enter handler
+.word windraw_vec		; 7 draw handler
+.word enter_vec			; 9 enter handler
 .word 0				; $b no resize handler (redraw all on resize)
 .byte 0				; $d unused
 .byte 0				; $e unused
 .byte 0				; $f pre-maximized height
 .byte 0				; $10 unused
+.POPSEG
 
-.CODE
+BANKED_CODE "DBGUI"
+SET_CUR_BANK FINAL_BANK_DBGUI
+
 ;*******************************************************************************
 ; EDIT
 ; Opens the memory editor window and gives it focus
-.export __view_edit
-.proc __view_edit
+.proc viewedit
 	ldxy #window
-	jmp gui::open
+	JUMPMAIN gui::open
 .endproc
 
 ;*******************************************************************************
@@ -95,10 +120,9 @@ window:
 ; Makes the memory editor the active window without giving it focus.
 ; The window manager will draw it and (if focus is being handed over via
 ; GUI_RET_SWITCH) interact with it.
-.export __view_select
-.proc __view_select
+.proc select
 	ldxy #window
-	jmp gui::select
+	JUMPMAIN gui::select
 .endproc
 
 ;*******************************************************************************
@@ -157,7 +181,7 @@ window:
 	ldy wintop
 	ldx #COL_START
 	jsr cur::set		; move back to home row/col
-	jsr __view_refresh	; redraw at the new address
+	jsr refresh		; redraw at the new address
 	jmp @edit
 
 :	cmp #K_QUIT
@@ -174,17 +198,17 @@ window:
 
 :	cmp #K_WIN_GROW
 	bne :+
-	jsr gui::grow
+	CALLMAIN gui::grow
 	jmp @resize
 
 :	cmp #K_WIN_MAXIMIZE
 	bne :+
-	jsr gui::maximize
+	CALLMAIN gui::maximize
 	jmp @resize
 
 :	cmp #K_WIN_SHRINK
 	bne :+
-	jsr gui::shrink
+	CALLMAIN gui::shrink
 @resize:
 	jsr setbounds
 	; move the cursor back in bounds if the window shrank
@@ -239,8 +263,9 @@ window:
 	jsr watch::add
 
 	ldxy #strings::watch_added
+	RENDER_STR
 	lda #DEBUG_MESSAGE_LINE
-	jsr text::print
+	CALLMAIN text::print
 
 	jsr beep::short	; beep to confirm add
 	jmp @edit
@@ -251,7 +276,7 @@ window:
 @replace_val:
 	jsr @set_nybble	; replace the nybble under cursor
 	jsr @next_x	; advance the cursor (if we can)
-	jsr __view_refresh
+	jsr refresh
 	jmp @edit
 
 ;--------------------------------------
@@ -358,8 +383,6 @@ window:
 
 ;--------------------------------------
 ; table of columns to skip in cursor movement
-.PUSHSEG
-.RODATA
 @x_skips:
 	.byte COL_START+2
 	.byte COL_START+5
@@ -369,7 +392,6 @@ window:
 	.byte COL_START+17
 	.byte COL_START+20
 @num_x_skips=*-@x_skips
-.POPSEG
 
 ;--------------------------------------
 @find:	pushcur
@@ -385,7 +407,7 @@ window:
 	sta text::insertmode
 
 	ldxy #key::getch
-	jsr edit::gets		; get the string to parse
+	CALLMAIN edit::gets	; get the string to parse
 	sta @len		; save the string len; 1-2: byte, >2: word
 
 	popcur
@@ -406,7 +428,7 @@ window:
 @word:	jsr find_word		; find the word we're looking for
 @cont:	bcs @reset
 	stxy memaddr		; set address of word to memaddr
-@reset:	jsr gui::refresh	; redraw (the find prompt may have hit a row)
+@reset:	CALLMAIN gui::refresh	; redraw (the find prompt may have hit a row)
 	jsr setbounds		; restore the cursor's bounds
 	jmp @edit
 .endproc
@@ -508,11 +530,11 @@ window:
 	stx zp::cury
 
 	ldxy #key::gethex
-	jsr edit::gets
+	CALLMAIN edit::gets
 
 	ldxy #mem::linebuffer+TITLE_ADDR_START+TITLE_VAL_OFFSET-1
 	stxy zp::line
-	jsr expr::eval
+	CALLMAIN expr::eval
 	bcs :+			; on invalid input, leave address unchanged
 	stxy memaddr
 
@@ -528,8 +550,7 @@ window:
 ;*******************************************************************************
 ; REFRESH
 ; Redraws the contents of the memory view at its current position
-.export __view_refresh
-.proc __view_refresh
+.proc refresh
 	lda wintop
 	ldx winbot
 
@@ -599,7 +620,7 @@ window:
 
 	pla
 	pha
-	jsr text::print	; draw the row of rendered bytes
+	CALLMAIN text::print	; draw the row of rendered bytes
 	pla
 	tax
 	jmp draw::resetline

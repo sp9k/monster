@@ -1,3 +1,4 @@
+.include "cartbanks.inc"
 .include "reu.inc"
 .include "../config.inc"
 .include "../inline.inc"
@@ -5,6 +6,53 @@
 .include "../zeropage.inc"
 
 FINAL_BANK_MAIN = $00
+
+.segment "DATA"
+
+;*******************************************************************************
+; EXECUTION CONTEXT
+; The $01 value for the current execution context.  Resident code runs with
+; all RAM visible ($34); on the cartridge build the banked subsystems run with
+; the cartridge ROM at $8000 and I/O visible ($37).  Routines that toggle $01
+; (I/O windows, KERNAL wrappers) must restore this value, not a constant, so
+; that they can be called from banked code.
+.export __ram_mem01
+__ram_mem01: .byte $34
+
+; REU-bank call stack.  Lives outside the zeropage so that it can be deeper
+; than the zp allocation allows: cart-build window flows nest up to ~6 frames
+reubankstack: .res 16
+
+.ifdef CART
+cur_rombank:  .byte $ff	; ROM bank of the current context ($ff = resident)
+rombankstack: .res 16	; ROM bank stack (parallels reubankstack)
+
+;*******************************************************************************
+; CODEBANKS
+; The cartridge ROM bank containing the code for each logical bank
+; ($ff = the code is resident)
+codebanks:
+	.byte $ff		; $00 MAIN
+	.byte $ff		; $01
+	.byte CART_BANK_DEBUG	; $02 DEBUG
+	.byte $ff, $ff, $ff, $ff; $03-$06 SOURCE0-3
+	.byte $ff, $ff, $ff, $ff; $07-$0a SOURCE4-7
+	.byte CART_BANK_MACROS	; $0b MACROS
+	.byte $ff		; $0c UDGEDIT/HELP
+	.byte CART_BANK_LINKER	; $0d LINKER
+	.byte CART_BANK_CONSOLE	; $0e CONSOLE
+	.byte CART_BANK_CTX	; $0f BUFF (copy buffer shares the CTX bank)
+	.byte CART_BANK_LABELS	; $10 SYMBOLS
+	.byte CART_BANK_LABELS	; $11 SYMBOL_NAMES
+	.byte $ff		; $12 SYMVIEW
+	.byte CART_BANK_CONSOLE	; $13 MONITOR
+	.byte CART_BANK_CTX	; $14 CTX
+	.byte $ff		; $15 LOG
+	.byte CART_BANK_DBGUI	; $16 DBGUI
+	.byte CART_BANK_FILEDIR	; $17 FILEDIR
+	.byte CART_BANK_ASM	; $18 ASM/EXPR
+	.byte CART_BANK_EDIT	; $19 EDITOR
+.endif
 
 ;*******************************************************************************
 .BSS
@@ -17,6 +65,44 @@ __ram_dst = reu::move_dst
 
 ;*******************************************************************************
 .CODE
+
+;*******************************************************************************
+; INIT
+; Initializes the execution context state
+.export __ram_init
+.proc __ram_init
+	lda #$34
+	sta __ram_mem01
+	sta $01
+.ifdef CART
+	lda #$ff
+	sta cur_rombank
+.endif
+	rts
+.endproc
+
+.ifdef CART
+;*******************************************************************************
+; SET CTX
+; Activates the execution context for the given cartridge ROM bank:
+; maps the bank at $8000 ($01=$37) or, for resident code ($ff), banks the
+; window out ($01=$34)
+; IN:
+;  - .A: the cartridge ROM bank to activate ($ff = resident)
+.proc set_ctx
+	sta cur_rombank
+	bmi @main
+	ldx #$37
+	stx $01		; expose I/O (and the cartridge ROM)
+	sta $de00	; select the target bank
+	stx __ram_mem01
+	rts
+@main:	lda #$34
+	sta __ram_mem01
+	sta $01
+	rts
+.endproc
+.endif
 
 ;*******************************************************************************
 ; GET BYTE
@@ -62,7 +148,11 @@ __ram_dst = reu::move_dst
 	lda reu::reuaddr+2
 	ldx zp::banksp
 	inc zp::banksp
-	sta zp::bankstack,x
+	sta reubankstack,x
+.ifdef CART
+	lda cur_rombank
+	sta rombankstack,x
+.endif
 
 	jsr inline::getarg_b	; get bank byte
 	sta reu::reuaddr+2	; set REU MSB to the target bank
@@ -71,6 +161,15 @@ __ram_dst = reu::move_dst
 	sta zp::bankjmpvec+1
 
 	jsr inline::setup_done
+
+.ifdef CART
+	; activate the target's ROM bank only after the inline arguments have
+	; been read: the caller (e.g. a jump table) may live in memory that is
+	; not visible once the context switches
+	ldx reu::reuaddr+2
+	lda codebanks,x
+	jsr set_ctx
+.endif
 
 	lda @a			; restore .A
 	ldx @x			; restore .X
@@ -81,8 +180,12 @@ __ram_dst = reu::move_dst
 
 	dec zp::banksp
 	ldx zp::banksp
-	lda zp::bankstack,x	; get the caller's bank
+	lda reubankstack,x	; get the caller's bank
 	sta reu::reuaddr+2	; restore bank
+.ifdef CART
+	lda rombankstack,x	; restore the caller's execution context
+	jsr set_ctx
+.endif
 
 	lda @a			; restore .A
 	ldx @x			; restore .X

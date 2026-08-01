@@ -285,6 +285,7 @@ scopesp: .byte 0		; offset of next free scope (0 = no scope)
 labelvars_size=*-labelvars
 
 .segment "LABELS"
+SET_CUR_BANK FINAL_BANK_SYMBOLS
 
 ;*******************************************************************************
 ; POP SCOPE

@@ -17,6 +17,7 @@
 .include "layout.inc"
 .include "macros.inc"
 .include "memory.inc"
+.include "ram.inc"
 .include "settings.inc"
 .include "screen.inc"
 .include "strings.inc"
@@ -27,6 +28,21 @@
 HEIGHT = SCREEN_HEIGHT-2
 
 .CODE
+;*******************************************************************************
+; MAIN-bank entry points
+.export __dir_get_by_type
+.export __dir_view
+
+.if .defined(CART) .and .defined(c64)
+__dir_get_by_type: JUMP FINAL_BANK_FILEDIR, getbytype
+__dir_view:        JUMP FINAL_BANK_FILEDIR, dirview
+.else
+__dir_get_by_type = getbytype
+__dir_view        = dirview
+.endif
+
+BANKED_CODE "FILEDIR"
+	SET_CUR_BANK FINAL_BANK_FILEDIR
 
 ;*******************************************************************************
 ; GET BY TYPE
@@ -38,8 +54,8 @@ HEIGHT = SCREEN_HEIGHT-2
 ;   - .A:  number of files returned (or error)
 ;   - .XY: address of 0-terminated buffer containing 0-terminated filenames
 ;   - .C:  set on error
-.export __dir_get_by_type
-.proc __dir_get_by_type
+
+.proc getbytype
 @ext=r5
 @file=r8
 @resultptr=ra
@@ -112,8 +128,8 @@ HEIGHT = SCREEN_HEIGHT-2
 ; OUT:
 ;   - .C: set on error
 ;   - .A: error code (on error)
-.export __dir_view
-.proc __dir_view
+
+.proc dirview
 @line=r8
 @row=ra
 @select=rb
@@ -163,7 +179,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	; draw the disk name
 	ldxy #@namebuff
 	lda #$00
-	jsr text::print
+	CALLMAIN text::print
 
 ;-------------------------------------------------------------------------------
 ; parse filenames and render initial view
@@ -196,7 +212,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	lda @row
 	cmp #HEIGHT-1
 	bcs :+			; if line isn't visible, don't draw
-	jsr text::print
+	CALLMAIN text::print
 	inc @row
 
 :	; next line
@@ -272,7 +288,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	lda @fptrslo,x
 	tax
 	lda #HEIGHT-1-1			; bottom row
-	jsr text::print
+	CALLMAIN text::print
 	jmp @hiselection
 
 @checkup:
@@ -300,7 +316,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	lda @fptrslo,x
 	tax
 	lda #1			; top row
-	jsr text::print
+	CALLMAIN text::print
 
 @hiselection:
 	jsr highlight_selection
@@ -359,7 +375,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	lda @fptrslo,x
 	ldy @fptrshi,x
 	tax
-	jmp edit::load		; load the file
+	JUMPMAIN edit::load		; load the file
 
 ;-------------------------------------------------------------------------------
 ; refresh (redraw) all visible rows
@@ -376,7 +392,7 @@ HEIGHT = SCREEN_HEIGHT-2
 	lda @fptrslo-1,x
 	tax
 	lda @i
-	jsr text::print
+	CALLMAIN text::print
 
 	inc @i
 	lda @i
@@ -390,11 +406,9 @@ HEIGHT = SCREEN_HEIGHT-2
 @refresh_done:
 	rts
 
-.PUSHSEG
-.RODATA
+; kept in-bank: read directly by banked code
 @dirmsg: .byte "disk:",0
 @dirmsglen=*-@dirmsg
-.POPSEG
 .endproc
 
 ;*******************************************************************************

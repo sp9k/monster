@@ -79,6 +79,69 @@ __file_eof:	.byte 0	; if !0, EOF; only valid after call to readb or getline
 
 .CODE
 ;*******************************************************************************
+; MAIN-bank entry points
+; NOTE: READB is in the main CODE bank as it is called frequently
+; (per-byte in .incbin/.include)
+.export __file_load_binv
+.export __file_load_bin
+.export __file_load_src
+.export __file_save_bin
+.export __file_save_src
+.export __file_getline
+.export __file_scratch
+.export __file_open_w
+.export __file_open_r
+.export __file_open_r_prg
+.export __file_open
+.export __file_exists
+.export __file_close
+.export __file_closeall
+.export __file_init_drive
+.export __file_geterr
+.export __file_write_banner
+
+.if .defined(CART) .and .defined(c64)
+__file_load_binv:    JUMP FINAL_BANK_FILEDIR, loadbinv
+__file_load_bin:     JUMP FINAL_BANK_FILEDIR, loadbin
+__file_load_src:     JUMP FINAL_BANK_FILEDIR, loadsrc
+__file_save_bin:     JUMP FINAL_BANK_FILEDIR, savebin
+__file_save_src:     JUMP FINAL_BANK_FILEDIR, savesrc
+__file_getline:      JUMP FINAL_BANK_FILEDIR, fgetline
+__file_scratch:      JUMP FINAL_BANK_FILEDIR, fscratch
+__file_open_w:       JUMP FINAL_BANK_FILEDIR, openw
+__file_open_r:       JUMP FINAL_BANK_FILEDIR, openr
+__file_open_r_prg:   JUMP FINAL_BANK_FILEDIR, openrprg
+__file_open:         JUMP FINAL_BANK_FILEDIR, fopen
+__file_exists:       JUMP FINAL_BANK_FILEDIR, fexists
+__file_close:        JUMP FINAL_BANK_FILEDIR, fclose
+__file_closeall:     JUMP FINAL_BANK_FILEDIR, fcloseall
+__file_init_drive:   JUMP FINAL_BANK_FILEDIR, init_drive
+__file_geterr:       JUMP FINAL_BANK_FILEDIR, fgeterr
+__file_write_banner: JUMP FINAL_BANK_FILEDIR, writebanner
+.else
+__file_load_binv    = loadbinv
+__file_load_bin     = loadbin
+__file_load_src     = loadsrc
+__file_save_bin     = savebin
+__file_save_src     = savesrc
+__file_getline      = fgetline
+__file_scratch      = fscratch
+__file_open_w       = openw
+__file_open_r       = openr
+__file_open_r_prg   = openrprg
+__file_open         = fopen
+__file_exists       = fexists
+__file_close        = fclose
+__file_closeall     = fcloseall
+__file_init_drive   = init_drive
+__file_geterr       = fgeterr
+__file_write_banner = writebanner
+.endif
+
+BANKED_CODE "FILEDIR"
+	SET_CUR_BANK FINAL_BANK_FILEDIR
+
+;*******************************************************************************
 ; LOADBINV
 ; loads the given file into the given virtual memory address
 ; IN:
@@ -86,8 +149,7 @@ __file_eof:	.byte 0	; if !0, EOF; only valid after call to readb or getline
 ;  file::loadaddr: the virtual address to load the file to
 ; OUT:
 ;  - .C: set on error
-.export __file_load_binv
-.proc __file_load_binv
+.proc loadbinv
 	ldx #$01
 	stx isvirtual
 	stx isbin
@@ -102,8 +164,7 @@ __file_eof:	.byte 0	; if !0, EOF; only valid after call to readb or getline
 ;  file::loadaddr: the address to load the file to
 ; OUT:
 ;  - .C: set on error
-.export __file_load_bin
-.proc __file_load_bin
+.proc loadbin
 	ldx #$00
 	stx isvirtual
 	inx
@@ -118,8 +179,7 @@ __file_eof:	.byte 0	; if !0, EOF; only valid after call to readb or getline
 ;  - .A: the file handle to load from
 ; OUT:
 ;  - .C: set on error
-.export __file_load_src
-__file_load_src:
+loadsrc:
 	ldx #$00
 	stx isbin		; not binary (load to source buff)
 	sta secondaryaddr	; use handle as secondary address
@@ -147,7 +207,7 @@ OSPROC load
 @err_or_eof:
 	eor #$40
 	beq @eof	; if EOF, return
-@error:	jmp __file_geterr
+@error:	jmp fgeterr
 @eof:	RETURN_OK
 ENDOSPROC
 
@@ -162,8 +222,7 @@ ENDOSPROC
 ;  - __file_save_address_end: the end of the address range to save
 ; OUT:
 ;  .C: set on error, clear on success
-.export __file_save_bin
-OSPROC __file_save_bin
+OSPROC savebin
 	stxy __file_save_address
 	tax
 	jsr krn::chkout	; CHKOUT (file in .X now uesd as output)
@@ -179,8 +238,8 @@ ENDOSPROC
 ;  .A: the handle of the file to write the source buffer to
 ; OUT:
 ;  .C: set on error, clear on success
-.export __file_save_src
-OSPROC __file_save_src
+
+OSPROC savesrc
 	tax
 	jsr krn::chkout	; CHKOUT (file in .X now uesd as output)
 	ldx #$00
@@ -210,8 +269,11 @@ OSPROC dosave
 @done:	lda #$00	; no error
 	RETURN_OK	; done
 
-@error:	jmp __file_geterr
+@error:	jmp fgeterr
 ENDOSPROC
+
+.CODE
+SET_CUR_BANK BANK_NONE
 
 ;*******************************************************************************
 ; READB
@@ -235,8 +297,11 @@ OSPROC __file_readb
 	inc __file_eof
 @ok:	RETURN_OK
 
-@err:	jmp __file_geterr
+@err:	jmp fgeterr
 ENDOSPROC
+
+BANKED_CODE "FILEDIR"
+SET_CUR_BANK FINAL_BANK_FILEDIR
 
 ;*******************************************************************************
 ; GETLINE
@@ -249,8 +314,7 @@ ENDOSPROC
 ; OUT:
 ;  - .A: contains the # of bytes read OR the error code
 ;  - .C: is set if an error occurred
-.export __file_getline
-OSPROC __file_getline
+OSPROC fgetline
 	stxy __file_load_address
 	tax
 	jsr krn::chkin	; CHKIN (file in .X now used as input)
@@ -284,8 +348,7 @@ ENDOSPROC
 ;  - .XY: the 0-terminated filename of the file to open for deletion
 ; OUT:
 ;   - .C: set on error
-.export __file_scratch
-OSPROC __file_scratch
+OSPROC fscratch
 	stxy r0
 	jsr init_drive
 
@@ -293,18 +356,15 @@ OSPROC __file_scratch
 	ldy #>@s_colon
 	jsr str::cat		; s:<filename>
 	lda #15			; SA (command channel)
-	jsr __file_open
+	jsr fopen
 	bcs @err
-	jsr __file_close	; close logical file of deleted file
-	jmp __file_geterr	; return the drive's response to the scratch
+	jsr fclose	; close logical file of deleted file
+	jmp fgeterr	; return the drive's response to the scratch
 
 @err:	rts			; return error from open
 
-.PUSHSEG
-.RODATA
 @s_colon:
 	.byte "s:",0
-.POPSEG
 ENDOSPROC
 
 ;*******************************************************************************
@@ -315,8 +375,7 @@ ENDOSPROC
 ; OUT:
 ;  - .A: the file handle
 ;  - .C: set on error
-.export __file_open_w
-.proc __file_open_w
+.proc openw
 	lda #<@p_w
 	sta r0
 	lda #>@p_w
@@ -325,12 +384,9 @@ ENDOSPROC
 	bcc :+
 	rts		; filename too long
 
-	; fall through to __file_open_r
+	; fall through to openr
 :
-.PUSHSEG
-.RODATA
 @p_w:	.byte ",p,w",0
-.POPSEG
 .endproc
 
 ;*******************************************************************************
@@ -341,22 +397,20 @@ ENDOSPROC
 ; OUT:
 ;  - .A: the file handle
 ;  - .C: set on error
-.export __file_open_r
-.proc __file_open_r
+.proc openr
 	lda #$ff	; flag use file handle as SA
 	skw
 
-	; fall through to __file_open
+	; fall through to fopen
 .endproc
 
 ;*******************************************************************************
 ; OPEN_R_PRG
 ; Opens a file for reading as a .PRG
-.export __file_open_r_prg
-OSPROC __file_open_r_prg
+OSPROC openrprg
 	lda #$00
 
-	; fall through to __file_open
+	; fall through to fopen
 ENDOSPROC
 
 ;*******************************************************************************
@@ -369,8 +423,7 @@ ENDOSPROC
 ; OUT:
 ;  - .A: the file handle
 ;  - .C: set on error
-.export __file_open
-OSPROC __file_open
+OSPROC fopen
 @file=r2
 @filename=r3
 	sta secondaryaddr
@@ -424,7 +477,7 @@ OSPROC __file_open
 	ldxy #strings::device_not_present
 	jmp io::seterr
 
-:	jmp __file_geterr
+:	jmp fgeterr
 @ok:	lda @file		; get file ID that we opened
 	rts			; return it
 ENDOSPROC
@@ -439,10 +492,9 @@ ENDOSPROC
 ;  - .A: 0 if file exists
 ;  - .C: set on error
 ;  - .Z: set if the file exists; clear if it does
-.export __file_exists
-OSPROC __file_exists
+OSPROC fexists
 @file=r0
-	jsr __file_open_r
+	jsr openr
 	bcs @ret
 
 	sta @file
@@ -457,14 +509,14 @@ OSPROC __file_exists
 
 	; close the file we were testing
 	lda @file
-	jsr __file_close
+	jsr fclose
 
 	pla
 	bne @done
 	clc			; ok
 @ret:	rts
 
-@done:	jmp __file_geterr
+@done:	jmp fgeterr
 ENDOSPROC
 
 ;*******************************************************************************
@@ -472,24 +524,20 @@ ENDOSPROC
 ; Closes the file with the given handle.
 ; IN:
 ;  - .A: the file handle to close
-.export __file_close
-OSPROC __file_close
+OSPROC fclose
 	jmp krn::close		; CLOSE
 ENDOSPROC
 
 ;*******************************************************************************
 ; CLOSE ALL
 ; Closes all open files/channels
-.export __file_closeall
-OSPROC __file_closeall
+OSPROC fcloseall
 	jmp krn::clall
 ENDOSPROC
 
 ;*******************************************************************************
 ; INIT DRIVE
 ; Initializes the drive
-.export __file_init_drive
-__file_init_drive:
 OSPROC init_drive
 	ldxy #@i
 	lda #1
@@ -503,10 +551,7 @@ OSPROC init_drive
 	lda #15
 	jsr krn::close	; CLOSE
 	jmp krn::clrchn
-.PUSHSEG
-.RODATA
 @i:	.byte $49	; 'I'
-.POPSEG
 ENDOSPROC
 
 ;*******************************************************************************
@@ -545,8 +590,7 @@ ENDOSPROC
 ; OUT:
 ;  - .A: the internal error code e.g. ERR_FILE_NOT_FOUND
 ;  - .C: set if the drive returns an error
-.export __file_geterr
-.proc __file_geterr
+.proc fgeterr
 	jsr io::readerr
 	txa
 	cpx #20
@@ -606,8 +650,7 @@ ENDOSPROC
 ;*******************************************************************************
 ; WRITE BANNER
 ; Outputs a "banner" to the currently open file
-.export __file_write_banner
-.proc __file_write_banner
+.proc writebanner
 	ldx #20
 	lda #'-'
 :	jsr krn::ciout

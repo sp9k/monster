@@ -84,6 +84,19 @@
 
 .macpack longbranch
 
+.ifdef vic20
+CUR_BANK .set FINAL_BANK_MAIN
+.endif
+
+; the expression evaluator is co-banked with the assembler on the cart build,
+; so it is called directly (elsewhere expr::eval is a far-call thunk)
+.if .defined(CART) .and .defined(c64)
+.import __expr_eval_bank
+eval_expr = __expr_eval_bank
+.else
+eval_expr = expr::eval
+.endif
+
 ;*******************************************************************************
 MAX_IFS      = 4 ; max nesting depth for .if/.endif
 
@@ -192,7 +205,7 @@ __asm_mode: .byte 0
 .export asmbuffer
 asmbuffer = mem::asmbuffer
 
-.RODATA
+.segment "ASMBANK"
 ;*******************************************************************************
 NUM_OPCODES = 58
 CC_00       = 0
@@ -445,13 +458,12 @@ illegal_opcodes:
 	.byte %11111100 ; CPX abs,x
 num_illegals = *-illegal_opcodes
 
-.CODE
+BANKED_CODE "ASMBANK"
 
 ;*******************************************************************************
 ; RESET
 ; Resets the internal assembly context (labels and pointer to target)
-.export __asm_reset
-.proc __asm_reset
+.proc areset
 	lda #TYPE_UNDEF
 	sta __asm_segtype
 
@@ -462,8 +474,8 @@ num_illegals = *-illegal_opcodes
 
 	jsr ctx::init
 	CALL FINAL_BANK_MACROS, mac::init
-	jsr obj::init
-	jsr lbl::clr
+	CALLMAIN obj::init
+	CALLMAIN lbl::clr
 
 	; fall through to RESETPC
 .endproc
@@ -483,8 +495,7 @@ num_illegals = *-illegal_opcodes
 ; Resets assembly context in preparation for the given pass
 ; IN:
 ;  - .A: the pass # (1 or 2)
-.export __asm_startpass
-.proc __asm_startpass
+.proc startpass
 	pha
 
 	; disable VERIFY (assemble)
@@ -502,13 +513,17 @@ num_illegals = *-illegal_opcodes
 	sta __asm_segtype	; reset segment type (TYPE_UNDEF) for the pass
 
 	; ignore whitespace in expressions
+.if .defined(CART) .and .defined(c64)
+	jsr expr::end_on_ws	; co-banked with the evaluator on the cart build
+.else
 	CALL FINAL_BANK_UDGEDIT, expr::end_on_ws
+.endif
 
 	jsr ctx::init		; init the context
 	pla
 	sta zp::pass		; set pass #
 	cmp #$01
-	beq __asm_reset
+	beq areset
 @pass2: lda ifdefidx		; snapshot the number of .IFDEF results
 	sta ifdefcnt		; recorded during pass 1...
 	lda #$00
@@ -524,8 +539,7 @@ num_illegals = *-illegal_opcodes
 ; OUT:
 ;   - .A: the error code (if .C is set)
 ;   - .C: set if a block was left unterminated
-.export __asm_endpass
-.proc __asm_endpass
+.proc endpass
 	lda ifstacksp		; all .IF blocks closed?
 	beq :+
 	RETURN_ERR ERR_UNCLOSED_IF
@@ -548,8 +562,7 @@ num_illegals = *-illegal_opcodes
 ; out:
 ;  - .A: the type of the result e.g. ASM_OPCODE or the error code
 ;  - .C: set if an error occurred
-.export __asm_tokenize
-.proc __asm_tokenize
+.proc tokenize
 	; copy the line to the main RAM bank and make it uppercase (assembly is
 	; case-insensitive)
 	stxy zp::bankaddr0
@@ -773,14 +786,14 @@ num_illegals = *-illegal_opcodes
 	ldxy zp::virtualpc
 	jsr pass1		; pass 1?
 	bne @validate_anon	; if not, just validate
-	jsr lbl::addanon	; add the anonymous label
+	CALLMAIN lbl::addanon	; add the anonymous label
 	bcc @label_done
 	rts			; return error (too many anonymous labels?)
 
 @validate_anon:
 	; make sure the anonymous label was correctly assigned in pass 1
 	lda #$01
-	jsr lbl::get_banon
+	CALLMAIN lbl::get_banon
 	bcs :+
 	cmpw zp::virtualpc
 	beq @label_done
@@ -880,7 +893,7 @@ num_illegals = *-illegal_opcodes
 :	sec
 	rts			; return error
 
-@eval:	jsr expr::eval
+@eval:	jsr eval_expr
 	bcs @evalfailed		; return error, eval failed
 	skw			; skip force address size
 @eval_anon_done:
@@ -1207,7 +1220,7 @@ num_illegals = *-illegal_opcodes
 ;  - .C: set if NOT a label
 .proc is_label
 	ldxy zp::line
-	jmp lbl::isvalid
+	JUMPMAIN lbl::isvalid
 .endproc
 
 ;*******************************************************************************
@@ -1225,14 +1238,14 @@ num_illegals = *-illegal_opcodes
 	lda zp::virtualpc+1
 	sta zp::label_value+1
 
-	jsr lbl::islocal
+	CALLMAIN lbl::islocal
 	cmp #$00		; check flag
 	bne @cont
 
 	; label is global
-	jsr lbl::popscope	; end the current scope (if any)
+	CALLMAIN lbl::popscope	; end the current scope (if any)
 	ldxy zp::line
-	jsr lbl::setscope	; set the non-local label as the new scope
+	CALLMAIN lbl::setscope	; set the non-local label as the new scope
 	bcs @ret
 
 @cont:	lda zp::verify
@@ -1251,9 +1264,9 @@ num_illegals = *-illegal_opcodes
 @validate:
 	; pass 2: validation and symbol mapping (OBJ)
 	; make sure the label's address hasn't moved since pass 1
-	jsr lbl::find
+	CALLMAIN lbl::find
 	bcs @ret		; label not found at all -> return err
-	jsr lbl::getaddr
+	CALLMAIN lbl::getaddr
 	cmpw zp::label_value
 	bne @err		; mismatch -> return err
 @ok:	RETURN_OK
@@ -1335,7 +1348,7 @@ num_illegals = *-illegal_opcodes
 	inc zp::line+1
 :	tya
 	ldxy zp::virtualpc
-	jmp lbl::get_banon
+	JUMPMAIN lbl::get_banon
 
 @f:	; count the '+'s
 	iny
@@ -1355,7 +1368,7 @@ num_illegals = *-illegal_opcodes
 	inc zp::line+1
 :	tya
 	ldxy zp::virtualpc
-	jmp lbl::get_fanon
+	JUMPMAIN lbl::get_fanon
 .endproc
 
 ;*******************************************************************************
@@ -1377,7 +1390,7 @@ num_illegals = *-illegal_opcodes
 @gen:	ldxy zp::virtualpc	; current PC (address)
 	stxy r0
 	ldxy __asm_linenum	; get line # to map to address
-	jmp dbgi::storeline	; map them
+	JUMPMAIN dbgi::storeline	; map them
 .endproc
 
 ;*******************************************************************************
@@ -1500,8 +1513,7 @@ num_illegals = *-illegal_opcodes
 ; OUT:
 ;   - .A: if line contains an opcode, the index of it in the assembler's table
 ;   - .C: set if the string is not an opcode
-.export __asm_is_opcode
-.proc __asm_is_opcode
+.proc isopcode
 @optab = r0
 @op    = r2
 	ldxy #opcodes
@@ -1555,7 +1567,7 @@ num_illegals = *-illegal_opcodes
 	sta cc
 
 	; check if (zp::line) is an opcode and get its index if it is
-	jsr __asm_is_opcode
+	jsr isopcode
 	bcs @ret
 
 	; look up cc bits for this opcode (.A = index of opcode)
@@ -1780,7 +1792,7 @@ num_illegals = *-illegal_opcodes
 	lda #$01		; define label as 16-bit (ABSOLUTE)
 	sta zp::label_mode
 
-@set:	jsr lbl::set		; successive iterations- set (replace)
+@set:	CALLMAIN lbl::set		; successive iterations- set (replace)
 	bcs @errpop
 
 ;-------------------------------------------------------------------------------
@@ -1794,7 +1806,7 @@ num_illegals = *-illegal_opcodes
 
 	; assemble line read from context
 	lda #FINAL_BANK_MAIN	; bank doesn't matter for ctx
-	jsr __asm_tokenize	; assemble context line
+	jsr tokenize		; assemble context line
 	bcc @l1			; ok -> repeat
 
 @errpop:
@@ -1803,7 +1815,7 @@ num_illegals = *-illegal_opcodes
 	jsr ctx::pop		; pop the context
 	lda ctx::active
 	bne :+
-	jsr lbl::popscope	; all contexts popped, pop the scope
+	CALLMAIN lbl::popscope	; all contexts popped, pop the scope
 :	pla			; restore the error code
 	sec			; return err
 @reterr:
@@ -1820,7 +1832,7 @@ num_illegals = *-illegal_opcodes
 	; did we close all contexts?
 	lda ctx::active
 	bne :+
-	jsr lbl::popscope	; all contexts popped, pop the scope
+	CALLMAIN lbl::popscope	; all contexts popped, pop the scope
 	clc
 :	rts
 .endproc
@@ -1891,7 +1903,7 @@ num_illegals = *-illegal_opcodes
 ;  - .A: the number of bytes written
 .proc definebyte
 	jsr line::process_ws
-	jsr expr::eval
+	jsr eval_expr
 	bcs @text				; invalid expr- try text
 	cpy #$00
 	beq @ok
@@ -1951,7 +1963,7 @@ num_illegals = *-illegal_opcodes
 ;  - .C: set if a word could not be parsed
 .proc defineword
 	jsr line::process_ws
-	jsr expr::eval
+	jsr eval_expr
 	bcs @ret
 
 	; store the extracted value
@@ -1986,7 +1998,7 @@ num_illegals = *-illegal_opcodes
 .proc directive_res
 @cnt=r0
 	jsr line::process_ws
-	jsr expr::eval
+	jsr eval_expr
 	bcs @err
 	jsr require_const	; the count must not vary between passes
 	bcc :+
@@ -2123,14 +2135,14 @@ num_illegals = *-illegal_opcodes
 	jsr pass1
 	beq @nodbgi		; only end block in pass 2
 	ldxy zp::virtualpc	; current address in the active SEGMENT
-	jsr dbgi::endblock	; end the current block
+	CALLMAIN dbgi::endblock	; end the current block
 
 @nodbgi:
 	lda #$01
 	sta pcset	; mark PC set (linker will take care of setting it)
 
 	; close the current section (if any)
-	jsr obj::close_section
+	CALLMAIN obj::close_section
 
 	; create a new SECTION for the parsed SEGMENT name
 	lda __asm_segtype
@@ -2150,11 +2162,11 @@ num_illegals = *-illegal_opcodes
 	beq @done
 
 	lda __asm_segmentid
-	jsr dbgi::set_seg_id	; set segment ID for debug info
+	CALLMAIN dbgi::set_seg_id	; set segment ID for debug info
 
 	; create a new BLOCK of debug info at zp::virtualpc
 	ldxy zp::virtualpc
-	jsr dbgi::newblock	; start new block for the new SEGMENT
+	CALLMAIN dbgi::newblock	; start new block for the new SEGMENT
 	bcs @err
 
 @done:	lda #ASM_DIRECTIVE
@@ -2216,7 +2228,7 @@ num_illegals = *-illegal_opcodes
 	cmp #','
 	bne @badchar		; unexpected character
 	jsr line::incptr
-	jsr expr::eval
+	jsr eval_expr
 	bcs @err
 	stxy @offset
 
@@ -2238,7 +2250,7 @@ num_illegals = *-illegal_opcodes
 	cmp #','
 	bne @badchar		; unexpected character
 	jsr line::incptr
-	jsr expr::eval
+	jsr eval_expr
 	bcs @err
 	stxy @size
 	iszero @size
@@ -2298,8 +2310,7 @@ num_illegals = *-illegal_opcodes
 	ldxy #@filename
 
 ; entry point for assembling a given file
-.export __asm_include
-__asm_include:
+include_entry:
 @fname=rc
 @readfile:
 	stxy @fname
@@ -2341,7 +2352,7 @@ __asm_include:
 :	; add the filename to debug info (if it isn't yet), reset line number
 	; and finally create a new block of debug information.
 	ldxy @fname
-	jsr dbgi::setfile
+	CALLMAIN dbgi::setfile
 	bcs @reterr		; propagate error (e.g. too many files)
 
 	ldxy #1
@@ -2357,9 +2368,9 @@ __asm_include:
 	lda pcset
 	beq @open
 	ldxy zp::virtualpc	; current address
-	jsr dbgi::endblock	; end the current block
+	CALLMAIN dbgi::endblock	; end the current block
 	ldxy zp::virtualpc	; current address
-	jsr dbgi::newblock	; start new block for included file
+	CALLMAIN dbgi::newblock	; start new block for included file
 	bcs @reterr		; propagate error (e.g. debug info full)
 
 @open:	ldxy @fname
@@ -2388,7 +2399,7 @@ __asm_include:
 	pha			; .INCBIN in this line clobbers the global
 
 	lda #FINAL_BANK_MAIN	; any bank that is valid (low mem is used)
-	jsr __asm_tokenize
+	jsr tokenize
 	bcc @ok
 	jsr errlog::log		; log the error (.C stays set if fatal/too many)
 
@@ -2424,9 +2435,9 @@ __asm_include:
 	ldxy __asm_linenum
 	stxy dbgi::srcline	; resume at the line of the .INC itself
 	ldxy zp::virtualpc
-	jsr dbgi::endblock	; end the block for the included file
+	CALLMAIN dbgi::endblock	; end the block for the included file
 	ldxy zp::virtualpc
-	jsr dbgi::newblock	; start a new block in original file
+	CALLMAIN dbgi::newblock	; start a new block in original file
 	bcs @err
 @done:
 	lda #$00
@@ -2442,7 +2453,7 @@ __asm_include:
 ; e.g.: `.ORG $1000` or `ORG $1000+LABEL`
 .proc defineorg
 	jsr line::process_ws
-	jsr expr::eval
+	jsr eval_expr
 	jcs @ret		; error
 
 	; if verifying, the expression is validated; skip all side effects
@@ -2464,7 +2475,7 @@ __asm_include:
 	tya			; save the new origin (MSB)
 	pha
 	ldxy zp::virtualpc	; the address reached before this .ORG
-	jsr dbgi::endblock	; end the current block
+	CALLMAIN dbgi::endblock	; end the current block
 	pla			; restore the new origin (MSB)
 	tay
 	pla			; restore the new origin (LSB)
@@ -2499,7 +2510,7 @@ __asm_include:
 :	stx __asm_segtype	; set segment mode
 
 	; close the current section (if any)
-	jsr obj::close_section
+	CALLMAIN obj::close_section
 
 	lda #$00
 	sta $100		; name for this segment is null (empty)
@@ -2523,9 +2534,9 @@ __asm_include:
 	ldxy __asm_linenum
 	stxy dbgi::srcline
 	lda #SEG_ABS
-	jsr dbgi::set_seg_id	; .ORG blocks are absolute (never relocated)
+	CALLMAIN dbgi::set_seg_id	; .ORG blocks are absolute (never relocated)
 	ldxy zp::virtualpc
-	jsr dbgi::newblock	; create a block for the new origin
+	CALLMAIN dbgi::newblock	; create a block for the new origin
 	bcs @ret
 
 @ok:	lda #ASM_ORG
@@ -2540,8 +2551,7 @@ __asm_include:
 ; memory.  It should not be used when assembling a file/buffer
 ; IN:
 ;   - .XY: the address to assemble the next instruction to
-.export __asm_set_pc
-.proc __asm_set_pc
+.proc set_pc
 	stxy zp::asmresult
 	stxy zp::virtualpc
 	lda #$01
@@ -2568,7 +2578,7 @@ __asm_include:
 	RETURN_ERR ERR_RORG_NOT_ABSOLUTE
 
 @absok:	jsr line::process_ws
-	jsr expr::eval
+	jsr eval_expr
 	bcs @ret		; error
 
 	; if verifying, the expression is validated; skip all side effects
@@ -2591,7 +2601,7 @@ __asm_include:
 	tya			; save the new origin (MSB)
 	pha
 	ldxy zp::virtualpc	; the address reached before this .RORG
-	jsr dbgi::endblock	; end the current block
+	CALLMAIN dbgi::endblock	; end the current block
 	pla			; restore the new origin (MSB)
 	tay
 	pla			; restore the new origin (LSB)
@@ -2612,9 +2622,9 @@ __asm_include:
 	ldxy __asm_linenum
 	stxy dbgi::srcline
 	lda #SEG_ABS
-	jsr dbgi::set_seg_id	; .RORG blocks are absolute (never relocated)
+	CALLMAIN dbgi::set_seg_id	; .RORG blocks are absolute (never relocated)
 	ldxy zp::virtualpc	; the new (runtime) origin
-	jmp dbgi::newblock	; create a block
+	JUMPMAIN dbgi::newblock	; create a block
 
 @ok:	clc			; ok
 @ret:	rts
@@ -2642,14 +2652,14 @@ __asm_include:
 	sty @buff		; 1
 	dey			; 0
 	ldx #@buff
-	jsr lbl::setscope	; set scope to a binary (unrenderable) prefix
+	CALLMAIN lbl::setscope	; set scope to a binary (unrenderable) prefix
 	bcs @err
 
 :	lda #CTX_REPEAT
 	jsr ctx::push		; push a new context
 	bcs @err		; too many contexts
 
-	jsr expr::eval  	; get the number of times to repeat the code
+	jsr eval_expr  	; get the number of times to repeat the code
 	bcs @errzero		; error evaluating # of reps expression
 	jsr require_const	; the count must not vary between passes
 	bcs @errzero
@@ -2686,7 +2696,7 @@ __asm_include:
 	sta zp::label_segmentid
 	lda #$01		; define label as 16-bit (ABSOLUTE)
 	sta zp::label_mode
-	jsr lbl::set
+	CALLMAIN lbl::set
 	bcs @errzero
 
 @cont:	stxy zp::line		; update line pointer to after parameter
@@ -2831,7 +2841,7 @@ __asm_include:
 @cnt   = r3
 	; get the first parameter (the alignment)
 	jsr line::process_ws
-	jsr expr::eval
+	jsr eval_expr
 	bcc :+
 	rts			; return the error
 :	stxy @align
@@ -2861,7 +2871,7 @@ __asm_include:
 	pha
 	lda @align+1
 	pha
-	jsr expr::eval		; get the fill value
+	jsr eval_expr		; get the fill value
 	bcc @fillok
 
 	; clean the stack and return the error from eval
@@ -2958,8 +2968,7 @@ __asm_include:
 ;  - .X:   the address modes for the instruction
 ;  - .C:   clear if instruction was successfully disassembled
 ;  - (r0): the (0-terminated) disassembled instruction string (if A IN=0)
-.export __asm_disassemble
-.proc __asm_disassemble
+.proc disassemble
 @opaddr=ra
 	pha			; save nostr flag
 	stxy @opaddr		; opcode
@@ -3376,7 +3385,7 @@ __asm_include:
 	RETURN_ERR ERR_INVALID_MACRO_ARGS
 
 :	stx @cnt
-	jsr expr::eval
+	jsr eval_expr
 	bcc @setparam
 	rts		; return err
 
@@ -3416,7 +3425,7 @@ __asm_include:
 ; OUT:
 ;  - .C: set if error
 .proc do_if
-	jsr expr::eval
+	jsr eval_expr
 	bcs @done
 
 	; if verifying, evaluate the condition for its syntax only
@@ -3503,7 +3512,7 @@ __asm_include:
 
 	; pass 1: check if the label exists (at THIS point in the source)
 	ldxy zp::line
-	jsr lbl::find
+	CALLMAIN lbl::find
 	lda #$00
 	bcs :+		; label not defined
 	lda #$01
@@ -3609,6 +3618,9 @@ __asm_include:
 ;-------------------------------------------------------------------------------
 .ifdef vic20
 ifdefmasks = $8270	; $01,$02,$04,$08,$10,$20,$40,$80
+.elseif .defined(CART) .and .defined(c64)
+; read while banked: keep the table in the assembler's ROM bank
+ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 .else
 .PUSHSEG
 .RODATA
@@ -3679,7 +3691,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	bne @skip		; don't define constants when verifying
 
 	ldxy zp::line
-	jsr lbl::isvalid
+	CALLMAIN lbl::isvalid
 	bcs @err
 
 	lda zp::line		; save label name's address
@@ -3692,7 +3704,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 
 @cont:	jsr line::process_ws	; eat whitespace
 	inc zp::pass		; require label predefinition for constants
-	jsr expr::eval		; get constant value
+	jsr eval_expr		; get constant value
 	dec zp::pass		; set pass back to correct value
 	bcc @ok
 
@@ -3720,7 +3732,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	lda #$01		; ABS mode (1)
 
 :	sta zp::label_mode
-	jsr lbl::add
+	CALLMAIN lbl::add
 	bcs @err
 
 	lda #ASM_DIRECTIVE
@@ -3744,7 +3756,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 
 @seg:	; assembling to object: use the segment's mode
 	lda __asm_segtype
-	jsr __asm_type_to_mode
+	jsr type2mode
 	jmp @add
 
 @direct:
@@ -3756,7 +3768,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 @add:	sta zp::label_mode
 	lda __asm_segmentid
 	sta zp::label_segmentid
-	jmp lbl::add
+	JUMPMAIN lbl::add
 .endproc
 
 ;*******************************************************************************
@@ -3766,8 +3778,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 ;   - .A: the segment TYPE to get the address mode for (e.g. TYPE_BSS)
 ; OUT:
 ;   - .A: the corresponding MODE (*ZP=0, others=1)
-.export __asm_type_to_mode
-.proc __asm_type_to_mode
+.proc type2mode
 	cmp #TYPE_SEGZP
 	beq @zp
 	cmp #TYPE_BSSZP
@@ -3927,7 +3938,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	ldx zp::pass
 	cpx #$01
 	beq :--				; -> ok (no relocation on pass 1)
-	jmp obj::addreloc		; create/append relocation entry
+	JUMPMAIN obj::addreloc		; create/append relocation entry
 .endproc
 
 ;*******************************************************************************
@@ -3987,7 +3998,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 
 	; look up the address of the label we are substituting
 	ldxy @label
-	jsr lbl::addr
+	CALLMAIN lbl::addr
 	bcs @noaddr	; label doesn't exist -> clean stack and exit
 	stxy @val	; save the value of the symbol for later
 
@@ -4178,3 +4189,38 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 .proc __asm_report
 
 .endproc
+
+;*******************************************************************************
+; MAIN-bank entry points (the implementations run banked on the cart build)
+.export __asm_reset
+.export __asm_startpass
+.export __asm_endpass
+.export __asm_tokenize
+.export __asm_include
+.export __asm_set_pc
+.export __asm_disassemble
+.export __asm_is_opcode
+.export __asm_type_to_mode
+
+.if .defined(CART) .and .defined(c64)
+.CODE
+__asm_reset:        JUMP FINAL_BANK_ASM, areset
+__asm_startpass:    JUMP FINAL_BANK_ASM, startpass
+__asm_endpass:      JUMP FINAL_BANK_ASM, endpass
+__asm_tokenize:     JUMP FINAL_BANK_ASM, tokenize
+__asm_include:      JUMP FINAL_BANK_ASM, includefile::include_entry
+__asm_set_pc:       JUMP FINAL_BANK_ASM, set_pc
+__asm_disassemble:  JUMP FINAL_BANK_ASM, disassemble
+__asm_is_opcode:    JUMP FINAL_BANK_ASM, isopcode
+__asm_type_to_mode: JUMP FINAL_BANK_ASM, type2mode
+.else
+__asm_reset        = areset
+__asm_startpass    = startpass
+__asm_endpass      = endpass
+__asm_tokenize     = tokenize
+__asm_include      = includefile::include_entry
+__asm_set_pc       = set_pc
+__asm_disassemble  = disassemble
+__asm_is_opcode    = isopcode
+__asm_type_to_mode = type2mode
+.endif

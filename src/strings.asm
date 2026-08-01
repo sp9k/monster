@@ -208,9 +208,13 @@ __str_breakpoints_line_noname: .byte "  ", ESCAPE_BYTE," ", ESCAPE_STRING, " $",
 __str_watch_added:
 .byte "watch added @ ", $fe, 0
 
+; the memory viewer patches the address into its title and reads it back from
+; banked code on the cart build: keep it in always-visible RAM
+.segment "DATA"
 .export __str_memview_title
 __str_memview_title:
 .byte "memory[$1000]",0
+.RODATA
 
 .export __str_symview_title
 __str_symview_title: .byte "symbols",0

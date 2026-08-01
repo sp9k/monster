@@ -212,7 +212,7 @@ Pressing the `<-` key will return the user from the auxiliary editor to the
 source code editor.  And `F1` will hide the active view to maximize the
 source editor's screen size.
 
-### MEMORY VIEWER (`F3`)
+### MEMORY VIEWER (`f3`)
 
 The memory viewer displays the contents of RAM at a given address.  The memory
 viewer is updated upon reentry to the debugger (if active).
@@ -229,7 +229,7 @@ are supported within the memory viewer:
 |   <-         |  Exit     | Returns to the debugger                                 |
 | ^ (up-arrow) | Set Addr  | Sets the viewer's address to the given value            |
 
-#### SET WATCH (`C= + W`)
+#### SET WATCH (`C= + w`)
 
 Watches may be placed while navigating in the memory editor.  This is done
 by pressing the `C= + w` key-combination while the cursor is on the desired
@@ -253,7 +253,7 @@ Moves the cursor to the address of the viewer, then prompts the user for a new
 value to set the memory viewer to.  Pressing `RETURN` confirms the new address
 and `<-` cancels and returns the user to the editor without changing the address
 
-### BREAKPOINT VIEWER (`F5`)
+### BREAKPOINT VIEWER (`f5`)
 
 The breakpoint viewer displays all the breakpoints that have been set by the
 user.  A circle is displayed next to those that are currently active.
@@ -264,7 +264,7 @@ Note that breakpoints correspond to the debug information generated with
 the F4 command.  If the line numbers change after this information is generated,
 breakpoints are unlikely to behave in expected ways.
 
-### WATCH VIEWER (`F6`)
+### WATCH VIEWER (`f6`)
 
 The watch viewer displays all watches that have been set in the memory
 viewer.  The current value of a watch is shown along with its previous
@@ -282,7 +282,7 @@ The following keys are supported within the watch viewer:
 |  RETURN      | Select/Edit| Enters the memory editor at the watch's address         |
 |   <-         |  Exit      | Returns to the debugger                                 |
 
-#### ADD WATCH (`C= + W`)
+#### ADD WATCH (`C= + w`)
 
 While in the watch editor, the `C= + w` key combination prompts the user for an
 address or address range to watch.  These are given as expressions, so you may
@@ -314,7 +314,7 @@ it by toggling the breakpoint off _or_ by deleting the entire line.
 that, for example, you can set a breakpoint on `LDA #$00` or a macro that expands
 to such an instruction, but setting one on `.DB $00` has no effect.
 
-### TOGGLE BREAKPOINT (`C= + B`)
+### TOGGLE BREAKPOINT (`C= + b`)
 During normal editing, breakpoints may be set and removed  with the `C= + b` key combination.
 
 Pressing the same key combination (`C= + b`) will also remove a breakpoint

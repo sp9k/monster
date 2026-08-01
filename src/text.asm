@@ -543,8 +543,10 @@ tempbuff: .res LINESIZE
 
 ;-------------------------------------------------------------------------------
 .define escape_vectors @esc_goto_col, $0000, @esc_ch, @esc_byte, @esc_spacing, @esc_value_dec, @esc_value, @esc_string
+; these live in DATA (not RODATA): print may run from a banked context on the
+; cart build, where RODATA is unreadable
 .PUSHSEG
-.RODATA
+.segment "DATA"
 @escvecs_lo: .lobytes escape_vectors
 @escvecs_hi: .hibytes escape_vectors
 .POPSEG
@@ -893,8 +895,9 @@ __text_tabr_dist_a=*+2
 ;*******************************************************************************
 ; TABS
 ; This table stores the offsets to each TAB column
+; DATA (not RODATA): may be read from a banked context on the cart build
 .PUSHSEG
-.RODATA
+.segment "DATA"
 tabs:
 .repeat SCREEN_WIDTH/TAB_WIDTH, i
 	.byte i*TAB_WIDTH

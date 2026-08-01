@@ -147,15 +147,84 @@ getsvec: .word 0		; key handler for gets
 .CODE
 
 ;*******************************************************************************
+; ENTRY POINTS
+.export __edit_init
+.export __edit_run
+.export __edit_handle_key
+.export __edit_render_row
+.export __edit_gets
+.export __edit_clear
+.export __edit_resize
+.export __edit_refresh
+.export __edit_set_breakpoint
+.export __edit_load
+.export __edit_gotoline
+.export __edit_src2screen
+.export __edit_sethighlight
+.export __edit_current_file
+.export __edit_refreshline
+
+.if .defined(CART) .and .defined(c64)
+__edit_init:           JUMP FINAL_BANK_EDIT, edit_init
+__edit_run:            JUMP FINAL_BANK_EDIT, edit_run
+__edit_handle_key:     JUMP FINAL_BANK_EDIT, edit_handlekey
+__edit_render_row:     JUMP FINAL_BANK_EDIT, edit_render_row
+__edit_gets:           JUMP FINAL_BANK_EDIT, edit_gets
+__edit_clear:          JUMP FINAL_BANK_EDIT, edit_clear
+__edit_resize:         JUMP FINAL_BANK_EDIT, edit_resize
+__edit_refresh:        JUMP FINAL_BANK_EDIT, edit_refresh
+__edit_set_breakpoint: JUMP FINAL_BANK_EDIT, edit_set_breakpoint
+__edit_load:           JUMP FINAL_BANK_EDIT, edit_load
+__edit_gotoline:       JUMP FINAL_BANK_EDIT, edit_gotoline
+__edit_src2screen:     JUMP FINAL_BANK_EDIT, edit_src2screen
+__edit_sethighlight:   JUMP FINAL_BANK_EDIT, edit_sethighlight
+__edit_current_file:   JUMP FINAL_BANK_EDIT, edit_current_file
+__edit_refreshline:    JUMP FINAL_BANK_EDIT, edit_refreshline
+
+;*******************************************************************************
+; MAIN-context vectors for the gui:: handlers dispatched from the banked
+; command table
+guienter:      JUMPMAIN gui::enter
+guigrow:       JUMPMAIN gui::grow
+guishrink:     JUMPMAIN gui::shrink
+guitogglehide: JUMPMAIN gui::togglehide
+
+.segment "EDITCODE"
+	SET_CUR_BANK FINAL_BANK_EDIT
+
+.else
+__edit_init            = edit_init
+__edit_run             = edit_run
+__edit_handle_key      = edit_handlekey
+__edit_render_row      = edit_render_row
+__edit_gets            = edit_gets
+__edit_clear           = edit_clear
+__edit_resize          = edit_resize
+__edit_refresh         = edit_refresh
+__edit_set_breakpoint  = edit_set_breakpoint
+__edit_load            = edit_load
+__edit_gotoline        = edit_gotoline
+__edit_src2screen      = edit_src2screen
+__edit_sethighlight    = edit_sethighlight
+__edit_current_file    = edit_current_file
+__edit_refreshline     = edit_refreshline
+
+guienter      = gui::enter
+guigrow       = gui::grow
+guishrink     = gui::shrink
+guitogglehide = gui::togglehide
+.endif
+
+;*******************************************************************************
 ; INIT
 ; Initializes the editor state
-.export __edit_init
-.proc __edit_init
+.proc edit_init
 	jsr scr::blank
 	ldx #$ff
-	txs
+	txs			; reset hardware stack
 
 	inx			; ldx #$00
+	stx zp::banksp		; reset "far" (bank byte) stack
 	stx zp::gendebuginfo
 
 	inx			; ldx #$01
@@ -181,17 +250,17 @@ getsvec: .word 0		; key handler for gets
 	jsr file::init_drive
 	jsr scr::unblank
 
-	; fall through to __edit_run
+	; fall through to edit_run
 .endproc
 
 ;*******************************************************************************
 ; RUN
 ; Runs the main loop for the editor
-.export __edit_run
-.proc __edit_run
+.proc edit_run
 	ldx #$ff
 	txs
 	inx			; .X=0
+	stx zp::banksp
 	stx debugging
 
 	jsr edit		; initialize size/mode/etc.
@@ -211,7 +280,7 @@ main:	jsr key::getch
 	jsr cur::off
 	pla
 
-:	jsr __edit_handle_key
+:	jsr edit_handlekey
 @done:	jsr text::update
 	bne main	; branch always (continue main loop)
 .endproc
@@ -223,8 +292,7 @@ main:	jsr key::getch
 ;  - .A: the key that was pressed (as from key::getch)
 ; OUT:
 ;  - .C: set if the key resulted in no action in the editor
-.export __edit_handle_key
-.proc __edit_handle_key
+.proc edit_handlekey
 	jsr is_visual
 	beq @cmd		; handle keys in VISUAL mode like COMMAND
 
@@ -276,8 +344,8 @@ main:	jsr key::getch
 ; Opens (or re-activates) the monitor as a maximized window
 .proc monitor
 	ldxy #mon::window
-	jsr gui::select
-	jsr gui::maximize
+	CALLMAIN gui::select
+	CALLMAIN gui::maximize
 	; fall through to monitor_win
 .endproc
 
@@ -287,7 +355,7 @@ main:	jsr key::getch
 ; screen, leaving the editor visible above it.
 .proc monitor_win
 	ldxy #mon::window
-	jsr gui::open
+	CALLMAIN gui::open
 
 	jsr refresh_line
 	jmp draw_status_bar
@@ -297,8 +365,8 @@ main:	jsr key::getch
 ; MAXIMIZE WIN
 ; Maximizes (or restores) the active window and gives it focus
 .proc maximize_win
-	jsr gui::maximize
-	jmp gui::enter
+	CALLMAIN gui::maximize
+	JUMPMAIN gui::enter
 .endproc
 
 ;*******************************************************************************
@@ -311,8 +379,7 @@ main:	jsr key::getch
 ; shrinks below the size it had when the screen was last saved.
 ; IN:
 ;  - .A: the row to render
-.export __edit_render_row
-.proc __edit_render_row
+.proc edit_render_row
 	pha			; save row
 	jsr text::savebuff	; save linebuffer
 	jsr src::pushp		; save source position
@@ -380,7 +447,7 @@ main:	jsr key::getch
 	inc readonly		; enable read-only mode
 
 	ldxy @addr
-	jmp dbg::start	; start debugging at address in .XY
+	JUMPMAIN dbg::start	; start debugging at address in .XY
 .endproc
 
 ;*******************************************************************************
@@ -397,7 +464,7 @@ main:	jsr key::getch
 	jsr blank
 
 	jsr close_windows	; close errlog (if open)
-	jsr dbgi::init
+	CALLMAIN dbgi::init
 	jsr errlog::clear
 	jsr run::install_sigint	; reset SIGINT flag
 
@@ -413,7 +480,7 @@ main:	jsr key::getch
 	jsr asm::include	; assemble the file (pass 1)
 	bcs @logerr
 
-	jsr obj::close_section	; close final OBJ section
+	CALLMAIN obj::close_section	; close final OBJ section
 
 	; make sure all .IF/.MAC/.REP blocks were closed
 	jsr asm::endpass
@@ -433,8 +500,8 @@ main:	jsr key::getch
 	bcs @logerr
 
 	ldxy zp::virtualpc	; end address (segment-relative in OBJ mode)
-	jsr dbgi::endblock	; end the final block
-	jsr obj::close_section	; close final OBJ section
+	CALLMAIN dbgi::endblock	; end the final block
+	CALLMAIN obj::close_section	; close final OBJ section
 @done:	jmp display_result
 
 @logerr:
@@ -475,7 +542,7 @@ main:	jsr key::getch
 	bcs @err
 
 @done:	jsr log::close
-	jsr lbl::index
+	CALLMAIN lbl::index
 	jmp unblank
 
 @err:	jsr report_typein_error
@@ -592,7 +659,7 @@ main:	jsr key::getch
 
 	jsr run::install_sigint	; reset SIGINT flag
 
-	jsr dbgi::init
+	CALLMAIN dbgi::init
 	jsr errlog::clear
 
 	; save the current source position and rewind it for assembly
@@ -609,7 +676,7 @@ main:	jsr key::getch
 	bcc :+
 	jsr errlog::log
 	jmp @done		; can't get buffer name is fatal, go to end
-:	jsr dbgi::setfile
+:	CALLMAIN dbgi::setfile
 
 ;-------------------------------------------------------------------------------
 ; Pass 1
@@ -647,7 +714,7 @@ main:	jsr key::getch
 	lda errlog::numerrs
 	bne @done
 
-	jsr obj::close_section	; close final OBJ section
+	CALLMAIN obj::close_section	; close final OBJ section
 
 ;-------------------------------------------------------------------------------
 ; Pass 2
@@ -671,7 +738,7 @@ main:	jsr key::getch
 	bcc :+
 	jsr errlog::log
 	jmp @done		; can't get buffer name is fatal, go to end
-:	jsr dbgi::setfile
+:	CALLMAIN dbgi::setfile
 
 @cont:	inc zp::pass		; pass 2
 	jsr src::rewind
@@ -697,8 +764,8 @@ main:	jsr key::getch
 	beq @done		; branch always (done)
 
 @done:	ldxy zp::virtualpc	; block addresses are in virtualpc-space
-	jsr dbgi::endblock	; end the final debug info block
-	jsr obj::close_section	; close final OBJ section
+	CALLMAIN dbgi::endblock	; end the final debug info block
+	CALLMAIN obj::close_section	; close final OBJ section
 
 	jsr src::popgoto
 	jsr text::restorebuff	; restore the linebuffer
@@ -770,7 +837,7 @@ main:	jsr key::getch
 	CALL FINAL_BANK_LINKER, obj::log_state
 
 	ldxy #@success_msg
-@print: jsr text::render
+@print: RENDER_STR
 	jsr print_info
 
 	lda #COLOR_SUCCESS
@@ -780,7 +847,7 @@ main:	jsr key::getch
 	jsr key::waitch		; wait for key
 	ldx #STATUS_ROW
 	jsr draw::hiline
-	jsr lbl::index		; index labels for debugging, etc.
+	CALLMAIN lbl::index		; index labels for debugging, etc.
 
 	jsr log::close
 	RETURN_OK
@@ -805,7 +872,7 @@ main:	jsr key::getch
 	; ask the user if they want to save any modified buffers
 	ldxy #strings::saveall
 	lda #STATUS_ROW
-	jsr text::print
+	CALLMAIN text::print
 @getch:	jsr key::waitch
 	cmp #K_QUIT
 	bne :+			; exit? (abort)
@@ -872,8 +939,7 @@ main:	jsr key::getch
 ;  - .XY: 	      address of the string that was read
 ;  - .A:              length of the string that was read
 ;  - .C:              set if no input was given (e.g. <-)
-.export __edit_gets
-.proc __edit_gets
+.proc edit_gets
 @result_offset=r8
 @len=r9
 	stxy getsvec
@@ -980,7 +1046,7 @@ main:	jsr key::getch
 	; set interface to GUI so that NMI (RESTORE) returns to editor
 	lda #$00
 	sta dbg::interface
-	jmp run::go_basic
+	JUMPMAIN run::go_basic
 .endproc
 
 ;*******************************************************************************
@@ -1027,7 +1093,7 @@ main:	jsr key::getch
 	sta zp::cury
 	jsr text::drawline	; clear line & display prompt
 	ldxy #key::getch	; key-input callback
-	jsr __edit_gets		; read the user input
+	jsr edit_gets		; read the user input
 	php			; save success state
 	stx @result_offset	; save LSB of the result address ($01xx)
 
@@ -1150,7 +1216,7 @@ cancel = enter_command
 ; CLOSE WINDOWS
 ; Closes all open windows and restores the editor to occupy the full screen
 .proc close_windows
-	jsr gui::closeall		; close any open windows
+	CALLMAIN gui::closeall		; close any open windows
 	lda #$00
 	sta mon::windowed		; the monitor window (if any) is closed
 	; fall through to reset_size
@@ -1404,7 +1470,7 @@ cancel = enter_command
 
 @move:	jsr src::popgoto
 	ldxy @target
-	jmp __edit_gotoline
+	jmp edit_gotoline
 .endproc
 
 ;*******************************************************************************
@@ -1428,7 +1494,7 @@ cancel = enter_command
 
 @move:	jsr src::popgoto
 	ldxy @target
-	jmp __edit_gotoline
+	jmp edit_gotoline
 .endproc
 
 ;*******************************************************************************
@@ -2075,7 +2141,7 @@ cancel = enter_command
 @movetostart:
 	; move back to the line the selection began on
 	ldxy visual_start_line
-	jsr __edit_gotoline
+	jsr edit_gotoline
 
 	; move right until we're back at the start of the selection
 	jmp :+			; enter loop at conditional check
@@ -2262,7 +2328,7 @@ cancel = enter_command
 
 @top:	jsr add_jump_point
 	ldxy #1
-	jmp __edit_gotoline
+	jmp edit_gotoline
 
 ;--------------------------------------
 @gotodef:
@@ -2303,7 +2369,7 @@ cancel = enter_command
 	ldxy #mem::spare
 	jsr str::toupper
 	ldxy #mem::spare
-	jsr lbl::addr		; get the address of the line
+	CALLMAIN lbl::addr		; get the address of the line
 	bcs @err
 	stxy @addr
 	bcc @ok
@@ -2535,7 +2601,7 @@ cancel = enter_command
 
 ;-------------------------------------------------------------------------------
 .PUSHSEG
-.RODATA
+.segment "EDITCODE"	; read from the banked context
 @specialkeys:
 	.byte K_LEFT		; left
 	.byte K_RIGHT		; right
@@ -2631,8 +2697,7 @@ cancel = enter_command
 ;*******************************************************************************
 ; CLEAR
 ; Clears the screen as well as any relevant state
-.export __edit_clear
-.proc __edit_clear
+.proc edit_clear
 	lda #CUR_OFF
 	sta cur::status
 	jmp scr::clr
@@ -2699,7 +2764,7 @@ cancel = enter_command
 	jmp (zp::jmpvec)	; execute the delete command
 
 .PUSHSEG
-.RODATA
+.segment "EDITCODE"	; read from the banked context
 @subcmds:
 .byte $77	; w delete word
 .byte $64	; d delete line
@@ -2726,9 +2791,19 @@ cancel = enter_command
 	bcc @ok
 	jmp beep::short		; too many open buffers
 
-@ok:	ldxy #strings::null
+@ok:
+.if .defined(CART) .and .defined(c64)
+	; src::name dereferences the name in this (banked) context; strings::null
+	; is in MIDRAM, so use an in-bank empty string
+	ldxy #@null
+.else
+	ldxy #strings::null
+.endif
 	jsr src::name		; rename buffer to empty name
 	jmp home_refresh
+.if .defined(CART) .and .defined(c64)
+@null:	.byte 0
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -2737,8 +2812,7 @@ cancel = enter_command
 ; within the new size if it would be out of bounds.
 ; IN:
 ;  - .A: the new size of the editor in rows.
-.export __edit_resize
-.proc __edit_resize
+.proc edit_resize
 	cmp height	; is the new height bigger or smaller?
 	sta height
 	bne :+
@@ -2809,8 +2883,7 @@ cancel = enter_command
 ;*******************************************************************************
 ; REFRESH
 ; Redraws the screen
-.export __edit_refresh
-__edit_refresh:
+edit_refresh:
 .proc refresh
 	lda zp::cury
 	pha			; save cursor Y-coord
@@ -2898,7 +2971,7 @@ __edit_refresh:
 	beq @done
 
 	; check if the current line is the highlighted one
-	jsr __edit_current_file		; .A = file ID, .XY = current line #
+	jsr edit_current_file		; .A = file ID, .XY = current line #
 	bcs @done			; no file ID -> not a match
 	cmp highlight_file
 	bne @done			; different file -> not the highlight
@@ -2916,11 +2989,10 @@ __edit_refresh:
 ; SET BREAKPOINT
 ; Creates a breakpoint at the cursor's current file/line number or removes it
 ; if one already exists
-.export __edit_set_breakpoint
-__edit_set_breakpoint:
+edit_set_breakpoint:
 .proc set_breakpoint
 @addr=zp::editortmp
-	jsr __edit_current_file	; get the debug file ID and line #
+	jsr edit_current_file	; get the debug file ID and line #
 	bcc :+
 
 @noname:
@@ -2935,24 +3007,24 @@ __edit_set_breakpoint:
 	lda #COLOR_NORMAL
 	bne @done		; branch always
 
-@set:	jsr __edit_current_file	; get the debug file ID and line #
+@set:	jsr edit_current_file	; get the debug file ID and line #
 	jsr dbg::setbrkatline	; create the breakpoint
 
 	; if possible try to map the address to the breakpoint
-	jsr __edit_current_file
-	jsr dbgi::line2addr
+	jsr edit_current_file
+	CALLMAIN dbgi::line2addr
 
 	; if we can't get the address, but we are not debugging, that's
 	; fine, but we will need to reassemble before it takes affect
 	bcs @done
 
 	stxy r0			; r0 = address to map to
-	jsr __edit_current_file	; get the debug file ID and line #
+	jsr edit_current_file	; get the debug file ID and line #
 	jsr dbg::brksetaddr
 
 @done:	lda zp::cury
 	jsr draw_src_line	; redraw current line
-	jmp gui::refresh
+	JUMPMAIN gui::refresh
 .endproc
 
 ;*******************************************************************************
@@ -3103,7 +3175,7 @@ goto_buffer:
 ; is closed upon exiting or selecting a buffer
 .proc show_buffers
 	ldxy #@menu
-	jmp gui::open
+	JUMPMAIN gui::open
 
 ;-------------------------------------------------------------------------------
 .PUSHSEG
@@ -3174,7 +3246,12 @@ goto_buffer:
 	sec
 	sbc #'1'
 @gotobuff:
+.if .defined(CART) .and .defined(c64)
+	; this handler runs in the MAIN context (called by the window manager)
+	CALL FINAL_BANK_EDIT, goto_buffer
+.else
 	jsr goto_buffer
+.endif
 
 	; update saved cursor to new position in opened buffer
 	; move up as needed
@@ -3203,7 +3280,7 @@ goto_buffer:
 @file=zp::editortmp
 	; check if the name is already taken in the active debug info mapping
 	stxy @file
-	jsr dbgi::getfileid			; .A = id of the file
+	CALLMAIN dbgi::getfileid			; .A = id of the file
 	bcs @ok
 	RETURN_ERR ERR_BUFFER_NAME_EXISTS	; the chosen name is taken
 
@@ -3213,15 +3290,15 @@ goto_buffer:
 
 	; update the active debug-info mapping to support renaming files
 	; without requiring a full reassembly
-	jsr dbgi::getfileid	; get the ID to update from its mapped name
+	CALLMAIN dbgi::getfileid	; get the ID to update from its mapped name
 	bcs @new		; old name isn't mapped; create a new mapping
 	ldxy @file		; restore NEW file name
-	jsr dbgi::rename_file	; rename the debug info entry for the old ID
+	CALLMAIN dbgi::rename_file	; rename the debug info entry for the old ID
 	bcs @err
 	jmp @setname
 
 @new:	ldxy @file		; restore NEW file name
-	jsr dbgi::setfile	; create a debug info mapping for the new name
+	CALLMAIN dbgi::setfile	; create a debug info mapping for the new name
 
 @setname:
 	ldxy @file		; restore NEW file name
@@ -3288,7 +3365,7 @@ goto_buffer:
 @done:  rts			; no input
 
 .PUSHSEG
-.RODATA
+.segment "EDITCODE"	; read from the banked context
 @ex_commands:
 	.byte $64	; d - debug
 	.byte $65	; e - open file
@@ -3306,7 +3383,7 @@ goto_buffer:
 
 .linecont +
 .define ex_command_vecs command_debug, \
-	__edit_load, command_rename, command_save, command_saveall, \
+	edit_load, command_rename, command_save, command_saveall, \
 	command_scratch, command_assemble_file, \
 	command_savebin, command_saveprg, command_savedbg, command_loaddbg, \
 	command_asm_obj
@@ -3400,7 +3477,7 @@ goto_buffer:
 	bne :-
 
 	; read the symbol table
-	jsr lbl::load
+	CALLMAIN lbl::load
 	bcs @errclose
 
 	; read the debug information
@@ -3481,7 +3558,7 @@ goto_buffer:
 	bne :-
 
 	; write the symbol table
-	jsr lbl::dump
+	CALLMAIN lbl::dump
 
 	; write the debug information
 	CALL FINAL_BANK_DEBUG, dbgi::dump
@@ -3674,8 +3751,7 @@ goto_buffer:
 ;  - .XY: the filename to load
 ; OUT:
 ;  - .C: set if file could not be loaded into a buffer
-.export __edit_load
-.proc __edit_load
+.proc edit_load
 @file=r9
 	stxy @file
 
@@ -3730,7 +3806,7 @@ goto_buffer:
 
 	; give the filename a debuginfo ID
 	jsr src::current_filename
-	jsr dbgi::setfile
+	CALLMAIN dbgi::setfile
 
 	lda #$00
 	sta zp::curx
@@ -4793,7 +4869,7 @@ goto_buffer:
 	stxy @line
 	jsr add_jump_point	; save the current position as a jump point
 	ldxy @line
-	jmp __edit_gotoline	; go to the target line
+	jmp edit_gotoline	; go to the target line
 @done:	rts
 .endproc
 
@@ -4807,7 +4883,7 @@ goto_buffer:
 	pha			; save the row
 
 	; if there's a breakpoint on this line, draw it
-	jsr __edit_current_file
+	jsr edit_current_file
 	jsr brkpt::getbyline
 	ldy #$00
 	bcs @nobrk
@@ -4842,7 +4918,9 @@ goto_buffer:
 :	rts
 .endproc
 
-.RODATA
+;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
 
 ;*******************************************************************************
 ; COMMAND_FIND
@@ -4866,7 +4944,7 @@ goto_buffer:
 @cont:	; fall through to find_next
 
 .PUSHSEG
-.RODATA
+.segment "EDITCODE"	; dereferenced by readinput in the banked context
 @prompt_find: .byte "find",0
 .POPSEG
 .endproc
@@ -4896,7 +4974,7 @@ goto_buffer:
 ; found
 ; IN:
 ;  - .XY: the text to find (0-terminated)
-.proc __edit_find
+.proc edfind
 @string=zp::str0
 @seekptr=zp::str2
 @target=r8
@@ -5105,7 +5183,7 @@ goto_buffer:
 @move:	jsr src::popgoto	; restore old source position
 	jsr add_jump_point	; add a jump point
 	ldxy @target
-	jsr __edit_gotoline	; go to the new line
+	jsr edit_gotoline	; go to the new line
 
 	; go back to the start of the line if needed
 :	jsr src::atcursor
@@ -5134,7 +5212,7 @@ goto_buffer:
 .proc goto_end
 	jsr add_jump_point
 	ldxy #$ffff
-	bne __edit_gotoline	; branch always
+	bne edit_gotoline	; branch always
 .endproc
 
 ;*******************************************************************************
@@ -5142,7 +5220,7 @@ goto_buffer:
 ; Navigates the cursor to the next error from the error log
 .proc next_err
 	jsr errlog::next
-	bne __edit_gotoline
+	bne edit_gotoline
 	rts
 .endproc
 
@@ -5151,8 +5229,7 @@ goto_buffer:
 ; Sets the editor to the line in .YX and refreshes the screen.
 ; IN:
 ;  - .XY: the line number to go to
-.export __edit_gotoline
-.proc __edit_gotoline
+.proc edit_gotoline
 @target=r6
 @diff=r6		; lines to move up or down
 @seekforward=r8		; 0=backwards 1=forwards
@@ -5460,7 +5537,7 @@ goto_buffer:
 	beq @done
 
 	; check if the active buffer contains the highlighted line
-	jsr __edit_current_file		; .A = current buffer's file ID
+	jsr edit_current_file		; .A = current buffer's file ID
 	bcs @notvisible			; no file ID -> not the highlight's file
 	cmp highlight_file
 	bne @notvisible			; different file -> not visible here
@@ -5472,7 +5549,7 @@ goto_buffer:
 	lda #$00
 	sta highlight_status
 	ldxy __edit_highlight_line
-	jsr __edit_src2screen
+	jsr edit_src2screen
 	bcc @ok
 @done:	rts
 
@@ -5574,7 +5651,7 @@ goto_buffer:
 	jsr log::banner
 
 	ldxy #@files
-	jsr text::render
+	RENDER_STR
 	jsr log::out
 	jsr log::banner
 
@@ -5582,7 +5659,7 @@ goto_buffer:
 	sta @i
 :	cmp dbgi::numfiles
 	beq @done
-	jsr dbgi::get_filename
+	CALLMAIN dbgi::get_filename
 	jsr log::out
 	inc @i
 	lda @i
@@ -5590,7 +5667,11 @@ goto_buffer:
 @done:	rts
 
 ;-------------------------------------------------------------------------------
+; format string; rendered from the MAIN context (RENDER_STR)
+.PUSHSEG
+.RODATA
 @files: .byte ESCAPE_SPACING,16,"files",0
+.POPSEG
 .endproc
 
 ;*******************************************************************************
@@ -5601,8 +5682,7 @@ goto_buffer:
 ; OUT:
 ;  - .A: the row that the line number resides on
 ;  - .C: set if the line number is not on screen
-.export __edit_src2screen
-.proc __edit_src2screen
+.proc edit_src2screen
 @line=zp::editortmp
 @startline=zp::editortmp+2
 @endline=zp::editortmp+4
@@ -5728,7 +5808,7 @@ goto_buffer:
 	ldy jumplist_hi-1,x
 	lda jumplist_lo-1,x
 	tax
-	jmp __edit_gotoline
+	jmp edit_gotoline
 .endproc
 
 ;*******************************************************************************
@@ -5817,8 +5897,7 @@ goto_buffer:
 ; Sets the line to highlight and enables line-highlight
 ; IN:
 ;  - .XY: the line to highlight
-.export __edit_sethighlight
-.proc __edit_sethighlight
+.proc edit_sethighlight
 @newhighlight=zp::editortmp+6
 	lda highlight_status		; is highlight active?
 	beq @set
@@ -5829,7 +5908,7 @@ goto_buffer:
 
 @set:	stxy __edit_highlight_line
 
-	jsr __edit_current_file		; .A = current buffer's file ID
+	jsr edit_current_file		; .A = current buffer's file ID
 	bcc @setfile
 	lda #$ff			; no file ID; use invalid id
 @setfile:
@@ -5853,7 +5932,7 @@ goto_buffer:
 	; get filename (r0 = id)
 	lda src::activebuff
 	ldxy __edit_highlight_line
-	jsr __edit_src2screen
+	jsr edit_src2screen
 	bcs @done		; off screen
 	jmp draw::rvs_underline
 
@@ -5883,7 +5962,7 @@ unblank = scr::unblank
 ; Updates the status line with the given info message and refreshses the status
 .proc print_info
 	lda status_row
-	jmp text::print
+	JUMPMAIN text::print
 .endproc
 
 ;*******************************************************************************
@@ -5894,12 +5973,11 @@ unblank = scr::unblank
 ;  - .A:  the debug file ID of the current file
 ;  - .XY: the current line in the file
 ;  - .C: set if there is no debug file ID for the active buffer
-.export __edit_current_file
-.proc __edit_current_file
+.proc edit_current_file
 	lda src::activebuff
 	jsr src::filename
 	bcs :+			; failed to get filename -> return
-	jsr dbgi::getfileid	; .A = id of the file
+	CALLMAIN dbgi::getfileid	; .A = id of the file
 	bcs :+
 	jsr src::currline
 	clc
@@ -5919,7 +5997,7 @@ unblank = scr::unblank
 @err:	rts
 :	jsr log::banner
 	ldxy #strings::pass1
-	jsr text::render
+	RENDER_STR
 	jsr log::out
 	jmp log::banner
 .endproc
@@ -5930,7 +6008,7 @@ unblank = scr::unblank
 .proc log_pass2
 	jsr log::banner
 	ldxy #strings::pass2
-	jsr text::render
+	RENDER_STR
 	jsr log::out
 	jmp log::banner
 .endproc
@@ -5971,8 +6049,7 @@ unblank = scr::unblank
 ;*******************************************************************************
 ; REFRESH LINE
 ; Reloads the linebuffer with its correct contents from the source buffer
-.export __edit_refreshline
-__edit_refreshline:
+edit_refreshline:
 .proc refresh_line
 	jsr src::pushp
 	jsr src::home
@@ -6066,14 +6143,14 @@ numcommands=*-commands
 	paste_below, paste_above, delete_char, \
 	open_line_above, open_line_below, join_line, comment_out, \
 	enter_visual, enter_visual_line, command_yank, sub_char, sub_line, \
-	dirview, gui::enter, ccleft, ccright, ccup, ccdown, endofword, \
+	dirview, guienter, ccleft, ccright, ccup, ccdown, endofword, \
 	beginword, word_advance, home_col, last_line, \
 	home_line, ccdel, ccright, goto_end, goto_start, find_next, find_prev, \
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
 	command_find, next_drive, prev_drive, get_command, monitor, \
-	monitor_win, gui::grow, gui::shrink, maximize_win, next_err, \
-	help::show, gui::togglehide
+	monitor_win, guigrow, guishrink, maximize_win, next_err, \
+	help::show, guitogglehide
 .linecont -
 
 command_vecs_lo: .lobytes cmd_vecs

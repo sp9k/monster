@@ -7,6 +7,8 @@
 .include "../inline.inc"
 .include "../zeropage.inc"
 
+.import __ram_mem01
+
 ;*******************************************************************************
 ; OSCALL
 ; Makes the KERNAL ($e000-$ffff) available and calls the procedure
@@ -32,7 +34,7 @@
 	sta @a			; save .A
 	stx @x			; save .X
 
-	lda #$34		; expose RAM in $e000-$ffff again
+	lda __ram_mem01		; restore the current context's memory config
 	sta $01
 
 	lda @a			; restore .A

@@ -4,6 +4,7 @@ VIC20_RAM_INC = 1
 .import __ram_call
 
 .include "../zeropage.inc"
+.include "ultimem/banks.inc"
 
 ;*******************************************************************************
 ; LDA24
@@ -215,24 +216,46 @@ VIC20_RAM_INC = 1
 .endmacro
 
 ;*******************************************************************************
+; CUR_BANK
+; The logical bank the code currently being assembled runs from.  CALL/JUMP
+; compare a target's bank against this to decide whether a call is "near" (same
+; bank -> a bare jsr/jmp, no bank switch) or "far" (route through __ram_call).
+; See the fuller explanation in c64/ram.inc.
+;
+; The default is BANK_NONE so that every call stays far (the historical
+; behavior) until a module opts in with its own `CUR_BANK .set FINAL_BANK_x`.
+BANK_NONE = $ff
+CUR_BANK .set BANK_NONE
+
+;*******************************************************************************
+; SET_CUR_BANK
+; Declares the bank the following code runs from
+.macro SET_CUR_BANK bank
+.endmacro
+
+;*******************************************************************************
 ; CALL
 ; calls the banked routine
 ; params:
 ;  bank: the bank of the procedure to call
 ;  proc: the procedure to call
 .macro CALL bank, proc
+; the :: forces global-scope lookup: inside a .proc an unqualified reference to
+; a file-scope constant is not resolved as a constant, which .if requires
+.if ::bank = ::CUR_BANK
+	jsr proc
+.else
 	jsr __ram_call
 	.byte bank
 	.word proc
+.endif
 .endmacro
 
 ;*******************************************************************************
 ; CALLMAIN
 ; equivalent to CALL FINAL_BANK_MAIN, proc
 .macro CALLMAIN proc
-	jsr __ram_call
-	.byte FINAL_BANK_MAIN
-	.word proc
+	CALL FINAL_BANK_MAIN, proc
 .endmacro
 
 ;*******************************************************************************
@@ -242,23 +265,23 @@ VIC20_RAM_INC = 1
 ;  bank: the bank of the procedure to jump to
 ;  proc: the procedure to jump to
 .macro JUMP bank, proc
+.if ::bank = ::CUR_BANK
+	jmp proc
+.else
 	jsr __ram_call
 	.byte bank
 	.word proc
 	rts
+.endif
 .endmacro
 
 ;*******************************************************************************
 ; JUMPMAIN
 ; equivalent to JUMP FINAL_BANK_MAIN, proc
 ; params:
-;  bank: the bank of the procedure to jump to
 ;  proc: the procedure to jump to
-.macro JUMPMAIN  proc
-	jsr __ram_call
-	.byte FINAL_BANK_MAIN
-	.word proc
-	rts
+.macro JUMPMAIN proc
+	JUMP FINAL_BANK_MAIN, proc
 .endmacro
 
 .endif

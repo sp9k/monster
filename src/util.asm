@@ -464,8 +464,9 @@ result=mem::spare
 	ldx @xsave
 	plp
 	rts
+; DATA (not RODATA): may be read from a banked context on the cart build
 .PUSHSEG
-.RODATA
+.segment "DATA"
 @ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', '<', '>'
 @numops = *-@ops
 .POPSEG

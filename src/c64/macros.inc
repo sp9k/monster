@@ -1,3 +1,5 @@
+.import __ram_mem01
+
 .macro IO_BEGIN
 	php
 	sei
@@ -8,7 +10,7 @@
 .endmacro
 
 .macro IO_DONE
-	lda #$34	; make all RAM visible
+	lda __ram_mem01	; restore the current context's memory config
 	sta $01
 	plp
 .endmacro

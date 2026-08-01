@@ -67,8 +67,10 @@ CURSOR_LR_MASK = 2
 @done:	cmp #$00
 @ret:	rts
 
+; these tables live in DATA (not RODATA): getch may run from a banked context
+; on the cart build, where RODATA is unreadable
 .PUSHSEG
-.RODATA
+.DATA
 ; these characters are translated to their corresponding character in
 ; @translated
 ;

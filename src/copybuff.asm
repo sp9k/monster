@@ -39,7 +39,8 @@ __buff_num_lines_copied:	.byte 0
 
 .CODE
 
-.ifdef vic20
+; the cart builds run this code banked, so entry must go through a far-call
+.if .defined(vic20) .or .defined(CART)
 
 ;*******************************************************************************
 .macro COPYBUFFJUMP proc
@@ -85,6 +86,7 @@ copybuff:		; buffer for copy data
 .endif
 
 .segment "COPYBUFF"
+	SET_CUR_BANK FINAL_BANK_BUFF
 
 ;*******************************************************************************
 ; PUTCH

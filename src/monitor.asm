@@ -195,6 +195,7 @@ __monitor_window:
 .endproc
 
 .segment "CONSOLE"
+SET_CUR_BANK FINAL_BANK_MONITOR
 
 ;*******************************************************************************
 ; PUTS

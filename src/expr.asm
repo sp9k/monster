@@ -94,10 +94,14 @@ operands: .res $100
 ; Calls the evaluation procedure
 .export __expr_eval
 .proc __expr_eval
+.ifdef vic20
 	JUMP FINAL_BANK_UDGEDIT, eval
+.else
+	JUMP FINAL_BANK_EXPR, eval
+.endif
 .endproc
 
-; expression code stored in UDG bank
+; expression code stored in UDG bank (vic20) / ASM cart bank (c64)
 .segment "EXPR"
 
 ;*******************************************************************************
@@ -132,6 +136,11 @@ operands: .res $100
 ;  - .XY:      the result of the evaluated expression
 ;  - .C:       clear on success or set on failure
 ;  - zp::line: updated to point beyond the parsed expression
+.if .defined(CART) .and .defined(c64)
+; the assembler is co-banked with the evaluator: it calls eval directly
+.export __expr_eval_bank
+__expr_eval_bank:
+.endif
 .proc eval
 	jsr __expr_parse	; parse the RPN list
 	bcs :-			; -> rts

@@ -1,5 +1,7 @@
 .include "../macros.inc"
 
+.import __ram_mem01
+
 .segment "IRQ"
 
 ;*******************************************************************************
@@ -25,6 +27,11 @@
 	stxy $0314		; software vector
 	ldxy #hw_irq_handler
 	stxy $fffe		; hardware vector
+
+	; restore the caller's memory context (this may be called from banked
+	; code on the cart build, e.g. via scr::unblank)
+	lda __ram_mem01
+	sta $01
 
 	cli
 	rts

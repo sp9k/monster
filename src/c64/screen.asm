@@ -27,14 +27,12 @@
 .segment "FASTTEXT"
 .segment "FASTTEXT_BSS"
 
-.segment "SETUP"
+.CODE
 ;*******************************************************************************
 .export __text_init
 .proc __text_init
 	rts
 .endproc
-
-.CODE
 ;*******************************************************************************
 .export __screen_init
 .proc __screen_init
@@ -628,7 +626,8 @@ __text_puts:
 @done:	rts
 
 .PUSHSEG
-.RODATA
+; must be in always-visible RAM: called from banked code on the cart build
+.segment "DATA"
 ;|  Code   | Conversion Offset |
 ;|-----------------------------|
 ;| $00-$1F | $80               |
@@ -647,7 +646,8 @@ __text_puts:
 .POPSEG
 .endproc
 
-.RODATA
+; must be in always-visible RAM: called from banked code on the cart build
+.segment "DATA"
 ;*******************************************************************************
 .linecont +
 .define rows \

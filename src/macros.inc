@@ -1,6 +1,18 @@
 .include "zeropage.inc"
 
 ;*******************************************************************************
+; BANKED CODE
+; Selects the given code segment on builds where the module runs from its own
+; cartridge ROM bank (c64 cart) and the main CODE segment otherwise
+.macro BANKED_CODE name
+.if .defined(CART) .and .defined(c64)
+.segment name
+.else
+.CODE
+.endif
+.endmacro
+
+;*******************************************************************************
 ; INCW
 ; incw increments the 16-bit value at the address w.
 .macro incw w

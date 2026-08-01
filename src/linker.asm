@@ -216,6 +216,8 @@ OBJ_RELZP   = $05	; byte value followed by relative byte "RZ $20 LAB+10"
 OBJ_RELABS  = $06	; byte value followed by relative word "RA $20 LAB+5"
 
 .segment "LINKER"
+SET_CUR_BANK FINAL_BANK_LINKER
+
 ;*******************************************************************************
 ; INIT
 ; Initializes the linker state

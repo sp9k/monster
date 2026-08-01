@@ -30,7 +30,8 @@ __prefs_select_col:    .byte GUI_SELECT_COLOR
 
 pal_num: .byte 0
 
-.RODATA
+; must be in always-visible RAM: called from banked code on the cart build
+.segment "DATA"
 ;*******************************************************************************
 ; PALETTES
 ; 0: default

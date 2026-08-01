@@ -1,14 +1,65 @@
 ## LINKER OVERVIEW
 
 The linker is responsible for taking a number of _object_ files and turning them into a
-single executable binary file.
+single executable binary file.  To link a program there are a few prerequisites:
+
+1. produce the object files you wish to link
+2. produce a LINK file to describe the desired layout for the linked program
+3. link the program
+
+### SAVING AN OBJECT FILE
+Object files are nothing more than individually assembled fragments.  Anything you assemble (C=+a) can
+be stored to disk in the object format.  This is done with the `:o` Ex command.  The linker will
+specifically look for files that end in `.o` when it goes to link, so be sure to enter a filename
+with that suffix: e.g. `:o hello.o`.
+
+Your assembled program may itself specify where it should be loaded (this is what the `.org` directive does).
+In these cases, the linker doesn't have much work.  It will, at least, ensure that all the linked
+files don't overlap.
+
+Its real value comes when you use the `.seg` directive instead.  The linker's job is to find all the
+code and data that was defined in the same segment and to put it together into one contiguous block.
+
+For example, say we have two object files: a.o and b.o
+#### a.s
+```
+.seg "CODE"
+	lda #$00
+	sta $900f
+.seg "DATA"
+	.byte "hello"
+```
+
+#### b.s
+```
+.seg "CODE"
+	rol $9000
+.seg "DATA"
+	.byte " world"
+```
+
+The linker will _concatenate_ each segment in b.o to the corresponding ones defined in a.o.
+Effectively, the linked binary will correspond to something like this:
+
+#### c.s
+```
+.seg "CODE"
+	lda #$00
+	sta $900f
+	rol $9000
+.seg "DATA"
+	.byte "hello"
+	.byte " world"
+```
+
+But what physical address will "CODE" and "DATA" actually correspond to?  Enter the `LINK` file.
 
 ### LINK FILE FORMAT
 The LINK file is responsible for producing the desired layout for the binary program.
 It contains two "blocks" of definitions for the two concepts that define how the linker performs its job of laying out
 the program.
-  - `MEMORY` - defines the SECTION sizes and properties
-  - `SEGMENTS` - defines how the SEGMENTS defined in the object code map to the memory SECTIONS.
+  - `MEMORY`: defines the SECTION addresses, sizes, and properties
+  - `SEGMENTS`: defines how and where the SEGMENTS defined in the object code map to the memory SECTIONS.
 
 The LINK file must always be named "LINK". Therefore, only 1 such file may exist on a given disk.
 The linker loads this file before beginning the link process and uses it to initialize the layout for the final linked binary as well as define the constraints for it.
@@ -50,6 +101,10 @@ Note that any nonzero value for these flags will enable them while the zero valu
 | FILL |  if '1' fills unused memory in the section with 0's
 
 ---
+
+### TECHNICAL DETAILS
+The following sections are probably only interesting the the most hardcore enthusiasts, who care how
+Monster actually implements its linker.
 
 ### LINK PROCESS OVERVIEW
 To link multiple object files the linker follows the following procedure:

@@ -19,6 +19,7 @@
 .include "layout.inc"
 .include "macros.inc"
 .include "memory.inc"
+.include "ram.inc"
 .include "source.inc"
 .include "settings.inc"
 .include "strings.inc"
@@ -34,87 +35,44 @@ BREAKPOINT_ENABLED = 1
 .CODE
 
 ;*******************************************************************************
-; EDIT
-; Begins the breakpoint editor
+; MAIN-bank entry points
 .export __breakpoint_edit
-.proc __breakpoint_edit
-	ldxy #@menu
-	jmp gui::open
+.export __brkpt_anyinbuff
+.export __brkpt_delete_in_buff
+
+.if .defined(CART) .and .defined(c64)
+__breakpoint_edit:      JUMP FINAL_BANK_DBGUI, brkptedit
+__brkpt_anyinbuff:      JUMP FINAL_BANK_DBGUI, anyinbuff
+__brkpt_delete_in_buff: JUMP FINAL_BANK_DBGUI, delete_in_buff
+getkey_vec:             JUMP FINAL_BANK_DBGUI, getkey
+.else
+__breakpoint_edit      = brkptedit
+__brkpt_anyinbuff      = anyinbuff
+__brkpt_delete_in_buff = delete_in_buff
+getkey_vec             = getkey
+.endif
 
 .PUSHSEG
 .RODATA
-@menu:
+;*******************************************************************************
+; MENU
+; Window descriptor for the breakpoint editor
+menu:
 .byte GUI_BREAKPOINTS			; id for breakpoint editor
 .byte GUI_CLASS_LIST
 .byte HEIGHT				; initial height
 .byte 1					; min height
 .byte 12				; max height
 .word strings::breakpoints_title	; title
-.word @getkey				; key handler
+.word getkey_vec			; key handler
 .word ui::render_breakpoint		; get line handler
 .word dbg::numbreakpoints		; # of breakpoints pointer
-
-;--------------------------------------
-@getkey:
-	cmp #K_RETURN
-	bne @chkdel
-	; toggle the breakpoint's active status
-	txa
-	jsr toggle_breakpoint
-	RETURN_OK
-
-@chkdel:
-	cmp #K_DEL		; DEL
-	bne @done
-	ldy dbg::breakpointshi,x
-	lda dbg::breakpointslo,x
-	tax
-	jsr dbg::removebreakpoint
-@done:	RETURN_OK
-.endproc
 .POPSEG
-
-;*******************************************************************************
-; TOGGLE_BREAKPOINT
-; Toggles the given breakpoint, turning it off it was on or on if it was off
-; IN:
-;  - .A: the breakpoint to toggle active/inactive
-.proc toggle_breakpoint
-	tax
-	lda dbg::breakpoint_flags,x
-	eor #BREAKPOINT_ENABLED
-	sta dbg::breakpoint_flags,x
-	pha
-
-	; if the breakpoint is visible, toggle its color
-	; src2screen needs the editor's cursor; if a GUI window has focus, the
-	; live cursor belongs to it instead, so swap in the saved editor cursor
-	lda zp::cury
-	pha
-	lda gui::cursave_y
-	sta zp::cury
-
-	lda dbg::breakpoint_lineslo,x
-	ldy dbg::breakpoint_lineshi,x
-	tax
-	jsr edit::src2screen
-	tax
-
-	pla
-	sta zp::cury
-
-	pla
-	bcs :+
-
-	; 1 = inactive (BREAKPOINT_INACTIVE), 2 = active (BREAKPOINT_ACTIVE)
-	adc #$01
-	sta mem::breakpoint_rows,x
-:	rts
-.endproc
 
 ;*******************************************************************************
 ; GETBYLINE
 ; Returns the ID of the breakpoint at the given line (if one exists)
+; Stays resident: the editor calls this for every source row it draws
 ; IN:
 ;  - .XY: the line # to get the breakpoint at
 ;  - .A:  the file ID of the breakpoint
@@ -152,6 +110,75 @@ BREAKPOINT_ENABLED = 1
 @done:	rts
 .endproc
 
+BANKED_CODE "DBGUI"
+
+;*******************************************************************************
+; EDIT
+; Begins the breakpoint editor
+.proc brkptedit
+	ldxy #menu
+	JUMPMAIN gui::open
+.endproc
+
+;*******************************************************************************
+; GETKEY
+; callback to handle keypress in the breakpoint window
+.proc getkey
+	cmp #K_RETURN
+	bne @chkdel
+	; toggle the breakpoint's active status
+	txa
+	jsr toggle_breakpoint
+	RETURN_OK
+
+@chkdel:
+	cmp #K_DEL		; DEL
+	bne @done
+	ldy dbg::breakpointshi,x
+	lda dbg::breakpointslo,x
+	tax
+	jsr dbg::removebreakpoint
+@done:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; TOGGLE_BREAKPOINT
+; Toggles the given breakpoint, turning it off it was on or on if it was off
+; IN:
+;  - .A: the breakpoint to toggle active/inactive
+.proc toggle_breakpoint
+	tax
+	lda dbg::breakpoint_flags,x
+	eor #BREAKPOINT_ENABLED
+	sta dbg::breakpoint_flags,x
+	pha
+
+	; if the breakpoint is visible, toggle its color
+	; src2screen needs the editor's cursor; if a GUI window has focus, the
+	; live cursor belongs to it instead, so swap in the saved editor cursor
+	lda zp::cury
+	pha
+	lda gui::cursave_y
+	sta zp::cury
+
+	lda dbg::breakpoint_lineslo,x
+	ldy dbg::breakpoint_lineshi,x
+	tax
+	CALLMAIN edit::src2screen
+	tax
+
+	pla
+	sta zp::cury
+
+	pla
+	bcs :+
+
+	; 1 = inactive (BREAKPOINT_INACTIVE), 2 = active (BREAKPOINT_ACTIVE)
+	adc #$01
+	sta mem::breakpoint_rows,x
+:	rts
+.endproc
+
 ;*******************************************************************************
 ; ANY IN BUFF
 ; Checks if the provided source buffer ID has any breakpoints mapped to it.
@@ -160,8 +187,7 @@ BREAKPOINT_ENABLED = 1
 ; OUT:
 ;   - .X: index of first breakpoint found that matches the given ID (if any)
 ;   - .C: set if the buffer is mapped to at least 1 breakpoint
-.export __brkpt_anyinbuff
-.proc  __brkpt_anyinbuff
+.proc anyinbuff
 	ldx dbg::numbreakpoints
 	beq @no
 :	cmp dbg::breakpoint_fileids-1,x
@@ -181,14 +207,13 @@ BREAKPOINT_ENABLED = 1
 ; Deletes all breakpoints in the buffer of the given ID
 ; IN:
 ;   - .A: id of buffer to delete breakpoints in
-.export __brkpt_delete_in_buff
-.proc __brkpt_delete_in_buff
+.proc delete_in_buff
 @id=r0
 	sta @id
 
 @l0:	; remove all breakpoints that match the buffer we're looking for
 	lda @id
-	jsr __brkpt_anyinbuff
+	jsr anyinbuff
 	bcc @done
 	jsr dbg::removebreakpointbyid	; remove breakpoint .X
 	jmp @l0

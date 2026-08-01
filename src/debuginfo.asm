@@ -103,6 +103,9 @@ debuginfo:
 .endif
 debuginfo_end:
 
+; NOTE: on the cart build the entry thunks below live in RODATA (MAIN context),
+; so CUR_BANK must stay at its resident default here; it is set to
+; FINAL_BANK_DEBUG only where the banked implementation actually begins (below).
 .segment "DEBUGINFO_CODE"
 
 .export __debug_addr2line
@@ -119,7 +122,7 @@ debuginfo_end:
 .export __debuginfo_set_seg_id
 .export __debuginfo_get_fileid
 
-.ifdef vic20
+.if .defined(vic20) .or .defined(CART)
 .RODATA
 .endif
 
@@ -164,6 +167,7 @@ numobjfiles: .byte 0
 blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 
 .segment "DEBUGINFO_CODE"
+	SET_CUR_BANK FINAL_BANK_DEBUG	; banked implementation begins here
 
 ;*******************************************************************************
 ; INITONCE
@@ -1312,7 +1316,7 @@ get_filename = get_filename_addr
 
 	; dump each header
 	tax			; .X = numblocks
-	beq @done		; if no BLOCKS, we're done
+	jeq @done		; if no BLOCKS, we're done
 	sta @cnt
 
 	lda #$00
