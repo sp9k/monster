@@ -138,8 +138,7 @@ __file_geterr       = fgeterr
 __file_write_banner = writebanner
 .endif
 
-BANKED_CODE "FILEDIR"
-	SET_CUR_BANK FINAL_BANK_FILEDIR
+BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 ;*******************************************************************************
 ; LOADBINV

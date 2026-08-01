@@ -67,8 +67,7 @@ __symview_enter: JUMP FINAL_BANK_DBGUI, enter
 __symview_enter = enter
 .endif
 
-BANKED_CODE "DBGUI"
-SET_CUR_BANK FINAL_BANK_DBGUI
+BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 ;*******************************************************************************
 ; GET ITEM

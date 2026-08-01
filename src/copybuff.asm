@@ -85,8 +85,7 @@ copybuff:		; buffer for copy data
 	.res $ffff
 .endif
 
-.segment "COPYBUFF"
-	SET_CUR_BANK FINAL_BANK_BUFF
+BANKED_SEG "COPYBUFF", FINAL_BANK_BUFF
 
 ;*******************************************************************************
 ; PUTCH

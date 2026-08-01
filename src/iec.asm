@@ -23,8 +23,7 @@ __io_readerr = readerr
 __iec_seterr = seterr
 .endif
 
-BANKED_CODE "FILEDIR"
-	SET_CUR_BANK FINAL_BANK_FILEDIR
+BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 ;*******************************************************************************
 ; READERR

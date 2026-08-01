@@ -41,8 +41,7 @@ __dir_get_by_type = getbytype
 __dir_view        = dirview
 .endif
 
-BANKED_CODE "FILEDIR"
-	SET_CUR_BANK FINAL_BANK_FILEDIR
+BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 ;*******************************************************************************
 ; GET BY TYPE

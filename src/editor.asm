@@ -189,8 +189,7 @@ guigrow:       JUMPMAIN gui::grow
 guishrink:     JUMPMAIN gui::shrink
 guitogglehide: JUMPMAIN gui::togglehide
 
-.segment "EDITCODE"
-	SET_CUR_BANK FINAL_BANK_EDIT
+BANKED_SEG "EDITCODE", FINAL_BANK_EDIT
 
 .else
 __edit_init            = edit_init

@@ -248,8 +248,7 @@ menu:
 	rts
 .endproc
 
-BANKED_CODE "DBGUI"
-	SET_CUR_BANK FINAL_BANK_DBGUI
+BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 ;*******************************************************************************
 ; INIT

@@ -104,8 +104,7 @@ window:
 .byte 0				; $10 unused
 .POPSEG
 
-BANKED_CODE "DBGUI"
-SET_CUR_BANK FINAL_BANK_DBGUI
+BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 ;*******************************************************************************
 ; EDIT

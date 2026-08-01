@@ -82,8 +82,7 @@ menu:
 .word numerrs		; pointer to number of errors
 .POPSEG
 
-BANKED_CODE "DBGUI"
-	SET_CUR_BANK FINAL_BANK_DBGUI
+BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 ;*******************************************************************************
 ; ACTIVATE

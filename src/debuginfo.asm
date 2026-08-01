@@ -166,8 +166,7 @@ numobjfiles: .byte 0
 .export blockheaders
 blockheaders: .res MAX_BLOCKS*SIZEOF_BLOCK_HEADER
 
-.segment "DEBUGINFO_CODE"
-	SET_CUR_BANK FINAL_BANK_DEBUG	; banked implementation begins here
+BANKED_SEG "DEBUGINFO_CODE", FINAL_BANK_DEBUG	; banked implementation begins here
 
 ;*******************************************************************************
 ; INITONCE

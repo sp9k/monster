@@ -194,8 +194,7 @@ __monitor_window:
 @done:	rts			; propagate keypress
 .endproc
 
-.segment "CONSOLE"
-SET_CUR_BANK FINAL_BANK_MONITOR
+BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 ;*******************************************************************************
 ; PUTS

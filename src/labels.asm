@@ -284,8 +284,7 @@ numanon: .word 0		; total number of anonymous labels
 scopesp: .byte 0		; offset of next free scope (0 = no scope)
 labelvars_size=*-labelvars
 
-.segment "LABELS"
-SET_CUR_BANK FINAL_BANK_SYMBOLS
+BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 ;*******************************************************************************
 ; POP SCOPE

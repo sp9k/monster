@@ -45,8 +45,7 @@ __dbgcmd_default_addr:     .word 0	; default start address for command
 MAX_EXPR_LIST = 32
 exprlist: .res MAX_EXPR_LIST
 
-.segment "CONSOLE"
-SET_CUR_BANK FINAL_BANK_MONITOR
+BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 ;*******************************************************************************
 ; DBGCMD RUN

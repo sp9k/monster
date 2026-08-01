@@ -3,12 +3,29 @@
 ;*******************************************************************************
 ; BANKED CODE
 ; Selects the given code segment on builds where the module runs from its own
-; cartridge ROM bank (c64 cart) and the main CODE segment otherwise
-.macro BANKED_CODE name
+; cartridge ROM bank (c64 cart) and the main CODE segment otherwise.
+; If `bank` is given, also declares it as the current bank (SET_CUR_BANK).
+.macro BANKED_CODE name, bank
 .if .defined(CART) .and .defined(c64)
 .segment name
 .else
 .CODE
+.endif
+.ifnblank bank
+	SET_CUR_BANK bank
+.endif
+.endmacro
+
+;*******************************************************************************
+; BANKED SEG
+; Like BANKED_CODE, but for modules that occupy a dedicated segment on EVERY
+; build (the segment is defined in all link configs, mapping to the right bank
+; per platform), so there is no CODE fallback.  As with BANKED_CODE, an optional
+; `bank` parameter declares the current bank for same-bank call optimization.
+.macro BANKED_SEG name, bank
+.segment name
+.ifnblank bank
+	SET_CUR_BANK bank
 .endif
 .endmacro
 

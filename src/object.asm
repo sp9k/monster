@@ -221,8 +221,7 @@ __obj_add_reloc     = add_reloc
 __obj_close_section = close_section
 .endif
 
-.segment "OBJCODE"
-SET_CUR_BANK FINAL_BANK_LINKER
+BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 
 ;*******************************************************************************
 ; INIT

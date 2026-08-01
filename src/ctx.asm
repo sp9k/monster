@@ -116,8 +116,7 @@ __ctx_write:	    JUMP FINAL_BANK_CTX, write
 __ctx_end:	    JUMP FINAL_BANK_CTX, end
 __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 
-.segment "CTX"
-	SET_CUR_BANK FINAL_BANK_CTX
+BANKED_SEG "CTX", FINAL_BANK_CTX
 
 ;*******************************************************************************
 ; IS WHITESPACE

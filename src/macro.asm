@@ -59,8 +59,7 @@ macros_end:
 ;    |      ...      | macro definition          |
 ;    |       2       | terminating 0,0           |
 
-.segment "MACROCODE"
-SET_CUR_BANK FINAL_BANK_MACROS
+BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 
 ;*******************************************************************************
 ; MAC_INIT
