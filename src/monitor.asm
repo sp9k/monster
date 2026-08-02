@@ -610,8 +610,6 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 .proc winenter
 	jsr set_geometry
 
-	CALLMAIN asm::reset
-
 	; keep the input line on the buffer's bottom row and redraw in case
 	; anchoring moved the buffer's contents
 	jsr anchor_bottom

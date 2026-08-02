@@ -1089,11 +1089,7 @@ get_filename = get_filename_addr
 
 ; copy the header state for the block:
 ; start addr, stop addr, base line, # lines, file id, program addr
-	ldy #SIZEOF_BLOCK_HEADER-1
-@copy:	LOADB_Y block
-	sta blockstate,y
-	dey
-	bpl @copy
+	LOADBLK block, blockstate, SIZEOF_BLOCK_HEADER
 
 	; initialize line/address values to the base for the block
 	lda blockstart
@@ -1615,11 +1611,7 @@ get_filename = get_filename_addr
 	lda @block_i
 	jsr header_addr
 	stxy @header
-	ldy #SIZEOF_BLOCK_HEADER-1
-:	lda blockstate,y
-	STOREB_Y @header
-	dey
-	bpl :-
+	STOREBLK blockstate, @header, SIZEOF_BLOCK_HEADER
 
 	; the header is written; the block may now be safely counted
 	inc numblocks

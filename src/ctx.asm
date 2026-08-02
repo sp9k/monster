@@ -153,11 +153,7 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	pha
 
 	; save the active context's state
-	ldy #SIZEOF_CTX_HEADER-1
-@l0:	lda meta,y
-	STOREB_Y ctx
-	dey
-	bpl @l0
+	STOREBLK meta, ctx, SIZEOF_CTX_HEADER
 
 	; set current context's cursor as new one's parent
 	pla

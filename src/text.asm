@@ -355,8 +355,9 @@ tempbuff: .res LINESIZE
 @row   = zp::text+4
 @savex = zp::text+5
 @savey = zp::text+6
-@ret   = zp::text+7
-@tmp   = zp::text+9
+@ret   = zp::text+7	; return address(es); +2/+3 hold the extra banked-call
+			; (render_indirect) return, so @tmp must not overlap them
+@tmp   = zp::text+11
 @buff = mem::linebuffer2
         stxy @str
 	sta @row

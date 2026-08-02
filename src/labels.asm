@@ -87,13 +87,15 @@ LIST_NEXT   = 2
 ;*******************************************************************************
 ; ZEROPAGE
 label   = zp::labels		; pointer to base label struct
-name    = zp::labels+2		; pointer to NAME field for symbol
-hash    = zp::labels+4		; precomputed hash value (2 bytes)
-addr    = zp::labels+6		; ADDR field for active label
-id      = zp::labels+8		; ID field for active label
-flags   = zp::labels+$a		; FLAGS field for active symbol
-file_id = zp::labels+$b		; FILE field for active symbol
-lineno  = zp::labels+$c		; LINE field for active symbol
+; the following fields mirror the on-record layout (see LABEL_* offsets below):
+; each is at label+2+LABEL_x, so a whole record loads in one block transfer
+flags   = zp::labels+2		; FLAGS field for active symbol    (LABEL_FLAGS)
+hash    = zp::labels+3		; precomputed hash value (2 bytes) (LABEL_HASH)
+addr    = zp::labels+5		; ADDR field for active label      (LABEL_ADDR)
+id      = zp::labels+7		; ID field for active label        (LABEL_ID)
+name    = zp::labels+9		; pointer to NAME field for symbol (LABEL_NAME)
+file_id = zp::labels+$b		; FILE field for active symbol     (LABEL_FILE)
+lineno  = zp::labels+$c		; LINE field for active symbol     (LABEL_LINE)
 list    = zp::labels+$e		; address to list of nodes for current bucket
 listtop = zp::labels+$10	; address of free memory (next available list
 bucket  = zp::labels+$12
@@ -2082,58 +2084,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	adc #>labels
 	sta label+1
 
-	; load the FLAGS, HASH, ID, and ADDR
-	; load FLAGS
-	ldy #$00
-	LOADB_Y label
-	sta flags
-
-	; load HASH
-	iny
-	LOADB_Y label
-	sta hash
-	iny
-	LOADB_Y label
-	sta hash+1
-
-	; load ADDR
-	iny
-	LOADB_Y label
-	sta addr
-	iny
-	LOADB_Y label
-	sta addr+1
-
-	; load ID
-	; TODO: should already have this as we passed it to this proc.
-	iny
-	LOADB_Y label
-	sta id
-	iny
-	LOADB_Y label
-	sta id+1
-
-	; load NAME pointer
-	iny
-	LOADB_Y label
-	sta name
-	iny
-	LOADB_Y label
-	sta name+1
-
-	; load FILE id
-	iny
-	LOADB_Y label
-	sta file_id
-
-	; load LINE number
-	iny
-	LOADB_Y label
-	sta lineno
-	iny
-	LOADB_Y label
-	sta lineno+1
-
+	; load the whole record (FLAGS, HASH, ADDR, ID, NAME, FILE, LINE) in one
+	; block transfer; the ZP fields are laid out in on-record order (flags at
+	; label+2, hash at label+3, ...) so this is a straight copy
+	LOADBLK label, flags, SIZEOF_LABEL
 	rts
 .endproc
 

@@ -79,7 +79,7 @@
 .export __screen_draw_gutter
 .export __screen_draw_gutter_row
 __screen_draw_gutter:
-__screen_draw_gutter_row
+__screen_draw_gutter_row:
 	rts
 
 .CODE

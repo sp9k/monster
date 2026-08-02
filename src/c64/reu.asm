@@ -843,3 +843,85 @@ tab_num_elements: .word 0
 
 	rts
 .endproc
+
+;*******************************************************************************
+; LOAD BLK
+; Copies a contiguous block of bytes from a banked source into an absolute C64
+; address using a single REU block transfer, replacing a byte-by-byte
+; LOADB_Y/sta loop.  The source bank is left at whatever the current REU bank is
+; (exactly like LOADB_Y), so this is a drop-in for a same-bank header copy.
+; e.g.
+;	jsr reu::load_blk
+;	.byte src	; zeropage pointer holding the source REU address
+;	.word dst	; absolute C64 destination address
+;	.word count	; number of bytes to copy
+; CLOBBERS:
+;  - .A, .P
+.export __reu_load_blk
+.proc __reu_load_blk
+	jsr inline::setup
+
+	; source: zeropage-indirect REU address (bank stays current)
+	jsr inline::getarg_zp_ind
+	stx __reu_reu_addr
+	sta __reu_reu_addr+1
+
+	; destination: absolute C64 address
+	jsr inline::getarg_w
+	stx __reu_c64_addr
+	sta __reu_c64_addr+1
+
+	; count
+	jsr inline::getarg_w
+	stx __reu_txlen
+	sta __reu_txlen+1
+
+	jsr inline::setup_done
+
+	jsr __reu_load
+
+	ldx savex
+	ldy savey
+	rts
+.endproc
+
+;*******************************************************************************
+; STORE BLK
+; Copies a contiguous block of bytes from an absolute C64 address into a banked
+; destination using a single REU block transfer, replacing a byte-by-byte
+; lda/STOREB_Y loop.  The destination bank is left at whatever the current REU
+; bank is (exactly like STOREB_Y).
+; e.g.
+;	jsr reu::store_blk
+;	.word src	; absolute C64 source address
+;	.byte dst	; zeropage pointer holding the destination REU address
+;	.word count	; number of bytes to copy
+; CLOBBERS:
+;  - .A, .P
+.export __reu_store_blk
+.proc __reu_store_blk
+	jsr inline::setup
+
+	; source: absolute C64 address
+	jsr inline::getarg_w
+	stx __reu_c64_addr
+	sta __reu_c64_addr+1
+
+	; destination: zeropage-indirect REU address (bank stays current)
+	jsr inline::getarg_zp_ind
+	stx __reu_reu_addr
+	sta __reu_reu_addr+1
+
+	; count
+	jsr inline::getarg_w
+	stx __reu_txlen
+	sta __reu_txlen+1
+
+	jsr inline::setup_done
+
+	jsr __reu_store
+
+	ldx savex
+	ldy savey
+	rts
+.endproc

@@ -8,6 +8,7 @@ C64_REU_INC = 1
 .import __reu_find
 .import __reu_init
 .import __reu_load
+.import __reu_load_blk
 .import __reu_load_delayed
 .import __reu_load1
 .import __reu_loadb
@@ -19,6 +20,7 @@ C64_REU_INC = 1
 .import __reu_saveprog00
 .import __reu_swap
 .import __reu_store
+.import __reu_store_blk
 .import __reu_store_delayed
 .import __reu_store1
 .import	__reu_storeb
@@ -49,6 +51,7 @@ REU_TMP_ADDR            = $ff0000
 	compare        = __reu_compare
 	find           = __reu_find
 	load           = __reu_load
+	load_blk       = __reu_load_blk
 	load_delayed   = __reu_load_delayed
 	loadb          = __reu_loadb
 	load1          = __reu_load1
@@ -60,6 +63,7 @@ REU_TMP_ADDR            = $ff0000
 	save_prog00    = __reu_saveprog00
 	restore_prog00 = __reu_restoreprog00
 	store          = __reu_store
+	store_blk      = __reu_store_blk
 	store_delayed  = __reu_store_delayed
 	store1         = __reu_store1
 	storeb         = __reu_storeb

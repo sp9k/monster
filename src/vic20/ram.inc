@@ -202,6 +202,44 @@ VIC20_RAM_INC = 1
 .endmacro
 
 ;*******************************************************************************
+; LOADBLK
+; Copies the given number of bytes from a banked source into an absolute
+; address. The given count must be in the range [1,128]
+; IN:
+;   - src:   zeropage pointer holding the source (banked) address
+;   - dst:   absolute destination address
+;   - count: number of bytes to copy (1..128)
+; CLOBBERS:
+;   - .A, .Y
+.macro LOADBLK src, dst, count
+.local @loop
+	ldy #(count)-1
+@loop:	lda (src),y
+	sta dst,y
+	dey
+	bpl @loop
+.endmacro
+
+;*******************************************************************************
+; STOREBLK
+; Copies the given number of bytes from an absolute source into a banked
+; destination. Limited to 1-128 bytes
+; IN:
+;   - src:   absolute source address
+;   - dst:   zeropage pointer holding the destination (banked) address
+;   - count: number of bytes to copy (1..128)
+; CLOBBERS:
+;   - .A, .Y
+.macro STOREBLK src, dst, count
+.local @loop
+	ldy #(count)-1
+@loop:	lda src,y
+	sta (dst),y
+	dey
+	bpl @loop
+.endmacro
+
+;*******************************************************************************
 ; FILL_Y
 ; Fill memory with a single byte value
 ; IN:

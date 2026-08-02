@@ -344,6 +344,40 @@ CUR_BANK .set bank
 .endmacro
 
 ;*******************************************************************************
+; LOADBLK
+; Loads the given number of bytes from a banked source into an absolute address
+; via a single REU block transfer
+; IN:
+;   - src:   zeropage pointer holding the source (banked) address
+;   - dst:   absolute destination address
+;   - count: number of bytes to copy (must be nonzero)
+; CLOBBERS:
+;   - .A, .X, .Y, .P
+.macro LOADBLK src, dst, count
+	jsr reu::load_blk
+	.byte src
+	.word dst
+	.word count
+.endmacro
+
+;*******************************************************************************
+; STOREBLK
+; Stores the given number of bytes from an absolute source into a banked
+; destination via a single REU block transfer
+; IN:
+;   - src:   absolute source address
+;   - dst:   zeropage pointer holding the destination (banked) address
+;   - count: number of bytes to copy (must be nonzero)
+; CLOBBERS:
+;   - .A, .X, .Y, .P
+.macro STOREBLK src, dst, count
+	jsr reu::store_blk
+	.word src
+	.byte dst
+	.word count
+.endmacro
+
+;*******************************************************************************
 ; FILL_Y
 ; Fill memory with a single byte value
 ; IN:
