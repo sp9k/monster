@@ -9,9 +9,13 @@
 .include "../../irq.inc"
 .include "../../macros.inc"
 .include "../../memory.inc"
+.include "../../ram.inc"
 .include "../../settings.inc"
 .include "../../util.inc"
 .include "../../zeropage.inc"
+
+.import __vscreen_save
+.import __vscreen_restore
 
 ;*******************************************************************************
 ; CONSTANTS
@@ -266,7 +270,8 @@ SCREEN_ROWS = 12	; number of physical rows per column
 ; overlaying another full-screen view that shares the same layout).
 .export __screen_savebuf
 .proc __screen_savebuf
-	; TODO: back up the screen text (see __screen_save's VSCREEN TODO)
+	; back up the character matrix to the off-screen VSCREEN buffer
+	CALL FINAL_BANK_VSCREEN, __vscreen_save
 
 	; save the per-row colors and reset them to the default
 	ldx #SCREEN_ROWS*2-1
@@ -285,10 +290,8 @@ SCREEN_ROWS = 12	; number of physical rows per column
 ; You should call bm::save first with the buffer you want to restore
 .export __screen_restore
 .proc __screen_restore
-@buff=r0
-@bm=r2
-	; TODO
-	;CALL FINAL_BANK_VSCREEN, restore
+	; restore the character matrix from the off-screen VSCREEN buffer
+	CALL FINAL_BANK_VSCREEN, __vscreen_restore
 
 	; restore the per-row colors
 	ldx #SCREEN_ROWS*2-1
@@ -480,13 +483,13 @@ gutter_colors: .byte GUTTER_BG_COLOR, BRK_OFF_COLOR, BRK_ON_COLOR
 
 @next:	lda @src
 	clc
-	adc #NUM_COLS
+	adc #PHYS_COLS		; matrix row stride (content width + gutter)
 	sta @src
 	bcc :+
 	inc @src+1
 :	lda @dst
 	clc
-	adc #NUM_COLS
+	adc #PHYS_COLS		; matrix row stride (content width + gutter)
 	sta @dst
 	bcc :+
 	inc @dst+1

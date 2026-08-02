@@ -91,7 +91,10 @@ maxy: .byte 0
 	cmp miny
 	bcc @done
 	sta zp::cury
-@done:	rts
+@done:	lda __cur_mode
+	bne @rts		; SELECT mode: don't redraw/blink
+	jsr __cur_on		; redraw at new position and reset blink phase
+@rts:	rts
 .endproc
 
 ;*******************************************************************************
@@ -127,7 +130,11 @@ maxy: .byte 0
 	ldy @y
 	stx zp::curx
 	sty zp::cury
-	rts
+
+	lda __cur_mode
+	bne :+			; SELECT mode: don't redraw/blink
+	jsr __cur_on		; redraw at new position and reset blink phase
+:	rts
 .endproc
 
 ;*******************************************************************************

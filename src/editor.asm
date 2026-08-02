@@ -2556,14 +2556,23 @@ cancel = enter_command
 
 :	lda #LOG_BUFFER
 	cmp src::activebuff	; is log already open?
-	bne :+
+	bne @open
 
 	; switch back to the buffer we were on when the log opened
 	lda @buffsave
-	bpl @set
+	bpl @set		; restore that buffer (and its saved cursor)
 
-:	ldx src::activebuff
+@open:	ldx src::activebuff
 	stx @buffsave
+	lda #LOG_BUFFER
+	jsr src::forceset
+	; open the log at its first line (it's left at the bottom after writing)
+	jsr src::rewind
+	lda #$00
+	sta zp::curx
+	sta zp::cury
+	jmp refresh
+
 @set:	jsr src::forceset
 	jmp refresh
 .PUSHSEG
