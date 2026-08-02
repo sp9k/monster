@@ -20,6 +20,7 @@
 .include "macros.inc"
 .include "memory.inc"
 .include "ram.inc"
+.include "screen.inc"
 .include "source.inc"
 .include "settings.inc"
 .include "strings.inc"
@@ -153,9 +154,7 @@ BANKED_CODE "DBGUI"
 	sta dbg::breakpoint_flags,x
 	pha
 
-	; if the breakpoint is visible, toggle its color
-	; src2screen needs the editor's cursor; if a GUI window has focus, the
-	; live cursor belongs to it instead, so swap in the saved editor cursor
+	; if the breakpoint is visible, toggle its character (ACTIVE<->INACTIVE)
 	lda zp::cury
 	pha
 	lda gui::cursave_y
@@ -176,6 +175,11 @@ BANKED_CODE "DBGUI"
 	; 1 = inactive (BREAKPOINT_INACTIVE), 2 = active (BREAKPOINT_ACTIVE)
 	adc #$01
 	sta mem::breakpoint_rows,x
+
+.ifdef hard8x8
+	jsr scr::draw_gutter_row
+.endif
+
 :	rts
 .endproc
 

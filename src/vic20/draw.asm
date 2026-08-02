@@ -1,12 +1,9 @@
 .include "prefs.inc"
 .include "settings.inc"
+.include "../screen.inc"
 .include "../macros.inc"
 .include "../memory.inc"
 .include "../zeropage.inc"
-
-.ifdef hard8x8
-.import __screen_draw_gutter_row
-.endif
 
 COLOR_NORMAL  = 1
 COLOR_RVS     = 2
@@ -73,10 +70,8 @@ COLOR_SELECT  = 6
 	bne :-
 @done:
 .ifdef hard8x8
-	; the row's reverse state may have changed; repaint its gutter cell so
-	; column 0 stays consistent (see __screen_draw_gutter_row)
 	ldx @row
-	jsr __screen_draw_gutter_row
+	jsr scr::draw_gutter_row
 .endif
 	ldy @savey
 	rts
