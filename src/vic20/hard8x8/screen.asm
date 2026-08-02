@@ -212,23 +212,18 @@ SCREEN_ROWS = 12	; number of physical rows per column
 	sta @dst+1
 
 	ldy @stop
-	beq @col0
-	cpy #NUM_COLS+1
+	cpy #NUM_COLS+1		; clamp stop to the screen width
 	bcc :+
 	ldy #NUM_COLS
-:	dey
-@l0:	lda (@dst),y
-	eor #$80
-	sta (@dst),y
-	dey
-	cpy @start
-	bne @l0
-
-@col0:	; do last char
+:	sty @stop
+	ldy @start
+@l0:	cpy @stop		; toggle columns [start, stop) ascending
+	bcs @done		; y >= stop -> done (handles single/empty ranges)
 	lda (@dst),y
 	eor #$80
 	sta (@dst),y
-
+	iny
+	bne @l0			; branch always (y < NUM_COLS < 256)
 @done:	rts
 .endproc
 
@@ -661,6 +656,11 @@ __text_puts:
 	cmp #$40
 	bne :+
 	lda #$00
+	rts
+
+:	cmp #$5f		; underscore ($5f) is the back-arrow key
+	bne :+
+	lda #$64		; render it as an underscore-like glyph
 	rts
 
 :	ldx #$ff

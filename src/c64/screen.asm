@@ -624,6 +624,11 @@ __text_puts:
 	lda #$00
 	rts
 
+:	cmp #$5f		; underscore ($5f) is the back-arrow key
+	bne :+
+	lda #$64		; render it as an underscore-like glyph
+	rts
+
 :	ldx #$ff
 :	inx
 	cmp @convtab,x
