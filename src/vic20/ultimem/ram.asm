@@ -137,7 +137,7 @@
 	cmp #$0d
 	beq return_to_x
 	iny
-	cpy #LINESIZE
+	cpy #MAX_LINE_LEN
 	bne :-
 @done:	beq return_to_x			; branch always (restore bank)
 .endproc

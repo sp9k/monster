@@ -50,6 +50,7 @@
 .import __src_right_rep
 .import __src_rewind
 .import __src_readline
+.import __src_readline_cont
 .import __src_save
 .import __src_set
 .import __src_setflags
@@ -113,6 +114,7 @@ GAPSIZE = 20	; size of gap in gap buffer
 	prev           = __src_prev
 	rewind         = __src_rewind
 	readline       = __src_readline
+	readline_cont  = __src_readline_cont
 	right          = __src_right
 	right_rep      = __src_right_rep
 	save           = __src_save

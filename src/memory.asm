@@ -82,12 +82,24 @@ __mem_init_sig: .res 4
 .export __linebuffer
 __linebuffer:
 .assert * & $ff = $00, error, "line buffer not page-aligned"
+.ifdef hard8x8
+	.res LINESIZE*4
+.else
 	.res LINESIZE
+.endif
 
 .export __linebuffer2
 __linebuffer2:
+.ifdef hard8x8
+	.res LINESIZE*4
+.else
 	.res LINESIZE	; backup buffer for when the linebuffer must be saved
+.endif
 
 .export __mem_asmbuffer
 __mem_asmbuffer:
+.ifdef hard8x8
+	.res LINESIZE*4+1
+.else
 	.res LINESIZE+1
+.endif

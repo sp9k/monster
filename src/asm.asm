@@ -571,7 +571,7 @@ BANKED_CODE "ASMBANK"
 	jsr ram::copyline
 
 	ldy #$00
-	sty mem::asmbuffer+LINESIZE
+	sty mem::asmbuffer+MAX_LINE_LEN
 
 	ldxy #asmbuffer
 	stxy zp::line
@@ -4014,7 +4014,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	beq :+
 	inx
 	iny
-	cpy #LINESIZE
+	cpy #MAX_LINE_LEN
 	bne :-
 
 :	stx @restlen
@@ -4027,7 +4027,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	adc @restlen
 	sec
 	sbc #<mem::asmbuffer	; .A = the new total line length
-	cmp #LINESIZE+1
+	cmp #MAX_LINE_LEN+1
 	bcs @toolong		; new line doesn't fit -> error
 
 	; replace label with its hex value in the line
@@ -4046,7 +4046,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	sta (@line),y
 	beq @find	; repeat procedure to replace next occurrence (if any)
 	iny
-	cpy #LINESIZE
+	cpy #MAX_LINE_LEN
 	bcc @l1
 
 @noaddr:
@@ -4111,7 +4111,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	inc @line
 	inc @cnt
 	lda @cnt
-	cmp #LINESIZE
+	cmp #MAX_LINE_LEN
 	bcc @l0
 @notfound:
 	sec		; flag "not found"
@@ -4135,7 +4135,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	inc @line
 	inc @cnt
 	lda @cnt
-	cmp #LINESIZE
+	cmp #MAX_LINE_LEN
 	bcc @l1
 	rts
 

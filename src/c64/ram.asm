@@ -205,7 +205,7 @@ __ram_dst = reu::move_dst
 	cmp #$0d
 	beq @done
 	iny
-	cpy #LINESIZE
+	cpy #MAX_LINE_LEN
 	bcc :-
 @done:	rts
 .endproc
@@ -237,7 +237,7 @@ __ram_dst = reu::move_dst
 	cmp #$0d
 	beq @done
 	iny
-	cpy #LINESIZE
+	cpy #MAX_LINE_LEN
 	bne :-
 @done:	rts
 .endproc

@@ -1107,6 +1107,18 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .endproc
 
 ;*******************************************************************************
+; READLINE CONT
+; Reads one line from the current source cursor position AND reads any
+; subsequent lines so long as each line read ends with a '<-'
+.export __src_readline_cont
+.proc __src_readline_cont
+	lda #$01		; enable <- continuation
+	skw
+
+	; fall through to __src_readline
+.endproc
+
+;*******************************************************************************
 ; READLINE
 ; Reads one line at the cursor positon and advances the cursor
 ; OUT:
@@ -1116,6 +1128,19 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .export __src_readline
 .proc __src_readline
 @cnt=r4
+@cont=r5
+@lim=r6
+	lda #$00		; disable <- continuation (READLINE entry)
+	sta @cont		; set/clear continue flag
+
+	; set read limit to LINESIZE for reading physical lines or MAX_LINE_LEN
+	; if reading a logical line (containing continuation chars)
+	ldx #LINESIZE
+	lda @cont
+	beq :+
+	ldx #MAX_LINE_LEN
+:	stx @lim
+
 	lda #$00
 	sta mem::linebuffer	; initialize the buffer
 	sta @cnt
@@ -1129,8 +1154,8 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	bne @store
 	lda #$00
 
-@store:	cpx #LINESIZE
-	bcs :+			; if we have >= LINESIZE characters don't store
+@store:	cpx @lim
+	bcs :+			; if we have >= the store limit, don't store
 	sta mem::linebuffer,x
 
 :	cmp #$00
@@ -1143,9 +1168,9 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	bne @l0
 @eof:	; end of source: null terminate at the line length (or buffer cap)
 	ldx @cnt
-	cpx #LINESIZE
+	cpx @lim
 	bcc :+
-	ldx #LINESIZE		; clamp: line was truncated at the buffer size
+	ldx @lim		; clamp: line was truncated at the buffer size
 	stx @cnt
 :	lda #$00
 	sta mem::linebuffer,x
@@ -1153,12 +1178,40 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	lda @cnt
 	sec
 	rts
-@done:	cpx #LINESIZE
-	bcc :+
-	lda #$00		; a full-length line still needs termination
-	sta mem::linebuffer+LINESIZE
-	ldx #LINESIZE		; return the truncated length
-:	txa
+@done:	cpx @lim
+	bcs @trunc		; full/truncated line: no continuation
+
+	; check for a line-continuation marker (<-) as the last character
+	lda @cont
+	beq @term		; continuation disabled: normal end of line
+	cpx #$00
+	beq @term		; empty line, nothing to check
+	lda mem::linebuffer-1,x
+	cmp #LINE_CONT
+	bne @term		; normal end of line
+
+	; continuation: back up so the next line overwrites the marker
+	dex
+	stx @cnt
+	jsr __src_end
+	bne @l0			; more source: keep filling the same buffer
+
+	; end of source right after the marker: terminate where it was
+	ldx @cnt
+	lda #$00
+	sta mem::linebuffer,x
+	txa
+	clc
+	rts
+
+@term:	txa			; return length, terminator already in place
+	clc
+	rts
+
+@trunc:	ldx @lim		; a full-length line still needs termination
+	lda #$00
+	sta mem::linebuffer,x
+	txa			; return the (clamped) length
 	clc
 	rts
 .endproc

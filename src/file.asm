@@ -28,6 +28,7 @@
 ; lives.
 ;*******************************************************************************
 
+.include "config.inc"
 .include "errors.inc"
 .include "io.inc"
 .include "kernal.inc"
@@ -333,7 +334,20 @@ OSPROC fgetline
 	iny
 	bne @l0
 
-@done:  lda #$00
+@done:	; check for a line-continuation marker (<-) as the last character
+	cpy #$00
+	beq @term		; empty line, nothing to check
+	dey
+	lda (__file_load_address),y
+	cmp #LINE_CONT
+	bne @noext		; normal end of line
+
+	lda __file_eof
+	bne @term		; EOF right after the marker: drop it and finish
+	jmp @l0			; continuation: next line overwrites the marker
+
+@noext:	iny			; restore the count (undo the peek)
+@term:	lda #$00
 	sta (__file_load_address),y	; 0-terminate the string
 	tya		; put # of bytes read in .A
 @ok:	clc		; no error

@@ -692,7 +692,7 @@ main:	jsr key::getch
 	lda __edit_sigint
 	jne @done
 
-	jsr src::readline
+	jsr src::readline_cont
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
 	jsr asm::tokenize
@@ -750,7 +750,7 @@ main:	jsr key::getch
 
 	jsr src::currline
 	stxy asm::linenum
-@asm:	jsr src::readline
+@asm:	jsr src::readline_cont
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
 	jsr asm::tokenize

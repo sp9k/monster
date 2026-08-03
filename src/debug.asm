@@ -489,6 +489,9 @@ blank   = scr::blank
 ; Entrypoint to the debugger
 .export return_to_debugger
 .proc return_to_debugger
+	ldx #$00
+	stx zp::banksp
+
 ; we're done updating state, check which interface we should transfer
 ; execution to
 @enter_iface:

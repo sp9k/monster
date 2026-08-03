@@ -12,19 +12,31 @@ MAX_BUFFER_NAME_LEN = 16	; max length of names for each buffer
 MAX_LABEL_LEN = 32
 
 ;*******************************************************************************
-; SOURCE FORMATTING
-.ifdef vic20
-.ifdef hard8x8
+; SOURE config
+
+.if .defined(vic20) .and .defined(hard8x8)
+; Vic 20 (hard)
 TAB_WIDTH = 2
 LINESIZE  = 22
-.else
+MAX_LINE_LEN = LINESIZE*4   ; max logical line length
+
+.elseif .defined(vic20) .and .defined(soft4x8)
+; Vic 20 (soft40)
 TAB_WIDTH = 10
 LINESIZE  = 40
-.endif
-.else
+MAX_LINE_LEN = LINESIZE     ; max logical line length
+
+.elseif .defined(c64)
+; C64
 TAB_WIDTH = 10
 LINESIZE  = 40
-.endif
+MAX_LINE_LEN = LINESIZE     ; max logical line length
 .endif
 
+; line continuation character
+LINE_CONT = $5c
+
+; size of "spare" buffer
 SPARESIZE = $400
+
+.endif
