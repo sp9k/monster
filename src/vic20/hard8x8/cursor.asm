@@ -40,6 +40,10 @@ R_REPLACE_MASK = $0f	; mask for right half of 8x8 char in REPLACE mode
 	sta @dst+1
 
 	ldy zp::curx
+	cpy #LINESIZE
+	bne :+
+	dey			; clamp the end-of-line cursor to the last screen column
+:
 	lda (@dst),y
 	eor #$80
 	sta (@dst),y

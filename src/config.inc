@@ -16,16 +16,15 @@ MAX_LABEL_LEN = 32
 .ifdef vic20
 .ifdef hard8x8
 TAB_WIDTH = 2
+LINESIZE  = 22
 .else
 TAB_WIDTH = 10
+LINESIZE  = 40
 .endif
 .else
 TAB_WIDTH = 10
+LINESIZE  = 40
 .endif
-
-;*******************************************************************************
-LINESIZE = 40	; the size of the buffer for 1 line on the screen
-.define LINESIZE 40
 .endif
 
 SPARESIZE = $400
