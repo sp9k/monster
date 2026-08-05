@@ -4874,6 +4874,10 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
+
+;*******************************************************************************
 ; COMMAND_GOTOLINE
 ; Converts the given string to a line number and navigates to it (if possible)
 ; IN:
@@ -4888,10 +4892,6 @@ goto_buffer:
 	jmp edit_gotoline	; go to the target line
 @done:	rts
 .endproc
-
-;*******************************************************************************
-; PART 2 of editor code + data
-.segment "EDITCODE"
 
 ;*******************************************************************************
 ; DRAW SRC LINE

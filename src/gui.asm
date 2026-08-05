@@ -101,7 +101,10 @@ wbot    = zp::gui+$b	; last (bottom) row of the active window's contents
 windows: .res MAX_WINDOWS*WIN_SIZE	; the window stack (0 = bottom)
 rectmp:  .res WIN_SIZE			; scratch record for reordering
 
-; dispatch vector for window handlers
+; dispatch vector for window handlers.
+; Aligned so its low byte is never $FF: `jmp (gvec)` on the NMOS 6502 fetches
+; the target's high byte from the wrong address if the vector straddles a page.
+.align 2
 gvec: .word 0
 
 ; active window's effective height before a grow/shrink (see resized)

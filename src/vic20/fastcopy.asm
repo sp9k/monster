@@ -52,7 +52,7 @@ prog9400: .res $400		; $9400-$9800
 .endif
 dbg1000: .res $1000	; $1000-$2000
 dbg9000: .res $10	; $9000-$9010
-dbg9400: .res $100	; $9400-$9500
+dbg9400: .res $400	; $9400-$9800
 
 .CODE
 
@@ -139,9 +139,14 @@ restore_debug_visual:
 ; save $9400-$9500
 :	lda @colorsave,y
 	sta $9400,y
+	lda @colorsave+$100,y
+	sta $9500,y
+	lda @colorsave+$200,y
+	sta $9600,y
+	lda @colorsave+$300,y
+	sta $9700,y
 	dey
 	bne :-
-
 	sty @dst
 
 ; restore $1000-$2000
@@ -185,10 +190,15 @@ save_debug_visual:
 	dey
 	bne @savevic
 
-; save $9400-$9500
 @savecolor:
 	lda $9400,y
 	sta @colorsave,y
+	lda $9400+$100,y
+	sta @colorsave+$100,y
+	lda $9400+$200,y
+	sta @colorsave+$200,y
+	lda $9400+$300,y
+	sta @colorsave+$300,y
 	dey
 	bne @savecolor
 
