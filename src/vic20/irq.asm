@@ -9,6 +9,7 @@
 .include "../macros.inc"
 .include "../memory.inc"
 .include "../util.inc"
+.include "../zeropage.inc"
 
 .macpack longbranch
 
@@ -245,12 +246,70 @@ savebank2: .byte 0
 	jsr $eb1e               ; scan keyboard (a TAB may be entered with
 				; CTRL+I; see keydecode)
 
+.ifdef hard8x8
+	jsr blink_update	; advance the gutter breakpoint/highlight blink
+.endif
+
 	pla
 	sta $f6
 	pla
         sta $f5
 	jmp beep::update
 .endproc
+
+.ifdef hard8x8
+;*******************************************************************************
+; BLINK UPDATE
+; Updates the blink timer for overlapping gutter cells. If a row contains both
+; a highlight and a breakpoint, periodically swaps between the two.
+.proc blink_update
+@cell=r5
+	lda mem::blink_active
+	beq @done
+
+	; check if blinking row is still BOTH a breakpoint and the current
+	; highlight line; stop blinking it if it's not
+	ldx mem::blink_row
+	lda mem::highlight_rows,x
+	beq @stop			; no highlight anymore -> stop blinking
+	lda mem::breakpoint_rows,x
+	bne @update
+
+@stop:	lda #$00
+	sta mem::blink_active
+	rts
+
+@update:
+	dec mem::blink_cnt
+	bne @done
+
+	lda #60			; toggle ~once per second (60 Hz)
+	sta mem::blink_cnt
+	lda mem::blink_phase	; flip the phase too
+	eor #$01
+	sta mem::blink_phase
+
+	lda mem::blink_cell
+	sta @cell
+	lda mem::blink_cell+1
+	sta @cell+1
+
+	ldy #$00
+	lda (@cell),y		; toggle the glyph between breakpoint and marker
+	eor mem::blink_dchar
+	sta (@cell),y
+	lda @cell
+	clc
+	adc #$7c		; color cell = glyph cell + $7c00 (COLMEM offset)
+	sta @cell
+	bcc :+
+	inc @cell+1
+:	lda (@cell),y		; toggle the color to match
+	eor mem::blink_dclr
+	sta (@cell),y
+@done:	rts
+.endproc
+.endif
 
 ;*******************************************************************************
 ; KEYDECODE

@@ -1,8 +1,8 @@
 TARGET ?= vic20
 REGION ?= NTSC
 
-SCREEN_MODE ?= soft4x8
-#SCREEN_MODE ?= hard8x8
+#SCREEN_MODE ?= soft4x8
+SCREEN_MODE ?= hard8x8
 
 # default device # (for cart image)
 DEFAULT_DEVICE=8
@@ -29,7 +29,8 @@ ifeq ($(TARGET),vic20)
 # the vic20 build always targets the UltiMem expansion
 ASMFLAGS+=--asm-define ultimem
 # UltiMem Profile extension (1) or stock ULTIMEM (0)
-ULTIMEM_P?=1
+#ULTIMEM_P?=1
+ULTIMEM_P?=0
 
 ifeq ($(ULTIMEM_P),1)
 ASMFLAGS+=--asm-define ultimem_p

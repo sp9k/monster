@@ -3,18 +3,19 @@
 
 .import __screen_rowslo
 .import __screen_rowshi
+.import __screen_set_gutter_marker
 
 .CODE
 
 ;*******************************************************************************
 ; RVS UNDERLINE
-; Reverses a horizontal line at the row given in .A (EOR)
+; Marks the row given in .A as the debugger's highlighted (current) line.
+; This will draw a '>' indicator in the gutter column.
 ; IN:
-;  - .A: the row to draw a horizontal line at
+;  - .A: the row to mark
 .export __draw_rvs_underline
 .proc __draw_rvs_underline
-	; TODO:
-	rts
+	jmp __screen_set_gutter_marker
 .endproc
 
 ;*******************************************************************************

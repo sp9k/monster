@@ -2988,8 +2988,10 @@ edit_refresh:
 	lda #$01
 	sta highlight_status
 
+.ifndef hard8x8
 	; the highlight was destroyed by drawing the line, re-highlight it
 	jmp toggle_highlight
+.endif
 @done:	rts
 .endproc
 
@@ -4862,6 +4864,11 @@ goto_buffer:
 	lda #$01
 	jsr draw::scrollcolorsu
 
+.ifdef hard8x8
+	; redraw the hard gutter for the newly scrolled screen
+	jsr scr::draw_gutter
+.endif
+
 	jmp highlight	; handle highlight (if enabled)
 .endproc
 
@@ -4880,6 +4887,10 @@ goto_buffer:
 	jmp edit_gotoline	; go to the target line
 @done:	rts
 .endproc
+
+;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
 
 ;*******************************************************************************
 ; DRAW SRC LINE
@@ -4903,9 +4914,9 @@ goto_buffer:
 	tya
 	sta mem::breakpoint_rows,x
 .ifdef hard8x8
-	jsr scr::draw_gutter_row	; .X = row; refresh its text-mode gutter cell
+	jsr scr::draw_gutter_row	; .X = row; refresh gutter
 .endif
-	txa			; restore the row
+	txa				; restore the row
 	jmp text::drawline
 .endproc
 
@@ -4928,10 +4939,6 @@ goto_buffer:
 	dec zp::device
 :	rts
 .endproc
-
-;*******************************************************************************
-; PART 2 of editor code + data
-.segment "EDITCODE"
 
 ;*******************************************************************************
 ; COMMAND_FIND
@@ -5610,6 +5617,11 @@ goto_buffer:
 	ldy @stop
 	lda @num
 	jsr draw::scrollcolorsd
+
+.ifdef hard8x8
+	; redraw the hard gutter for the newly scrolled screen
+	jsr scr::draw_gutter
+.endif
 
 	ldxy __edit_highlight_line
 	cmpw src::line

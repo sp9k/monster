@@ -62,11 +62,19 @@ __mem_rowcolors_save: .res SCREEN_HEIGHT
 .export __mem_breakpoint_rows
 __mem_breakpoint_rows: .res SCREEN_HEIGHT
 
+.ifdef ultimem
+.segment "SHAREBSS2"
+.endif
+
 .export __mem_filename
 __mem_filename: .res 16	; buffer for output file
 
 .export __mem_findbuff
 __mem_findbuff: .res MAX_SEARCH_LEN+1	; +1 for terminating 0
+
+.ifdef ultimem
+.BSS
+.endif
 
 .segment "BSS_NOINIT"
 .export __mem_init_sig

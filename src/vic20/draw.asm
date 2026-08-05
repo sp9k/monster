@@ -1,5 +1,6 @@
 .include "prefs.inc"
 .include "settings.inc"
+.include "../layout.inc"
 .include "../screen.inc"
 .include "../macros.inc"
 .include "../memory.inc"
@@ -62,13 +63,14 @@ COLOR_SELECT  = 6
 	sta mem::rowcolors,x
 
 	; check if we need to color in the IRQ
-	ldx #24
+	ldx #SCREEN_HEIGHT
 	lda prefs::normal_color
 :	cmp mem::rowcolors-1,x
 	bne @done
 	dex
 	bne :-
 @done:
+
 .ifdef hard8x8
 	ldx @row
 	jsr scr::draw_gutter_row
@@ -83,7 +85,7 @@ COLOR_SELECT  = 6
 ; them
 .export __draw_refresh_colors
 .proc __draw_refresh_colors
-	ldx #24-1
+	ldx #SCREEN_HEIGHT-1
 @l0:	ldy mem::rowcolors_idx,x
 	lda prefs::palette,y
 	sta mem::rowcolors,x
@@ -122,6 +124,10 @@ COLOR_SELECT  = 6
 	sta mem::rowcolors_idx,x
 	lda mem::breakpoint_rows,y
 	sta mem::breakpoint_rows,x
+.ifdef hard8x8
+	lda mem::highlight_rows,y	; scroll the current-line marker with it
+	sta mem::highlight_rows,x
+.endif
 	inx
 	iny
 	cpx @last
@@ -132,6 +138,9 @@ COLOR_SELECT  = 6
 	sta mem::rowcolors_idx,x
 	lda #$00
 	sta mem::breakpoint_rows,x
+.ifdef hard8x8
+	sta mem::highlight_rows,x
+.endif
 @done:	rts
 .endproc
 
@@ -180,12 +189,19 @@ COLOR_SELECT  = 6
 	sta mem::rowcolors_idx,y
 	lda mem::breakpoint_rows,x
 	sta mem::breakpoint_rows,y
+.ifdef hard8x8
+	lda mem::highlight_rows,x	; scroll the current-line marker with it
+	sta mem::highlight_rows,y
+.endif
 
 :	; reset the line we just scrolled
 	lda prefs::normal_color
 	sta mem::rowcolors,x
 	lda #$00
 	sta mem::breakpoint_rows,x
+.ifdef hard8x8
+	sta mem::highlight_rows,x
+.endif
 	lda #COLOR_NORMAL
 	sta mem::rowcolors_idx,x
 

@@ -18,6 +18,16 @@
 
 .import __mem_coloron
 .import __mem_breakpoint_rows
+.ifdef hard8x8			; reserved in vic20/hard8x8/mem.asm
+.import __mem_highlight_rows
+.import __mem_blink_cell
+.import __mem_blink_row
+.import __mem_blink_dchar
+.import __mem_blink_dclr
+.import __mem_blink_active
+.import __mem_blink_phase
+.import __mem_blink_cnt
+.endif
 .import __mem_rowcolors
 .import __mem_rowcolors_idx
 .import __mem_rowcolors_save
@@ -26,6 +36,16 @@
 .scope mem
 	asmbuffer       = __mem_asmbuffer
 	breakpoint_rows = __mem_breakpoint_rows
+.ifdef hard8x8			; reserved in vic20/hard8x8/mem.asm
+	highlight_rows  = __mem_highlight_rows
+	blink_cell      = __mem_blink_cell
+	blink_row       = __mem_blink_row
+	blink_dchar     = __mem_blink_dchar
+	blink_dclr      = __mem_blink_dclr
+	blink_active    = __mem_blink_active
+	blink_phase     = __mem_blink_phase
+	blink_cnt       = __mem_blink_cnt
+.endif
 	ctxbuffer       = __mem_ctxbuffer
         spare           = __mem_spare
 	spareend	= __mem_spareend

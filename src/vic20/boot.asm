@@ -98,8 +98,19 @@ cart_start:
 	sta mem::rowcolors_idx,x
 	lda #$00
 	sta mem::breakpoint_rows,x
+.ifdef hard8x8
+	sta mem::highlight_rows,x	; clear current-line marker flags
+.endif
 	dex
 	bpl :-
+
+.ifdef hard8x8
+	lda #$00
+	sta mem::blink_active		; disable gutter blink
+	sta mem::blink_phase
+	lda #60
+	sta mem::blink_cnt
+.endif
 
 .ifdef ultimem
 	jmp ultim::init
@@ -212,8 +223,19 @@ cart_start:
 	sta mem::rowcolors_idx,x
 	lda #$00
 	sta mem::breakpoint_rows,x
+.ifdef hard8x8
+	sta mem::highlight_rows,x	; clear current-line marker flags
+.endif
 	dex
 	bpl :-
+
+.ifdef hard8x8
+	lda #$00
+	sta mem::blink_active		; disable gutter blink
+	sta mem::blink_phase
+	lda #60
+	sta mem::blink_cnt
+.endif
 
 	jmp lowinit
 .endproc

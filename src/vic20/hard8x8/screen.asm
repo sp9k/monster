@@ -27,16 +27,20 @@ SCREEN_ADDR = $1800	; page 1
 ; offset from a screen cell to its color-RAM cell (low byte is 0)
 COLMEM_OFFSET = COLMEM_ADDR - SCREEN_ADDR
 
-;NUM_COLS    = 22	; number of 8-pixel columns
-;NUM_ROWS    = 23	; number of 8-pixel rows
-.define NUM_COLS 22
-.define NUM_ROWS 23
+.define NUM_COLS 22	; number of 8-pixel columns
+.define NUM_ROWS 23	; number of 8-pixel rows
 
 ; address of "virtual screen"
 VSCREEN_ADDR = $1a00
 VSCREEN_W = 40
 
 SCREEN_ROWS = 12	; number of physical rows per column
+
+;*******************************************************************************
+HL_MARKER       = $3e		; '>' current-line indicator glyph
+HL_MARKER_COLOR = TEXT_COLOR	; match the editor text color
+
+
 .segment "SETUP"
 ;*******************************************************************************
 .export __text_init
@@ -100,8 +104,13 @@ SCREEN_ROWS = 12	; number of physical rows per column
 .export __screen_clrcolor
 .proc __screen_clrcolor
 @dst=r0
+	lda #$00
+	sta mem::blink_active		; stop any gutter blink
 	ldx #NUM_ROWS-1
-@l0:	; color cell = content screen cell + (COLMEM_ADDR - SCREEN_ADDR)
+@l0:	lda #$00
+	sta mem::highlight_rows,x	; drop the current-line marker
+
+	; color cell = content screen cell + (COLMEM_ADDR - SCREEN_ADDR)
 	lda __screen_rowslo,x
 	sta @dst
 	lda __screen_rowshi,x
@@ -238,7 +247,11 @@ SCREEN_ROWS = 12	; number of physical rows per column
 	jsr irq::off
 	lda prefs::normal_color
 	sta $900f
-	rts
+
+	; disable per-row gutter handling
+	lda #$00
+	sta mem::coloron
+	jmp __screen_draw_gutter
 .endproc
 
 ;*******************************************************************************
@@ -246,7 +259,10 @@ SCREEN_ROWS = 12	; number of physical rows per column
 ; Ends a "blank"; call when sensitive IRQ disabled work has finished
 .export __screen_unblank
 .proc __screen_unblank
-	jmp irq::on
+	jsr irq::on
+	lda #$01
+	sta mem::coloron		; restore per-row color in IRQ
+	jmp __screen_draw_gutter	; restore reverse-aware gutter handling
 .endproc
 
 ;*******************************************************************************
@@ -269,7 +285,7 @@ SCREEN_ROWS = 12	; number of physical rows per column
 	CALL FINAL_BANK_VSCREEN, __vscreen_save
 
 	; save the per-row colors and reset them to the default
-	ldx #SCREEN_ROWS*2-1
+	ldx #NUM_ROWS-1
 :	lda mem::rowcolors,x
 	sta mem::rowcolors_save,x
 	lda #DEFAULT_900F
@@ -289,7 +305,7 @@ SCREEN_ROWS = 12	; number of physical rows per column
 	CALL FINAL_BANK_VSCREEN, __vscreen_restore
 
 	; restore the per-row colors
-	ldx #SCREEN_ROWS*2-1
+	ldx #NUM_ROWS-1
 :	lda mem::rowcolors_save,x
 	sta mem::rowcolors,x
 	dex
@@ -360,15 +376,71 @@ BRK_ON_COLOR     = $02			; red
 	adc #>COLMEM_OFFSET	; color cell = screen cell + $7c00 (low byte 0)
 	sta @col+1
 
-	; select glyph + color for the breakpoint state (0/1/2)
+	; select the gutter contents for this row
 	ldy mem::breakpoint_rows,x
+	lda mem::highlight_rows,x
+	beq @chk_brk			; not highlighted row, check breakpoints
+	tya				; .Y == 0? (breakpoint active)?
+	beq @markeronly			; no breakpoint -> display '>' only
+
+;-------------------------------------------------------------------------------
+; both breakpoint and highlight: cell alternates between the breakpoint glyph
+; and the '>' one.
+	lda #$00
+	sta mem::blink_active		; disable blinking temporarily
+
+	lda gutter_glyphs,y
+	eor #HL_MARKER
+	sta mem::blink_dchar		; glyph delta (marker <-> breakpoint)
+
+	lda gutter_colors,y
+	eor #HL_MARKER_COLOR
+	sta mem::blink_dclr		; color delta
+
+	lda @dst
+	sta mem::blink_cell
+	lda @dst+1
+	sta mem::blink_cell+1
+
+	lda @row
+	sta mem::blink_row
+
+;-------------------------------------------------------------------------------
+; > or b/B
+; draw '>' or 'b/B' based on current blink phase
+	lda mem::blink_phase
+	bne @markeronly			; phase 1 -> '>' marker
+	lda gutter_glyphs,y		; phase 0 -> breakpoint glyph
+	sta @glyph
+	lda gutter_colors,y
+	jmp @setcolor
+
+;-------------------------------------------------------------------------------
+; >
+@markeronly:
+	lda #HL_MARKER
+	sta @glyph
+	lda #HL_MARKER_COLOR
+	jmp @setcolor
+
+;-------------------------------------------------------------------------------
+; b/B
+@chk_brk:
+	; breakpoint (or empty) cell
 	lda gutter_glyphs,y
 	sta @glyph
 	lda gutter_colors,y
+
+;-------------------------------------------------------------------------------
+@setcolor:
 	ldy #$00
 	sta (@col),y
 
-	; if the row is drawn NON-reversed (rowcolors bit 3 clear), flip the glyph
+	; when per-row color is off (during blanking) skip gutter reverse check
+	lda mem::coloron
+	beq :+
+
+	; if the row is already reversed, XOR glyph to unreverse it
 	ldx @row
 	lda mem::rowcolors,x
 	and #$08
@@ -380,8 +452,17 @@ BRK_ON_COLOR     = $02			; red
 	ldy #$00
 	sta (@dst),y
 
+	; check if we need to (re)enable blinking in the IRQ to handle multiple
+	; glyphs in the gutter column
 	ldx @row
-	pla
+	lda mem::highlight_rows,x
+	beq @rts
+	lda mem::breakpoint_rows,x
+	beq @rts
+	lda #$01
+	sta mem::blink_active
+
+@rts:	pla			; .X already restored to @row by the ldx above
 	rts
 .endproc
 
@@ -401,6 +482,43 @@ gutter_colors: .byte GUTTER_BG_COLOR, BRK_OFF_COLOR, BRK_ON_COLOR
 	dex
 	bpl @l0
 	rts
+.endproc
+
+;*******************************************************************************
+; SET GUTTER MARKER
+; Marks the given row as the debugger's current line and repaints only the cells
+; that change.  The marker is stored in mem::highlight_rows (one flag per row) so
+; it scrolls with the screen alongside breakpoint_rows, and is rendered by
+; draw_gutter_row.
+; IN:
+;  - .A: the row to mark as the current line ($ff to clear)
+.export __screen_set_gutter_marker
+.proc __screen_set_gutter_marker
+	pha			; save target row
+
+	; find currently-marked row (only one is ever marked), clear it and
+	; restore underlying breakpoint/empty glyph
+	ldx #NUM_ROWS-1
+@find:	lda mem::highlight_rows,x
+	bne @clrold
+	dex
+	bpl @find
+	bmi @setnew			; nothing marked
+
+@clrold:
+	lda #$00
+	sta mem::highlight_rows,x	; turn off the old highlight
+	jsr __screen_draw_gutter_row	; restore underlying cell
+
+@setnew:
+	pla
+	cmp #NUM_ROWS
+	bcs @done			; $out of range -> leave marker cleared
+	tax
+	lda #$01
+	sta mem::highlight_rows,x
+	jmp __screen_draw_gutter_row	; draw new cell (.X = row)
+@done:	rts
 .endproc
 
 ;*******************************************************************************
