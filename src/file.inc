@@ -8,6 +8,7 @@
 .import __file_eof
 .import __file_exists
 .import __file_getline
+.import __file_lines_read
 .import __file_geterr
 .import __file_init_drive
 .import __file_load_bin
@@ -32,6 +33,7 @@
 	exists           = __file_exists
 	geterr           = __file_geterr
 	getline          = __file_getline
+	lines_read       = __file_lines_read
 	init_drive       = __file_init_drive
 	loadbin          = __file_load_bin
 	loadbinv         = __file_load_binv

@@ -1,8 +1,8 @@
 TARGET ?= vic20
 REGION ?= NTSC
 
-#SCREEN_MODE ?= soft4x8
-SCREEN_MODE ?= hard8x8
+SCREEN_MODE ?= soft4x8
+#SCREEN_MODE ?= hard8x8
 
 # default device # (for cart image)
 DEFAULT_DEVICE=8

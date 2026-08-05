@@ -78,6 +78,10 @@ secondaryaddr:	.byte 0	; secondary address to use on file open
 .export __file_eof
 __file_eof:	.byte 0	; if !0, EOF; only valid after call to readb or getline
 
+.export __file_lines_read
+__file_lines_read: .byte 0 ; # of physical lines consumed by the last getline
+			   ; (>1 when line-continuation markers were joined)
+
 .CODE
 ;*******************************************************************************
 ; MAIN-bank entry points
@@ -319,6 +323,9 @@ OSPROC fgetline
 	tax
 	jsr krn::chkin	; CHKIN (file in .X now used as input)
 
+	lda #$01
+	sta __file_lines_read	; 1 physical line so far (+1 per continuation)
+
 	ldy #$00
 @l0:	jsr __file_readb
 	bcs @ret	; return read error
@@ -344,6 +351,7 @@ OSPROC fgetline
 
 	lda __file_eof
 	bne @term		; EOF right after the marker: drop it and finish
+	inc __file_lines_read	; joined another physical line
 	jmp @l0			; continuation: next line overwrites the marker
 
 @noext:	iny			; restore the count (undo the peek)

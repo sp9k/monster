@@ -750,7 +750,8 @@ main:	jsr key::getch
 
 	jsr src::currline
 	stxy asm::linenum
-@asm:	jsr src::readline_cont
+
+	jsr src::readline_cont
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
 	jsr asm::tokenize

@@ -2395,6 +2395,8 @@ include_entry:
 @asm:	ldxy #mem::spare
 	lda zp::file
 	pha
+	lda file::lines_read	; save the # of physical lines this getline read;
+	pha			; a nested .INC clobbers the global (as with eof)
 	lda file::eof		; save OUR file's EOF state: a nested .INC or
 	pha			; .INCBIN in this line clobbers the global
 
@@ -2405,12 +2407,21 @@ include_entry:
 
 @ok:	pla			; restore our EOF state
 	sta file::eof
+	pla			; restore our physical line count
+	sta file::lines_read
 	pla			; restore the file ID we included from
 	sta zp::file		; and temporarily store it
 	bcs @close
 
-@next:	incw __asm_linenum	; next line
-	lda file::eof		; EOF?
+@next:	; advance the line number by the # of physical lines the getline
+	; consumed (>1 when line-continuation markers joined lines)
+	lda file::lines_read
+	clc
+	adc __asm_linenum
+	sta __asm_linenum
+	bcc :+
+	inc __asm_linenum+1
+:	lda file::eof		; EOF?
 	beq @doline		; repeat til we are
 
 @close: pla			; get the file ID for the include file to close
