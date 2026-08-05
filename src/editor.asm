@@ -3951,8 +3951,7 @@ goto_buffer:
 .proc start_next_line
 	pha			; set indent flag
 
-	; redraw the cleared status line
-	jsr cur::off
+	; redraw the cleared status line.
 	jsr ui::update_statusline
 
 	; indent the new line
@@ -4033,6 +4032,7 @@ goto_buffer:
 	ldy zp::cury
 	iny
 	jsr cur::set
+	jsr cur::off
 
 @clrnew:
 	; clear the newly opened line
