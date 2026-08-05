@@ -91,6 +91,9 @@ COLOR_SELECT  = 6
 	sta mem::rowcolors,x
 	dex
 	bpl @l0
+.ifdef hard8x8
+	jmp scr::draw_gutter	; repaint gutter with the new border color
+.endif
 	rts
 .endproc
 

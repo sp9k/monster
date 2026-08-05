@@ -53,6 +53,7 @@
 .include "symview.inc"
 .include "target.inc"
 .include "text.inc"
+.include "ui.inc"
 .include "util.inc"
 .include "vmem.inc"
 .include "watches.inc"
@@ -3951,7 +3952,8 @@ goto_buffer:
 	pha			; set indent flag
 
 	; redraw the cleared status line
-	jsr text::update
+	jsr cur::off
+	jsr ui::update_statusline
 
 	; indent the new line
 	pla
@@ -4833,6 +4835,10 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
+
+;*******************************************************************************
 ; SCROLLUP_WHOLE_SCREEN
 ; Scrolls the entire editor display (EDITOR_ROW_START to height) up
 .proc scrollup_whole_screen
@@ -4872,10 +4878,6 @@ goto_buffer:
 
 	jmp highlight	; handle highlight (if enabled)
 .endproc
-
-;*******************************************************************************
-; PART 2 of editor code + data
-.segment "EDITCODE"
 
 ;*******************************************************************************
 ; COMMAND_GOTOLINE

@@ -288,7 +288,7 @@ HL_MARKER_COLOR = TEXT_COLOR	; match the editor text color
 	ldx #NUM_ROWS-1
 :	lda mem::rowcolors,x
 	sta mem::rowcolors_save,x
-	lda #DEFAULT_900F
+	lda prefs::normal_color
 	sta mem::rowcolors,x
 	dex
 	bpl :-
@@ -393,8 +393,11 @@ BRK_ON_COLOR     = $02			; red
 	eor #HL_MARKER
 	sta mem::blink_dchar		; glyph delta (marker <-> breakpoint)
 
+	lda prefs::normal_color			; default to border color
+	cpy #$00
+	beq :+
 	lda gutter_colors,y
-	eor #HL_MARKER_COLOR
+:	eor prefs::text_color
 	sta mem::blink_dclr		; color delta
 
 	lda @dst
@@ -410,8 +413,16 @@ BRK_ON_COLOR     = $02			; red
 ; draw '>' or 'b/B' based on current blink phase
 	lda mem::blink_phase
 	bne @markeronly			; phase 1 -> '>' marker
+
+;-------------------------------------------------------------------------------
+; b/B
+@brkpt:
 	lda gutter_glyphs,y		; phase 0 -> breakpoint glyph
 	sta @glyph
+
+	lda prefs::normal_color
+	cpy #$00
+	beq @setcolor
 	lda gutter_colors,y
 	jmp @setcolor
 
@@ -424,11 +435,17 @@ BRK_ON_COLOR     = $02			; red
 	jmp @setcolor
 
 ;-------------------------------------------------------------------------------
-; b/B
+; b/B or nothing
 @chk_brk:
 	; breakpoint (or empty) cell
 	lda gutter_glyphs,y
 	sta @glyph
+	tya
+	bne @brkclr			; breakpoint set -> use its color
+	lda prefs::normal_color		; empty cell     -> border color
+	and #$07			; use just border color (low 3 bits)
+	jmp @setcolor
+@brkclr:
 	lda gutter_colors,y
 
 ;-------------------------------------------------------------------------------
