@@ -16,7 +16,7 @@ MAX_LABEL_LEN = 32
 
 .if .defined(vic20) .and .defined(hard8x8)
 ; Vic 20 (hard)
-TAB_WIDTH = 2
+TAB_WIDTH = 4
 LINESIZE  = 22
 MAX_LINE_LEN = LINESIZE*4   ; max logical line length
 
@@ -34,7 +34,11 @@ MAX_LINE_LEN = LINESIZE     ; max logical line length
 .endif
 
 ; line continuation character
+.ifdef hard8x8
+LINE_CONT = $5f
+.else
 LINE_CONT = $5c
+.endif
 
 ; size of "spare" buffer
 SPARESIZE = $400

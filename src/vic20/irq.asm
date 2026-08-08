@@ -72,52 +72,26 @@ savebank2: .byte 0
 ; This is the main IRQ for this program. It handles updating the beeper.
 ; It is relocated to a place where it may be called from any bank
 .proc sys_update
-.ifndef ultimem ; fe3
-	lda exp::bank		; 4 (4)
-	sta savebank		; 4 (8)
-	lda #FINAL_BANK_MAIN	; 2 (10)
-	SELECT_BANK_A		; 4 (14)
-.else
 	; kill 14 cycles
 	pha
 	pla
 	pha
 	pla
-.endif
 	jsr stable_handler	; 6 (20) / (6 - ultimem)
-
-.ifndef ultimem
-	lda savebank
-	SELECT_BANK_A
-.endif
-	jmp $eb15
-.endproc
-
-.proc row_interrupt
-.ifndef ultimem
-	lda exp::bank
-	sta savebank2
-	lda #FINAL_BANK_MAIN
-	SELECT_BANK_A
-.else
-	; kill 14 cycles
-	pha
-	pla
-	pha
-	pla
-.endif
-	jsr row_handler
-.ifndef ultimem
-	lda savebank2
-	SELECT_BANK_A
-.endif
 	jmp $eb15
 .endproc
 
 ;*******************************************************************************
-.ifndef ultimem
-.CODE
-.endif
+; ROW INTERRUPT
+.proc row_interrupt
+	; kill 14 cycles
+	pha
+	pla
+	pha
+	pla
+	jsr row_handler
+	jmp $eb15
+.endproc
 
 ;*******************************************************************************
 ; NMI SIGINT
@@ -156,6 +130,7 @@ savebank2: .byte 0
 	lda #$a5
 	nop
 
+.ifdef soft4x8
 	; clear the character area for the breakpoint
 	lda #$55
 	sta $10f0
@@ -199,6 +174,7 @@ savebank2: .byte 0
 	sta $1009
 	lda #$7c
 	sta $100a
+.endif
 
 	; set up sub-interrupt that executes every character row to draw
 	; breakpoints on any line that has one
@@ -210,14 +186,18 @@ savebank2: .byte 0
 	sta $912e		; enable T2 interrupts
 	ldxy #row_interrupt
 	stxy $0314
+.ifdef soft4x8
 	ldxy #105
+.else
+	ldxy #240
+.endif
 	stx $9128
 	sty $9129
 	cli
 	lda #$00
 
 @cont:	sta rowcnt		; rowcnt = 0
-
+.ifdef soft4x8
 	lda #$88
 	sta $100b
 	lda #$94
@@ -236,6 +216,7 @@ savebank2: .byte 0
 	beq :+
 	ldx #$00
 :	stx $10e7
+.endif
 
 	; save $f5-$f6
         lda $f5
@@ -383,6 +364,7 @@ ctrltab:
 	lda mem::rowcolors,x
 	sta $900f
 
+.ifdef soft4x8
 @handle_brkpts:
 	ldy #$03
 	cpx #SCREEN_HEIGHT-2
@@ -504,7 +486,7 @@ ctrltab:
 	sta DYNAMIC_CHAR_ADDR_BOT+$0d
 	sta DYNAMIC_CHAR_ADDR_BOT+$0e
 	sta DYNAMIC_CHAR_ADDR_BOT+$0f
-
+.endif	; soft4x8
 :	cpx #SCREEN_HEIGHT-1
 	inc rowcnt
 	bcc @ret

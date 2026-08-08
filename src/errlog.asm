@@ -30,7 +30,15 @@
 MAX_ERRORS = 8
 MAX_HEIGHT = 4
 
+;*******************************************************************************
+; ERRORS
+; Parallel arrays that make up the error log.  Each error is comprised of a
+; line number (LSB/MSB), the source file it belongs to, and an error code.
+.ifdef ultimem
+.segment "SHAREBSS2"
+.else
 .BSS
+.endif
 errcodes:   .res MAX_ERRORS
 errlineslo: .res MAX_ERRORS
 errlineshi: .res MAX_ERRORS
@@ -39,6 +47,129 @@ errfileids: .res MAX_ERRORS
 .export __errlog_numerrs
 __errlog_numerrs:
 numerrs: .byte 0
+
+;*******************************************************************************
+; SHIFT ERRORS D
+; Shifts the line numbers for all errors on lines at or below the current one
+; DOWN by the given offset.
+; IN:
+;  - .XY: the line number to shift
+;  - .A:  the offset to shift
+;  - r0:  the file ID of the file to shift within
+.ifdef ultimem
+.segment "DEBUGGER"
+.else
+.CODE
+.endif
+.export __errlog_shift_errorsd
+.proc __errlog_shift_errorsd
+@fileid=r0
+@line=r1
+@offset=r3
+	stxy @line
+	sta @offset
+	ldx numerrs
+	beq @done
+	dex
+
+@l0:	lda @fileid
+	cmp errfileids,x
+	bne @next
+	lda errlineshi,x
+	cmp @line+1
+	bcc @next
+	lda errlineslo,x
+	adc #$00
+	cmp @line
+	bcc @next
+	sbc #$01
+	clc
+	adc @offset
+	sta errlineslo,x
+	bcc @next
+	inc errlineshi,x
+@next:	dex
+	bpl @l0
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; SHIFT ERRORS U
+; Shifts UP the line numbers for all errors on lines below the current one by
+; the given offset.
+; IN:
+;  - .XY: the line number to shift
+;  - .A:  the offset to shift
+;  - r0:  the file ID of the file to shift within
+.export __errlog_shift_errorsu
+.proc __errlog_shift_errorsu
+@fileid=r0
+@line=r1
+@offset=r3
+	stxy @line
+	sta @offset
+	ldx numerrs
+	beq @done
+	dex
+
+@l0:	lda @fileid
+	cmp errfileids,x
+	bne @next
+	lda errlineshi,x
+	cmp @line+1
+	bcc @next
+	lda errlineslo,x
+	cmp @line
+	beq @next
+	bcc @next
+	sec
+	sbc @offset
+	sta errlineslo,x
+	bcs @next
+	dec errlineshi,x
+@next:	dex
+	bpl @l0
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; GETBYLINE
+; Returns whether an error is logged at the given line, in the given file.
+; IN:
+;  - .XY: line # to look up
+;  - .A:  file ID of the line
+; OUT:
+;  - .A: error code logged at the given line (if one exists)
+;  - .X: index of the error at the given line (if one exists)
+;  - .C: set if there is no error at the given line
+.export __errlog_getbyline
+.proc __errlog_getbyline
+@line=r2
+@file=r4
+	stxy @line
+	sta @file
+
+	ldx numerrs
+	beq @notfound
+	dex
+@l0:	lda @file
+	cmp errfileids,x
+	bne @next
+	lda @line
+	cmp errlineslo,x
+	bne @next
+	lda @line+1
+	cmp errlineshi,x
+	bne @next
+	lda errcodes,x
+	RETURN_OK		; found -> .C clear, .A = error code
+
+@next:	dex
+	bpl @l0
+@notfound:
+	sec			; no error on this line
+	rts
+.endproc
 
 .CODE
 ;*******************************************************************************

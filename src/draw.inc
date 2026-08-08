@@ -17,6 +17,7 @@ COLOR_BRKOFF  = 4
 COLOR_SUCCESS = 5
 COLOR_SELECT  = 6
 COLOR_FAILURE = 3
+COLOR_ERROR   = 7	; palette index for the error-highlight row color
 
 .scope draw
 	hline          = __draw_hline

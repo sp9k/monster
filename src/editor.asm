@@ -4526,6 +4526,10 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
+
+;*******************************************************************************
 ; RVS CURRENT LINE
 ; Reverses from column 0 to the end of the line (text::rendered_line_len) at
 ; the current cursor Y position
@@ -4736,6 +4740,7 @@ goto_buffer:
 @done:	RETURN_OK
 .endproc
 
+
 ;*******************************************************************************
 ; CCDEL
 ; Handles the DEL key
@@ -4835,10 +4840,6 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
-; PART 2 of editor code + data
-.segment "EDITCODE"
-
-;*******************************************************************************
 ; SCROLLUP_WHOLE_SCREEN
 ; Scrolls the entire editor display (EDITOR_ROW_START to height) up
 .proc scrollup_whole_screen
@@ -4914,12 +4915,31 @@ goto_buffer:
 
 @nobrk: pla			; restore the row
 	tax
+	pha			; save row to draw
 	tya
 	sta mem::breakpoint_rows,x
+
+	; if there's an error on this line, color the row
+	jsr edit_current_file		; .A=file ID, .XY=line #
+	jsr errlog::getbyline
+	bcs @noerr			; no error on this line
+	pla
+	tax				; .X = row
+	pha				; keep the row on the stack
+	lda #COLOR_ERROR
+	jsr draw::hline			; color the row (+gutter for hard8x8)
+	jmp @drawtext
+
+@noerr:
 .ifdef hard8x8
-	jsr scr::draw_gutter_row	; .X = row; refresh gutter
+	pla
+	tax				; .X = row
+	pha				; keep the row on the stack
+	jsr scr::draw_gutter_row	; refresh gutter
 .endif
-	txa				; restore the row
+
+@drawtext:
+	pla				; restore the row
 	jmp text::drawline
 .endproc
 
@@ -5696,7 +5716,13 @@ goto_buffer:
 ; format string; rendered from the MAIN context (RENDER_STR)
 .PUSHSEG
 .RODATA
-@files: .byte ESCAPE_SPACING,16,"files",0
+@files:
+.ifdef hard8x8
+.byte ESCAPE_SPACING,8
+.else
+.byte ESCAPE_SPACING,16
+.endif
+.byte "files",0
 .POPSEG
 .endproc
 

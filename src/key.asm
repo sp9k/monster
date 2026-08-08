@@ -76,22 +76,26 @@ CURSOR_LR_MASK = 2
 ;
 @to_translate:
 	.byte $dd	; SHIFT Minus
-	.byte $5f	; Arrow left
 	.byte $ba	; SHIFT @
 	.byte $a9	; Shift-£
 	.byte $c0	; Shift *
 	.byte $94	; SHIFT DEL (INS)
 	.byte $8d	; SHIFT RETURN
+.ifdef soft4x8
+	.byte $5f	; Arrow left
 	;.byte $xx	; Shift left-arrow TODO: ?
+.endif
 @translated:
 	.byte 95	; _
-	.byte 96	; `
 	.byte 123	; {
 	.byte 124	; |
 	.byte 125	; }
 	.byte $14	; DEL
 	.byte $0d	; RETURN
+.ifdef soft4x8
+	.byte 96	; `
 	;.byte 126	; ~
+.endif
 @num_translate=*-@translated
 .POPSEG
 .endproc

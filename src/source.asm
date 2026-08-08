@@ -14,6 +14,7 @@
 .include "debuginfo.inc"
 .include "draw.inc"
 .include "edit.inc"
+.include "errlog.inc"
 .include "errors.inc"
 .include "irq.inc"
 .include "macros.inc"
@@ -804,11 +805,23 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	; TODO:
 	;jsr dbgi::delete_line
 
-	; shift breakpoints
-	jsr edit::currentfile
-	sta r0
+	; shift breakpoints and errors
+	jsr edit::currentfile	; .A=file id, .XY=current line
+	sta r0			; file ID (preserved across both shifts)
+	txa
+	pha			; save line (LSB)
+	tya
+	pha			; save line (MSB)
+
 	lda #$01
-	jmp dbg::shift_breakpointsu
+	jsr dbg::shift_breakpointsu
+
+	pla
+	tay			; restore line (MSB)
+	pla
+	tax			; restore line (LSB)
+	lda #$01
+	jmp errlog::shift_errorsu
 .endproc
 
 ;*******************************************************************************

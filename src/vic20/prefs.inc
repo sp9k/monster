@@ -5,6 +5,7 @@
 .import __prefs_brkoff_color
 .import __prefs_success_color
 .import __prefs_select_col
+.import __prefs_error_color
 .import __prefs_palette
 
 .scope prefs
@@ -16,4 +17,5 @@
 	palette       = __prefs_palette
 	success_color = __prefs_success_color
 	select_color  = __prefs_select_col
+	error_color   = __prefs_error_color
 .endscope

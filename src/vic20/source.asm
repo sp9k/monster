@@ -3,6 +3,7 @@
 .include "../debug.inc"
 .include "../debuginfo.inc"
 .include "../edit.inc"
+.include "../errlog.inc"
 .include "../errors.inc"
 .include "../macros.inc"
 .include "../ram.inc"
@@ -518,14 +519,26 @@ data: .res BUFFER_SIZE
 	jsr __src_get_filename
 	jsr dbgi::getfileid
 
-	; shift breakpoints, line to shift is current line+1
+	; shift breakpoints and errors, line to shift is current line+1
 	jsr edit::currentfile
 	inx
 	bne :+
 	iny
-:	sta r0
+:	sta r0			; file ID (preserved across both shifts)
+	txa
+	pha			; save line+1 (LSB)
+	tya
+	pha			; save line+1 (MSB)
+
 	lda #$01
-	jmp dbg::shift_breakpointsd
+	jsr dbg::shift_breakpointsd
+
+	pla
+	tay			; restore line+1 (MSB)
+	pla
+	tax			; restore line+1 (LSB)
+	lda #$01
+	jmp errlog::shift_errorsd
 .endproc
 
 .ifdef ultimem

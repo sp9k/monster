@@ -2347,7 +2347,14 @@ inline_proc is_ws, util::is_whitespace
 @done:	rts
 
 ;-------------------------------------------------------------------------------
-@segments:  .byte ESCAPE_SPACING,15, "segments",0
+@segments:
+.ifdef hard8x8
+.byte ESCAPE_SPACING,8
+.else
+.byte ESCAPE_SPACING,15
+.endif
+.byte "segments",0
+
 @abs_title: .byte "absolute segments:",0
 @abs_seg:   .byte "$", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
 @rel_title: .byte "relative segments:",0
@@ -2387,7 +2394,13 @@ inline_proc is_ws, util::is_whitespace
 	jmp log_banner
 
 ;-------------------------------------------------------------------------------
-@symbols: .byte ESCAPE_SPACING, 15, "symbols",0
+@symbols:
+.ifdef hard8x8
+.byte ESCAPE_SPACING,8
+.else
+.byte ESCAPE_SPACING,15
+.endif
+.byte "symbols",0
 @locals:  .byte "locals:  ", ESCAPE_VALUE_DEC,0
 @imports: .byte "imports: ", ESCAPE_VALUE_DEC,0
 @exports: .byte "exports: ", ESCAPE_VALUE_DEC,0

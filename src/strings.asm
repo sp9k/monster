@@ -174,11 +174,23 @@ __str_tracing: .byte "tracing...",0
 
 .export __str_pass1
 __str_pass1:
-.byte ESCAPE_SPACING, 15, "pass 1",0
+	.byte ESCAPE_SPACING
+.ifdef hard8x8
+	.byte 8
+.else
+	.byte 15
+.endif
+	.byte "pass 1",0
 
 .export __str_pass2
 __str_pass2:
-.byte ESCAPE_SPACING, 15, "pass 2",0
+	.byte ESCAPE_SPACING
+.ifdef hard8x8
+	.byte 8
+.else
+	.byte 15
+.endif
+	.byte "pass 2",0
 
 .export __str_watches_line
 ;   $1000 : $10
