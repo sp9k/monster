@@ -313,9 +313,43 @@ main:	jsr key::getch
 ;*******************************************************************************
 ; DRAW STATUS BAR
 ; Draws the row of status data
+; If the cursor's current line contains an error, the error's message is shown
+; instead of the normal status content
 .proc draw_status_bar
-	lda status_row
+	jsr edit_current_file		; .A=file id, .XY=current line
+	bcs @draw			; no file mapped -> default status
+	jsr errlog::getbyline		; .C clear if an error is on this line
+	bcs @draw			; no error on this line -> default status
+	jsr err::get			; .A=code -> .XY=message
+	jsr set_status_err		; overwrite the status line w/ the message
+@draw:	lda status_row
 	jmp text::status
+.endproc
+
+;*******************************************************************************
+; SET STATUS ERR
+; Overwrites the status line (mem::statusline) with the given message, padded to
+; the full width of the status bar.
+; IN:
+;  - .XY: the null-terminated message to display
+.proc set_status_err
+@src=zp::text
+	stxy @src
+	ldy #$00
+@copy:	lda (@src),y
+	beq @pad
+	sta mem::statusline,y
+	iny
+	cpy #SCREEN_WIDTH
+	bcc @copy
+	rts
+
+@pad:	lda #' '
+:	sta mem::statusline,y
+	iny
+	cpy #SCREEN_WIDTH
+	bcc :-
+	rts
 .endproc
 
 ;*******************************************************************************

@@ -486,8 +486,9 @@ ctrltab:
 	sta DYNAMIC_CHAR_ADDR_BOT+$0d
 	sta DYNAMIC_CHAR_ADDR_BOT+$0e
 	sta DYNAMIC_CHAR_ADDR_BOT+$0f
+:
 .endif	; soft4x8
-:	cpx #SCREEN_HEIGHT-1
+	cpx #SCREEN_HEIGHT-1
 	inc rowcnt
 	bcc @ret
 
