@@ -757,6 +757,10 @@ blank   = scr::blank
 	lda show_extended_state
 	eor #$01
 	sta show_extended_state
+.ifdef hard8x8
+	; the machine-state view reuses the register rows, no resize needed
+	rts
+.else
 	beq :+
 
 	; enable color for the message row
@@ -770,6 +774,7 @@ blank   = scr::blank
 	dex
 	txa
 	jmp edit::resize
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -1890,6 +1895,12 @@ __debug_step:
 ;   PC  A  X  Y  SP NV-BDIZC ADDR
 ;  f59c 02 02 00 f7 00100000 1003
 .proc showregs
+.ifdef hard8x8
+	; on the narrow screen the machine-state view replaces the register view
+	; (they share the same rows), display whichever is selected
+	lda show_extended_state
+	bne show_machine_state
+.endif
 	; display the register names
 	ldxy #strings::debug_registers
 	lda #REGISTERS_LINE
@@ -1900,6 +1911,10 @@ __debug_step:
 .ifndef hard8x8
 	lda #REGISTERS_LINE+1
 	CALLMAIN text::print
+
+	; on wide screens the machine state is shown in addition to the registers
+	lda show_extended_state
+	bne show_machine_state
 .else
 	lda #$00
 	sta mem::linebuffer2+16	; break the register contents line
@@ -1914,10 +1929,14 @@ __debug_step:
 	ldxy #mem::linebuffer2+17
 	lda #REGISTERS_LINE+3
 	CALLMAIN text::print
-.endif
 
-	lda show_extended_state
-	bne show_machine_state
+	; (re-)highlight the register header rows; the machine-state view clears
+	; these when it uses the same rows
+	ldx #REGISTERS_LINE
+	jsr draw::hiline
+	ldx #REGISTERS_LINE+2
+	jsr draw::hiline
+.endif
 	rts
 .endproc
 
@@ -1925,6 +1944,29 @@ __debug_step:
 ; SHOW MACHINE STATE
 ; prints auxiliary (platform specific) state of the machine
 .proc show_machine_state
+.ifdef hard8x8
+	; clear the register "header" highlight
+	ldx #REGISTERS_LINE
+	jsr draw::resetline
+	ldx #REGISTERS_LINE+2
+	jsr draw::resetline
+
+	; draw the machine state (line/cyc/VIA's/...)
+	jsr ui::machine_state
+	ldxy #mem::linebuffer2+0	; "line/cyc" row
+	lda #REGISTERS_LINE
+	CALLMAIN text::print
+	ldxy #mem::linebuffer2+22	; "hpos" row
+	lda #REGISTERS_LINE+1
+	CALLMAIN text::print
+	ldxy #mem::linebuffer2+44	; "v1" row
+	lda #REGISTERS_LINE+2
+	CALLMAIN text::print
+	ldxy #mem::linebuffer2+66	; "v2" row
+	lda #REGISTERS_LINE+3
+	CALLMAIN text::print
+	rts
+.else
 	ldxy #strings::machine_state
 	lda #REGISTERS_LINE-2
 	CALLMAIN text::print
@@ -1933,6 +1975,7 @@ __debug_step:
 	lda #REGISTERS_LINE-1
 	CALLMAIN text::print
 	rts
+.endif
 .endproc
 
 ;*******************************************************************************

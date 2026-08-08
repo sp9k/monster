@@ -114,8 +114,8 @@ err_cyclic_include:
 	.byte $1e,$43,$62,$43,$da,$4e,$1b,$15,$21,$40
 
 err_failed_to_open_include:
-	;.byte "failed to open include file",0
-	.byte $30,$49,$61,$44,$dd,$f,$db,$d0,$2b,$9b,$4b,$83,$65,$44,$2e,$c6,$4b,$5,$0
+	;.byte "cannot open include",0
+	.byte $18,$4e,$73,$d4,$db,$d0,$2b,$9b,$4b,$83,$65,$44,$28,$0
 
 err_overlapping_segments:
 	;.byte "segment overlap",0
@@ -130,8 +130,8 @@ err_param_name_too_long:
 	.byte $80,$52,$b,$5b,$70,$4d,$2e,$d4,$7b,$db,$63,$ce,$38,$0
 
 err_line_not_found:
-	;.byte "line not found for address",0
-	.byte $62,$4e,$2e,$ce,$7d,$1b,$33,$d5,$71,$1b,$33,$d2,$d8,$44,$24,$85,$9c,$c0
+	;.byte "no line for address",0
+	.byte $73,$db,$62,$4e,$2e,$c6,$7c,$9b,$9,$4,$91,$53,$98,$0
 
 err_no_origin:
 	;.byte "origin unset",0
@@ -158,8 +158,8 @@ err_pc_target_unwritable:
 	.byte $80,$db,$a0,$52,$39,$54,$dd,$4e,$bc,$89,$a0,$42,$61,$40
 
 err_cannot_reduce:
-	; .byte "cannot reduce expression", 0
-	.byte $18,$4e,$73,$d4,$dc,$85,$25,$43,$2e,$c5,$c4,$12,$2c,$d3,$4b,$ce,$0
+	; .byte "cannot reduce expr", 0
+	.byte $18,$4e,$73,$d4,$dc,$85,$25,$43,$2e,$c5,$c4,$12,$0
 
 err_too_many_open_files:
 	;.byte "too many open files",0
@@ -200,7 +200,8 @@ err_too_many_labels:
 	.byte $68,$58,$db,$1,$11,$4c,$9e,$c5,$c0,$c5,$29,$5,$20,$0
 
 err_label_unknown_pass1:
-	.byte $60,$42,$2b,$1b,$9,$4,$91,$53,$9e,$ce,$7d,$1b,$4b,$86,$2c,$92,$29,$0
+	; .byte "unknown label address",0
+	.byte $ab,$8b,$73,$d7,$76,$cc,$8,$85,$66,$c1,$21,$12,$2c,$d3,$0
 
 err_invalid_command:
 	.byte $4b,$96,$b,$9,$26,$c3,$7b,$4d,$b,$84,$0
@@ -215,7 +216,8 @@ err_buffer_full:
 	.byte $15,$46,$31,$52,$d9,$95,$63,$0
 
 err_too_many_global_refs:
-.byte $2e,$10,$96,$c3,$b,$9b,$40,$56,$2e,$cf,$73,$19,$dc,$5b,$3b,$f,$10,$4c,$dc,$85,$30,$0
+; "too many global refs"
+.byte $a3,$cf,$db,$41,$76,$5b,$3b,$f,$10,$4c,$dc,$85,$34,$c0
 
 err_too_many_segments:
 ; "too many segments"
@@ -226,12 +228,12 @@ err_section_too_small:
 .byte $99,$43,$a2,$4f,$76,$cf,$b1,$52,$95,$4e,$0
 
 err_addrmode_mismatch:
-; "conflicting address modes for symbol"
-.byte $1b,$ce,$33,$9,$1d,$9,$71,$db,$9,$4,$91,$53,$9e,$cd,$79,$5,$9e,$c6,$7c,$9b,$9e,$4d,$13,$cc,$0
+; "conflicting addr modes"
+.byte $1b,$ce,$33,$9,$1d,$9,$71,$db,$9,$4,$96,$cd,$79,$5,$98,$0
 
 err_already_exported:
-; "multiple definitions for symbol"
-.byte $6d,$4c,$a2,$50,$61,$5b,$21,$46,$4b,$89,$a2,$4f,$74,$db,$33,$d2,$dc,$d9,$68,$8f,$60,$0
+; "multiple definitions"
+.byte $6d,$4c,$a2,$50,$61,$5b,$21,$46,$4b,$89,$a2,$4f,$74,$c0
 
 err_unknown_type:
 ; "unknown type"
@@ -242,12 +244,12 @@ err_unexpected_type:
 .byte $ab,$85,$c4,$5,$1d,$5,$26,$d4,$cc,$5,$0
 
 err_conflicting_segments:
-; "conflicting segment types"
-.byte $1b,$ce,$33,$9,$1d,$9,$71,$db,$99,$47,$69,$4e,$a6,$d4,$cc,$5,$98,$0
+; "conflicting seg types"
+.byte $1b,$ce,$33,$9,$1d,$9,$71,$db,$99,$47,$dd,$19,$81,$53,$0
 
 err_data_in_bss:
-; "bss segment contains nonzero data"
-.byte $14,$d3,$dc,$c5,$3b,$45,$75,$1b,$1b,$ce,$a0,$49,$74,$db,$73,$ce,$d1,$52,$7e,$c4,$d,$1,$0
+; "bss has nonzero data"
+.byte $14,$d3,$da,$1,$9e,$ce,$7b,$9a,$2c,$8f,$d9,$1,$a0,$40
 
 err_oom:
 ; "out of memory"
@@ -274,8 +276,8 @@ err_too_many_breakpoints:
 .byte $a3,$cf,$db,$41,$76,$5b,$14,$85,$a,$d0,$7a,$4e,$a4,$c0
 
 err_rorg_not_absolute:
-; .byte "rorg requires absolute origin",0
-.byte $93,$d2,$3e,$d2,$2c,$55,$4c,$85,$9e,$c1,$14,$cf,$65,$54,$2e,$cf,$92,$47,$4b,$80
+; .byte "rorg needs abs origin",0
+.byte $93,$d2,$3e,$ce,$29,$44,$9e,$c1,$14,$db,$7c,$89,$3a,$4e,$0
 
 err_unclosed_if:
 ; .byte "unclosed .if",0

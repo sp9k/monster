@@ -581,43 +581,58 @@ VIA_T2CH = $9		; T2 counter hi
 
 ;*******************************************************************************
 ; MACHINE STATE
-; Returns a line of data about the current state of the electron gun. This
-; includes the vertical position (LINE), the cycle within the line (CYC) and
-; the horizontal pixel position (HPOS = 4*CYC).
-; Also displays the current VIA timer values (V1 for VIA #1 and V2 for VIA #2).
+; Builds the machine-state view as four ready-to-print rows in mem::linebuffer2
+; (at offsets ROW0..ROW3).
+;     line XXXXX cyc XX
+;     hpos XXXX
+;     v1 t1 XXXXX t2 XXXXX
+;     v2 t1 XXXXX t2 XXXXX
+; LINE is the raster line, CYC the cycle within that line, HPOS the horizontal
+; pixel position (4*CYC) and vN tM VIA #N's timer #M.
 ; OUT:
-;   - mem::linebuffer2: line of text containing VIC specific data
-;     matches the format "LINE CYC HPOS  V1T1 V1T2 V2T1 V2T2"
+;   - mem::linebuffer2: the four rows, each SCREEN_WIDTH+... columns wide
 .export __ui_machine_state
 .proc __ui_machine_state
+; row offsets within the buffer
+ROW0=0
+ROW1=22
+ROW2=44
+ROW3=66
 @buff=mem::linebuffer2
 @val=r0			; 16-bit scratch (raster line / HPOS)
 @cyc=r2			; cycle within the current raster line
-	ldy #39
-	lda #' '
-:	sta @buff,y
-	dey
+	; store templates (labels + spaces for the value slots)
+	ldx #(ROW3+22)-1
+:	lda @templates,x
+	sta @buff,x
+	dex
 	bpl :-
 
+	; clear any stale register-changed highlight color in the view's rows
+	lda #TEXT_COLOR
+	ldy #SCREEN_WIDTH-1
+@clrcol:
+	sta COLMEM_ADDR+(PHYS_COLS*REGISTERS_LINE)+CONTENT_COL,y
+	sta COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+1))+CONTENT_COL,y
+	sta COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+2))+CONTENT_COL,y
+	sta COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+3))+CONTENT_COL,y
+	dey
+	bpl @clrcol
+
 	; if the stopwatch is invalid (e.g. after a GO), the raster position is
-	; unknown; show ??? for LINE, CYC, and HPOS
+	; unknown; show ? for LINE, CYC, and HPOS
 	lda dbg::sw_valid
 	bne @line
 	lda #'?'
-	sta @buff		; LINE[0]
-	sta @buff+9+3		; HPOS[3]
-	ldx #3-1
-:	sta @buff+1,x		; LINE[1:3]
-	sta @buff+5,x		; CYC
-	sta @buff+9,x		; HPOS
-	dex
-	bpl :-
-	bmi @vias		; branch always
+	sta @buff+ROW0+5	; LINE
+	sta @buff+ROW0+15	; CYC
+	sta @buff+ROW1+5	; HPOS
+	jmp @vias
 
 @line:	; write the LINE number
 	ldxy sim::line
 	jsr util::todec
-	ldy #0			; column 0
+	ldy #ROW0+5
 	jsr @put
 
 	; CYC = LINE % CYCLES_PER_LINE
@@ -642,7 +657,7 @@ VIA_T2CH = $9		; T2 counter hi
 	tax
 	ldy #0			; hi byte = 0 (CYC < CYCLES_PER_LINE)
 	jsr util::todec
-	ldy #5			; column 5
+	ldy #ROW0+15
 	jsr @put
 
 	; HPOS = 4 * CYC
@@ -656,42 +671,42 @@ VIA_T2CH = $9		; T2 counter hi
 	rol @val+1
 	ldxy @val
 	jsr util::todec
-	ldy #9			; column 9
+	ldy #ROW1+5
 	jsr @put
 
 	; VIA #1 timer 1
 @vias:	ldx sim::via1+VIA_T1CL
 	ldy sim::via1+VIA_T1CH
 	jsr util::todec
-	ldy #15			; column 15
+	ldy #ROW2+6
 	jsr @put
 
 	; VIA #1 timer 2
 	ldx sim::via1+VIA_T2CL
 	ldy sim::via1+VIA_T2CH
 	jsr util::todec
-	ldy #21			; column 21
+	ldy #ROW2+15
 	jsr @put
 
 	; VIA #2 timer 1
 	ldx sim::via2+VIA_T1CL
 	ldy sim::via2+VIA_T1CH
 	jsr util::todec
-	ldy #27			; column 27
+	ldy #ROW3+6
 	jsr @put
 
 	; VIA #2 timer 2
 	ldx sim::via2+VIA_T2CL
 	ldy sim::via2+VIA_T2CH
 	jsr util::todec
-	ldy #33			; column 33
+	ldy #ROW3+15
 	jsr @put
 
 	ldxy #@buff
 	rts
 
 ;-------------------------------------------------------------------------------
-; copy the 0-terminated decimal string in mem::spare to @buff at the column
+; copy the 0-terminated decimal string in mem::spare to @buff at the offset
 ; given in .Y
 @put:	ldx #$00
 :	lda mem::spare,x
@@ -702,4 +717,30 @@ VIA_T2CH = $9		; T2 counter hi
 	bne :-
 @putdone:
 	rts
+
+;-------------------------------------------------------------------------------
+; row templates: labels in place, spaces where the values are poked in.
+; each row is exactly 22 (LINESIZE) columns wide.
+@templates:
+; row 0: "line" + LINE @5 + "cyc" + CYC @15
+.byte "line"
+.res 7, ' '
+.byte "cyc"
+.res 8, ' '
+
+; row 1: "hpos" + HPOS @5
+.byte "hpos"
+.res 18, ' '
+
+; row 2: "v1 t1" + V1T1 @6 + "t2" + V1T2 @15
+.byte "v1 t1"
+.res 7, ' '
+.byte "t2"
+.res 8, ' '
+
+; row 3: "v2 t1" + V2T1 @6 + "t2" + V2T2 @15
+.byte "v2 t1"
+.res 7, ' '
+.byte "t2"
+.res 8, ' '
 .endproc

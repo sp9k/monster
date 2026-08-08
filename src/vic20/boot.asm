@@ -340,6 +340,6 @@ init_sig:
 init_sig_len=*-init_sig
 
 recover_reset:
-	.byte " reset detected - restore state? (y/n)",0
+	.byte "restore? (y/n)",0
 .POPSEG
 .endif
