@@ -25,8 +25,10 @@ REGS_COLOR_ROW = REGISTERS_LINE+1
 
 .ifdef PAL
 CYCLES_PER_LINE = 63
+LINES           = 312
 .else
 CYCLES_PER_LINE = 65
+LINES           = 263
 .endif
 
 .CODE
@@ -235,7 +237,7 @@ CYCLES_PER_LINE = 65
 .proc __ui_machine_state
 @buff=mem::linebuffer2
 @val=r0			; 16-bit scratch (raster line / HPOS)
-@cyc=r2			; cycle within the current raster line
+@cyc=r7			; cycle within the current raster line (survives div24_16)
 	ldy #39
 	lda #' '
 :	sta @buff,y
@@ -257,32 +259,37 @@ CYCLES_PER_LINE = 65
 	bpl :-
 	bmi @done		; branch always
 
-@line:	; write the LINE number
-	ldxy sim::line
+@line:	; CYC = stopwatch % CYCLES_PER_LINE; total lines = stopwatch / CYCLES_PER_LINE
+	lda sim::stopwatch
+	sta r0
+	lda sim::stopwatch+1
+	sta r1
+	lda sim::stopwatch+2
+	sta r2
+	lda #<CYCLES_PER_LINE
+	sta r3
+	lda #>CYCLES_PER_LINE
+	sta r4
+	jsr util::div24_16	; r0-r2 = total lines, r5 = CYC (< CYCLES_PER_LINE)
+	lda r5
+	sta @cyc		; save CYC (div24_16 will clobber r0-r6 below)
+
+	; LINE = total lines % LINES (dividend already in r0-r2)
+	lda #<LINES
+	sta r3
+	lda #>LINES
+	sta r4
+	jsr util::div24_16	; r5-r6 = LINE
+
+	; write the LINE number
+	ldx r5
+	ldy r6
 	jsr util::todec
 	ldy #0			; column 0
 	jsr @put
 
-	; CYC = LINE % CYCLES_PER_LINE
-	ldxy sim::line
-	stxy @val
-@modl:	lda @val+1
-	bne @modsub		; hi != 0 -> value >= CYCLES_PER_LINE
-	lda @val
-	cmp #CYCLES_PER_LINE
-	bcc @moddone
-@modsub:
-	lda @val
-	sec
-	sbc #CYCLES_PER_LINE
-	sta @val
-	bcs @modl
-	dec @val+1
-	bcc @modl		; (always)
-@moddone:
-	lda @val
-	sta @cyc
-	tax
+	; write CYC
+	ldx @cyc
 	ldy #0			; hi byte = 0 (CYC < CYCLES_PER_LINE)
 	jsr util::todec
 	ldy #5			; column 5

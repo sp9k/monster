@@ -1103,6 +1103,10 @@ __debug_step:
 :	sta sim::stopwatch-1,x
 	dex
 	bne :-
+
+	; keep the raster position in phase with the stopwatch
+	sta sim::raster
+	sta sim::raster+1
 	rts
 .endproc
 

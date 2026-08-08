@@ -398,6 +398,56 @@ result=mem::spare
 .endproc
 
 ;*******************************************************************************
+; DIV24_16
+; Divides a 24-bit dividend by a 16-bit divisor.
+; IN:
+;  - r0: the 24-bit dividend (r0=LSB .. r2=MSB)
+;  - r3: the 16-bit divisor (r3,r4)
+; OUT:
+;  - r0: the 24-bit quotient (r0=LSB .. r2=MSB)
+;  - r5: the 16-bit remainder (r5,r6)
+;  - .C: set if the divisor was 0 (result undefined)
+.export __util_div24_16
+.proc __util_div24_16
+@dividend  = r0		; 3 bytes; receives the quotient
+@divisor   = r3		; 2 bytes
+@remainder = r5		; 2 bytes
+	; division by zero is undefined; return with .C set
+	lda @divisor
+	ora @divisor+1
+	bne @start
+	sec
+	rts
+
+@start:	lda #0			; preset remainder to 0
+	sta @remainder
+	sta @remainder+1
+	ldx #24			; repeat for each bit of the dividend
+
+@divloop:
+	asl @dividend		; shift dividend left, MSB -> carry
+	rol @dividend+1
+	rol @dividend+2
+	rol @remainder		; bring the shifted-out bit into the remainder
+	rol @remainder+1
+	lda @remainder
+	sec
+	sbc @divisor		; does the divisor fit into the remainder?
+	tay			; lo result -> .Y, in case we keep it
+	lda @remainder+1
+	sbc @divisor+1
+	bcc @skip		; carry clear -> divisor didn't fit yet
+	sta @remainder+1	; else store the subtraction as the new remainder
+	sty @remainder
+	inc @dividend		; and set this bit of the quotient
+
+@skip:	dex
+	bne @divloop
+	clc			; ok
+	rts
+.endproc
+
+;*******************************************************************************
 ; IS WHITESPACE
 ; Checks if the given character is a whitespace character
 ; IN:

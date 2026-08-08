@@ -181,7 +181,8 @@ STATUS_COL=0		; start column for status line
 .endproc
 
 ;*******************************************************************************
-; cycles in a raster line (used to derive CYC/HPOS from the raster LINE)
+; cycles in a raster line (used to derive LINE, CYC, and HPOS from the
+; simulator's per-frame raster position, sim::raster)
 .ifdef PAL
 CYCLES_PER_LINE = 71
 .else ; NTSC
@@ -207,7 +208,7 @@ VIA_T2CH = $9		; T2 counter hi
 .proc __ui_machine_state
 @buff=mem::linebuffer2
 @val=r0			; 16-bit scratch (raster line / HPOS)
-@cyc=r2			; cycle within the current raster line
+@cyc=r7			; cycle within the current raster line (survives div24_16)
 	ldy #39
 	lda #' '
 :	sta @buff,y
@@ -229,32 +230,32 @@ VIA_T2CH = $9		; T2 counter hi
 	bpl :-
 	bmi @vias		; branch always
 
-@line:	; write the LINE number
-	ldxy sim::line
+@line:	; LINE = raster / CYCLES_PER_LINE ; CYC = raster % CYCLES_PER_LINE.
+	; The simulator wraps __sim_raster at each frame boundary (handling NTSC
+	; interlace), so LINE is already < the frame's line count -- no % needed.
+	lda sim::raster
+	sta r0
+	lda sim::raster+1
+	sta r1
+	lda #0
+	sta r2
+	lda #<CYCLES_PER_LINE
+	sta r3
+	lda #>CYCLES_PER_LINE
+	sta r4
+	jsr util::div24_16	; r0-r2 = LINE, r5 = CYC (< CYCLES_PER_LINE)
+	lda r5
+	sta @cyc		; save CYC (todec preserves the r-registers)
+
+	; write the LINE number
+	ldx r0
+	ldy r1
 	jsr util::todec
 	ldy #0			; column 0
 	jsr @put
 
-	; CYC = LINE % CYCLES_PER_LINE
-	ldxy sim::line
-	stxy @val
-@modl:	lda @val+1
-	bne @modsub		; hi != 0 -> value >= CYCLES_PER_LINE
-	lda @val
-	cmp #CYCLES_PER_LINE
-	bcc @moddone
-@modsub:
-	lda @val
-	sec
-	sbc #CYCLES_PER_LINE
-	sta @val
-	bcs @modl
-	dec @val+1
-	bcc @modl		; (always)
-@moddone:
-	lda @val
-	sta @cyc
-	tax
+	; write CYC
+	ldx @cyc
 	ldy #0			; hi byte = 0 (CYC < CYCLES_PER_LINE)
 	jsr util::todec
 	ldy #5			; column 5

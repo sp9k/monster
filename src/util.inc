@@ -10,6 +10,7 @@
 .import __util_todec
 .import __util_todec8
 .import __util_todec24
+.import __util_div24_16
 .import __util_isoperator
 .import __util_is_separator
 .import __util_is_alphanum
@@ -30,4 +31,5 @@
 	todec                 = __util_todec
 	todec8		      = __util_todec8
 	todec24		      = __util_todec24
+	div24_16	      = __util_div24_16
 .endscope

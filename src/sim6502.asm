@@ -28,6 +28,18 @@ via_ifr  = $d	; interrupt flag register
 via_ier  = $e	; interrupt enable register
 
 ;*******************************************************************************
+; VIDEO FRAME LENGTHS (CPU cycles per frame = cycles-per-line * lines).
+; Used to wrap the raster position (see tick_raster/calc_frame_cyc).
+.ifdef vic20
+.ifdef PAL
+FRAME_CYCLES     = 71*312	; 22152; PAL (6561) frame, no interlace
+.else
+FRAME_CYCLES     = 65*261	; 16965; NTSC (6560) non-interlaced frame
+FRAME_CYCLES_INT = 65*525	; 34125; NTSC interlaced (2 262.5-line fields)
+.endif
+.endif
+
+;*******************************************************************************
 .BSS
 
 ;*******************************************************************************
@@ -113,6 +125,17 @@ __sim_rti_irq: .byte 0
 .export __sim_stopwatch
 __sim_stopwatch: .res 3
 
+; raster position: CPU cycles elapsed within the current video frame.
+; The UI derives LINE and CYC from this:
+;  - LINE = raster / CYCLES_PER_LINE
+;  - CYC = raster % ...
+.export __sim_raster
+__sim_raster: .word 0
+
+; length of the current video frame in CPU cycles (CYCLES_PER_LINE * lines).
+; may vary if interlace is enabled (NTSC/Vic-20)
+frame_cyc: .word 0
+
 ;*******************************************************************************
 ; shadow registers for the user's VIA1 ($9110) and VIA2 ($9120)
 ; the simulator redirects the user's loads/stores in this range to these
@@ -152,12 +175,6 @@ __sim_tracing:
 tracing: .byte 0
 
 ;*******************************************************************************
-.export __sim_line
-.export __sim_hpos
-__sim_line: .word 0		; current raster line (0-311)
-__sim_hpos: .byte 0		; current pixel offset on line
-
-;*******************************************************************************
 .import stop_tracing		; flag to halt a trace command
 
 ;*******************************************************************************
@@ -175,9 +192,8 @@ __sim_hpos: .byte 0		; current pixel offset on line
 	sta nmi_prev
 	sta __sim_irq_depth
 	sta __sim_rti_irq
-	sta __sim_line
-	sta __sim_line+1
-	sta __sim_hpos
+	sta __sim_raster
+	sta __sim_raster+1
 
 .ifdef vic20
 	; copy the user's saved VIA registers ($9110-$912f) to the shadows
@@ -213,6 +229,8 @@ __sim_hpos: .byte 0		; current pixel offset on line
 	sta via_t2_latch
 	lda __sim_via2+via_t2cl
 	sta via_t2_latch+1
+
+	jsr calc_frame_cyc		; establish the initial frame length
 .endif
 	rts
 .endproc
@@ -785,6 +803,7 @@ cycles_tab:
 @update:
 .ifdef vic20
 	jsr update_vias			; tick timers, dispatch IRQ/NMI
+	jsr tick_raster			; advance the raster position
 .endif
 
 	clc
@@ -2631,6 +2650,75 @@ h_rti:
 	jmp do_interrupt
 @done:	rts
 .endproc
+
+;*******************************************************************************
+; TICK RASTER
+; Advances the raster position (__sim_raster) by the current STEP's cycle count
+; and wraps it at each frame boundary.  Frame length is refreshed from the
+; hardware at each vblank (calc_frame_cyc), so toggling interlace (NTSC) takes
+; effect on the following frame.
+.ifdef vic20
+.proc tick_raster
+	lda __sim_raster
+	clc
+	adc step_cycles
+	sta __sim_raster
+	bcc @chk
+	inc __sim_raster+1
+
+@chk:	; have we reached the end of the current frame?
+	lda __sim_raster+1
+	cmp frame_cyc+1
+	bcc @done
+	bne @wrap
+	lda __sim_raster
+	cmp frame_cyc
+	bcc @done
+
+@wrap:	; subtract frame length to bring the raster back into the next frame
+	lda __sim_raster
+	sec
+	sbc frame_cyc
+	sta __sim_raster
+	lda __sim_raster+1
+	sbc frame_cyc+1
+	sta __sim_raster+1
+	jsr calc_frame_cyc	; pick up any geometry change for the new frame
+	jmp @chk
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; CALC FRAME CYC
+; Sets frame_cyc to the length (in CPU cycles) of the current video frame.
+; On NTSC this depends on $9000 bit 7. PAL has fixed cycles/frame (no interlace)
+.proc calc_frame_cyc
+.ifdef PAL
+	lda #<FRAME_CYCLES
+	sta frame_cyc
+	lda #>FRAME_CYCLES
+	sta frame_cyc+1
+	rts
+.else
+	; NTSC
+	ldxy #$9000
+	jsr vmem_load		; read the user's VIC control register
+	and #$80		; interlace enabled?
+	bne @ilace
+	lda #<FRAME_CYCLES
+	sta frame_cyc
+	lda #>FRAME_CYCLES
+	sta frame_cyc+1
+	rts
+
+@ilace: lda #<FRAME_CYCLES_INT
+	sta frame_cyc
+	lda #>FRAME_CYCLES_INT
+	sta frame_cyc+1
+	rts
+.endif
+.endproc
+.endif	; vic20
 
 ;*******************************************************************************
 ; TICK VIA

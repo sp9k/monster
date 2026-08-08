@@ -9,8 +9,7 @@
 .import __sim_op_mode
 .import __sim_register_state
 .import __sim_branch_taken
-.import __sim_line
-.import __sim_hpos
+.import __sim_raster
 .import __sim_pc
 .import __sim_prev_pc
 .import __sim_reg_a
@@ -37,10 +36,9 @@
 	flush_vias       = __sim_flush_vias
 	init             = __sim_init
 	branch_taken     = __sim_branch_taken
-	hpos             = __sim_hpos
+	raster           = __sim_raster
 	illegal          = __sim_illegal
 	jammed           = __sim_jammed
-	line             = __sim_line
 	next_pc          = __sim_next_pc
 	op               = __sim_op
 	operand          = __sim_operand
