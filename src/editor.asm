@@ -494,12 +494,12 @@ main:	jsr key::getch
 @filename=zp::editortmp
 	stxy @filename
 
+	jsr clear_errors
+
 	ldxy #strings::assembling
 	jsr blank
 
-	jsr close_windows	; close errlog (if open)
 	CALLMAIN dbgi::init
-	jsr errlog::clear
 	jsr run::install_sigint	; reset SIGINT flag
 
 	jsr init_log		; create a (new) log file
@@ -681,12 +681,13 @@ main:	jsr key::getch
 	lda #ERR_UNNAMED_BUFFER
 	jmp report_typein_error
 
-:	jsr close_windows	; close errlog (if open)
-	jsr init_log		; create a (new) log file
+:	jsr init_log		; create a (new) log file
 
 	lda #$01
 	sta zp::gendebuginfo	; enable debug info
 	sta asm::mode		; and object code relocation generation
+
+	jsr clear_errors
 
 	ldxy #strings::assembling
 	jsr blank
@@ -694,7 +695,6 @@ main:	jsr key::getch
 	jsr run::install_sigint	; reset SIGINT flag
 
 	CALLMAIN dbgi::init
-	jsr errlog::clear
 
 	; save the current source position and rewind it for assembly
 	jsr text::savebuff
@@ -4383,6 +4383,19 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
+
+;*******************************************************************************
+; CLEAR ERRORS
+; Clears all errors in the log and onscreen
+.proc clear_errors
+	jsr close_windows	; close errlog (if open)
+	jsr errlog::clear
+	jmp refresh
+.endproc
+
+;*******************************************************************************
 ; CCLEFT
 ; Handles the left cursor key
 ; OUT:
@@ -4558,10 +4571,6 @@ goto_buffer:
 :	clc
 @done:	rts
 .endproc
-
-;*******************************************************************************
-; PART 2 of editor code + data
-.segment "EDITCODE"
 
 ;*******************************************************************************
 ; RVS CURRENT LINE

@@ -370,7 +370,7 @@ ctrltab:
 	cpx #SCREEN_HEIGHT-2
 	bcs @botrows
 
-	;----------------------------------------------------------------------
+	;-----------------------------------------------------------------------
 	; copy either the empty character (no breakpoint)
 	; or the breakpoint character data if there is one
 	lda mem::breakpoint_rows,x
@@ -622,6 +622,23 @@ ctrltab:
 .export __irq_on
 .proc __irq_on
         sei
+
+
+; TODO: recover from interlace mode (if it was enabled)
+; under investigation
+;	; disable interlace in case something set it
+;	lda $9000
+;	and #$7f
+;	sta $9000
+;	; wait for a normal frame
+;:	lda $9004
+;	beq :-
+;:	lda $9004
+;	bne :-
+;	lda $9003
+;	and #$80
+;	bne :-
+
 	ldxy #sys_update
 	stxy $0314
 

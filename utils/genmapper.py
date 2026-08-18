@@ -125,6 +125,18 @@ segments = {
 		blk3 = Rom(26),
 		blk5 = Rom(27),
 	),
+	"SIM_CAP": Bank(
+		blk1 = Ram(33),	# same vmem windows as VSYS: the generator swaps
+		blk2 = Ram(34), # capture/shadow/OUTPUT banks in explicitly
+		blk3 = Ram(35),
+		blk5 = Rom(28),
+	),
+	"SIM_VIS": Bank(
+		blk1 = Ram(33),	# as SIM_CAP -- the visibility pass swaps the capture
+		blk2 = Ram(34), # chain and SHADOW_BANK in explicitly.  Note that a far
+		blk3 = Ram(35), # CALL reprograms BLK1/2/3 from this table on the way in
+		blk5 = Rom(29), # AND on the way out, so both sides re-map their own
+	),                      # windows around it rather than inheriting them.
 }
 
 print("\n;*******************************************************************************")

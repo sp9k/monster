@@ -10,6 +10,8 @@
 .import __sim_register_state
 .import __sim_branch_taken
 .import __sim_raster
+.import __sim_raster_line
+.import __sim_line_cyc
 .import __sim_pc
 .import __sim_prev_pc
 .import __sim_reg_a
@@ -20,6 +22,7 @@
 .import __sim_effective_addr
 .import __sim_effective_val
 .import __sim_flush_vias
+.import __sim_irq_depth
 .import __sim_rti_irq
 .import __sim_stopwatch
 .import __sim_at_brk
@@ -37,6 +40,8 @@
 	init             = __sim_init
 	branch_taken     = __sim_branch_taken
 	raster           = __sim_raster
+	raster_line      = __sim_raster_line
+	line_cyc         = __sim_line_cyc
 	illegal          = __sim_illegal
 	jammed           = __sim_jammed
 	next_pc          = __sim_next_pc
@@ -51,6 +56,7 @@
 	effective_addr = __sim_effective_addr
 	effective_val  = __sim_effective_val
 	rti_irq        = __sim_rti_irq
+	irq_depth      = __sim_irq_depth
 	register_state = __sim_register_state
 	pc             = __sim_pc
 	prev_pc        = __sim_prev_pc

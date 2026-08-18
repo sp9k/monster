@@ -11,7 +11,7 @@ commands.
 
 | COMMAND  |  KEY     |  DESCRIPTION
 |----------|----------|----------------------------------------------------------------------------------------------------
-| NEXT WIN | C= + W   | Cycles to the next available window (if already in the editor, enters the active window)
+| NEXT WIN | C= + S   | Cycles to the next available window (if already in the editor, enters the active window)
 | EXIT     | RUN/STOP | If window is active, exits it, returning to editor
 | HIDE     | C= + H   | Toggles the display of windows entirely
 

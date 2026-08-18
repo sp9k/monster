@@ -47,6 +47,10 @@
 	.include "vic20/fastcopy.inc"
 .endif
 
+.ifdef ultimem
+	.include "vic20/ultimem/capture.inc"
+.endif
+
 .import __DEBUGGER_LOAD__
 .import __DEBUGGER_SIZE__
 
@@ -127,6 +131,7 @@ lineset: .byte 0		; not zero if we know the line number we're on
 __debug_is_brk: .byte 0
 
 step_out_depth: .byte 0 ; # of RTS's to wait for when "stepping out"
+step_out_irq:   .byte 0	; IRQ depth when STEP OUT began
 
 .segment "SHAREBSS"
 ;*******************************************************************************
@@ -647,7 +652,8 @@ blank   = scr::blank
 
 ;*******************************************************************************
 ; STEP OUT
-; Runs the user program until the next RTS is executed
+; Runs the user program until the next RTS is executed.  If we begin inside a
+; simulated interrupt handler, that handler's RTI ends the STEP OUT as well.
 ; OUT:
 ;   - .C: set if we should stop tracing (e.g. if a watch was activated)
 .export __debug_step_out
@@ -656,6 +662,8 @@ blank   = scr::blank
 
 	lda #$00
 	sta step_out_depth
+	lda sim::irq_depth	; remember which interrupt frame we started in
+	sta step_out_irq
 	jsr bsp::install_tracer
 
 	jsr print_tracing
@@ -675,7 +683,13 @@ blank   = scr::blank
 	cmp #$40		; or RTI?
 	bne @trace		; if not loop
 	lda sim::rti_irq	; RTI from a simulated IRQ/NMI?
-	bne @trace		; if so, it doesn't end a subroutine
+	beq @dec_depth		; no, a plain RTI -> treat it like an RTS
+
+	; Returned from a simulated interrupt. If the depth is below what
+	; we began the trace at, exit
+	lda sim::irq_depth
+	cmp step_out_irq
+	bcs @trace		; depth >= start -> nested interrupt; continue
 @dec_depth:
 	dec step_out_depth
 	bpl @trace		; continue trace until depth is negative
@@ -718,6 +732,20 @@ blank   = scr::blank
 	jsr watch::update
 
 	jmp uninstall_breakpoints
+.endproc
+
+;*******************************************************************************
+; CAPTURE REPLAY
+; Displays the current visual state of the machine for the current frame. All
+; VIC writes and mid-screen updates are shown as they would be for this frame.
+; On platforms without the capture engine, falls back to a simple memory swap.
+.proc capture_replay
+.ifdef ultimem
+	CALL FINAL_BANK_SIM_CAP, cap::trigger
+	rts
+.else
+	jmp __debug_swap_user_mem
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -1107,6 +1135,14 @@ __debug_step:
 	; keep the raster position in phase with the stopwatch
 	sta sim::raster
 	sta sim::raster+1
+	sta sim::raster_line
+	sta sim::raster_line+1
+	sta sim::line_cyc
+
+.ifdef ultimem
+	; start a new capture in phase with the raster clock
+	CALL FINAL_BANK_SIM, cap::reset
+.endif
 	rts
 .endproc
 
@@ -2075,7 +2111,7 @@ num_commands=*-commands
 .define command_vectors quit, edit_source, __debug_step, __debug_step_over, \
 	__debug_go, jump, __debug_step_out, __debug_trace, edit_source, \
 	edit_mem, edit_breakpoints, __debug_edit_watches, \
-	__debug_swap_user_mem, reset_stopwatch, edit_state_vec, \
+	capture_replay, reset_stopwatch, edit_state_vec, \
 	goto_pc, activate_monitor, activate_monitor_win, toggle_extended_info
 .linecont -
 command_vectorslo: .lobytes command_vectors

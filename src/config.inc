@@ -40,7 +40,9 @@ LINE_CONT = $5f
 LINE_CONT = $5c
 .endif
 
-; size of "spare" buffer
-SPARESIZE = $400
+; size of "spare" buffer (one page trimmed to free RAM123 for the sim capture
+; BSS; must stay a multiple of $100 to keep LINEBUFF page-aligned, and the
+; assembler's mem::spare scratch only ever uses <=256 bytes)
+SPARESIZE = $300
 
 .endif

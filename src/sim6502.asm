@@ -12,7 +12,8 @@
 .include "zeropage.inc"
 
 .ifdef ultimem
-.include "vic20/expansion.inc"	; FINAL_BANK_SIM, FINAL_BANK_FASTCOPY
+.include "vic20/expansion.inc"
+.include "vic20/ultimem/capture.inc"
 .endif
 
 ;*******************************************************************************
@@ -31,12 +32,7 @@ via_ier  = $e	; interrupt enable register
 ; VIDEO FRAME LENGTHS (CPU cycles per frame = cycles-per-line * lines).
 ; Used to wrap the raster position (see tick_raster/calc_frame_cyc).
 .ifdef vic20
-.ifdef PAL
-FRAME_CYCLES     = 71*312	; 22152; PAL (6561) frame, no interlace
-.else
-FRAME_CYCLES     = 65*261	; 16965; NTSC (6560) non-interlaced frame
-FRAME_CYCLES_INT = 65*525	; 34125; NTSC interlaced (2 262.5-line fields)
-.endif
+.include "vic20/frame.inc"
 .endif
 
 ;*******************************************************************************
@@ -126,15 +122,20 @@ __sim_rti_irq: .byte 0
 __sim_stopwatch: .res 3
 
 ; raster position: CPU cycles elapsed within the current video frame.
-; The UI derives LINE and CYC from this:
-;  - LINE = raster / CYCLES_PER_LINE
-;  - CYC = raster % ...
 .export __sim_raster
 __sim_raster: .word 0
 
-; length of the current video frame in CPU cycles (CYCLES_PER_LINE * lines).
-; may vary if interlace is enabled (NTSC/Vic-20)
-frame_cyc: .word 0
+.export __sim_raster_line
+.export __sim_line_cyc
+__sim_raster_line: .word 0	; current raster line
+__sim_line_cyc:    .byte 0	; current cycle within raster line
+
+; length of the current video frame in CPU cycles (CYCLES_PER_LINE * lines) and
+; in raster lines.  May vary if interlace is enabled (e.g. NTSC/Vic-20)
+.export __sim_frame_cyc
+__sim_frame_cyc:
+frame_cyc:   .word 0		; length of frame in cycles
+frame_lines: .word 0		; length of frame in lines
 
 ;*******************************************************************************
 ; shadow registers for the user's VIA1 ($9110) and VIA2 ($9120)
@@ -159,6 +160,8 @@ via_t1_armed: .res 2
 via_t2_armed: .res 2
 
 ; cycles executed by the current STEP (amount to tick the VIA timers down by)
+.export __sim_step_cycles
+__sim_step_cycles:
 step_cycles: .byte 0
 
 ; previous level of the virtual NMI line (VIA1); NMIs are edge-triggered
@@ -194,6 +197,9 @@ tracing: .byte 0
 	sta __sim_rti_irq
 	sta __sim_raster
 	sta __sim_raster+1
+	sta __sim_raster_line
+	sta __sim_raster_line+1
+	sta __sim_line_cyc
 
 .ifdef vic20
 	; copy the user's saved VIA registers ($9110-$912f) to the shadows
@@ -214,11 +220,20 @@ tracing: .byte 0
 	cpx #$20
 	bne @copy
 
-	; begin with no interrupts pending and both timers on each VIA armed
+	; Begin with no interrupts pending and every one-shot timer DISARMED.
+	; We cannot know whether a one-shot that the user's program set up before
+	; the session is still pending, and assuming it is costs us dearly: the
+	; debugger itself runs VIA2 T2 (see vic20/irq.asm), so the IER we inherit
+	; usually has T2 enabled.  An armed T2 then underflows once, latches IFR
+	; bit 5, and nothing ever acknowledges it -- the KERNAL handler only acks
+	; T1 (BIT $9124 at $eb15).  Since the IRQ is level-triggered that leaves a
+	; permanently pending interrupt: every RTI would immediately re-enter the
+	; handler.  A timer only becomes armed once the program writes its high
+	; counter byte (see via_write).  T1 in free-run mode ignores the armed
+	; flag entirely, so the KERNAL's jiffy IRQ is unaffected.
 	lda #$00
 	sta __sim_via1+via_ifr
 	sta __sim_via2+via_ifr
-	lda #$01
 	sta via_t1_armed
 	sta via_t1_armed+1
 	sta via_t2_armed
@@ -230,7 +245,20 @@ tracing: .byte 0
 	lda __sim_via2+via_t2cl
 	sta via_t2_latch+1
 
-	jsr calc_frame_cyc		; establish the initial frame length
+	; init frame length with the non-interlaced values
+	lda #<FRAME_CYCLES
+	sta frame_cyc
+	lda #>FRAME_CYCLES
+	sta frame_cyc+1
+	lda #<FRAME_LINES
+	sta frame_lines
+	lda #>FRAME_LINES
+	sta frame_lines+1
+
+.ifdef ultimem
+	; start a new frame capture
+	CALL FINAL_BANK_SIM, cap::reset
+.endif
 .endif
 	rts
 .endproc
@@ -738,6 +766,8 @@ cycles_tab:
 ;*******************************************************************************
 ; STEP
 ; Executes one step of the 6502 simulator
+.export __sim_do_step
+__sim_do_step:
 .proc step
 	lda #$00
 	sta __sim_branch_taken
@@ -2419,7 +2449,8 @@ h_rti:
 .proc via_read
 	txa
 	pha			; save address LSB
-	and #$1f
+	sec
+	sbc #$10		; $9110 -> shadow 0 (VIA1), $9120 -> shadow $10
 	tax			; .X = offset into the shadow registers
 	and #$0f		; .A = register number
 	cmp #via_t1cl
@@ -2486,7 +2517,8 @@ h_rti:
 	sta viatmp		; save the value to write
 	txa
 	pha			; save address LSB
-	and #$1f
+	sec
+	sbc #$10		; $9110 -> shadow 0 (VIA1), $9120 -> shadow $10
 	tax			; .X = offset into the shadow registers
 	and #$0f		; .A = register number
 	cmp #via_t1cl
@@ -2657,14 +2689,29 @@ h_rti:
 ; and wraps it at each frame boundary.  Frame length is refreshed from the
 ; hardware at each vblank (calc_frame_cyc), so toggling interlace (NTSC) takes
 ; effect on the following frame.
+; __sim_raster_line/__sim_line_cyc are kept in step with __sim_raster so that
+; the UI and the emulated raster registers never have to divide.
 .ifdef vic20
 .proc tick_raster
 	lda __sim_raster
 	clc
 	adc step_cycles
 	sta __sim_raster
-	bcc @chk
+	bcc :+
 	inc __sim_raster+1
+
+:	; advance the position within the current line.  A STEP is at most 7
+	; cycles, so at most one line boundary can be crossed here
+	lda __sim_line_cyc
+	clc
+	adc step_cycles
+	cmp #CYCLES_PER_LINE
+	bcc :+
+	sbc #CYCLES_PER_LINE	; carry is set
+	inc __sim_raster_line
+	bne :+
+	inc __sim_raster_line+1
+:	sta __sim_line_cyc
 
 @chk:	; have we reached the end of the current frame?
 	lda __sim_raster+1
@@ -2683,40 +2730,64 @@ h_rti:
 	lda __sim_raster+1
 	sbc frame_cyc+1
 	sta __sim_raster+1
+
+	; and the same number of lines from the line counter (frame_cyc is
+	; exactly frame_lines*CYCLES_PER_LINE, so line_cyc is unaffected)
+	lda __sim_raster_line
+	sec
+	sbc frame_lines
+	sta __sim_raster_line
+	lda __sim_raster_line+1
+	sbc frame_lines+1
+	sta __sim_raster_line+1
+
 	jsr calc_frame_cyc	; pick up any geometry change for the new frame
+
+.ifdef ultimem
+	; frame done, reset capture
+	jsr cap::reset
+.endif
 	jmp @chk
 @done:	rts
 .endproc
 
 ;*******************************************************************************
 ; CALC FRAME CYC
-; Sets frame_cyc to the length (in CPU cycles) of the current video frame.
+; Sets frame_cyc/frame_lines to the length of the current video frame (in CPU
+; cycles and in raster lines).
 ; On NTSC this depends on $9000 bit 7. PAL has fixed cycles/frame (no interlace)
 .proc calc_frame_cyc
 .ifdef PAL
-	lda #<FRAME_CYCLES
-	sta frame_cyc
-	lda #>FRAME_CYCLES
-	sta frame_cyc+1
-	rts
+	jmp @noilace
 .else
 	; NTSC
 	ldxy #$9000
 	jsr vmem_load		; read the user's VIC control register
 	and #$80		; interlace enabled?
-	bne @ilace
+	beq @noilace
+
+	; interlace on -> one frame spans both fields (full interlaced frame)
+	lda #<FRAME_CYCLES_INT
+	sta frame_cyc
+	lda #>FRAME_CYCLES_INT
+	sta frame_cyc+1
+	lda #<FRAME_LINES_INT
+	sta frame_lines
+	lda #>FRAME_LINES_INT
+	sta frame_lines+1
+	rts
+.endif
+
+@noilace:
 	lda #<FRAME_CYCLES
 	sta frame_cyc
 	lda #>FRAME_CYCLES
 	sta frame_cyc+1
+	lda #<FRAME_LINES
+	sta frame_lines
+	lda #>FRAME_LINES
+	sta frame_lines+1
 	rts
-
-@ilace: lda #<FRAME_CYCLES_INT
-	sta frame_cyc
-	lda #>FRAME_CYCLES_INT
-	sta frame_cyc+1
-	rts
-.endif
 .endproc
 .endif	; vic20
 
@@ -2841,6 +2912,9 @@ h_rti:
 ;   - .XY: (virtual) address to load from
 ; OUT:
 ;   - .A: byte loaded from the requested address
+; Clobbers .X/.Y and the zp::bank* scratch, but not r0-r8.
+.export __sim_vmem_load
+__sim_vmem_load:
 .proc vmem_load
 @target=r0
 .ifdef vic20
@@ -2854,6 +2928,17 @@ h_rti:
 	jmp via_read
 @notvia:
 .endif
+.ifdef ultimem
+	; explicitly read the virtualized raster line values
+	cpy #>$9000
+	bne @notvic
+	cpx #$04
+	beq @rasthi
+	cpx #$03
+	beq @rastlo
+@notvic:
+.endif
+@raw:	; the load as it stands in (virtual) memory
 .ifdef ultimem
 	lsr tracing
 	bcc @v			; not tracing, always use virtual mem
@@ -2888,6 +2973,31 @@ h_rti:
 .endif
 
 @v:	jmp vmem::load ; not in the visible range, load from virtual memory
+
+.ifdef ultimem
+;-------------------------------------------------------------------------------
+; use the virtualized raster line ($9004)
+@rasthi:
+	jmp vmem::load
+
+;-------------------------------------------------------------------------------
+; combine virtual raster line LSbit with the physical geometry values of $9003
+@rastlo:
+	lsr tracing
+	bcc @v			; not tracing: vmem::load answers bit 7 itself
+	rol tracing		; reset tracing flag
+
+	jsr @raw		; the live VIC's $9003
+	and #$7f
+	pha
+	ldxy #$9003
+	jsr vmem::load		; bit 7 = the simulated raster's LSB
+	asl			; .C = that bit
+	pla			; the program's geometry bits
+	bcc :+
+	ora #$80
+:	rts
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -2933,7 +3043,8 @@ h_rti:
 	rts
 
 ;-------------------------------------------------------------------------------
-@ok:	lsr tracing
+@ok:	jsr cap::record		; record this write if it affects the display
+	lsr tracing
 	bcc @v			; not tracing, always use virtual mem
 	rol tracing		; reset tracing flag
 

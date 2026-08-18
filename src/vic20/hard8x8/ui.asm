@@ -566,14 +566,6 @@ BYTES_TO_DISPLAY=4
 .endproc
 
 ;*******************************************************************************
-; cycles in a raster line (used to derive LINE, CYC, and HPOS from the
-; simulator's per-frame raster position, sim::raster)
-.ifdef PAL
-CYCLES_PER_LINE = 71
-.else ; NTSC
-CYCLES_PER_LINE = 65
-.endif
-
 ; timer register offsets within the sim::via1/via2 shadow blocks
 VIA_T1CL = $4		; T1 counter lo
 VIA_T1CH = $5		; T1 counter hi
@@ -600,8 +592,8 @@ ROW1=22
 ROW2=44
 ROW3=66
 @buff=mem::linebuffer2
-@val=r0			; 16-bit scratch (raster line / HPOS)
-@cyc=r7			; cycle within the current raster line (survives div24_16)
+@val=r0			; 16-bit scratch (HPOS)
+@cyc=r7			; cycle within the current raster line
 	; store templates (labels + spaces for the value slots)
 	ldx #(ROW3+22)-1
 :	lda @templates,x
@@ -630,26 +622,15 @@ ROW3=66
 	sta @buff+ROW1+5	; HPOS
 	jmp @vias
 
-@line:	; LINE = raster / CYCLES_PER_LINE ; CYC = raster % CYCLES_PER_LINE.
-	; The simulator wraps __sim_raster at each frame boundary (handling NTSC
-	; interlace), so LINE is already < the frame's line count -- no % needed.
-	lda sim::raster
-	sta r0
-	lda sim::raster+1
-	sta r1
-	lda #0
-	sta r2
-	lda #<CYCLES_PER_LINE
-	sta r3
-	lda #>CYCLES_PER_LINE
-	sta r4
-	jsr util::div24_16	; r0-r2 = LINE, r5 = CYC (< CYCLES_PER_LINE)
-	lda r5
+@line:	; the simulator maintains LINE and CYC as it ticks the raster (and wraps
+	; LINE at each frame boundary, handling NTSC interlace); the emulated
+	; $9003/$9004 come from the same counter, so they agree with what we show
+	lda sim::line_cyc
 	sta @cyc		; save CYC (todec preserves the r-registers)
 
 	; write the LINE number
-	ldx r0
-	ldy r1
+	ldx sim::raster_line
+	ldy sim::raster_line+1
 	jsr util::todec
 	ldy #ROW0+5
 	jsr @put

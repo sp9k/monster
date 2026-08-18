@@ -3,6 +3,8 @@
 .include "../../macros.inc"
 .include "../../memory.inc"
 
+.import __sim_raster_line
+
 .segment "BANKCODE"
 
 addr     = zp::bankaddr0
@@ -20,9 +22,39 @@ saveblk1 = zp::banktmp+2
 ;  - .A: the byte at the physical address
 .export __vmem_load
 .proc __vmem_load
-	jsr translate
+	; check if we're reading volatile raster line register data ($9003-4)
+	cpy #>$9000
+	bne @raw
+	cpx #$04
+	beq @rasthi
+	cpx #$03
+	beq @rastlo
+
+@raw:	jsr translate
 	lda (addr),y
 	jmp vmem_done
+
+;-------------------------------------------------------------------------------
+; $9004: bits 8-1 of the raster line
+@rasthi:
+	lda __sim_raster_line+1
+	lsr			; .C = bit 8 of the line
+	lda __sim_raster_line
+	ror			; .A = bits 8-1 of the line
+	rts
+
+;-------------------------------------------------------------------------------
+; $9003: bit 7 is bit 0 of the raster line.  The other bits are screen geometry
+@rastlo:
+	jsr @raw
+	and #$7f		; mask the raster line bit
+	tax
+	lda __sim_raster_line
+	lsr			; .C = bit 0 of the line
+	txa
+	bcc :+
+	ora #$80
+:	rts
 .endproc
 
 ;*******************************************************************************

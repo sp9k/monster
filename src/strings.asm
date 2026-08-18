@@ -64,6 +64,8 @@ __str_debug_registers2: .byte 0
 
 .export __str_debug_stop_debugging
 __str_debug_stop_debugging: .byte "stop debugging? y/n",0
+.export __str_debug_capture_inexact
+__str_debug_capture_inexact: .byte "frame too busy to show exactly - key",0
 
 .export __str_device_not_present
 __str_device_not_present: .byte "device not present",0

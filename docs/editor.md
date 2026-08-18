@@ -92,7 +92,6 @@ The table below details the available commands in _EX_ mode.
 |    D    | export Debug file            | Filename                        | exports the loaded assembly, debug info, and symbol table as a debug (`.D`) file                |
 |    L    | Load Debug file              | Filename                        | loads the given debug (`.D`) file (symbol table, debug info, and program data)                  |
 |    e    | Edit                         | Filename                        | loads the buffer with the contents of the given file                                            |
-|    g    | Goto                         | Symbol to run at (optional)     | executes the program at the address of the given symbol                                         |
 |    o    | assemble to Object           | Filename                        | assembles the current source buffer to an object file with the given filename                   |
 |    P    | export .PRG                  | Filename                        | exports the active assembly to a .PRG file                                                      |
 |    r    | Rename                       | Name                            | renames the buffer to the given name                                                            |
