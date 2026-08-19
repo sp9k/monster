@@ -267,6 +267,64 @@ vic_need:     .byte 0		; VIC registers the seed prologue is obliged to
 				; charged the frame for restores that never went
 				; out on top of the seed that really did.
 				; gap filler must leave it alone
+rst_lock_a:   .byte 0		; !0 = .A holds the pending store's value, so the
+				; gap filler must leave it alone
+rst_early:    .byte 0		; !0 = this block runs BEFORE the pass's writes, so
+				; every candidate has to pass wrap_safe_here.  The
+				; tail block clears it: down there every read and
+				; every write of the pass is already behind us,
+				; which is what makes an unconditional sweep right
+				; in one place and wrong in the other two.
+wrap_gate:    .word 0		; cycle the displayed area begins at.  The floor
+				; for a wrap with no per-address deadline: ahead
+				; of every read, so safe for every address.
+
+;-------------------------------------------------------------------------------
+; WRAP DEADLINE
+; The cycle a given address's wrap has to be emitted before, so gaps INSIDE the
+; displayed area can carry wraps too.
+;
+; A wrap puts an address back to its pixel-0 value.  It is correct at cycle c
+; only if c precedes both that address's first READ (or the read sees pixel-0
+; where the frame had written something) and its first scheduled WRITE (or the
+; wrap lands on top of a confirmed write and destroys it).  The second test is
+; SHADOW_WSEEN, which the scheduler already maintains; this is the first.
+;
+; Which raster line a cell is first read on is a function of the frame's
+; geometry, and the reason the old deadline table died is that the geometry can
+; move mid-frame.  So it is not attempted then: wrap_stable is set only when the
+; frame writes NONE of $9000-$9003 or $9005, and everything falls back to
+; wrap_gate otherwise.  A raster-bar program writes $900f and nothing else, so
+; the common case keeps the deadlines.
+;
+; The lookup is a WALK, not a division.  scan_region hands indices out in
+; ascending order and, as long as the matrix does not wrap its region, ascending
+; index means ascending cell, so the row boundary only ever moves forward.  That
+; makes it O(1) per address instead of a 12-bit divide per address, which at
+; ~1000 wraps a frame is the difference between generation being interactive and
+; not.
+wrap_stable:  .byte 0		; !0 = geometry held still, so rows are knowable
+wrap_cols:    .byte 0		; pixel-0 $9002 & $7f
+wrap_rowcyc:  .word 0		; cycles in one character row
+wrap_dstart:  .word 0		; replay cycle the displayed area opens at
+
+wds_lo:       .word 0		; screen: first index the matrix occupies
+wds_hi:       .word 0		; ...and the first one past it (0 = no deadlines)
+wds_end:      .word 0		; walk: first index past the current row
+wds_cyc:      .word 0		; walk: that row's first-read cycle
+
+wdc_lo:       .word 0		; colour: the same three, in colour indices
+wdc_hi:       .word 0
+wdc_end:      .word 0
+wdc_cyc:      .word 0
+
+wd_cyc:       .word 0		; wrap_deadline's answer
+
+; wrap_geom_init scratch.  NOT r0-r5, for the same reason frame_rotate's is not:
+; shadow_vic_val writes shidx and shptr, and it is called between the two points
+; that need these.
+wg_hi:        .byte 0		; high byte of the 14-bit video matrix base
+wg_cells:     .word 0		; rows * cols
 restore_val:  .byte 0		; pixel-0 value of the restore just found
 restore_addr: .word 0		; address it belongs to
 
@@ -391,6 +449,55 @@ gen_full:       .byte 0		; !0 = output window full.  Nothing warns about
 gen_cyc:        .word 0		; current cycle reached by emitted code
 gen_read_ptr:   .word 0		; scheduler: READ cursor into the capture buffer
 gen_frame_end:  .word 0		; scheduler: last cycle we schedule
+
+;-------------------------------------------------------------------------------
+; FRAME ROTATION
+; The replay's cycle 0 does not have to be raster line 0, and on standard
+; geometry it must not be.
+;
+; A pass is [generated code][loop overhead], and the two together have to fit one
+; frame period or the timer rolls over unseen and the replay halves its rate.
+; The overhead is REPLAY_MARGIN -- ~111 cycles of pass counter, RESTORE check,
+; keyboard poll, timer wait and fine slide, measured, not padded -- and the seed
+; block wants setup_cost more.  On NTSC with $9001 = $26 the display runs to
+; cycle 16900 of 16965, so the bottom border is SIXTY-FIVE CYCLES.  Everything
+; else the tail needs came out of the display, and next_record dropped the
+; writes that fell there without counting them: the bottom two-plus raster lines
+; of the last character row, on screen, silently wrong (tests/botdrop.s).
+;
+; No amount of trimming closes a 130-cycle gap against a 65-cycle border.  What
+; closes it is moving the seam: the frame is a circle, and cycle 0 is only where
+; it is because that is where capture starts.  Rotate the replay so its cycle 0
+; is frame cycle gen_rot, and the overhead lands gen_rot cycles into the TOP
+; border instead of at the bottom of the display.
+;
+; The rotation is bounded so that nothing has to be reordered:
+;
+;   gen_rot <= the frame's first record  -> every record keeps its position in
+;                                           the chain; rotating is a subtraction
+;   gen_rot <= the displayed area's start -> no VIC fetch lies in the rotated-out
+;                                           window, so first/last-read order,
+;                                           the wrap set and replay_preamble's
+;                                           pixel-0 state are all untouched
+;
+; which is why this is a subtraction in two places (next_record and
+; line_to_cycle) and a delay in one (the raster lock) rather than a rewrite of
+; the analysis.  When the bound bites -- a program whose first write really is in
+; the first raster line -- the rotation is whatever fits, and the residue is
+; counted by __cap_drop_late instead of vanishing.
+;
+; gen_rot is always a multiple of 5 so the lock's delay loop can hit it exactly.
+gen_rot:        .word 0		; replay cycle 0 == this frame cycle
+gen_rot_n:      .byte 0		; gen_rot / 5, for the raster lock's delay loop
+rec_late:       .byte 0		; next_record: !0 = stopped past gen_frame_end
+
+; frame_rotate scratch.  NOT r0-r5: it calls display_geom, display_start and
+; next_record_raw, and all three reach shadow_index / cap_read_record, which own
+; those.  Losing @need to a shadow lookup makes the rotation a plausible-looking
+; wrong number rather than an obvious one.
+rot_need:       .byte 0		; REPLAY_MARGIN + setup_cost, the tail's obligation
+rot_avail:      .word 0		; cycles between the display's end and the frame's
+rot_val:        .byte 0		; the answer, before it is rounded
 
 ;-------------------------------------------------------------------------------
 ; VISIBILITY
@@ -546,15 +653,12 @@ fw_cbbase:   .word 0		; char_mem_start, a 14-bit VIC address
 ; what had to move in the first place.
 last_tc:        .word 0		; cycle of the last record in the frame
 tail_cyc:       .word 0		; cycle the tail block may begin at
-tail_room:      .word 0		; cycles between there and the reservation
 head_cyc:       .word 0		; cycle the head block must stop by (== its room,
 				; since nothing precedes it).  Clamped to tail_cyc
 				; in full_frame_budget -- neither of the bounds
 				; head_room applies is bounded by the frame, and
-				; unclamped the two regions could overlap and get
-				; their cycles counted twice.
-restore_room:   .word 0		; head_cyc + tail_room -- what the restores really
-				; get, and what will_be_exact must measure against
+				; unclamped the two regions could overlap.
+rst_stop:       .word 0		; cycle emit_restores must stop before
 restored_count: .word 0		; restores the block actually emitted
 record_count:   .word 0		; records in the frame, for the interlace split
 				; (frame_cyc - REPLAY_MARGIN)
@@ -606,7 +710,11 @@ gen_read_idx:    .byte 0		; bank index read cursor is currently in
 ; ceiling, so it may be split at the field seam: field 1 (tc < gen_seam)
 ; generates into OUTPUT set A, field 2 (tc >= gen_seam) into set B, joined by a
 ; resident bank-flip stub that runs from $a000 and remaps BLK1/2/3 to set B.
-FLIP_CYCLES = 24		; jmp-to-flip (3) + stub: 3x lda#/sta (18) + jmp (3)
+; jmp-to-flip (3) + stub: 3x lda#/sta (18) + jmp (3).  Charged to gen_cyc when
+; field_transition emits it, and reserved nowhere -- which is right, not an
+; oversight: the seam is a point in the pass, not a block at the end of it, so
+; the writes after it are scheduled against a gen_cyc that already includes it.
+FLIP_CYCLES = 24
 gen_interlaced: .byte 0		; !0 = split this frame into two field sets
 gen_field2:     .byte 0		; !0 = generator has crossed the seam into set B
 gen_seam:       .word 0		; field-boundary cycle (frame_cyc/2)
@@ -682,14 +790,7 @@ sched_index_bias:   .byte 0	; setup_index_store: index value biasing the operand
 sched_ldcost:       .byte 0	; cycles of the cold load just emitted (2 or 3)
 sched_orig_addr:    .word 0	; unmodified address for the scheduled-write bitmap
 				; (indexed stores bias rec_addr, this does not)
-rmw_pref:           .byte 0	; rmw_pick_reg: preference-order cursor
-rmw_reg:            .byte 0	; rmw_room: register under test
-rmw_gap:            .word 0	; rmw_room: cycles to that register's next use
-rmw_deadline:       .word 0	; rmw_count_stores: cycle to stop counting at
-rmw_n:              .byte 0	; rmw_count_stores: running count
-rmw_count:          .word 0	; first-touch RMW addresses in the replayed span
-				; (the frame, or the strip in window mode)
-rmw_ok:             .byte 0	; !0 = their restores fit, so re-emission is safe
+rmw_gap:            .word 0	; rmw_gap_of: cycles to a register's next use
 rmwt_reg:           .byte 0	; rmw_gap_of: register under test
 rmwt_best:          .byte 0	; rmw_pick_worst: best candidate so far
 rmwt_gap:           .word 0	; ...and its distance to its next use
@@ -734,6 +835,13 @@ __cap_drop_time:    .word 0	; records dropped: the beam had already left that
 				; address for the last time before the write landed
 .export __cap_kept
 __cap_kept:         .word 0	; records the filter let through
+.export __cap_drop_late
+__cap_drop_late:    .word 0	; records never reached by the scheduler: past
+				; gen_frame_end, or left unread when the output
+				; window filled.  Both used to be silent, and the
+				; first of them used to land INSIDE the display
+				; (see FRAME ROTATION, which is what moved it out
+				; into the bottom border where it belongs)
 .export __cap_geom_unstable
 __cap_geom_unstable: .word 0	; live-base geometry writes landing mid-line inside
 				; the display, where the line is marked under both
@@ -1139,8 +1247,6 @@ capture_chain:
 @vp=r6
 	jsr clear_bitmaps
 	lda #$00
-	sta rmw_count
-	sta rmw_count+1
 	sta need_count
 	sta need_count+1
 	sta vic_need
@@ -1200,21 +1306,14 @@ capture_chain:
 	cmp #REG_ANY
 	bne @loop
 
-	; ...but a VIC register has no such restore to drop.  Its pixel-0 value
-	; comes from the seed prologue, which is unconditional and unbudgeted, so
-	; a re-emitted RMW on one is safe however tight the frame gets.  Counting
-	; it here charged rmw_check_budget against room it never asks for, and
-	; that switch is frame-global -- a raster effect written "inc $900f"
-	; could talk the frame out of re-emitting every OTHER RMW in it.  The bit
-	; is dead weight too: scan_rmw stops at SHIDX_VIC and never reads it.
+	; ...but a VIC register has no such restore to prioritise: its pixel-0
+	; value comes from the seed block, which is unconditional and reserved.
+	; The bit would be dead weight besides -- scan_rmw stops at SHIDX_VIC and
+	; never reads it.
 	lda shidx+1
 	cmp #>SHIDX_VIC
 	bcs @loop
 
-	inc rmw_count
-	bne :+
-	inc rmw_count+1
-:
 	jsr shadow_bitptr
 	lda #<SHADOW_RMW
 	ldy #>SHADOW_RMW
@@ -1306,10 +1405,18 @@ capture_chain:
 	lda vis_off
 	bne @yes
 
-	cpy #$90			; VIC registers are read continuously
-	bcs @yes
+	; Colour RAM is $9400-$97ff, whose high byte is ALSO at or above $90 --
+	; so a plain "bcs" here exempted every colour write along with the VIC
+	; registers, and half the tracked addresses were never coalesced, never
+	; dropped past their last read, and never dropped when unread at all.
+	cpy #$90
+	bcc @mem			; $1000-$1fff: screen or character data
+	bne @conf			; $9400-$97ff: colour, same rule as the rest
+	cpx #$10			; $9000-$900f: read continuously, always kept
+	bcc @yes
+	bcs @conf			; (always)
 
-	tya				; character data?
+@mem:	tya				; character data?
 	lsr
 	lsr				; addr >> 10, for $1000-$1fff
 	and #$03
@@ -1318,7 +1425,7 @@ capture_chain:
 	and cg_blocks
 	bne @yes
 
-	lda sched_ord			; bit (sched_ord-1) of NEEDED_BMP
+@conf:	lda sched_ord			; bit (sched_ord-1) of NEEDED_BMP
 	sec
 	sbc #$01
 	sta @p
@@ -1377,6 +1484,23 @@ capture_chain:
 .endproc
 
 ;*******************************************************************************
+; RESTORE REWIND
+; Puts the region cursors (and the row walks that shadow them) back to the start
+; without disturbing the RMW priority pass, which has already run and whose
+; addresses are out.  The REWIND bits are the record of what is still owed, so a
+; second sweep finds what the first one skipped and nothing it emitted.
+.proc restore_rewind
+	lda #$00
+	sta rst_cur_s
+	sta rst_cur_s+1
+	sta rst_cur_c
+	sta rst_turn
+	lda #>SHIDX_COLOR
+	sta rst_cur_c+1
+	jmp wrap_row_reset
+.endproc
+
+;*******************************************************************************
 ; SHADOW ADDR
 ; index -> the address it stands for (the inverse of shadow_index).  Only the
 ; two memory regions occur here; VIC indices are never restored this way, the
@@ -1399,6 +1523,398 @@ capture_chain:
 	rts
 .endproc
 
+
+;*******************************************************************************
+; WRAP GEOM INIT
+; Works out whether this frame's cells can be given first-read cycles at all,
+; and if so where each region's matrix sits in index space (see WRAP DEADLINE).
+; Runs once per generation, after frame_rotate -- the cycles it stores are
+; REPLAY cycles.
+; Assumes SHADOW_BANK is mapped.  OUT: wrap_stable and the wd*_ ranges.
+.proc wrap_geom_init
+@hi=wg_hi
+@cells=wg_cells
+	lda #$00
+	sta wrap_stable
+	sta wds_hi
+	sta wds_hi+1
+	sta wdc_hi
+	sta wdc_hi+1
+
+	; Geometry has to hold still for the whole frame, or a cell's row is not
+	; a function of the pixel-0 registers.  $9000 could be let through -- a
+	; row's first read is bounded by the start of its first raster LINE
+	; whatever the horizontal origin is -- but a program that moves the
+	; origin mid-frame is exactly the kind this should not be guessing about.
+	ldx #$00
+@st:	txa
+	pha
+	clc
+	adc #<SHIDX_VIC
+	sta shidx
+	lda #>SHIDX_VIC
+	adc #$00
+	sta shidx+1
+	jsr shadow_test_dirty
+	beq :+
+	pla			; written this frame -> no deadlines anywhere
+	rts
+:	pla
+	tax
+	inx
+	cpx #$04		; $9000-$9003 ...
+	bcc @st
+	cpx #$05
+	beq @st5
+	bcs @geom
+@st5:	ldx #$05		; ... and $9005
+	bne @st			; (always)
+
+@geom:	jsr display_geom	; -> disp_rows, disp_rowlines
+	ldx #$02
+	jsr shadow_vic_val
+	and #$7f
+	sta wrap_cols
+	bne :+
+@none:	jmp wrap_row_reset	; no columns: nothing is ever read
+:
+
+	; cells = disp_rows * cols, by addition -- both are bytes and the product
+	; is under 8192, so this is at most 63 adds once per generation.
+	lda #$00
+	sta @cells
+	sta @cells+1
+	ldx disp_rows
+	beq @none		; no rows either
+@mul:	lda @cells
+	clc
+	adc wrap_cols
+	sta @cells
+	bcc :+
+	inc @cells+1
+:	dex
+	bne @mul
+
+	; screen_mem_start, exactly as fw_decode builds it: ($9005 & $f0) << 6
+	; lands wholly in the high byte, and $9002 bit 7 is bit 9.
+	ldx #$05
+	jsr shadow_vic_val
+	lsr
+	lsr
+	lsr
+	lsr
+	asl
+	asl
+	sta @hi
+	ldx #$02
+	jsr shadow_vic_val
+	bpl :+
+	lda @hi
+	ora #$02
+	sta @hi
+
+	; The matrix is only in RAM -- and so only has screen indices -- when it
+	; sits in VIC blocks 12-15, which is what fw_read_cells tests before it
+	; marks a matrix address at all.
+:	lda @hi
+	and #$30
+	cmp #$30
+	bne @colour
+
+	lda #$00		; screen: lo = vmbase & $0fff (the low byte of a
+	sta wds_lo		; 14-bit base is always zero -- bit 9 is the
+	lda @hi			; lowest one $9002/$9005 can set)
+	and #$0f
+	sta wds_lo+1
+	lda wds_lo
+	clc
+	adc @cells
+	sta wds_hi
+	lda wds_lo+1
+	adc @cells+1
+	sta wds_hi+1
+
+	; A matrix that wraps its region breaks the ascending-index-means-
+	; ascending-cell property the walk rests on, so it gets no deadlines.
+	; Ending exactly ON the boundary does not wrap -- wds_hi is exclusive.
+	cmp #$10
+	bcc @colour
+	bne @nos
+	lda wds_hi
+	beq @colour
+@nos:	lda #$00
+	sta wds_hi
+	sta wds_hi+1
+
+@colour:
+	lda #$00		; colour: lo = vmbase & $03ff, and a 14-bit base
+	sta wdc_lo		; always has a zero low byte
+	lda @hi
+	and #$03
+	sta wdc_lo+1
+
+	lda wdc_lo
+	clc
+	adc @cells
+	sta wdc_hi
+	lda wdc_lo+1
+	adc @cells+1
+	sta wdc_hi+1
+
+	cmp #$04
+	bcc @rowcyc
+	bne @noc
+	lda wdc_hi
+	beq @rowcyc
+@noc:	lda #$00
+	sta wdc_hi
+	sta wdc_hi+1
+
+@rowcyc:
+	; one character row, in cycles
+	lda disp_rowlines
+	sta lc
+	lda #$00
+	sta lc+1
+	jsr lines_to_cycles
+	lda lc
+	sta wrap_rowcyc
+	lda lc+1
+	sta wrap_rowcyc+1
+
+	jsr display_start	; where row 0 is first read (already rotated)
+	lda lc
+	sta wrap_dstart
+	lda lc+1
+	sta wrap_dstart+1
+
+	inc wrap_stable
+	jmp wrap_row_reset
+.endproc
+
+;*******************************************************************************
+; WRAP ROW RESET
+; Puts both region walks back on row 0.  Called with the restore cursors, since
+; the walk only moves forward and has to start over whenever they do.
+.proc wrap_row_reset
+	lda wds_lo
+	clc
+	adc wrap_cols
+	sta wds_end
+	lda wds_lo+1
+	adc #$00
+	sta wds_end+1
+
+	lda wdc_lo
+	clc
+	adc wrap_cols
+	sta wdc_end
+	lda wdc_lo+1
+	adc #$00
+	sta wdc_end+1
+
+	lda wrap_dstart
+	sta wds_cyc
+	sta wdc_cyc
+	lda wrap_dstart+1
+	sta wds_cyc+1
+	sta wdc_cyc+1
+	rts
+.endproc
+
+;*******************************************************************************
+; WRAP DEADLINE
+; The replay cycle by which shidx's wrap has to be emitted (see WRAP DEADLINE).
+; IN:  shidx
+; OUT: .C set and wd_cyc = the deadline; .C clear if this address has none, and
+;      the caller must fall back to wrap_gate.  Preserves shidx.
+.proc wrap_deadline
+@i=r2				; the index within its region
+	lda wrap_stable
+	bne :+
+@no:	clc			; no answer: the caller falls back to wrap_gate
+	rts
+
+:	lda shidx+1
+	cmp #>SHIDX_VIC
+	bcs @no			; VIC registers belong to the seed block
+
+	cmp #>SHIDX_COLOR
+	bcs @colour
+
+	; screen: the address must be inside the matrix, and must not be
+	; character data as well -- which byte of a generator the chip reads
+	; depends on the screen codes on the line, so no read of it can be
+	; attributed to an address (see the exemption in vis_keep).
+	lda shidx+1
+	lsr
+	lsr			; index >> 10 -> the 1K block within $1000-$1fff
+	and #$03
+	tax
+	lda bitmask_tab,x
+	and cg_blocks
+	bne @no
+
+	lda shidx
+	sta @i
+	lda shidx+1
+	sta @i+1
+	ldx #$00		; region 0
+	bpl @walk		; (always)
+
+@colour:
+	sec			; colour: strip the SHIDX_COLOR base
+	lda shidx
+	sbc #<SHIDX_COLOR
+	sta @i
+	lda shidx+1
+	sbc #>SHIDX_COLOR
+	sta @i+1
+	ldx #$01		; region 1
+
+@walk:	txa
+	beq @swalk
+	jmp @cwalk
+
+@swalk:	lda wds_hi		; no range -> no deadlines in this region
+	ora wds_hi+1
+	beq @nos
+	lda @i+1		; below the matrix, or past it?
+	cmp wds_lo+1
+	bcc @nos
+	bne :+
+	lda @i
+	cmp wds_lo
+	bcc @nos
+:	lda @i+1
+	cmp wds_hi+1
+	bcc :+
+	bne @nos
+	lda @i
+	cmp wds_hi
+	bcc :+
+@nos:	clc
+	rts
+
+:	; advance the row walk until the current row contains @i
+@sadv:	lda @i+1
+	cmp wds_end+1
+	bcc @sdone
+	bne :+
+	lda @i
+	cmp wds_end
+	bcc @sdone
+:	lda wds_end
+	clc
+	adc wrap_cols
+	sta wds_end
+	bcc :+
+	inc wds_end+1
+:	lda wds_cyc
+	clc
+	adc wrap_rowcyc
+	sta wds_cyc
+	lda wds_cyc+1
+	adc wrap_rowcyc+1
+	sta wds_cyc+1
+	jmp @sadv
+
+@sdone:	lda wds_cyc
+	sta wd_cyc
+	lda wds_cyc+1
+	sta wd_cyc+1
+	sec
+	rts
+
+@cwalk:	lda wdc_hi
+	ora wdc_hi+1
+	beq @noc
+	lda @i+1
+	cmp wdc_lo+1
+	bcc @noc
+	bne :+
+	lda @i
+	cmp wdc_lo
+	bcc @noc
+:	lda @i+1
+	cmp wdc_hi+1
+	bcc :+
+	bne @noc
+	lda @i
+	cmp wdc_hi
+	bcc :+
+@noc:	clc
+	rts
+:
+@cadv:	lda @i+1
+	cmp wdc_end+1
+	bcc @cdone
+	bne :+
+	lda @i
+	cmp wdc_end
+	bcc @cdone
+:	lda wdc_end
+	clc
+	adc wrap_cols
+	sta wdc_end
+	bcc :+
+	inc wdc_end+1
+:	lda wdc_cyc
+	clc
+	adc wrap_rowcyc
+	sta wdc_cyc
+	lda wdc_cyc+1
+	adc wrap_rowcyc+1
+	sta wdc_cyc+1
+	jmp @cadv
+
+@cdone:	lda wdc_cyc
+	sta wd_cyc
+	lda wdc_cyc+1
+	sta wd_cyc+1
+	sec
+	rts
+.endproc
+
+;*******************************************************************************
+; WRAP SAFE HERE
+; May shidx's wrap be emitted at the current gen_cyc?  Two things have to hold,
+; and both are about not undoing something (see WRAP DEADLINE).
+; IN:  shidx
+; OUT: .C set if it may.  Preserves shidx.
+.proc wrap_safe_here
+	; Has the pass already written this address?  SHADOW_WSEEN is set by
+	; scheduled_mark as each store goes out and by the restore scanners as
+	; each wrap does, so a set bit means a wrap here would land ON TOP of
+	; something -- a confirmed store, whose value some later read is counting
+	; on, or a wrap that has already been done.
+	jsr shadow_bitptr
+	lda #<SHADOW_WSEEN
+	ldy #>SHADOW_WSEEN
+	jsr shadow_test_at
+	bne @no
+
+	; Is the beam still to reach it?
+	jsr wrap_deadline
+	bcs @cmp
+
+	lda wrap_gate		; no per-address answer: the display's start is
+	sta wd_cyc		; ahead of every read, so it is safe for anything
+	lda wrap_gate+1
+	sta wd_cyc+1
+
+@cmp:	lda gen_cyc+1
+	cmp wd_cyc+1
+	bcc @yes
+	bne @no
+	lda gen_cyc
+	cmp wd_cyc
+	bcs @no
+@yes:	sec
+	rts
+@no:	clc
+	rts
+.endproc
 
 ;*******************************************************************************
 ; SCAN REGION
@@ -1510,8 +2026,6 @@ capture_chain:
 ; strip-scoped in window mode).  Those restores cannot be among the ones the
 ; budget drops, because the re-emitted RMW reads the value back (see RMW
 ; RE-EMISSION).
-; The address' dirty bit is cleared as it goes out, so the ordinary region scan
-; does not restore it a second time.
 ; OUT: .C set: shidx holds the index, cursor left past it.  Clobbers .A/.X/.Y.
 .proc scan_rmw
 @scan:	lda rst_cur_r+1		; whole index space walked?
@@ -1556,20 +2070,15 @@ capture_chain:
 	and shmask
 	beq @next
 
-	; Found one.  Mark it written-by-replay rather than clearing its dirty
-	; bit: DIRTY means "the frame touched this address, so SHADOW_VAL holds
-	; its pixel-0 value", and replay_preamble walks it AFTER gen_frame has
-	; run.  Clearing it here deleted every RMW address from the preamble --
-	; which for an RMW is the one address whose starting value it cannot do
-	; without.  WSEEN is the honest signal: this pass does write it.
-	jsr shadow_bitptr
-	lda #<SHADOW_WSEEN
-	ldy #>SHADOW_WSEEN
-	jsr shadow_addbase
-	ldy #$00
-	lda (shptr),y
-	ora shmask
-	sta (shptr),y
+	; Found one.  restore_next marks it written-by-replay once it decides to
+	; emit it -- NOT here, because in early mode it consults that same bit to
+	; decide, and a mark laid down by the scan would answer its own question.
+	;
+	; What it must not do either way is clear the address's DIRTY bit: DIRTY
+	; means "the frame touched this, so SHADOW_VAL holds its pixel-0 value",
+	; and replay_preamble walks it AFTER gen_frame has run.  Clearing it here
+	; once deleted every RMW address from the preamble -- for an RMW, the one
+	; address whose starting value it cannot do without.
 	jsr @bump
 	sec
 	rts
@@ -1587,13 +2096,25 @@ capture_chain:
 ; RESTORE NEXT
 ; The next pending restore, alternating regions so a cell and its colour go out
 ; together.  If one region is exhausted the other simply keeps supplying.
+; In EARLY mode every candidate has to pass wrap_safe_here first, and one that
+; does not is stepped over rather than emitted -- the cursor moves on, and the
+; tail block (which resets the cursors and runs with rst_early clear) is what
+; picks it up.  Eligibility only ever decreases as gen_cyc advances, so a single
+; forward sweep with permanent skips loses nothing.
 ; OUT: .C set: restore_addr / restore_val hold the store to emit
 .proc restore_next
+@retry:
 	lda rst_rmw_done	; the RMW addresses come out first -- see SHADOW_RMW
 	bne @regions
 	jsr scan_rmw
 	bcs @found
 	inc rst_rmw_done	; exhausted; from here on it is the regions only
+
+	; The row walk only moves FORWARD, and the region scan is about to start
+	; over from index 0 -- so it has to start over too, or the first screen
+	; address it asks about gets whatever row the RMW pass left the walk on.
+	; A deadline that is too LATE is the one direction that is not safe.
+	jsr wrap_row_reset
 
 @regions:
 	lda rst_turn		; scan_region clobbers .X, so no loop counter
@@ -1611,7 +2132,12 @@ capture_chain:
 	eor #$01
 	sta rst_turn
 
-@found:	jsr shadow_addr		; shidx -> restore_addr
+@found:	lda rst_early		; may this block put it here at all?
+	beq @take
+	jsr wrap_safe_here
+	bcc @retry
+
+@take:	jsr shadow_addr		; shidx -> restore_addr
 	lda shidx		; restore_val = SHADOW_VAL[shidx]
 	clc
 	adc #<SHADOW_VAL
@@ -1622,6 +2148,32 @@ capture_chain:
 	ldy #$00
 	lda (shptr),y
 	sta restore_val
+
+	; The cursor used to be the only record of what had been emitted, which
+	; is why nothing could rewind it.  Clear the bit instead: the tail block
+	; then sweeps from the start and finds exactly what the earlier blocks
+	; skipped or never reached.
+	jsr shadow_bitptr
+	lda #<REWIND_BMP
+	ldy #>REWIND_BMP
+	jsr shadow_addbase
+	lda shmask
+	eor #$ff
+	ldy #$00
+	and (shptr),y
+	sta (shptr),y
+
+	; ...and mark it written, so a later block does not put it back twice and
+	; wrap_safe_here can see that this address is spoken for.
+	jsr shadow_bitptr
+	lda #<SHADOW_WSEEN
+	ldy #>SHADOW_WSEEN
+	jsr shadow_addbase
+	ldy #$00
+	lda (shptr),y
+	ora shmask
+	sta (shptr),y
+
 	sec
 	rts
 
@@ -1718,7 +2270,20 @@ MAX_CONV_LINES = $ffff / CYCLES_PER_LINE
 	sta lc
 	lda #>MAX_CONV_LINES
 	sta lc+1
-@ok:	jmp lines_to_cycles
+@ok:	jsr lines_to_cycles
+
+	sec			; ...then into REPLAY cycles (see FRAME ROTATION)
+	lda lc
+	sbc gen_rot
+	sta lc
+	lda lc+1
+	sbc gen_rot+1
+	sta lc+1
+	bcs @done
+	lda #$00		; a line above the seam folds onto cycle 0.  Only
+	sta lc			; the MAX_CONV_LINES clamp above can produce one:
+	sta lc+1		; gen_rot never exceeds the display's start.
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1783,92 +2348,51 @@ MAX_CONV_LINES = $ffff / CYCLES_PER_LINE
 
 
 
-;*******************************************************************************
-; RMW CHECK ROOM
-; Decides whether re-emitting read-modify-writes is safe this frame at all.
-;
-; Each one that is the first touch of its address depends on a restore having
-; put the pre-write value there, and restores are budgeted: what does not fit is
-; simply not emitted.  For an ordinary store that only means the address keeps a
-; stale value until something overwrites it, but an RMW READS what it finds, so
-; a missed restore makes it compute from the wrong number -- and it does that
-; again next pass, from its own previous answer.  The error grows.
-;
-; So if the frame has more of them than the block has room for, re-emission is
-; switched off entirely and every RMW borrows a register instead.  That trades a
-; bounded cycle of drift for a value that runs away, which is the right way
-; round.  Reaching this needs a program with more first-touch RMWs than the
-; restore block can initialize; register pressure then decides whether borrowing
-; one introduces drift.
-;
-; The room is the caller's to measure because the modes restore in different
-; places: full-frame mode has only the vblank block before rst_budget, while
-; exact-window mode has the slack ahead of the strip, or the run behind it when
-; the strip is at the top (see WINDOW RMW BUDGET).  What they share is that
-; scan_rmw hands these addresses out FIRST, so fitting rmw_count*6 into the block
-; that runs before the strip is what makes every one of them land.
-; IN: .XY = cycles available to the restores they depend on
-.proc rmw_check_room
-@need=r0
-@room=r2
-	stxy @room
-	lda #$00
-	sta rmw_ok
-
-	lda rmw_count		; need = rmw_count * 6
-	asl
-	sta @need
-	lda rmw_count+1
-	rol
-	sta @need+1
-	bcs @no			; more than 32767 of them -- not happening
-	lda @need		; *3
-	asl
-	tax
-	lda @need+1
-	rol
-	tay
-	bcs @no
-	txa
-	clc
-	adc @need
-	sta @need
-	tya
-	adc @need+1
-	sta @need+1
-	bcs @no
-
-	lda @room+1
-	cmp @need+1
-	bcc @no
-	bne @yes
-	lda @room
-	cmp @need
-	bcc @no
-@yes:	inc rmw_ok
-@no:	rts
-.endproc
-
 
 ;*******************************************************************************
 ; EMIT RESTORES
-; Emits the vblank restore block: "lda #prev / sta abs" per address, 6 cycles
-; and 5 bytes each, until gen_cyc would pass rst_budget, the output window runs
-; low, or nothing is left to restore.  Whatever does not fit simply keeps the
-; value it had -- the same behaviour as before any of this existed, so a short
-; budget degrades rather than corrupts.
-; Runs before any write is scheduled, so .A is free and the register model is
-; reset immediately afterwards.
+; Emits a restore block: "lda #prev / sta abs" per address, 6 cycles and 5 bytes
+; each, until gen_cyc reaches rst_stop, the output window runs low, or nothing is
+; left to restore.  Whatever does not fit keeps the value it had -- so a block
+; with no room degrades rather than corrupts.
+;
+; rst_stop is a correctness limit, not a budget.  The TAIL block sets it to
+; $ffff and means it: nothing follows it but the seed, whose cycles are already
+; reserved.  The HEAD block must not: it runs at cycle 0, and an unbounded sweep
+; there spends six cycles on every wrap in the frame -- up to ~6000 on a frame
+; that changes most of the screen -- before the first scheduled write is emitted,
+; pushing the whole pass late by the overrun.  head_room is what it stops by.
+; IN: rst_stop = the cycle to stop before.
 .proc emit_restores
+@end=r0				; gen_cyc + 6, the cycle this restore would end at
 @lp:	jsr poll_restore	; RESTORE -> stop filling; the caller unwinds
 	bne @quit
-	jsr emit_one_restore
+
+	; Room for another six?  The six matter: head_cyc is bounded by the first
+	; scheduled write, so a restore allowed to straddle it makes that write
+	; late by however far it overhung.
+	lda gen_cyc
+	clc
+	adc #$06
+	sta @end
+	lda gen_cyc+1
+	adc #$00
+	cmp rst_stop+1
+	bcc @go
+	bne @full
+	lda @end
+	cmp rst_stop
+	beq @go
+	bcs @full
+
+@go:	jsr emit_one_restore
 	bcc @all
 	inc restored_count
 	bne @lp
 	inc restored_count+1
 	jmp @lp
 @all:	rts			; nothing left: every wrap write emitted
+@full:	rts			; out of room in this block
 
 @quit:	rts			; RESTORE: the block is half-built, but the replay
 				; it belongs to is never going to run
@@ -2197,22 +2721,46 @@ MAX_CONV_LINES = $ffff / CYCLES_PER_LINE
 
 ;*******************************************************************************
 ; NEXT RECORD
-; next_record_raw, but stopping at gen_frame_end so the frame's tail headroom is
-; never scheduled.  Records are monotonic in tc, so the first record at/after
-; gen_frame_end means no later record is wanted either.
-; OUT: .C set if rec_* holds a schedulable record.
+; next_record_raw, converted to replay cycles and stopping at gen_frame_end so
+; the frame's tail headroom is never scheduled.  Records are monotonic in tc, so
+; the first record at/after gen_frame_end means no later record is wanted either
+; -- gen_frame drains and counts the rest at @end.
+;
+; rec_late says WHICH end it stopped at, because the scheduler is not the only
+; caller: head_room peeks the first record and plan_preloads scans ahead, and
+; neither of those consuming a record means the frame lost one.  Only the
+; scheduling loop reads it, immediately after its own call.
+; OUT: .C set if rec_* holds a schedulable record, with rec_tc in REPLAY cycles.
+;      .C clear and rec_late !0 if it stopped because the record was too late.
 .proc next_record
+	lda #$00
+	sta rec_late
 	jsr next_record_raw
 	bcc @none
+
+	sec			; rec_tc -= gen_rot (see FRAME ROTATION)
+	lda rec_tc
+	sbc gen_rot
+	sta rec_tc
+	lda rec_tc+1
+	sbc gen_rot+1
+	sta rec_tc+1
+	bcc @late		; before the seam.  frame_rotate holds gen_rot at
+				; or below the first record's cycle, so nothing
+				; should reach this -- but a record that did would
+				; otherwise wrap to a huge cycle and be scheduled
+				; at the far end of the frame.
+
 	lda rec_tc+1
 	cmp gen_frame_end+1
 	bcc @ok
-	bne @none
+	bne @late
 	lda rec_tc
 	cmp gen_frame_end
-	bcs @none
+	bcs @late
 @ok:	sec
 	rts
+@late:	inc rec_late
 @none:	clc
 	rts
 .endproc
@@ -2821,41 +3369,6 @@ regbit_inv_tab: .byte $fe, $fd, $fb
 .endproc
 
 ;*******************************************************************************
-; RMW PICK REG
-; Finds a register a read-modify-write can borrow.  An RMW takes its value from
-; memory and leaves A/X/Y alone, so whichever we take we clobber, and the cost
-; is paid by the next store that wanted it: that store turns cold and has to be
-; reloaded between our store and its own.
-;
-; So the test is whether the interval [rec_tc, next use of that register] has
-; room for a 2-cycle reload on top of the stores that already have to fit in it.
-; Each of those costs at least 4, so the interval needs 4*records + 2.  Registers
-; whose next use is far away, or which have no next use at all, are free.
-;
-; The count is deliberately optimistic -- some of those intervening stores need
-; loads of their own, which this does not subtract.  That errs towards borrowing,
-; and borrowing is the safe direction: getting it wrong costs a bounded, tracked
-; cycle of drift, where re-emitting instead leans on the address having been
-; restored, and a missed restore is a wrong value that compounds every pass.
-;
-; OUT: .C set and .X = a register that can be spared; .C clear if none can.
-RMW_FAR = 32			; beyond this the next use cannot be crowded
-.proc rmw_pick_reg
-	ldy #$00
-@try:	ldx any_pref,y
-	sty rmw_pref
-	jsr rmw_room
-	bcs @found
-	ldy rmw_pref
-	iny
-	cpy #$03
-	bcc @try
-	clc
-	rts
-@found:	rts
-.endproc
-
-;*******************************************************************************
 ; RMW GAP OF
 ; rmw_gap = cycles from the current record to register .X's next use.  A register
 ; with no pending use answers $ffff (nothing can crowd it); one whose next use is
@@ -2895,17 +3408,15 @@ RMW_FAR = 32			; beyond this the next use cannot be crowded
 
 ;*******************************************************************************
 ; RMW PICK WORST
-; Every register is wanted too soon to spare -- rmw_pick_reg just said so -- and
-; one has to be taken anyway.  Take the one whose next use is FURTHEST away: the
-; store that loses its value then has the most room to reload before it needs it,
-; so the drift this costs has the best chance of being absorbed instead of
-; propagating into the run behind it.
+; A register has to be clobbered and none can be spared: take the one whose next
+; use is FURTHEST away, so the store that loses its value has the most room to
+; reload before it needs it.
 ;
-; .X is the incumbent, which is what this used to take unconditionally, and it
-; stays the answer whenever nothing strictly beats it.  FIELD TRANSITION also
-; uses this helper to choose which register its fixed-cost bank-flip stub should
-; clobber; there the same furthest-next-use rule applies without an RMW.
-; OUT: .X = the register to borrow
+; .X is the incumbent and stays the answer whenever nothing strictly beats it.
+; FIELD TRANSITION is now the only caller -- it picks which register its
+; fixed-cost bank-flip stub may clobber -- so the name has outlived the RMW path
+; it was written for, and is kept only because the rule is the same one.
+; OUT: .X = the register to clobber
 .proc rmw_pick_worst
 	ldx #REG_X
 	jsr rmw_gap_of
@@ -2942,88 +3453,6 @@ RMW_FAR = 32			; beyond this the next use cannot be crowded
 	sta rmwt_gap+1
 	rts
 @no:	pla
-	rts
-.endproc
-
-;*******************************************************************************
-; RMW ROOM
-; .C set if register .X can be reloaded between the current record's store and
-; the next store that needs it.  Preserves .X.
-.proc rmw_room
-	stx rmw_reg		; every exit restores .X from here
-	lda pend_valid,x
-	beq @yes		; never wanted again -- free to take
-
-	txa			; room = pend_tc[X] - rec_tc
-	asl
-	tay
-	lda pend_tc,y
-	sec
-	sbc rec_tc
-	sta rmw_gap
-	lda pend_tc+1,y
-	sbc rec_tc+1
-	sta rmw_gap+1
-	bcc @no			; already behind us
-
-	lda rmw_gap+1
-	bne @yes		; >= 256 cycles away
-	lda rmw_gap
-	cmp #RMW_FAR
-	bcs @yes
-
-	; close enough to be crowded: count the stores that have to fit first
-	jsr rmw_count_stores	; .A = records in (rec_tc, pend_tc[X]]
-	asl			; 4 * count
-	asl
-	clc
-	adc #2			; ...plus the reload itself
-	bcs @no			; overflowed a byte -> no room
-	cmp rmw_gap
-	beq @yes
-	bcs @no
-@yes:	ldx rmw_reg
-	sec
-	rts
-@no:	ldx rmw_reg
-	clc
-	rts
-.endproc
-
-;*******************************************************************************
-; RMW COUNT STORES
-; Records with a cycle in (rec_tc, rmw_gap + rec_tc].  The interval is under
-; RMW_FAR cycles and every store spans at least 4, so this reads at most eight
-; records and cannot become quadratic over the frame.
-; OUT: .A = count
-.proc rmw_count_stores
-	lda rec_tc		; deadline = rec_tc + rmw_gap
-	clc
-	adc rmw_gap
-	sta rmw_deadline
-	lda rec_tc+1
-	adc rmw_gap+1
-	sta rmw_deadline+1
-
-	lda #$00
-	sta rmw_n
-	jsr scan_begin
-@l:	jsr next_record
-	bcc @done
-	lda rec_tc+1		; past the deadline?
-	cmp rmw_deadline+1
-	bcc @in
-	bne @done
-	lda rec_tc
-	cmp rmw_deadline
-	beq @in
-	bcs @done
-@in:	inc rmw_n
-	lda rmw_n
-	cmp #16			; the interval cannot really hold this many
-	bcc @l
-@done:	jsr scan_end
-	lda rmw_n
 	rts
 .endproc
 
@@ -3109,6 +3538,11 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	lda #$00
 	sta gap_bulk
 @bulkok:
+	; spend the slack on wrap writes rather than a delay loop.  Runs before
+	; the bulk delay -- and so before the preloads, which are emitted last --
+	; because a wrap clobbers .A.
+	jsr gap_fill_wraps
+
 	; emit the bulk delay (0, or >= 2 cycles)
 	lda gap_bulk
 	ora gap_bulk+1
@@ -3384,14 +3818,16 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	sta sched_entry+1
 
 ;-------------------------------------------------------------------------------
-@go:	; A hot value living in .A has to survive the gap -- pre-set restores
-	; clobber .A, so lock them out for this one gap.  A cold value is
-	; reloaded after the gap anyway, and .X/.Y are never touched.
+@go:	; A hot value living in .A has to survive the gap -- a wrap write clobbers
+	; .A, so lock the filler out for this one gap.  A cold value is reloaded
+	; after the gap anyway, and .X/.Y are never touched.
 	lda #$00
+	sta rst_lock_a
 	lda sched_cold
 	bne :+
 	lda sched_reg
 	bne :+
+	inc rst_lock_a			; hot, and in .A
 
 :	; advance to the entry cycle, preloading upcoming cold values into free regs
 	lda sched_entry
@@ -3445,80 +3881,31 @@ any_pref: .byte REG_X, REG_Y, REG_A
 ; be the case if all registers are needed immediately after the RMW (inc/dec)
 ; is executed. e.g. "inc $1e00 : sta $1e01 : stx $1e02 : sty $1e03"
 ;
-; To be correct, the affected address must have either
-;   a) been written earlier in the replayed span
-;   b) been restored before that span began (see SHADOW_RMW)
-;
-; VIC registers are always restored, so we can always assume the (b) case is true
-; for them.
-;
-; "The replayed span" is the frame in full-frame mode and the strip in
-; exact-window mode; both are ruled on by rmw_ok, which the two modes compute
-; against their own restore block (rmw_check_room / window_rmw_budget).  Window
-; mode used to be excluded here and always borrow a register -- but it is the
-; mode with the LARGEST restore budget, and the one where the drift that borrowing
-; costs is least acceptable, so excluding it had it exactly backwards.
-@rmw:	; Prefer the real RMW whenever its input is known to be initialized.  It
-	; costs the same six cycles as a cold load/store substitute and, unlike the
-	; substitute, preserves all three registers.  Borrowing first used to turn a
-	; register that was live across the original RMW cold merely because
-	; rmw_room believed it could be reloaded later; that estimate is deliberately
-	; optimistic and can strand the register in a tight run.
-	lda rmw_ok
-	bne @rmwgo
-	jsr @input_safe		; VIC, restored, or written earlier this pass?
-	bcs @rmwgo
-
-	; The RMW cannot safely read memory: borrow a register if one has room to be
-	; reloaded, or take the least-bad one as the bounded-drift fallback.
-	jsr pend_advance	; make sure the next-use slots are current
-	jsr rmw_pick_reg	; any free registers?
-	bcs @rmwreg		; if so, continue and use it
-
-@rmwtake:
-	jsr rmw_pick_worst	; take one regardless and eat the drift: a cycle
-				; late beats a value that compounds every pass
-@rmwreg:
-	stx sched_reg
-	lda regmodel_known,x
-	beq :+
-	lda regmodel_val,x
-	cmp rec_val
-	bne :+
-	jmp @hot
-:	jmp @coldreg
-
-; Whether this particular RMW can read its input safely even though the
-; frame-global restore test failed.
-;
-; VIC registers are established by the unbudgeted seed.  A prior scheduled
-; write establishes an ordinary address directly.  Finally, restore emission
-	; clears SHADOW_DIRTY as each priority RMW address goes out, so a clear dirty
-	; bit here means this address's restore has already been emitted from that block.
-; OUT: .C set if safe to re-emit.
-@input_safe:
-	lda rec_addr+1
-	cmp #$90
-	bne @memory
-	lda rec_addr
-	cmp #$10
-	bcc @safe
-
-@memory:
-	ldxy rec_addr
-	jsr shadow_index
-	jsr shadow_bitptr
-	lda #<SHADOW_WSEEN
-	ldy #>SHADOW_WSEEN
-	jsr shadow_test_at
-	bne @safe
-
-	jsr shadow_test_dirty
-	beq @safe
-	clc
-	rts
-@safe:	sec
-	rts
+; To be correct, the affected address must hold the value the original read.  It
+; always does -- see the note on @rmw below -- so this no longer decides
+; anything; it only chooses between the absolute and indexed forms.
+@rmw:	; Re-emit the instruction itself, always.  It costs the same six cycles as
+	; a cold load/store substitute and, unlike the substitute, preserves all
+	; three registers.
+	;
+	; A re-emitted RMW reads its address back, so it needs whatever the
+	; original read to actually be there.  Three things together guarantee it:
+	; replay_preamble establishes every touched address at its pixel-0 value
+	; before the loop starts; the wrap writes put back anything the pass
+	; leaves different, so cycle 0 of EVERY pass finds the same state; and an
+	; RMW's read confirms the write it reads (see fw_consume), so that write
+	; can never be dropped as unobserved.
+	;
+	; Until 2026-08-19 this was a decision, with a whole register-borrowing
+	; path behind it -- rmw_pick_reg, rmw_room, rmw_count_stores,
+	; rmw_check_room and rmw_ok -- for when the input could not be trusted.
+	; That path was already unreachable once the three guarantees above were
+	; in place; it is in the history if the reasoning ever turns out wrong.
+	;
+	; SHADOW_RMW survives it, and is a different thing: it is what makes
+	; restore_next hand these addresses out FIRST, so the pixel-0 value an
+	; RMW reads on the pass's first touch is established before a short
+	; output window can run out of room for it.
 
 @rmwgo:	; Cost is ours to choose, not the original instruction's: the absolute
 	; form is 6 cycles and the ,x form 7, and either can be built from either
@@ -3647,6 +4034,8 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	sta __cap_drop_space+1
 	sta __cap_kept
 	sta __cap_kept+1
+	sta __cap_drop_late
+	sta __cap_drop_late+1
 	sta __cap_geom_unstable
 	sta __cap_geom_unstable+1
 	sta __cap_drop_time
@@ -3748,7 +4137,25 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	sta gen_frame_end
 	bcs :+
 	dec gen_frame_end+1
-:	jsr full_frame_budget	; -> head_cyc, tail_room, restore_room, rmw_ok
+
+	; Where the pass's seam goes.  Everything below this line works in REPLAY
+	; cycles, and frame_rotate is what makes the two differ (see FRAME
+	; ROTATION) -- so it has to come before the first line-to-cycle
+	; conversion that is kept, and after setup_cost, which is half of what it
+	; is solving for.
+:	jsr frame_rotate
+
+	jsr full_frame_budget	; -> head_cyc, tail_cyc
+
+	jsr display_start	; the floor for a wrap with no deadline of its own
+	lda lc			; is the first read, where the display opens
+	sta wrap_gate
+	lda lc+1
+	sta wrap_gate+1
+
+	; ...and the per-address deadlines that let a wrap go INSIDE the display.
+	; After frame_rotate, because the cycles it stores are replay cycles.
+	jsr wrap_geom_init
 
 @head:	jsr scheduled_reset	; WSEEN tracks writes actually emitted by replay
 	lda #$00		; the ordinal counts with the record cursor both
@@ -3757,10 +4164,16 @@ any_pref: .byte REG_X, REG_Y, REG_A
 
 	; FULL-FRAME: no prologue here -- that is what moved to the tail, because
 	; it is unconditional and would spend its ~100 cycles whether or not the
-	; frame had them to spare.  The restores are a different case: the block
-	; is budgeted, it stops at the first scheduled write, so it can only ever
+	; frame had them to spare.  The restores are a different case: bounded by
+	; head_cyc they stop at the first scheduled write, so they can only ever
 	; consume cycles that are idle anyway and cannot push a write late.  The
 	; tail alone is not enough room (see the note by head_cyc), so take both.
+	lda #$01
+	sta rst_early		; before every write in the pass
+	lda head_cyc
+	sta rst_stop
+	lda head_cyc+1
+	sta rst_stop+1
 	jsr emit_restores
 
 	; .A is never trusted at cycle 0.  In window mode the prologue that just
@@ -3789,7 +4202,10 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	jmp @end
 @next:	jsr next_record		; rec_* = next write; C=0 -> end of frame
 	bcs @have
-	jmp @end
+	lda rec_late		; ...or the first one past gen_frame_end, which
+	beq @end2		; next_record has already consumed
+	incw __cap_drop_late
+@end2:	jmp @end
 
 @have:	; Nothing the VIC reads depends on this address, or the beam had already
 	; finished with it -- either way the write cannot be seen, so do not spend
@@ -3823,8 +4239,18 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	jsr schedule_write
 	jmp @loop
 
-@end:	;-----------------------------------------------------------------------
-	; TAIL (see TAIL SETUP) (see TAIL SETUP)
+@end:	; Count whatever is left in the chain: records past gen_frame_end, or
+	; everything after the point the output window filled.  next_record has
+	; already counted the one it rejected; this picks up the rest.  It used to
+	; be that nothing counted any of them, which is what let the bottom of the
+	; display go wrong in silence.
+@drain:	jsr next_record_raw
+	bcc @tail
+	incw __cap_drop_late
+	jmp @drain
+
+@tail:	;-----------------------------------------------------------------------
+	; TAIL (see TAIL SETUP)
 	; Out past the displayed area first: down here the beam has finished with
 	; every row, so a restore cannot erase one before it is scanned and the
 	; seed cannot move a VIC register mid-screen.
@@ -3834,10 +4260,17 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	sta gap_target+1
 	jsr emit_gap_to		; no-op if the last write already ran past it
 
-	; Restores get everything up to the reservation.  This is a far larger
-	; budget than the old vblank block had -- that one stopped at the first
-	; scheduled write, so a program drawing early got almost no restores at
-	; all; this one has the whole bottom border and vblank.
+	; Restores get everything that is left.  Down here every read and every
+	; write of the pass is behind us, so no wrap can undo one and none needs
+	; a deadline -- which is what rst_early clear means.  The cursors rewind
+	; because the earlier blocks skipped what they could not safely place,
+	; and this is where it gets done.
+	lda #$00
+	sta rst_early
+	jsr restore_rewind
+	lda #$ff
+	sta rst_stop
+	sta rst_stop+1
 	jsr emit_restores
 
 	; ...then the setup block itself, in the cycles reserved for it.  Order
@@ -3883,6 +4316,63 @@ any_pref: .byte REG_X, REG_Y, REG_A
 .endproc
 
 ;*******************************************************************************
+; GAP FILL WRAPS
+; Spends a scheduling gap's slack on wrap writes instead of a delay loop.
+;
+; This is what makes wraps placeable at all.  They used to go in two blocks --
+; one before the first scheduled write, one after the last -- and on ordinary
+; geometry the second has NO ROOM: the display runs to cycle 16900 of 16965 and
+; gen_frame_end lands below that, so tail_start clamps to it and tail_room is
+; zero.  A program whose first write is at cycle 0 then had nowhere at all to put
+; them.  The idle time the cycle accounting promises is real, but it is spread
+; through the frame, and a block at either end cannot reach it.
+;
+; Gaps anywhere in the frame are used, including inside the displayed area.
+; Which of them a given address may go in is wrap_safe_here's answer, applied by
+; restore_next while rst_early is set: ahead of that address's first read (see
+; WRAP DEADLINE), and ahead of any write the pass has already emitted to it.
+; An address with no per-address deadline falls back to wrap_gate, the display's
+; start, which is ahead of every read there is.
+;
+; The ceiling this removes was real: with only the top border to place them in,
+; 4940 cycles is 823 wraps against a worst case of one per read address, about
+; 1012 on a 22x23 display.
+;
+; A wrap's "lda #" destroys .A in the generated code, which is what rst_lock_a
+; and the regmodel_known clear below are for.
+.proc gap_fill_wraps
+	lda rst_lock_a			; .A holds the pending store's value
+	bne @done
+
+@lp:	lda gap_bulk+1
+	bne @go				; >= 256 cycles, plenty of room
+	lda gap_bulk
+	cmp #6
+	bcc @done
+	cmp #7				; 7 would leave a lone cycle behind
+	beq @done
+
+@go:	jsr emit_one_restore
+	bcc @done
+
+	; The frame-scoped register cache no longer holds .A: without this a later
+	; write whose value the model still believed was in .A would emit a bare
+	; store and write this wrap's byte instead.  Cleared here rather than after
+	; the loop so emit_gap_to's preloads, emitted later, can still mark .A.
+	lda #$00
+	sta regmodel_known
+
+	lda gap_bulk
+	sec
+	sbc #6
+	sta gap_bulk
+	bcs @lp
+	dec gap_bulk+1
+	jmp @lp
+@done:	rts
+.endproc
+
+;*******************************************************************************
 ; EMIT SEED
 ; Base-state prologue: re-establish the VIC registers the frame WRITES at their
 ; pixel-0 values, so a register it only changes mid-screen still starts correct.
@@ -3896,16 +4386,14 @@ any_pref: .byte REG_X, REG_Y, REG_A
 ; frame's own records, so a register the frame never writes is never disturbed by
 ; the replay either -- it holds its pixel-0 value pass after pass, and re-seeding
 ; it stores back exactly what is already there.  At 6 cycles a register that was
-; 90 dead cycles for a frame that touches one, which for a raster-effect loop is
-; the difference between being schedulable and not: the restores and the first
-; write both have to fit after this block, and rst_budget is often only a line or
-; two in.  ($9004 is read-only and $9003 bit 7 is the raster LSB, so two of the
+; 90 dead cycles for a frame that touches one, and setup_cost is what the frame
+; end is pulled in by, so every one of them came straight off the schedulable
+; span.  ($9004 is read-only and $9003 bit 7 is the raster LSB, so two of the
 ; sixteen never did anything at all.)
 ;
-; Normally these stores run at the very top of the frame, in the vblank/top
-; border -- well before the visible area -- so they cost only lead time, not
-; accuracy.  When the strip is up there instead they run at the END of the pass;
-; see SETUP DECIDE.  gen_cyc is advanced 6 per store either way so the timed
+; These stores run at the END of the pass, out past the displayed area, which in
+; a loop locked to the frame period is the same instant as the top of the next
+; one; see TAIL SETUP.  gen_cyc is advanced 6 per store so the timed
 ; writes stay scheduled against the true frame cycle; a skipped register advances
 ; nothing, which is what buys the room back.  vic_need is the matching count,
 ; kept by build_shadow so will_be_exact and setup_decide can charge exactly this.
@@ -3948,8 +4436,7 @@ any_pref: .byte REG_X, REG_Y, REG_A
 ; write it only costs a few cycles of pessimism.  The +6 is the register seed at
 ; its worst -- three 2-cycle loads (seed_pend_regs); window mode's fixed pair
 ; costs 4, so it is charged 2 cycles it will not spend.
-; Both modes charge the same figure -- window_rmw_budget measures its RMW ruling
-; in it, and full-frame reserves it at the end of the frame (see TAIL SETUP).
+; Full-frame reserves this at the end of the frame (see TAIL SETUP).
 .proc setup_cost_calc
 @cost=r0
 	lda vic_need
@@ -3963,6 +4450,148 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	adc #$06		; ...plus the register seed, at its worst (three
 	sta setup_cost		; 2-cycle loads; window mode's fixed pair is 4, so
 	rts			; charging 6 there is 2 cycles of pessimism)
+.endproc
+
+;*******************************************************************************
+; FRAME ROTATE
+; Chooses gen_rot: how far into the frame the replay's cycle 0 sits (see FRAME
+; ROTATION).  Must run after build_shadow and setup_cost_calc, and BEFORE
+; anything converts a line to a cycle for real -- it leaves gen_rot zero while it
+; works, so its own display_geom / display_start calls come back unrotated.
+;
+; Rounding: the requirement is rounded UP to a multiple of 5 and the bound DOWN,
+; so the answer never exceeds what is safe and never falls short of what is
+; needed unless the bound is what stopped it.
+; OUT: gen_rot, gen_rot_n; last_tc converted to replay cycles.
+.proc frame_rotate
+@need=rot_need
+@avail=rot_avail
+@rot=rot_val
+	lda #$00
+	sta gen_rot
+	sta gen_rot+1
+	sta gen_rot_n
+
+	; need = REPLAY_MARGIN + setup_cost.  setup_cost is at most (16+1)*6+6 =
+	; 108 and REPLAY_MARGIN is 128, so this cannot leave a byte.
+	lda setup_cost
+	clc
+	adc #REPLAY_MARGIN
+	sta @need
+
+	; avail = frame_cyc - disp_end, floored at zero
+	jsr display_geom	; -> disp_end (first raster line past the display)
+	lda disp_end
+	sta lc
+	lda disp_end+1
+	sta lc+1
+	jsr line_to_cycle	; gen_rot is still 0, so this is a frame cycle
+	sec
+	lda frame_cyc
+	sbc lc
+	sta @avail
+	lda frame_cyc+1
+	sbc lc+1
+	sta @avail+1
+	bcs :+
+	jmp @fits		; display ends past the frame: nonsense geometry,
+:				; and rotating cannot help it
+
+	; rot = need - avail, and there is nothing to do if the border already
+	; holds the tail
+	lda @avail+1
+	beq :+
+	jmp @fits		; >= 256 cycles of border: more than need can be
+:	sec
+	lda @need
+	sbc @avail
+	bcs :+
+	jmp @fits		; the border already holds the tail
+:	bne :+
+	jmp @fits		; ...exactly
+:	clc			; round the REQUIREMENT up to a multiple of 5
+	adc #$04
+	jsr div5
+	sta @rot		; n
+	asl
+	asl			; 4n
+	clc
+	adc @rot		; 5n, in 5 .. 240
+	sta @rot
+
+	; ...but never past the frame's first write, or every later record would
+	; have to move down the chain to keep cycle order.
+	jsr gen_read_reset
+	jsr next_record_raw
+	bcc @nofirst		; no records at all
+	lda rec_tc+1
+	bne @nofirst		; >= 256 cycles in: cannot bind @rot
+	lda rec_tc
+	cmp @rot
+	bcs @nofirst
+	sta @rot
+
+@nofirst:
+	jsr gen_read_reset
+
+	; ...and never past the start of the displayed area, or a VIC fetch would
+	; fall in the rotated-out window and the wrap set would have to be
+	; recomputed against a different "first read".
+	jsr display_start	; lc = first displayed cycle (still unrotated)
+	lda lc+1
+	bne @bounded
+	lda lc
+	cmp @rot
+	bcs @bounded
+	sta @rot
+
+@bounded:
+	; round what survived DOWN to a multiple of 5
+	lda @rot
+	jsr div5
+	sta gen_rot_n
+	sta @rot		; n
+	asl
+	asl			; 4n
+	clc
+	adc @rot		; 5n
+	sta gen_rot
+	lda #$00
+	sta gen_rot+1
+
+	; last_tc came out of build_shadow in frame cycles and tail_start
+	; compares it against rotated ones
+	sec
+	lda last_tc
+	sbc gen_rot
+	sta last_tc
+	lda last_tc+1
+	sbc gen_rot+1
+	sta last_tc+1
+	bcs @done
+	lda #$00
+	sta last_tc
+	sta last_tc+1
+@done:	rts
+
+@fits:	lda #$00		; the bottom border already holds the tail
+	sta gen_rot
+	sta gen_rot+1
+	sta gen_rot_n
+	jmp gen_read_reset
+.endproc
+
+;*******************************************************************************
+; DIV5
+; .A / 5 -> .A, by subtraction: at most 52 iterations, once per generation.
+.proc div5
+	ldx #$ff
+	sec
+@l:	inx
+	sbc #$05
+	bcs @l
+	txa
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -4056,21 +4685,18 @@ any_pref: .byte REG_X, REG_Y, REG_A
 
 ;*******************************************************************************
 ; FULL FRAME BUDGET
-; Settles both restore regions and rules on read-modify-write re-emission against
-; their TOTAL.
+; Settles the two restore regions.
 ;
-; The two are disjoint and independently correct: the head runs before anything
-; is drawn and before any write is emitted, the tail after everything is drawn
-; and every write is out.  A first-touch RMW's restore is equally good from
-; either -- in steady state the tail of one pass precedes the next pass's writes
-; just as the head does -- so what the ruling has to measure is the sum.
+; They are disjoint and independently correct: the head runs before anything is
+; drawn and before any write is emitted, the tail after everything is drawn and
+; every write is out.
 ;
-; Getting this wrong is what broke the inexactness warning once already: the room
-; is a DURATION, and rst_budget is an absolute stop-by cycle.  They coincided
-; while the only block was at the head and started from cycle 0.  They do not
-; coincide for the tail, and will_be_exact comparing against the wrong one made
-; every frame look exact.
-; OUT: head_cyc, tail_cyc, tail_room, restore_room, rmw_ok
+; Only the HEAD is bounded, and not as a budget -- as a correctness limit.  A
+; restore emitted past head_cyc either undoes a write the pass has yet to make,
+; repaints a row the beam has already scanned, or pushes the frame's first write
+; late by however far it ran over.  The tail needs no bound: nothing follows it
+; but the seed, whose cycles gen_frame_end has already reserved.
+; OUT: head_cyc, tail_cyc
 .proc full_frame_budget
 	jsr tail_start		; -> tail_cyc (already clamped to gen_frame_end)
 	jsr head_room		; -> head_cyc
@@ -4080,9 +4706,8 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	; frame: display_start is $9001*2 scaled, so a program that parks a large
 	; value there -- or moves it mid-frame, leaving a pixel-0 value nothing
 	; sensible -- hands out a head budget of cycles that do not exist.  Worse,
-	; without this the head and tail regions can overlap and the same cycles
-	; get counted twice, which is how restore_room came out larger than a whole
-	; frame.  tail_cyc is already <= gen_frame_end, so this bounds both.
+	; without this the head block could run past where the tail block begins.
+	; tail_cyc is already <= gen_frame_end, so this bounds both.
 	lda tail_cyc+1
 	cmp head_cyc+1
 	bcc @clamp
@@ -4095,33 +4720,7 @@ any_pref: .byte REG_X, REG_Y, REG_A
 	lda tail_cyc+1
 	sta head_cyc+1
 
-@sized:	sec			; tail_room = gen_frame_end - tail_cyc
-	lda gen_frame_end
-	sbc tail_cyc
-	sta tail_room
-	lda gen_frame_end+1
-	sbc tail_cyc+1
-	sta tail_room+1
-	bcs :+
-	lda #$00		; tail_start clamps, so this cannot fire -- but a
-	sta tail_room		; negative room would sail straight past the
-	sta tail_room+1		; comparisons below as a huge one
-
-:	clc			; restore_room = head_cyc + tail_room
-	lda head_cyc
-	adc tail_room
-	sta restore_room
-	lda head_cyc+1
-	adc tail_room+1
-	sta restore_room+1
-	bcc :+
-	lda #$ff		; saturate rather than wrap
-	sta restore_room
-	sta restore_room+1
-
-:	ldx restore_room
-	ldy restore_room+1
-	jmp rmw_check_room
+@sized:	rts
 .endproc
 
 ;*******************************************************************************
@@ -4618,7 +5217,7 @@ REPLAY_SYNC_POS  = 6		; horizontal delay before fine syncing
 	jmp @exit			; never take the lock; just unwind
 :	jsr replay_preamble		; pixel-0 state, once, off the clock
 
-	; lock a free-running VIA2 Timer 1 to the frame period:
+@lock:	; lock a free-running VIA2 Timer 1 to the frame period:
 	; latch = frame-2; timer period = latch+2 (one frame)
 	lda $912b
 	and #$3f
@@ -4666,6 +5265,22 @@ REPLAY_SYNC_POS  = 6		; horizontal delay before fine syncing
 	nop
 .endif
 
+	; Push the seam gen_rot cycles into the frame (see FRAME ROTATION).  The
+	; timer's phase is fixed by the store below, and everything downstream is
+	; timed off the timer, so delaying that store by gen_rot puts the replay's
+	; cycle 0 at frame cycle gen_rot.
+	;
+	; Cost is 5*gen_rot_n + 7 for EVERY gen_rot_n including zero -- the nop is
+	; what pays for the branch the n=0 path takes instead of the loop's last
+	; one.  Only the 5n part is meant to be here; the constant 7 is lead-in
+	; like the rest of this path, and REPLAY_SYNC_LEAD is where it is trimmed.
+	ldx gen_rot_n			; 4
+	beq @rot0			; 3 taken / 2 not
+@rotl:	dex				; 2
+	bne @rotl			; 3 taken, 2 on the last
+	.assert >(*) = >@rotl, error, "rotation delay loop crosses a page"
+	nop				; 2
+@rot0:
 	lda frame_cyc+1
 	sta $9125			; load hi byte of timer
 
@@ -4788,8 +5403,12 @@ REPLAY_SYNC_POS  = 6		; horizontal delay before fine syncing
 	lda replay_col
 	sta $9120			; restore the column drive
 	jsr replay_preamble		; the shadow was rebuilt -- re-establish
-	jsr zp_install			; going back under the raster lock
-	jmp @loop
+
+	; ...and re-take the lock rather than dropping straight back into @loop.
+	; replay_step regenerates, and a regenerated frame can carry a different
+	; gen_rot -- the seam is a property of the frame, not of the session, so
+	; the phase the old lock holds is the wrong one for the new code.
+	jmp @lock
 
 ;------------------------------------------------------------------------------
 ; SCAN
@@ -5886,9 +6505,34 @@ need_test:
 
 @mem:	; A screen, character or colour write.  Whatever was pending for this
 	; address is simply overwritten -- nothing read it, so it never mattered.
+	;
+	; Unless this is a read-modify-write, which READS the address before it
+	; writes it.  That read is every bit as much a confirmation as one of the
+	; chip's: if the write it reads were dropped as unconfirmed, a re-emitted
+	; "inc" would compute from the wrong number and compound it every pass.
+	; Only the VIC's fetches counted here, which left that hole open -- and
+	; closing it is what made the whole register-borrowing path unnecessary.
+	;
+	; rec_regof lives in SIMCAP and is not reachable from here, but the test
+	; it does is three masked compares: everything that is not a store form is
+	; a read-modify-write.
 	ldxy rec_addr
 	jsr vish::shadow_index
-	jsr pend_write
+
+	lda rec_op
+	and #$e3
+	cmp #$81			; all seven STA forms
+	beq @pure
+	lda rec_op
+	and #$e7
+	cmp #$86			; STX
+	beq @pure
+	cmp #$84			; STY
+	beq @pure
+	jsr confirm_idx			; RMW: its own read confirms the pending
+					; write, then it becomes the pending one
+
+@pure:	jsr pend_write
 	jmp @lp
 @out:	rts
 .endproc
@@ -6026,8 +6670,6 @@ VIS_PRUNE_BYTES = SHIDX_VIC/8		; the VIC region is never pruned -- those
 @go:	lda #$00			; recount from what survives
 	sta need_count
 	sta need_count+1
-	sta rmw_count
-	sta rmw_count+1
 
 	lda #<SHADOW_DIRTY
 	sta @d
@@ -6069,15 +6711,8 @@ VIS_PRUNE_BYTES = SHIDX_VIC/8		; the VIC region is never pruned -- those
 	lda (@r),y
 	and @bits
 	sta (@r),y
-	jsr @count
-	lda rmw_count
-	clc
-	adc @bits+1
-	sta rmw_count
-	bcc :+
-	inc rmw_count+1
 
-:	inc @d
+	inc @d
 	bne :+
 	inc @d+1
 :	inc @r

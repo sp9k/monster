@@ -35,6 +35,19 @@ CYCLES_PER_LINE  = 65
 ;
 ; Cross-checked against github.com/sodiumlb/ocula-pivic-firmware (vic_ntsc.c,
 ; the HC=29 increment and HC=62 reset; vic_pal.c PAL_LAST_LINE).
+;
+; That cross-check is now mechanical: src/test_frameperiod.py transcribes both
+; chips' VC/HC state machines out of that firmware and counts cycles between
+; resets.  It reports 16965 for NTSC, with VC=0 held 32 cycles and VC=261 held
+; 33, every other VC value 65 -- and 22152 for PAL, where all 312 are whole.
+; Run it before changing any number in this file.
+;
+; The structural difference, which is what the trap is made of: PAL does
+;     if (VC == 311) VC = 0; else VC++;
+; at HC=1, so the reset REPLACES an increment and VC visits 312 whole lines.
+; NTSC increments at HC=29 and resets at HC=62 as SEPARATE events in the same
+; sweep, so VC=0 is not reached by an increment at all -- it exists only for the
+; 32 cycles between the reset and the next increment.
 FRAME_LINES      = 261		; NTSC (6560) non-interlaced frame
 FRAME_LINES_INT  = 525		; NTSC interlaced full frame (both fields);
 				; 2*262.5, which is what the half-line counter does
