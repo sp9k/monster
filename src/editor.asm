@@ -102,6 +102,9 @@ debugging: .byte 0	; if !0, debugger is active
 .export __edit_sigint
 __edit_sigint: .byte 0		; cancel flag for long running commands
 
+.export __edit_base
+__edit_base: .word 0	; base source row on screen DURING ASSEMBLY ONLY
+
 ;*******************************************************************************
 .BSS
 
@@ -497,7 +500,7 @@ main:	jsr key::getch
 	ldxy #strings::assembling
 	jsr blank
 
-	jsr close_windows	; close errlog (if open)
+	jsr clear_errors	; close errlog (if open)
 	CALLMAIN dbgi::init
 	jsr errlog::clear
 	jsr run::install_sigint	; reset SIGINT flag
@@ -666,7 +669,18 @@ main:	jsr key::getch
 	bcc :+
 	rts
 
-:	; the LOG buffer is not a source file; refuse to assemble it
+:	jsr edit_current_file
+	txa
+	sec
+	sbc zp::cury
+	sta __edit_base
+	tya
+	sbc #$00
+	sta __edit_base+1
+
+	jsr clear_errors	; close errlog (if open)
+
+	; the LOG buffer is not a source file; refuse to assemble it
 	lda src::activebuff
 	cmp #LOG_BUFFER
 	bne @notlog
@@ -681,8 +695,7 @@ main:	jsr key::getch
 	lda #ERR_UNNAMED_BUFFER
 	jmp report_typein_error
 
-:	jsr close_windows	; close errlog (if open)
-	jsr init_log		; create a (new) log file
+:	jsr init_log		; create a (new) log file
 
 	lda #$01
 	sta zp::gendebuginfo	; enable debug info
@@ -4383,6 +4396,19 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
+
+;*******************************************************************************
+; CLEAR ERRORS
+; Clears all errors in the log and onscreen
+.proc clear_errors
+	jsr scr::clrrowcolors
+	jsr close_windows	; close errlog (if open)
+	jmp errlog::clear
+.endproc
+
+;*******************************************************************************
 ; CCLEFT
 ; Handles the left cursor key
 ; OUT:
@@ -4976,6 +5002,7 @@ goto_buffer:
 	pla				; restore the row
 	jmp text::drawline
 .endproc
+
 
 ;*******************************************************************************
 ; NEXT DRIVE

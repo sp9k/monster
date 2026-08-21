@@ -129,13 +129,22 @@ blank_backup: .res 16
 	ldx #SCREEN_ROWS*2-1
 :	lda mem::rowcolors_idx,x
 	sta mem::rowcolors_save,x
+	dex
+	bpl :-
 
-	lda prefs::normal_color
+	; fall through to __screen_clr_row_colors
+.endproc
+
+;*******************************************************************************
+; CLR ROW COLORS
+; Clears all "row" colors by restoring their "normal" color
+.export __screen_clr_row_colors
+.proc __screen_clr_row_colors
+	ldx #SCREEN_ROWS*2-1
+:	lda prefs::normal_color
 	sta mem::rowcolors,x
-
 	lda #COLOR_NORMAL
 	sta mem::rowcolors_idx,x
-
 	dex
 	bpl :-
 	rts

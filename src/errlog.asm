@@ -9,6 +9,7 @@
 .include "asm.inc"
 .include "debug.inc"
 .include "debuginfo.inc"
+.include "draw.inc"
 .include "edit.inc"
 .include "errors.inc"
 .include "gui.inc"
@@ -228,8 +229,9 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 ; callback to get the item in .A
 getline:
 	cmp numerrs
-	bcc render_error
-	rts			; out of range
+	bcs :+
+	jmp render_error
+:	rts			; out of range
 
 ;*******************************************************************************
 ; KEYHANDLER
@@ -299,12 +301,31 @@ getline:
 	lda asm::linenum
 	sta errlineslo,x
 	lda asm::linenum+1
+	tay
 	sta errlineshi,x
 	lda dbgi::file
 	sta errfileids,x
 	inc numerrs
 
-	pla
+	CALLMAIN edit::currentfile
+	bcs :+
+	cmp dbgi::file
+	bne :+				; if not same file, skip drawing
+
+	; draw the error if it's visible
+	lda asm::linenum
+	sec
+	sbc edit::base
+	tax
+	lda asm::linenum+1
+	sbc edit::base+1
+	bne :+
+	cpx edit::height
+	bcs :+
+	lda #COLOR_ERROR
+	CALLMAIN draw::hline		; display the error
+
+:	pla
 	ldx #@num_fatal_errors-1
 @isfatal:
 	cmp @fatal_errors,x

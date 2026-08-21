@@ -6,6 +6,7 @@
 .include "../fastcopy.inc"
 .include "../prefs.inc"
 .include "../../config.inc"
+.include "../../draw.inc"
 .include "../../irq.inc"
 .include "../../macros.inc"
 .include "../../memory.inc"
@@ -288,8 +289,23 @@ HL_MARKER_COLOR = TEXT_COLOR	; match the editor text color
 	ldx #NUM_ROWS-1
 :	lda mem::rowcolors,x
 	sta mem::rowcolors_save,x
-	lda prefs::normal_color
+	dex
+	bpl :-
+
+	; fall through to __screen_clr_row_colors
+.endproc
+
+;*******************************************************************************
+; CLR ROW COLORS
+; Clears all "row" colors by restoring their "normal" color
+.export __screen_clr_row_colors
+.proc __screen_clr_row_colors
+	ldx #NUM_ROWS-1
+
+:	lda prefs::normal_color
 	sta mem::rowcolors,x
+	lda #COLOR_NORMAL
+	sta mem::rowcolors_idx,x
 	dex
 	bpl :-
 	rts

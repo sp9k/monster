@@ -5,6 +5,7 @@ SCREEN_INC = 1
 .import __screen_clr
 .import __screen_clrcolor
 .import __screen_clrline
+.import __screen_clr_row_colors
 .import __screen_draw_gutter
 .import __screen_draw_gutter_row
 .import __screen_init
@@ -26,6 +27,7 @@ SCREEN_INC = 1
 	rvsline_part = __screen_rvsline_part
 	clr          = __screen_clr
 	clrcolor     = __screen_clrcolor
+	clrrowcolors =	__screen_clr_row_colors
 	clrline      = __screen_clrline
 	draw_gutter     = __screen_draw_gutter
 	draw_gutter_row = __screen_draw_gutter_row
