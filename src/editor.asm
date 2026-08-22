@@ -4414,9 +4414,9 @@ goto_buffer:
 ; CLEAR ERRORS
 ; Clears all errors in the log and onscreen
 .proc clear_errors
+	jsr errlog::clear	; empty the log BEFORE any redraw
 	jsr scr::clrrowcolors
-	jsr close_windows	; close errlog (if open)
-	jmp errlog::clear
+	jmp close_windows	; close errlog (if open) and refresh
 .endproc
 
 ;*******************************************************************************

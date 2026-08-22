@@ -16,10 +16,10 @@
 - [ ] Save/restore raster position while debugging
 
 ### TODO V1
-- [ ] Investigate error color artifacts after failed assembly
 - [ ] Support .REP and .MAC in monitor
 - [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
 - [ ] fix linking/object code generation for C64
+- [x] Investigate error color artifacts after failed assembly
 - [x] get disk access working from BASIC
 - [x] Fix unstable file mappings in debug info
 - [x] Don't generate errors for undefined macros
