@@ -912,8 +912,19 @@ MODE_DEF  = 1
 	clc
 	adc zp::line
 	sta zp::line
-	bcc @paramloop
+	bcc :+
 	inc zp::line+1
+
+	; is there a directive or opcode after the name? If so, this is a label
+	; definition, not a macro invocation
+:	jsr @process_ws
+	ldy #$00
+	lda (zp::line),y
+	cmp #'.'
+	beq @perr		; directive -> not a macro invocation
+	CALLMAIN asm::isopcode
+	bcc @perr		; opcode -> not a macro invocation
+
 @paramloop:
 	jsr @process_ws
 	ldy #$00
