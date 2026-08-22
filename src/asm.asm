@@ -1451,7 +1451,21 @@ BANKED_CODE "ASMBANK"
 	lda indirect_hint
 	beq :+
 	lda indexed
+	beq @absind	; no indexing -> (abs)
+
+	; if verifying or on pass 1, assume we're dealing with a zeropage
+	; address even though we don't know for sure yet
+	lda zp::verify
+	bne @assume_zp
+	jsr pass1
 	bne @illegalmode ; error- indirect absolute doesn't support indexing
+
+@assume_zp:
+	lda #$01
+	sta operandsz	; treat the operand as zeropage
+	jmp @zp
+
+@absind:
 	lda #ABS_IND
 	RETURN_OK
 :	lda indexed

@@ -1311,6 +1311,7 @@ cancel = enter_command
 .proc enter_command
 	lda mode
 	cmp #MODE_COMMAND
+	clc
 	beq @ret
 
 	lda #CUR_NORMAL
@@ -1392,7 +1393,6 @@ cancel = enter_command
 	; LINE selection always begins at column 0
 	lda #$00
 	sta visual_start_x
-	sta zp::curx
 
 	; save current source position
 	jsr src::pos
@@ -2385,7 +2385,7 @@ cancel = enter_command
 	ldxy #1
 	jmp edit_gotoline
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @gotodef:
 @word=r6
 @len=r8
