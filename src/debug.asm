@@ -492,6 +492,9 @@ blank   = scr::blank
 	ldx #$00
 	stx zp::banksp
 
+	lda #MODE_COMMAND
+	sta zp::editor_mode
+
 ; we're done updating state, check which interface we should transfer
 ; execution to
 @enter_iface:
