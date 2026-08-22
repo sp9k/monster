@@ -1389,9 +1389,10 @@ cancel = enter_command
 
 	jsr home			; go to column 0
 
-	; save PHYSICAL cursor position where selection began
-	lda zp::curx
+	; LINE selection always begins at column 0
+	lda #$00
 	sta visual_start_x
+	sta zp::curx
 
 	; save current source position
 	jsr src::pos
@@ -2191,6 +2192,12 @@ cancel = enter_command
 	ldxy visual_start_line
 	jsr edit_gotoline
 
+	; LINE selections begin at column 0: skip correction if we're doing
+	; a line selection
+	lda mode
+	cmp #MODE_VISUAL_LINE
+	beq @done
+
 	; move right until we're back at the start of the selection
 	jmp :+			; enter loop at conditional check
 @fix_x: jsr src_right		; move cursor right one character
@@ -2790,6 +2797,8 @@ cancel = enter_command
 	beq @deldone		; if so, there is nothing to delete
 
 @delsel:
+	jsr src::end		; is there anything after the cursor to delete?
+	beq @deldone		; if not, stop (DELETE here would BACKSPACE)
 	jsr src::delete
 	dec @cnt
 	lda @cnt
@@ -2799,6 +2808,8 @@ cancel = enter_command
 :	ora @cnt+1		; are LSB and MSB of @cnt 0?
 	bne @delsel
 @deldone:
+	jsr refresh_line	; reload linebuffer with the line we landed on
+	jsr sync_cur		; resync physical cursor with the source cursor
 	jmp refresh		; done, refresh to clear deleted text
 
 ;-------------------------------------------------------------------------------
