@@ -127,7 +127,7 @@ Begins debugging at the given symbol using the active debug information.
 
 If no symbol is given, the program will
 begin and the debugger invoked at the _lowest_ defined origin (.ORG) in the
-program. See [Debugger](https://github.com/gummyworm/monster#debugger) for more
+program. See [Debugger](https://github.com/sp9k/monster#debugger) for more
 details on debugging.
 
 Example:
@@ -143,7 +143,7 @@ VIC-registers, zeropage values, etc.
 
 If no symbol is given, the program will
 begin and the debugger invoked at the _lowest_ defined origin (.ORG) in the
-program. See [Debugger](https://github.com/gummyworm/monster#debugger) for more
+program. See [Debugger](https://github.com/sp9k/monster#debugger) for more
 details on debugging.
 
 Example:
@@ -370,3 +370,5 @@ following commands:
 
 Entering the editor while on a line with an 8-byte ".db" definition (e.g. `.db $ff,$00,$ff,$00,$ff,$00,$ff,$00`) will pre-populate the
 UDG editor with the character defined by these directives.
+
+<insert screenshot>
