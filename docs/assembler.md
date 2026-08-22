@@ -85,7 +85,7 @@ with a '$'.
 LDA #(10+$20)
 ```
 
-Character literals are also supported. These are represented as a character enquoted within
+Character literals are also supported. These are represented as a character enclosed within
 single quotes.
 
 ```LDA #'x'```
@@ -128,7 +128,7 @@ PROC1:
 ```
 
 Note that the scope of the `@L0` defined under `PROC0` is valid until the next
-non-local label (`PROC1`) at which point the name is recylced and may be used
+non-local label (`PROC1`) at which point the name is recycled and may be used
 again.
 
 Because of the way local labels are implemented they are not totally
@@ -218,7 +218,7 @@ Examples:
  | .DB "HI",0	     | $48 $49 $00          |
 
 #### .DW _expression_, ..., _expression_
-deines a sequence of words from the comma-separated list that      |
+Defines a sequence of words from the comma-separated list that follows.
 
 Examples:
  |       code        |    generated binary     |
@@ -260,7 +260,7 @@ Conditionally assembles the lines between this directive and its matching
 
 Evaluates to TRUE if _label_ is defined.  This is different from .IF because
 _label_ may be defined to be 0 and this will still evaluate to TRUE.
-This can be useful inside macros to determine if a paramter was provided or not.
+This can be useful inside macros to determine if a parameter was provided or not.
 
 #### .INC _filename_
 
@@ -419,7 +419,7 @@ Becomes:
 
 ### MACROS
 
-Macros offer a conveinient way to abstract patterns that you find yourself
+Macros offer a convenient way to abstract patterns that you find yourself
 frequently writing.
 
 They may be recursive as in this example:
@@ -485,4 +485,3 @@ Anonymous labels take up no space for the label names, only address.  Using
 them is much more efficient than labels, and so this should be done for short
 branches that don't require much description.  Using too many labels, in the
 extreme case, can push your program over the symbol limit.
-

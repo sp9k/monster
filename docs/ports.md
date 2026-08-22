@@ -12,7 +12,7 @@ Here is a basic list of the implementation required:
  - INTERRUPT: the main IRQ that handles platform specific visual, audio, etc. functionality
 
 ### MEMORY
-To function _at all_, Monster needs a way to the address 24-bit space.
+To function _at all_, Monster needs a way to address the 24-bit address space.
 The placement of your code may vary depending on the memory map of the target, so Monster needs to be
 able to call code that resides in other RAM banks.
 
@@ -56,7 +56,7 @@ routines in the segment freely.
 
 ### SCREEN
 The screen routines provide the implementation for things like clearing the screen or changing its
-color. Below list of procedures that must be implemented to do this.
+color. Below is a list of procedures that must be implemented to do this.
 
 |  PROCEDURE              | DESCRIPTION
 |-------------------------|---------------------------------------------------------------------------------
@@ -83,7 +83,7 @@ The _DRAW_ routines serve mostly to set the colors for given rows of characters.
 Besides `draw::line` these still operate on characters, so you may, for example, reverse the "colored"
 characters instead of coloring them.
 
-To implement `draw::line` on a a target that cannot render to a bitmap, you may devise some other way of
+To implement `draw::line` on a target that cannot render to a bitmap, you may devise some other way of
 representing this.  Note that this routine is used to emphasize the current line while debugging, so
 it should be implemented somehow.
 
@@ -91,8 +91,8 @@ it should be implemented somehow.
 |-------------------------|---------------------------------------------------------------------------------
 | `__draw_hline`          | set the color for the row in `.X` to the color given in `.A`
 | `__draw_rvs_underline`  | EOR the _pixel_ row given in `.A`
-| `__draw_scrollcolorsu`  | Scrolls all character colors within the rows `[X., .Y]` up by `.A` characters
-| `__draw_scrollcolorsd`  | Scrolls all character colors within the rows `[X., .Y]` down by `.A` characters
+| `__draw_scrollcolorsu`  | Scrolls all character colors within the rows `[.X, .Y]` up by `.A` characters
+| `__draw_scrollcolorsd`  | Scrolls all character colors within the rows `[.X, .Y]` down by `.A` characters
 | `__draw_coloroff`       | Disables color until reenabled by calling another draw routine
 
 ### CURSOR
@@ -103,7 +103,7 @@ There is only one cursor routine that needs to be implemented.
 | `__cur_toggle`          | toggles the cursor state (on/off) for the cursor position in `(zp::curx, zp::cury)`
 
 ### IRQ
-The IRQ routines are intended to setup a stable interrupt that runs at 60 Hz.
+The IRQ routines are intended to set up a stable interrupt that runs at 60 Hz.
 Stability is only necessary if you choose to do raster-based effects to achieve some of the draw (color)
 functionality.
 
@@ -127,5 +127,4 @@ and update the sound registers for the target machine's IRQ.
 |  PROCEDURE              | DESCRIPTION
 |-------------------------|---------------------------------------------------------------------------------
 | `__beep_short`          | Produces a "short" beep sound
-| `__long_short`          | Produces a "long" beep sound
-
+| `__beep_update`         | Updates the current beep sound

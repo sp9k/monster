@@ -103,7 +103,7 @@ Note that any nonzero value for these flags will enable them while the zero valu
 ---
 
 ### TECHNICAL DETAILS
-The following sections are probably only interesting the the most hardcore enthusiasts, who care how
+The following sections are probably only interesting to the most hardcore enthusiasts, who care how
 Monster actually implements its linker.
 
 ### LINK PROCESS OVERVIEW
@@ -122,7 +122,7 @@ To link multiple object files the linker follows the following procedure:
          * Get base address of each SECTION from global SEGMENT base + object's SEGMENT offset
          * Map symbol indices to their resolved addresses using global symbol table / segment base address
     * Store object code to the current address for each segment
-    * Walk relocation table, for each segment, and apply the the relocations described using the global symbol table
+    * Walk relocation table, for each segment, and apply the relocations described using the global symbol table
     * Load debug info
          * for each block, add base address of SEGMENT for corresponding file
          * append line program data for each object file to get global line program data
@@ -144,7 +144,7 @@ Below is a description of the object file's components.  These are listed in the
 
 
 #### HEADER
-At thet beginning of the object file is the _header_, which gives basic details about the object file.  The header simply tells us how many segments and symbols are defined in the object file.
+At the beginning of the object file is the _header_, which gives basic details about the object file.  The header simply tells us how many segments and symbols are defined in the object file.
 The linker uses the header in each object file to determine the final layout in pass 1.
 
 | field        | size |  description
@@ -182,16 +182,16 @@ The format of this header in the object code is as follows:
 | name  |   8  | SEGMENT name (where to write SECTION to)
 | size  |   2  | size in bytes
 
-At link time, The linker sums the _size_ field for the SEGMENTs in each object file
+At link time, the linker sums the _size_ field for the SEGMENTs in each object file
 to determine the total amount of space needed for the SEGMENT in the final binary.
 
-The order of the definitions in this header also correspond to the order of the
+The order of the definitions in this header also corresponds to the order of the
 SEGMENT tables written later in the object file (see "SECTIONS" below for more detail on this).
 
 ### SYMBOLS
 Next is the _symbol_ table. This table contains all labels that are used in the object file.
 
-The symbol table two parts: IMPORTS and EXPORTS, which appear in the order shown in this table:
+The symbol table has two parts: IMPORTS and EXPORTS, which appear in the order shown in this table:
 
 | field          | description
 |----------------|--------------------------------------------------------------------------------
@@ -261,13 +261,13 @@ without having to load the entire LOCALS table for each object file.
 | segment |   1   | segment the symbol resides in (index in object's SEGMENT table)
 | address |   2   | absolute or offset from the base of the SEGMENT in this object file
 
-The address mode for a SYMBOL is determined by its correspondign SEGMENT.
-If it SYMBOL references a zeropage SEGMENT, it will also be defined as "zeropage" (1 byte).
+The address mode for a SYMBOL is determined by its corresponding SEGMENT.
+If a SYMBOL references a zeropage SEGMENT, it will also be defined as "zeropage" (1 byte).
 
 
 ### SEGMENTS
 After the symbols comes a list of one or more SEGMENT definitions (the exact number is defined in the OBJ HEADER).
-Each SEGMENT contains a short header that tells us the size of the three sub-tables that comprise the SEGMENT followed by those sub-tables themselves: object, relocation, and a debug information.
+Each SEGMENT contains a short header that tells us the size of the three sub-tables that comprise the SEGMENT followed by those sub-tables themselves: object, relocation, and debug information.
 
 Below is the format for the header which precedes the SEGMENT tables:
 
@@ -292,7 +292,7 @@ This concept disappears once the object code is generated (with the exception of
 info, which has its own version of it) when these SECTIONS are collapsed into the SEGMENTS
 that they reference.
 
-Here is an annotated example program to illustrate where new sections created:
+Here is an annotated example program to illustrate where new sections are created:
 ```
 .seg "CODE"   ; [section 1]
 foo
@@ -320,7 +320,7 @@ SYMBOL-relative relocations are _only_ required for external symbols.
 For each SEGMENT, the linker contains a table of _relocation info_.
 
 This table is made up of a number of records, each describing how to relocate a byte or word within the SEGMENT.
-Relocations can either be _segment-relative_ (references to object-local SEGMENT base) or _symobl-relative_ (references to external symbols).
+Relocations can either be _segment-relative_ (references to object-local SEGMENT base) or _symbol-relative_ (references to external symbols).
 
 The following table describes the relocation record format in detail.
 
@@ -344,7 +344,7 @@ The following table describes the relocation record format in detail.
 To apply the relocation table for a SEGMENT, we walk the table, go to the address of that SEGMENT's
 base + the offset for each table entry, and depending on the value of "mode" in the "info" field:
  - 0 (segment relative) -look up SEGMENT base address and add addend to it
- - 1 (symbol relative") - look up the symbol address and add addend to it
+ - 1 (symbol relative) - look up the symbol address and add addend to it
 
 Finally, we apply post-processing (bits 2-3) in the info byte, if necessary.
 
@@ -354,7 +354,7 @@ relocating.
 The addend is generally the same size as the target value to be relocated.
 The one exception is relocation entries that contain post-processing.  For these,
 the intermediate value may be greater than $ff, so we need to encode a full 16-bit addend for the
-the 1 byte target.  For example: `LDA #<(LABEL + 500)` requires a 16-bit addend (500) to calculate
+1 byte target.  For example: `LDA #<(LABEL + 500)` requires a 16-bit addend (500) to calculate
 the final 8-bit target.  The LSB of this addend is stored in the instruction stream, but in
 this special case the MSB is stored in an extra byte at the end of the relocation entry for that record.
 Because of this, records that contain post-processing are 6 bytes instead of 5.

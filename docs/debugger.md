@@ -19,7 +19,7 @@ While debugging, most navigation commands work as normal. Breakpoints may
 be set as they would in the editor prior to assembly, and they will be installed
 in realtime.  Other edits are not allowed, however, while the debugger is active.
 
-Both the debugger and the user program's RAM is saved/restored when control
+The RAM used by both the debugger and the user program is saved/restored when control
 transfers between the two. That is the screen data ($1000-$2000), the zeropage,
 and color RAM.  This allows the debugger and debugged program
 to operate independently without worrying about writes to one affecting the other.
@@ -117,7 +117,7 @@ Next to the registers, under the CLK label, is a 24-bit counter that displays th
 number of cycles executed by the instructions that have been STEP'd into.
 The stopwatch can be reset to 0 with the `C= + r` key combination.
 
-Note that the number of cylces is displayed in decimal unlike the rest of the
+Note that the number of cycles is displayed in decimal unlike the rest of the
 information in the debug view, which is displayed in hexadecimal.
 
 ---
@@ -126,7 +126,7 @@ information in the debug view, which is displayed in hexadecimal.
 
 There are a variety of ways to execute the program that allow us to gather
 quite a lot of information about the instructions we executed.  The debugger
-also contains a 6502 simulator.  This simulato knows what registers an
+also contains a 6502 simulator.  This simulator knows what registers an
 instruction uses/modifies, the effective address that is read/written, and mode.
 
 How does this help us, the user?  For example, when an instruction affects a given register,
@@ -165,7 +165,7 @@ The `GO` command begins execution and returns to the debugger only when a
 breakpoint is encountered or when RUN/STOP is pressed.  Unlike any of the step/trace
 commands, Go will _not_ simulate anything.  Control is given entirely over
 to the user program.  This could be dangerous, but is likely necessary in many
-cases.  A nearly finished game, for example, will require the user gives over
+cases.  A nearly finished game, for example, will require the user to give over
 control to the program in order to play that game.
 That said, take caution when using this command and **expect to lose any unsaved state**
 
@@ -191,7 +191,7 @@ at the current step in the program.
 
 If we aren't stepping _into_ code in RAM (_go_, _step over_) we are unable
 to calculate the addresses that will be affected when we
-hand over control to the user program, we instead save the _entire_ *debugger* state of
+hand over control to the user program; we instead save the _entire_ *debugger* state of
 the internal RAM and restore the _entire_ *user* state.
 Although this is a rather large amount of memory, it is mitigated by being
 handled by a mostly unrolled loop and therefore takes only a fraction of a second to occur.
@@ -326,7 +326,7 @@ Breakpoints can only be added to buffers that have been named.
 
 ## WATCHES
 Watches are set within the memory editor (`F3`). When the cursor is over the
-desired byte to watch, the press `C= + w` to add a watch to the address of the
+desired byte to watch, press `C= + w` to add a watch to the address of the
 byte under the cursor.  A beep will confirm that the watch
 was added.
 

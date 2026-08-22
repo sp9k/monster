@@ -24,13 +24,13 @@ below for more info on modes).
 |--------|---------------|------------------------------------------------------------------------|
 | C= + a | Assemble      | assembles the active program                                           |
 | C= + b | Set Breakpoint| sets a breakpoint at the current line                                  |
-| C= + c | Refresh       | refrehshes the screen by redrawing the source buffer                   |
+| C= + c | Refresh       | refreshes the screen by redrawing the source buffer                    |
 |    -   | File Viewer   | list directory, shows the files on the current disk                    |
 | C= + l | Link          | links all .o files on disk using the LINK file                         |
 | C= + n | New buffer    | creates a new source buffer and sets it as the active buffer           |
 | C= + q | Close buffer  | closes the current buffer and opens the next one that is open          |
 | C= + y | Show Symbols  | lists the symbol table for the assembled program                       |
-| C= + e | Next Error    | if there are errors from the last assembly, navigatest to the next one |
+| C= + e | Next Error    | if there are errors from the last assembly, navigates to the next one  |
 | C= + t | Show buffers  | displays a list of the currently open buffers                          |
 |   F4   | Link          | links the object files in the project using the LINK file on disk      |
 |   F3   | MemView       | opens the memory viewer/editor (same as while debugging; press <- to exit)|
@@ -38,7 +38,7 @@ below for more info on modes).
 |   F6   | WatchView     | opens the watch viewer/editor (same as while debugging)                |
 | C= + + | Next Drive    | Selects the next drive (limited to #15)                                |
 | C= + - | Prev Drive    | Selects the previous drive (limited to #8)                             |
-|    :   | Ex Command    | Enteres "EX" mode (see the EX COMMANDS section below for more on this) |
+|    :   | Ex Command    | Enters "EX" mode (see the EX COMMANDS section below for more on this)  |
 
 #### DRIVE SELECTION
 
@@ -79,7 +79,7 @@ The up/down cursor keys navigate between pages of symbols. Press RESTORE to retu
 
 The `:` key puts the editor in _EX_ mode.  In this mode, a string is accepted from the user.
 The format of this string is a _command_ (usually one or two characters) followed by zero or more
-argments.  E.g. `:w hello.s` will _write_ a file named "hello.s" to disk.
+arguments.  E.g. `:w hello.s` will _write_ a file named "hello.s" to disk.
 
 The table below details the available commands in _EX_ mode.
 
@@ -140,7 +140,7 @@ Begins debugging at the given symbol using the active debug information, initial
 system with the BASIC COLD start handler first.
 
 This is useful if your program expects the system to be initialized with the default
-VIC-registers, zeropage values , etc.
+VIC-registers, zeropage values, etc.
 
 If no symbol is given, the program will
 begin and the debugger invoked at the _lowest_ defined origin (.ORG) in the
@@ -194,7 +194,7 @@ a load address is prepended to the file prior to export.  This produces a
 standalone executable you can use when you are done working on your program.
 
 Example:
-`:B GAME.PRG`
+`:P GAME.PRG`
 
 #### RENAME :r [buffername]
 
@@ -275,8 +275,8 @@ The following keys are handled in COMMAND mode.
 |    0       | Column 0   | moves the cursor to the first column of the current line               |
 |    a       | append char| enters insert mode and moves to the next character                     |
 |    A       | append line| enters insert mode and moves to the last character in the current line |
-|    C       | change line| deletes the from the cursor to the end of the line and enters insert   |
-|    o       | open line  | opens a new line below the cursror and moves to it                     |
+|    C       | change line| deletes from the cursor to the end of the line and enters insert       |
+|    o       | open line  | opens a new line below the cursor and moves to it                      |
 |    O       | open line ^| opens a new line above the cursor and moves to it                      |
 |    s       | sub char   | deletes the character under the cursor and enters insert mode          |
 |    S       | sub line   | deletes the line under the cursor and enters insert mode               |
@@ -296,7 +296,7 @@ There are various keys that enter INSERT mode from COMMAND: i, a, A, etc.
 ### VISUAL MODE
 In _VISUAL_ mode (accessed via `v` in _COMMAND_ mode), the user can select
 a block of text which may then be deleted or copied.  Below is the table of supported commands
-while in visual mode. The `<-` key will return the user to to _COMMAND_ mode.
+while in visual mode. The `<-` key will return the user to _COMMAND_ mode.
 
 |  key       | name       | description                                                            |
 |------------|------------|------------------------------------------------------------------------|
@@ -326,8 +326,8 @@ line would not fit on screen.
 
 ### LINE ENDINGS
 
-Files are stored with $0d line endings, but file saved with UNIX
-style line-endings ($0a), will automatically converted when the file is loaded.
+Files are stored with $0d line endings, but files saved with UNIX-style line
+endings ($0a) will automatically be converted when the file is loaded.
 
 ### JUMP LISTS
 When the user "jumps" to a different position in the source (`gg`, `G`, `goto line`,
@@ -367,7 +367,7 @@ following commands:
 |  Clear        |SHIFT+CLR| Sets all pixels in the UDG to the background color                                                   |
 |  Done         | RETURN  | Exits the editor and enters (or updates) the .db commands to create the graphic in the editor        |
 |  Quit         | STOP    | Exits the editor without creating/updating the graphic contained in the editor                       |
-| Toggle Mode   |   M     | If in hires mode, switches to multicolor mode or vise-versa                                          |
+| Toggle Mode   |   M     | If in hires mode, switches to multicolor mode or vice versa                                         |
 
 Entering the editor while on a line with an 8-byte ".db" definition (e.g. `.db $ff,$00,$ff,$00,$ff,$00,$ff,$00`) will pre-populate the
 UDG editor with the character defined by these directives.

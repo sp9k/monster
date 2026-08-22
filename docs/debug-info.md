@@ -1,7 +1,7 @@
 ## DEBUG INFORMATION TECHNICAL DETAILS
 
 Debug information is stored in a few tables as described below. At a high level, these are:
-  - FILE TABLE: maps file id's to their file name
+  - FILE TABLE: maps file IDs to their filenames
   - BLOCKS: stores ranges of addresses and lines for blocks of code
   - LINE PROGRAMS: state machine that resolves addresses and line numbers when executed
 
@@ -50,7 +50,7 @@ Also note that a given BLOCK always represents a line/address range within a sin
 If the file changes during assembly, e.g. when a `.INC` directive is encountered, a new
 BLOCK is created.
 
-In the assembler, the psuedo-ops that force the creation of a block are:
+In the assembler, the pseudo-ops that force the creation of a block are:
   - including a file (`.INC`)
   - setting the address (`.ORG`)
   - creating/activating a SEGMENT (`.SEG`, `.SEGZP`)
@@ -80,7 +80,7 @@ byte according to the following layout:
 
 For cases when a small offset to either the line or address is not enough (e.g. a macro
 that expands to more than 16 bytes), or generally to handle bigger "jumps" in the line mapping, these instructions are required.
-The extended instrutions begin with a $00 value prefix, which is not a valid basic instruction
+The extended instructions begin with a $00 value prefix, which is not a valid basic instruction
 because at least one of the line or address states must be advanced for each entry in the line table.
 
 Below is the list of extended commands and their effects.
@@ -134,7 +134,7 @@ already landed us on our target.
 
 All that's left now is to build the line program for this block.  As mentioned, "lda #$00" is implicitly
 handled by the base state for the state machine, which means we only need two "basic" line-program
-instrutions to resolve "sta $900f" and "jmp loop".  Here's what those look like in memory:
+instructions to resolve "sta $900f" and "jmp loop".  Here's what those look like in memory:
 
 | value | description                                                 |
 |-------|-------------------------------------------------------------|
@@ -146,12 +146,12 @@ instrutions to resolve "sta $900f" and "jmp loop".  Here's what those look like 
 The flow for generating debug information is:
  1. begin block: a new BLOCK is defined for the current file, line, and address
  2. add lines: instructions are added to the line program for the active block to produce a program capable of resolving the addresses and lines for each CPU instruction.
- 3. end block: the most recently defined BLOCK is closed and its
+ 3. end block: the most recently defined BLOCK is closed
 
 ---
 
 ### USING DEBUG INFORMATION
-Once debug information is generated, its primary function is to map lines to addresses and vise-versa.
+Once debug information is generated, its primary function is to map lines to addresses and vice versa.
 
 #### MAPPING ADDRESS TO LINE
 

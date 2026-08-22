@@ -25,7 +25,7 @@ cold start procedure executes, which is what you will see in the monitor if ente
 assembling a program.
 
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
-Press `f7` or `f8` while to re-enter it.  The monitor window is closed, just as other windows are, with the `<-` key.
+Press `f7` or `f8` to re-enter it.  The monitor window is closed, just as other windows are, with the `<-` key.
 
 ### FILE REDIRECTION
 The output from a given monitor command can be redirected to file instead of the screen by using the
@@ -50,10 +50,10 @@ Most parameters may be expressions (e.g. `label+10`).
 |    ba    | add breakpoint @ addr   |  address                           |                      | adds a breakpoint at the given address                                                                                        |
 |    bl    | add breakpoint @ line   |  file id, line number              |                      | adds a breakpoint at the given line number within the given file                                                              |
 |    br    | remove breakpoint       | breakpoint id                      |                      | removes the given breakpoint                                                                                                  |
-|    bt    | backtrace               |                                    | offset               | displays a rendered stack view beginning at the current SP + an optioinal offset, up to $200 (bottom of stack)                |
+|    bt    | backtrace               |                                    | offset               | displays a rendered stack view beginning at the current SP + an optional offset, up to $200 (bottom of stack)                 |
 |    c     | compare                 |  address 1, address 2, number      |                      | compares the given number of bytes at the two given addresses and displays any discrepancies                                  |
 |  clear   | clear                   |                                    |                      | clears the monitor and sets the cursor back to the origin row/column                                                          |
-|    d     | disassemble             |  start-address                     | end-address          | disassembles from the given start address or, if an end address is given, up to the the given end address                     |
+|    d     | disassemble             |  start-address                     | end-address          | disassembles from the given start address or, if an end address is given, up to the given end address                         |
 |  dump    | dump memory             |  start-address                     | end-address          | prints a list of bytes (in valid assembleable .DB directives) for the given address range                                     |
 |    f     | fill memory             |  start-address, stop-address, value| value list           | fills the given address range with the given list of values, repeating when the list is exhausted                             |
 |    g     | go                      |                                    |                      | continues execution of the debugged program without tracing                                                                   |
@@ -64,7 +64,7 @@ Most parameters may be expressions (e.g. `label+10`).
 |    p     | poke memory             |  address value                     |                      | sets the given address to the provided value                                                                                  |
 |    r     | registers               |                                    |                      | displays the current content of the registers in the debugged program                                                         |
 |    s     | save memory             |start-address, end-address, filename|                      | saves the given memory range to the specified file                                                                            |
-|    zo    | step over               |                                    |                      | runs the next instruction, treating JSR's as a single instruction                                                             |
+|    zo    | step over               |                                    |                      | runs the next instruction, treating JSRs as a single instruction                                                              |
 |    t     | trace                   |                                    |                      | continue tracing the program that is being debugged                                                                           |
 |    w     | list watches            |                                    |                      | lists the watches that have been added                                                                                        |
 |    wa    | add watch               | start-address                      | end-address          | adds a watch at the given start and (optional) stop address                                                                   |
@@ -72,9 +72,9 @@ Most parameters may be expressions (e.g. `label+10`).
 |    was   | add watch (store)       | start-address                      | end-address          | adds a STORE watch at the given start and (optional) stop address                                                             |
 |    wr    | remove watch            | id                                 |                      | removes the watch with the given id                                                                                           |
 |    x     | quit                    |                                    |                      | exits the monitor                                                                                                             |
-|    z     | step                    |                                    |                      | runs the next instrcution and returns to the the monitor prompt                                                               |
+|    z     | step                    |                                    |                      | runs the next instruction and returns to the monitor prompt                                                                   |
 |    zo    | step-out                |                                    |                      | runs the program that is being debugged until the current subroutine is RTS'd from                                            |
-|    F1    | view screen             |                                    |                      | toggles the view of the user-memory (swaps the the  $1000-$2000 range monitor <-> program                                     |
+|    F1    | view screen             |                                    |                      | toggles the view of the user-memory (swaps the $1000-$2000 range monitor <-> program)                                         |
 |    F2    | enter user program      |                                    |                      | enters the actively running program (or the default KERNAL BASIC interpreter if nothing has been debugged yet)                |
 |    C= + l| clear                   |                                    |                      | shortcut to clear the screen (equivalent to the clear command)                                                                |
 |    C= + k| grow window             |                                    |                      | grows the monitor window by one row (windowed mode only)                                                                      |
