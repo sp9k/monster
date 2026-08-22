@@ -36,6 +36,7 @@ LDA #$00:LDXY #$ffff
 ```
 
 ### EXPRESSIONS
+
 Operands are evaluated as expressions.  An expression may be a simple value,
 such as `10` or `$1234`, or a label, in which case it resolves to that value or
 the address of the label respectively.  They may also be more complex and
@@ -88,7 +89,7 @@ LDA #(10+$20)
 Character literals are also supported. These are represented as a character enclosed within
 single quotes.
 
-```LDA #'x'```
+`LDA #'x'`
 
 Character literals must contain exactly one character and always resolve to
 a 1 byte value.
@@ -191,7 +192,7 @@ The following example illustrates why this is necessary:
 .REP NUM, I
   ASL
 .ENDREP
-.EQU NUM 5
+.EQ NUM 5
 ```
 
 Note that `NUM` is not declared until after the `.REP` directive. Because of this
@@ -207,37 +208,120 @@ any number other than 5.
 Below is a list of all available directives along with their usage and
 examples of how to use them.
 
+#### .ALIGN _expression_, <_expression_>
+
+Pads with 0's (or optionally a provided value) until the PC is aligned (divisible) by that
+value.
+
+```
+.ALIGN $100
+CHARS
+
+.ALIGN $1000, $ff
+HIRAM
+```
+
+#### .BSS "name"
+
+Activates an absolute "BSS" segment with the given name.  All labels declared are defined as
+absolute and treated as part of this segment.  For more details on segments, refer to the
+linker section of the manual.
+
+BSS segments must only contain 0-value bytes
+
+```
+.BSS "DATA"
+curx    .db 0
+cury    .db 0
+```
+
+#### .BSSZP "name"
+
+Activates a zeropage "BSS" segment with the given name.  All labels declared after are defined
+as zeropage and treated as part of this segment.  For more details on segments, refer to the
+linker section of the manual.
+
+BSS segments must only contain 0-value bytes
+
+```
+.BSSZP "ZPCODE"
+curx    .db 0
+cury    .db 0
+```
 
 #### .DB _expression_, ..., _expression_
 Defines a sequence of bytes from the comma-separated list that follows.
 
-Examples:
- |       code        |    generated binary  |
- |-------------------|----------------------|
- | .DB $00, $01, $02 | $00 $01 $02          |
- | .DB "HI",0	     | $48 $49 $00          |
+ ```
+.DB $00, $01, $02 ; $00 $01 $02
+.DB "HI",0        ; $48 $49 $00
+```
 
 #### .DW _expression_, ..., _expression_
 Defines a sequence of words from the comma-separated list that follows.
 
-Examples:
- |       code        |    generated binary     |
- |-------------------|-------------------------|
- | .DW $00, $01, $02 | $00 $00 $01 $00 $02 $00 |
+ ```
+.DW $00, $01, $02 ; $00 $00 $01 $00 $02 $00
+```
+
+#### .ELSE
+Declares an "else" clause for the open "if" one.  If the "if" condition evaluated to false, the
+contents of the "else" block are assembled.
+
+See [.IF](#if-expression)
+
+```
+.IF NTSC
+  .EQ LINES 261
+.ELSE
+  .EQ LINES 312
+.ENDIF
+```
 
 #### .ENDIF
 Ends a .IF block
 
 See [.IF](#if-expression)
 
-#### .EQU _name_ _expression_
+#### .ENDMAC
+Closes a macro definition.
+
+```
+.MAC LDXY A
+   LDX <A
+   LDY >A
+.ENDMAC
+```
+
+#### .ENDREP
+Closes a repeat block.
+
+```
+.REP 10
+  ASL
+.ENDREP
+```
+
+#### .EQ _name_ _expression_
 
 Defines a constant which may be used in expressions
 
 ```
-.EQU BITMAP $1100
+.EQ BITMAP $1100
   LDA #$00
   STA BITMAP+20
+```
+
+#### .EXPORT _name_
+
+Exports a label for use (import) by another module.  See the linker section of this
+manual for more details.
+
+
+```
+.EXPORT blit
+blit
+   ...
 ```
 
 #### .IF _expression_
@@ -248,11 +332,11 @@ Conditionally assembles the lines between this directive and its matching
 
 ```
 .IF NTSC
-.EQU CYCLES_PER_LINE 65
-.EQU LINES 261
+.EQ CYCLES_PER_LINE 65
+.EQ LINES 261
 .ELSE
-.EQU CYCLES_PER_LINE 71
-.EQU LINES 312
+.EQ CYCLES_PER_LINE 71
+.EQ LINES 312
 .ENDIF
 ```
 
@@ -261,6 +345,32 @@ Conditionally assembles the lines between this directive and its matching
 Evaluates to TRUE if _label_ is defined.  This is different from .IF because
 _label_ may be defined to be 0 and this will still evaluate to TRUE.
 This can be useful inside macros to determine if a parameter was provided or not.
+
+#### .IMPORT _name_
+
+Imports a label defined (exported) by another module.  See the linker section of this
+manual for more details.
+
+```
+.IMPORT blit
+
+   ldx #10
+   ldy #20
+   jsr blit
+```
+
+#### .IMPORTZP _name_
+
+Imports a zeropage label defined (exported) by another module.  See the linker section of this
+manual for more details.
+
+
+```
+.IMPORTZP curx
+	ldx curx
+	ldy #$00
+	jsr blit
+```
 
 #### .INC _filename_
 
@@ -327,6 +437,14 @@ Sets the address to assemble code to
 
 .ORG $2000
 ; main code
+```
+
+#### .RES _expression_
+
+Fills the number of bytes defined by the evaluated expression with 0's.
+
+```
+  .res SCREEN_W * SCREEN_H
 ```
 
 #### .RORG _expression_
@@ -415,6 +533,31 @@ Becomes:
   ASL
 ```
 
+#### .SEG "name"
+
+Activates an absolute segment with the given name.  All labels defined are treated as
+absolute and considered to be part of this segment.  For more details on segments, refer to the
+linker section of the manual.
+
+```
+.SEG "CODE"
+   lda #$00
+   sta $900f
+```
+
+#### .SEGZP "name"
+
+Activates a zeropage segment with the given name.  All labels defined are treated as
+zeropage and considered to be part of this segment.  For more details on segments, refer to the
+linker section of the manual.
+
+```
+.SEGZP "ZPCODE"
+:	asl
+	asl
+	bcc :-
+```
+
 ---
 
 ### MACROS
@@ -475,9 +618,8 @@ Comments are excluded from the internal context buffer, so using them will not c
 
 #### MEMORY USAGE
 
-The user program may use all available memory from $00 to $7fce. Addresses above this range are
-reserved for the debugger.  If your program needs these, you may utilize them, but you will not be
-able to use the debugger.
+The user program may use all available memory from $00 to $7fff. Addresses in the IO range ($9800-$9fff)
+are reserved for the debugger.  The IO range is read-only while debugging.
 
 #### USE ANONYMOUS LABELS
 

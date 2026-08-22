@@ -1054,7 +1054,11 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	; move to address for next row
 	lda @addr
 	clc
+.if .defined(vic20) .and .defined(hard8x8)
+	adc #$04
+.else
 	adc #$08
+.endif
 	sta @addr
 	bcc :+
 	inc @addr+1

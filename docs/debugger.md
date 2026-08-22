@@ -19,7 +19,7 @@ While debugging, most navigation commands work as normal. Breakpoints may
 be set as they would in the editor prior to assembly, and they will be installed
 in realtime.  Other edits are not allowed, however, while the debugger is active.
 
-The RAM used by both the debugger and the user program is saved/restored when control
+Both the debugger and the user program's RAM is saved/restored when control
 transfers between the two. That is the screen data ($1000-$2000), the zeropage,
 and color RAM.  This allows the debugger and debugged program
 to operate independently without worrying about writes to one affecting the other.
@@ -100,7 +100,7 @@ respective Key in the table below.
 |  C= + r      | Reset Stopwatch | resets the value of the stopwatch to 0                                               |
 | C= + x       | Quit Debugger   | Prompts the user for confirmation then quits the debugger upon receiving it          |
 |   <-         | Exit            | exits the debugger and returns to the editor                                         |
-| SPACE        | Swap prog       | swaps in the internal memory for the user program (allows user to see screen state)  |
+| SPACE        | Show Frame      | Displays the current state of the user program                                       |
 | ^ (up arrow) |  Goto Break     | navigates to the address that the debugger is currently paused at                    |
 
 ### REGISTER EDITOR (`F2`)
@@ -137,6 +137,19 @@ We can even activate a watch when a value is loaded from the watched address.
 The simulator also counts cycles, allowing us to keep track of how many have elapsed
 since the program began or the stopwatch was reset.
 
+From that cycle count it also derives the position of the electron beam, which
+is what the `LINE` and `CYC` values in the machine state view report.  The VIC's
+raster registers are emulated from the same counter, so a program that reads
+`$9004` (bits 8-1 of the raster line) or bit 7 of `$9003` (bit 0 of the raster
+line) sees exactly the `LINE` that is displayed.  The rest of `$9003` -- the
+screen geometry -- reads back as the program left it.
+
+The raster bits are read-only, as they are on real hardware, and the emulation
+sits at the bottom of the debugger's memory layer.  Every reader goes through
+it: the memory viewer, the monitor, watches and the simulator all show the beam
+position at `$9004`, and no store to that address can change what a read of it
+returns.
+
 #### STEP INTO (`z`)
 
 Stepping _into_ code will return to the debugger
@@ -171,33 +184,51 @@ That said, take caution when using this command and **expect to lose any unsaved
 
 #### NOTES ON MEMORY SWAPPING
 
-While the debugger and user program have isolated memory banks in the address space
-above `$1fff`, the RAM _below_ this, `[$00, $2000)`, is internal to the Vic-20
-and cannot be swapped out between debug steps. The debugger has no choice but to
-share this address space with the user program as it is also the only RAM
-that is visible to the video chip (the VIC-I).  It also contains the stack and
-zeropage, which we _could_ avoid, but as long as we need to use the $10th-$20th pages
-of RAM, it makes sense to handle them in the same way.
+If we aren't stepping/tracing code (as with the _go_ command) we give full control to
+the user program.  We cannot know what memory will be affected once we
+hand over control to the user program, so Monster saves the _entire_ *debugger* state of
+the internal RAM and restores the _entire_ *user* state.
 
-To handle this, the debugger calculates the bytes that need to be saved in
-between steps and saves these values in between calls to the program.  Values
-that will be used by the user program are then swapped in so that the program
-behaves as if the debugger is not running.
-The full internal state of the user program and debugger occupy buffers in the
-debugger and are available to be swapped in/out on command with the `SPACE`
-key.  This is useful if you'd like to see what the internal RAM
-state, which is the _only_ place that the screen state may live, looks like
-at the current step in the program.
+### FRAME CAPTURE
 
-If we aren't stepping _into_ code in RAM (_go_, _step over_) we are unable
-to calculate the addresses that will be affected when we
-hand over control to the user program; we instead save the _entire_ *debugger* state of
-the internal RAM and restore the _entire_ *user* state.
-Although this is a rather large amount of memory, it is mitigated by being
-handled by a mostly unrolled loop and therefore takes only a fraction of a second to occur.
-Nonetheless, it is apparent when this is happening if you've changed the setup
-of the VIC registers, or anything in the VIC's visible address range, as the
-screen will briefly flash with the state of the user program.
+Pressing `SPACE` generates a still image of the state of the program on the current
+frame.  Beyond just showing you the screen and color RAM, this generates a cycle-exact
+replay of the code that was traced for the current frame so far, which loops until
+`SPACE` is pressed again.
+
+#### EXACT MODE
+There are cases, if you are doing lots of screen updates, where a full frame cannot
+be shown.  This is simply due to a lack of CPU cycles.  The frame capture must
+restore the state of the affected areas before the frame is redrawn again, and if enough
+writes are made to screen or color memory, that can exceed the available cycles to reset
+to the original state of the frame.  For this reason, you can select a band of the
+screen using 'j'/'k' (down/up).  This is called EXACT mode.  The area "selected" in this mode
+is guaranteed to not exceed the limitations of the CPU time and thus appear exactly as it would at
+runtime.
+
+There are other commands available during the "capture" view:
+
+|  KEY         | NAME            |   DESCRIPTION                                                                        |
+|--------------|-----------------|--------------------------------------------------------------------------------------|
+|   f          | FINISH FRAME    | traces the program until the end of the current frame and captures/displays it       |
+|   k          | SELECTION UP    | moves the "exact" selection up (or activates "exact" mode if not in it)              |
+|   j          | SELECTION DOWN  | moves the "exact" selection down (or activates "exact" mode if not in it)            |
+|   z          | STEP            | executes one step of the program and captures/displays the next frame of it          |
+|   +          | GROW SELECTION  | makes the "exact" selection taller (bounded by the CPU time the restore can afford)  |
+|   -          | SHRINK SELECTION| makes the "exact" selection shorter                                                  |
+|   RESTORE    | EXIT            | returns to the debugger                                                              |
+
+The replay leaves very few free cycles, so the keyboard is only scanned once per
+frame and an ordinary key must still be held when that scan comes around.  The
+keys above also do nothing at all while a frame is being built, which on a busy
+frame is a visible pause.  While that build is running the border cycles through
+colours to show it is working -- the cycling is driven by the writes being
+processed, so it slows down and speeds up with the real rate of progress, and
+the border returns to the program's own colour as soon as the replay starts.
+
+`RESTORE` is the exception on both counts: it latches in the VIA, so a tap
+always registers, and it is checked during frame generation as well as during
+the replay.  It abandons whatever is in progress and returns to the debugger.
 
 ---
 
@@ -326,7 +357,7 @@ Breakpoints can only be added to buffers that have been named.
 
 ## WATCHES
 Watches are set within the memory editor (`F3`). When the cursor is over the
-desired byte to watch, press `C= + w` to add a watch to the address of the
+desired byte to watch, then press `C= + w` to add a watch to the address of the
 byte under the cursor.  A beep will confirm that the watch
 was added.
 

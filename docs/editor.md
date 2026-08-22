@@ -79,7 +79,7 @@ The up/down cursor keys navigate between pages of symbols. Press RESTORE to retu
 
 The `:` key puts the editor in _EX_ mode.  In this mode, a string is accepted from the user.
 The format of this string is a _command_ (usually one or two characters) followed by zero or more
-arguments.  E.g. `:w hello.s` will _write_ a file named "hello.s" to disk.
+arguments.  E.g. `:s hello.s` will _write_ a file named "hello.s" to disk.
 
 The table below details the available commands in _EX_ mode.
 
@@ -92,7 +92,6 @@ The table below details the available commands in _EX_ mode.
 |    D    | export Debug file            | Filename                        | exports the loaded assembly, debug info, and symbol table as a debug (`.D`) file                |
 |    L    | Load Debug file              | Filename                        | loads the given debug (`.D`) file (symbol table, debug info, and program data)                  |
 |    e    | Edit                         | Filename                        | loads the buffer with the contents of the given file                                            |
-|    g    | Goto                         | Symbol to run at (optional)     | executes the program at the address of the given symbol                                         |
 |    o    | assemble to Object           | Filename                        | assembles the current source buffer to an object file with the given filename                   |
 |    P    | export .PRG                  | Filename                        | exports the active assembly to a .PRG file                                                      |
 |    r    | Rename                       | Name                            | renames the buffer to the given name                                                            |
@@ -104,7 +103,7 @@ The table below details the available commands in _EX_ mode.
 #### ASSEMBLE FILE :a [filename]
 
 Assembles the contents of the given file. This is functionally the same as opening
-the given file and assembling it with debug information (F4).
+the given file and assembling it with debug information (`C= + a`).
 
 Invoking the debugger will invoke it for the last assembled file (not the current
 source buffer) in this scenario.  The debugger cares about the active debug
@@ -115,7 +114,7 @@ Example:
 
 #### EXPORT BINARY :B [filename]
 
-Exports the active assembly (F3/F4) to the given file as binary.  This means
+Exports the active assembly (`C= + a`) to the given file as binary.  This means
 no load address is prepended to the file.  This can be useful if you are using
 Monster to create level data or other code loaded by your main program.  It
 can also be used to export things like data tables for use with .INCBIN
@@ -189,7 +188,7 @@ Example:
 
 #### EXPORT .PRG :P [filename]
 
-Exports the active assembly (F3/F4) to the given file as a .PRG file.  This means
+Exports the active assembly (`C= + a`) to the given file as a .PRG file.  This means
 a load address is prepended to the file prior to export.  This produces a
 standalone executable you can use when you are done working on your program.
 
@@ -326,8 +325,8 @@ line would not fit on screen.
 
 ### LINE ENDINGS
 
-Files are stored with $0d line endings, but files saved with UNIX-style line
-endings ($0a) will automatically be converted when the file is loaded.
+Files are stored with $0d line endings, but files saved with UNIX-style
+line endings ($0a) will be automatically converted when the file is loaded.
 
 ### JUMP LISTS
 When the user "jumps" to a different position in the source (`gg`, `G`, `goto line`,
@@ -367,7 +366,7 @@ following commands:
 |  Clear        |SHIFT+CLR| Sets all pixels in the UDG to the background color                                                   |
 |  Done         | RETURN  | Exits the editor and enters (or updates) the .db commands to create the graphic in the editor        |
 |  Quit         | STOP    | Exits the editor without creating/updating the graphic contained in the editor                       |
-| Toggle Mode   |   M     | If in hires mode, switches to multicolor mode or vice versa                                         |
+| Toggle Mode   |   M     | If in hires mode, switches to multicolor mode or vice versa                                          |
 
 Entering the editor while on a line with an 8-byte ".db" definition (e.g. `.db $ff,$00,$ff,$00,$ff,$00,$ff,$00`) will pre-populate the
 UDG editor with the character defined by these directives.
