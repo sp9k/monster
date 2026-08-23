@@ -229,12 +229,6 @@ guitogglehide = gui::togglehide
 	inx			; ldx #$00
 	stx zp::banksp		; reset "far" (bank byte) stack
 	stx zp::gendebuginfo
-
-	inx			; ldx #$01
-	stx zp::verify		; don't assemble code (just check syntax)
-	stx fmt::enable		; enable formatting
-	stx autoindent		; enable auto-indent
-
 	jsr enter_command
 
 	; rewind source and get the first line's contents in textbuffer
@@ -265,6 +259,11 @@ guitogglehide = gui::togglehide
 	inx			; .X=0
 	stx zp::banksp
 	stx debugging
+
+	inx			; ldx #$01
+	stx zp::verify		; don't assemble code (just check syntax)
+	stx fmt::enable		; enable formatting
+	stx autoindent		; enable auto-indent
 
 	jsr edit		; initialize size/mode/etc.
 

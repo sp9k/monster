@@ -118,6 +118,11 @@ __debug_sw_valid: .byte 0	; if !0, stopwatch is valid
 
 breakpoints_active: .byte 0	; if !0 breakpoints are installed
 
+; storage for the user NMI and BRK vectors in cases where they
+; are replaced with special debug ones
+.export progvecs
+progvecs: .res DBGVECS_SIZE
+
 show_extended_state: .byte 0	; if !0, show extra info about machine state
 
 lineset: .byte 0		; not zero if we know the line number we're on
@@ -1151,6 +1156,13 @@ __debug_step:
 	lda #$d5
 	sta $9ff2
 
+	; save BRK/NMI vectors
+	ldx #DBGVECS_SIZE-1
+:	lda prog00+DBGVECS+@BLK5_OFFSET,x
+	sta progvecs,x
+	dex
+	bpl :-
+
 	ldx #$00
 :	lda $00,x
 	sta prog00+@BLK5_OFFSET,x
@@ -1162,9 +1174,23 @@ __debug_step:
 	sta prog00+$300+@BLK5_OFFSET,x
 	dex
 	bne :-
-	beq reset_blk5_and_ret
+
+	; restore BRK/NMI vector in virtual memory
+	ldx #DBGVECS_SIZE-1
+:	lda progvecs,x
+	sta prog00+DBGVECS+@BLK5_OFFSET,x
+	dex
+	bpl :-
+	jmp reset_blk5_and_ret
 
 .else
+	; save BRK/NMI vectors
+	ldx #DBGVECS_SIZE-1
+:	lda prog00+DBGVECS,x
+	sta progvecs,x
+	dex
+	bpl :-
+
 	ldx #$00
 :	lda $00,x
 	sta prog00,x
@@ -1176,6 +1202,13 @@ __debug_step:
 	sta prog00+$300,x
 	dex
 	bne :-
+
+	; restore BRK/NMI vector in virtual memory
+	ldx #DBGVECS_SIZE-1
+:	lda progvecs,x
+	sta prog00+DBGVECS,x
+	dex
+	bpl :-
 	jmp (@ret)
 .endif
 .endproc

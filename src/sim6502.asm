@@ -214,11 +214,11 @@ tracing: .byte 0
 	cpx #$20
 	bne @copy
 
-	; begin with no interrupts pending and both timers on each VIA armed
+	; begin with no interrupts pending
 	lda #$00
 	sta __sim_via1+via_ifr
 	sta __sim_via2+via_ifr
-	lda #$01
+	sta __sim_via1+via_ier
 	sta via_t1_armed
 	sta via_t1_armed+1
 	sta via_t2_armed
@@ -2423,8 +2423,9 @@ h_rti:
 .proc via_read
 	txa
 	pha			; save address LSB
-	and #$1f
-	tax			; .X = offset into the shadow registers
+	sec
+	sbc #<$9110
+	tax			; .X = offset into shadow registers ($00-$1f)
 	and #$0f		; .A = register number
 	cmp #via_t1cl
 	beq @t1cl
@@ -2490,7 +2491,8 @@ h_rti:
 	sta viatmp		; save the value to write
 	txa
 	pha			; save address LSB
-	and #$1f
+	sec
+	sbc #<$9110
 	tax			; .X = offset into the shadow registers
 	and #$0f		; .A = register number
 	cmp #via_t1cl
@@ -2917,18 +2919,10 @@ h_rti:
 
 @notvia:
 	; check if target address is ok
-	; writes to IO2/3 ($9800-$9fff) and $316-$319 are not allowed
+	; writes to IO2/3 ($9800-$9fff) are not allowed
 	cpy #$98
-	bcc :+
-	cpy #$a0
-	bcc @err
-
-:	; check the LSB for $316-$319
-	cpy #$03
-	bne @ok
-	cpx #$16
 	bcc @ok
-	cpx #$1a	; $31a+ (KERNAL vectors) may be legitimately revectored
+	cpy #$a0
 	bcs @ok
 
 @err:	; an important memory location will be clobbered

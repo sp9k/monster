@@ -35,6 +35,10 @@ prog1000: .res $1000		; $1000-$2000
 .endif
 
 prog9000: .res $10		; $9000-$9010
+
+.ifdef ultimem
+.res $9110-$9010		; padding between the VIC and VIA images
+.endif
 prog9110: .res $20		; $9110-$9130
 
 ; PROG9400 (COLOR RAM)

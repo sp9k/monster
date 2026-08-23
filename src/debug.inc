@@ -1,3 +1,6 @@
+; the user program's own BRK/NMI vectors (see DBGVECS in ram.inc)
+.import progvecs
+
 .import __debug_breakpointslo
 .import __debug_breakpointshi
 .import __debug_breakpoint_lineslo
@@ -41,6 +44,7 @@
 .import __debug_enable_expansion
 
 .scope dbg
+	progvecs             = ::progvecs
 	breakpointslo        = __debug_breakpointslo
 	breakpointshi        = __debug_breakpointshi
 	breakpoint_lineslo   = __debug_breakpoint_lineslo

@@ -131,6 +131,13 @@ ret:     .word 0
 	ldx #<PROGRAM_STACK_START
 	stx sim::reg_sp
 
+	; initialize debug BRK/NMI vectors
+	ldx #DBGVECS_SIZE-1
+:	lda DBGVECS,x
+	sta dbg::progvecs,x
+	dex
+	bpl :-
+
 	ldxy #@save_done	; need to pass return address
 	jmp dbg::save_user_zp
 

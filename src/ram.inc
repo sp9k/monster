@@ -3,6 +3,12 @@ RAM_INC = 1
 
 .include "zeropage.inc"
 
+;*******************************************************************************
+; DBGVECS
+; Address of BRK and NMI vectors
+DBGVECS      = $0316
+DBGVECS_SIZE = 4
+
 .ifdef vic20
 .include "vic20/ram.inc"
 .endif
