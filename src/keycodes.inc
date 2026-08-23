@@ -26,7 +26,8 @@ K_DEL       = $14	; DELETE
 K_GO_BASIC       = $85	; F1
 ;                = $89	; F2
 K_ASM_DEBUG      = $b0	; C= + a (assemble with debug info)
-			; up for the universal MEMVIEW binding)
+K_DEBUG          = $ac	; C= + d
+
 K_LINK           = $b6  ; C= + l (link)
 K_MONITOR_WIN    = $88	; F7
 K_MONITOR        = $8c	; F8 (SHIFT + F7)
@@ -89,7 +90,6 @@ K_STEPOUT  = $79	; y
 
 K_SET_WATCH = $77	; w (for use in MEMORY editor)
 K_ADD_WATCH = $b3	; C= + w (for use in WATCH editor)
-K_DEL_WATCH = $ac	; C= + d
 
 ;*******************************************************************************
 ; WINDOW KEYS

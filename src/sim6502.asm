@@ -230,7 +230,11 @@ tracing: .byte 0
 	lda __sim_via2+via_t2cl
 	sta via_t2_latch+1
 
-	jsr calc_frame_cyc		; establish the initial frame length
+.ifdef ultimem
+	CALL FINAL_BANK_SIM, calc_frame_cyc	; establish initial frame length
+.else
+	jsr calc_frame_cyc			; establish initial frame length
+.endif
 .endif
 	rts
 .endproc

@@ -48,7 +48,7 @@ Operators with a _higher_ precedence are evaluated before those with a lower
 one.  For example, `1+2*3` will evaluate `2*3` (6) before adding `1+6` to
 produce the final result of 7.
 
-| operator | description                                                            | precedence |
+| OPERATOR | DESCRIPTION                                                            | PRECEDENCE |
 |----------|------------------------------------------------------------------------|------------|
 |   `+`    | binary operator to add two values                                      |     1      |
 |   `-`    | binary operator to subtract one value from another (also unary negate) |     1      |

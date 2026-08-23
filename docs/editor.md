@@ -20,30 +20,31 @@ Below are the basic commands along with their associated key combinations. These
 commands are available regardless of insertion mode (see the _Editor Modes_ section
 below for more info on modes).
 
-|  key   | name          |   description                                                          |
-|--------|---------------|------------------------------------------------------------------------|
-| C= + a | Assemble      | assembles the active program                                           |
-| C= + b | Set Breakpoint| sets a breakpoint at the current line                                  |
-| C= + c | Refresh       | refreshes the screen by redrawing the source buffer                    |
-|    -   | File Viewer   | list directory, shows the files on the current disk                    |
-| C= + l | Link          | links all .o files on disk using the LINK file                         |
-| C= + n | New buffer    | creates a new source buffer and sets it as the active buffer           |
-| C= + q | Close buffer  | closes the current buffer and opens the next one that is open          |
-| C= + y | Show Symbols  | lists the symbol table for the assembled program                       |
-| C= + e | Next Error    | if there are errors from the last assembly, navigates to the next one  |
-| C= + t | Show buffers  | displays a list of the currently open buffers                          |
-|   F4   | Link          | links the object files in the project using the LINK file on disk      |
-|   F3   | MemView       | opens the memory viewer/editor (same as while debugging; press <- to exit)|
-|   F5   | BrkView       | opens the breakpoint viewer/editor (same as while debugging)           |
-|   F6   | WatchView     | opens the watch viewer/editor (same as while debugging)                |
-| C= + + | Next Drive    | Selects the next drive (limited to #15)                                |
-| C= + - | Prev Drive    | Selects the previous drive (limited to #8)                             |
-|    :   | Ex Command    | Enters "EX" mode (see the EX COMMANDS section below for more on this)  |
+|  KEY     | NAME            |   DESCRIPTION                                                          |
+|----------|-----------------|------------------------------------------------------------------------|
+| `C= + a` | `ASSEMBLE      `| assembles the active program                                           |
+| `C= + d` | `DEBUG         `| begins debugging at the origin of the assembled program                |
+| `C= + b` | `SET BREAKPOINT`| sets a breakpoint at the current line                                  |
+| `C= + c` | `REFRESH       `| refreshes the screen by redrawing the source buffer                    |
+| `   -  ` | `FILE VIEWER   `| list directory, shows the files on the current disk                    |
+| `C= + l` | `LINK          `| links all .o files on disk using the LINK file                         |
+| `C= + n` | `NEW BUFFER    `| creates a new source buffer and sets it as the active buffer           |
+| `C= + q` | `CLOSE BUFFER  `| closes the current buffer and opens the next one that is open          |
+| `C= + y` | `SHOW SYMBOLS  `| lists the symbol table for the assembled program                       |
+| `C= + e` | `NEXT ERROR    `| if there are errors from the last assembly, navigates to the next one  |
+| `C= + t` | `SHOW BUFFERS  `| displays a list of the currently open buffers                          |
+| `  F4  ` | `LINK          `| links the object files in the project using the LINK file on disk      |
+| `  F3  ` | `MEMVIEW       `| opens the memory viewer/editor (same as while debugging; press <- to exit)|
+| `  F5  ` | `BRKVIEW       `| opens the breakpoint viewer/editor (same as while debugging)           |
+| `  F6  ` | `WATCHVIEW     `| opens the watch viewer/editor (same as while debugging)                |
+| `C= + +` | `NEXT DRIVE    `| Selects the next drive (limited to #15)                                |
+| `C= + -` | `PREV DRIVE    `| Selects the previous drive (limited to #8)                             |
+| `   :  ` | `EX COMMAND    `| Enters "EX" mode (see the EX COMMANDS section below for more on this)  |
 
 #### DRIVE SELECTION
 
 The current drive selection is displayed with a `#` prefix in the status bar.
-`C= + + (plus)` selects the _next_ available drive and `C= + - (minus)` selects
+`C= + + (PLUS)` selects the _next_ available drive and `C= + - (MINUS)` selects
 the _previous_ available drive.  The valid device range is 8-15.
 
 #### DIRECTORY VIEWER
@@ -65,15 +66,15 @@ The up/down cursor keys navigate between pages of symbols. Press RESTORE to retu
 
 #### FUNCTION (f KEY) COMMANDS
 
-|  key   | name             |   description                                                                                |
-|--------|------------------|----------------------------------------------------------------------------------------------|
-|   f1   | Run              | saves Monster's state and transfers control to the last assembly (or enters BASIC if none)   |
-|   f3   | Memory Viewer    | activates the memory viewer                                                                  |
-|   f4   | Log              | displays the active log file (if any)                                                         |
-|   f5   | Show buffers     | displays a list of the currently open buffers                                                |
-|   f6   | Show project     | displays the current project configuration                                                   |
-|   f7   | Monitor          | opens the text-based monitor as a window (see the _Monitor_ section)                          |
-|   f8   | Monitor (full)   | opens the text-based monitor maximized (`SHIFT + f7`)                                         |
+|  KEY     | NAME             |   DESCRIPTION                                                                                |
+|----------|------------------|----------------------------------------------------------------------------------------------|
+|   `f1`   | `RUN           `   | saves Monster's state and transfers control to the last assembly (or enters BASIC if none)   |
+|   `f3`   | `MEMORY VIEWER `   | activates the memory viewer                                                                  |
+|   `f4`   | `LOG           `   | displays the active log file (if any)                                                         |
+|   `f5`   | `SHOW BUFFERS  `   | displays a list of the currently open buffers                                                |
+|   `f6`   | `SHOW PROJECT  `   | displays the current project configuration                                                   |
+|   `f7`   | `MONITOR       `   | opens the text-based monitor as a window (see the _Monitor_ section)                          |
+|   `f8`   | `MONITOR (FULL)`   | opens the text-based monitor maximized (`SHIFT + f7`)                                         |
 
 ### EX COMMANDS
 
@@ -83,21 +84,19 @@ arguments.  E.g. `:s hello.s` will _write_ a file named "hello.s" to disk.
 
 The table below details the available commands in _EX_ mode.
 
-| command | name                         |   args                          | description                                                                                     |
-|---------|------------------------------|---------------------------------|-------------------------------------------------------------------------------------------------|
-|    a    | Assemble File                | Filename                        | assembles the given filename                                                                    |
-|    B    | export Binary                | Filename                        | exports the active assembly to a binary file (no .PRG header)                                   |
-|    d    | Start Debugger               | Symbol to debug at (optional)   | begins debugging at the given label                                                             |
-|    db   | Start Debugger (with init)   | Symbol to debug at (optional)   | begins debugging at the given label. Initializes target state with the BASIC cold start handler |
-|    D    | export Debug file            | Filename                        | exports the loaded assembly, debug info, and symbol table as a debug (`.D`) file                |
-|    L    | Load Debug file              | Filename                        | loads the given debug (`.D`) file (symbol table, debug info, and program data)                  |
-|    e    | Edit                         | Filename                        | loads the buffer with the contents of the given file                                            |
-|    o    | assemble to Object           | Filename                        | assembles the current source buffer to an object file with the given filename                   |
-|    P    | export .PRG                  | Filename                        | exports the active assembly to a .PRG file                                                      |
-|    r    | Rename                       | Name                            | renames the buffer to the given name                                                            |
-|    s    | Save                         | Filename                        | saves the buffer to the given filename                                                          |
-|    S    | Save All                     |   N/A                           | saves all modified buffers that are open currently                                              |
-|    x    | Scratch                      | Filename                        | scratches (deletes) the given filename                                                          |
+| COMMAND   | NAME                  |   ARGS                          | DESCRIPTION                                                                                     |
+|-----------|-----------------------|---------------------------------|-------------------------------------------------------------------------------------------------|
+|    `a`    | `ASSEMBLE FILE     `  | Filename                        | assembles the given filename                                                                    |
+|    `B`    | `EXPORT BINARY     `  | Filename                        | exports the active assembly to a binary file (no .PRG header)                                   |
+|    `D`    | `EXPORT DEBUG FILE `  | Filename                        | exports the loaded assembly, debug info, and symbol table as a debug (`.D`) file                |
+|    `L`    | `LOAD DEBUG FILE   `  | Filename                        | loads the given debug (`.D`) file (symbol table, debug info, and program data)                  |
+|    `e`    | `EDIT              `  | Filename                        | loads the buffer with the contents of the given file                                            |
+|    `o`    | `ASSEMBLE TO OBJECT`  | Filename                        | assembles the current source buffer to an object file with the given filename                   |
+|    `P`    | `EXPORT .PRG       `  | Filename                        | exports the active assembly to a .PRG file                                                      |
+|    `r`    | `RENAME            `  | Name                            | renames the buffer to the given name                                                            |
+|    `s`    | `SAVE              `  | Filename                        | saves the buffer to the given filename                                                          |
+|    `S`    | `SAVE ALL          `  |   N/A                           | saves all modified buffers that are open currently                                              |
+|    `x`    | `SCRATCH           `  | Filename                        | scratches (deletes) the given filename                                                          |
 
 
 #### ASSEMBLE FILE :a [filename]
@@ -121,33 +120,6 @@ can also be used to export things like data tables for use with .INCBIN
 
 Example:
 `:B DATA.B`
-
-#### Start Debugger :d [symbol]
-Begins debugging at the given symbol using the active debug information.
-
-If no symbol is given, the program will
-begin and the debugger invoked at the _lowest_ defined origin (.ORG) in the
-program. See [Debugger](https://github.com/sp9k/monster#debugger) for more
-details on debugging.
-
-Example:
-`:d START`
-
-#### START DEBUGGER (with init) :db [symbol]
-
-Begins debugging at the given symbol using the active debug information, initializing the
-system with the BASIC COLD start handler first.
-
-This is useful if your program expects the system to be initialized with the default
-VIC-registers, zeropage values, etc.
-
-If no symbol is given, the program will
-begin and the debugger invoked at the _lowest_ defined origin (.ORG) in the
-program. See [Debugger](https://github.com/sp9k/monster#debugger) for more
-details on debugging.
-
-Example:
-`:db START`
 
 #### EXPORT DEBUG FILE :D [filename]
 
@@ -246,44 +218,44 @@ source code and to enter other modes.
 Navigation behaves similar to `vi` and many basic `vi` commands are supported.
 The following keys are handled in COMMAND mode.
 
-|  key       | name       | description                                                            |
-|------------|------------|------------------------------------------------------------------------|
-| HOME       | Home       | moves the cursor to column 0                                           |
-| :_n_       | Goto line  | at the EX prompt (`:`), enter a line number to move the cursor to it   |
-| C= + [1-8] | Goto Buffer| opens the buffer corresponding to the number key that is pressed       |
-| Ctrl + h   | Prev Buffer| opens the buffer before the active one (if there is one)               |
-| Ctrl + l   | Next Buffer| opens the buffer after the active one (if there is one)                |
-| C= + i     | Jump up    | jumps forward to the next source position that was "jumped" to         |
-| C= + o     | Jump back  | jumps back to the last source position that was "jumped" to            |
-|    $       | End of Line| moves the cursor to the end of the current line                        |
-|    ;;      | Banner     | inserts a banner (full line of semicolons) below the cursor            |
-|    gg      | Top of File| moves the cursor to the first character in the file                    |
-|    gd      | Goto Def   | if the cursor is on a label reference, navigates to that label         |
-|    G       | End of File| moves the cursor to the last line in the file                          |
-|    h       | Left       | moves the cursor left                                                  |
-|    j       | Down       | moves the cursor down                                                  |
-|    k       | Up         | moves the cursor up                                                    |
-|    l       | Right      | moves the cursor right                                                 |
-|    H       | Home       | moves the cursor to the top left of the screen                         |
-|    L       | Last       | moves the cursor to the bottom left of the screen                      |
-|    d0      | Delete To  | deletes everything on the line before the cursor                       |
-|    D/d$    | Delete Rest| deletes the contents of the line after the cursor's position           |
-|    dd      | Delete Line| deletes the next line                                                  |
-|    dw      | Delete Word| deletes the next word                                                  |
-|    J       | Join lines | moves the contents of the next line to the end of the current one      |
-|    0       | Column 0   | moves the cursor to the first column of the current line               |
-|    a       | append char| enters insert mode and moves to the next character                     |
-|    A       | append line| enters insert mode and moves to the last character in the current line |
-|    C       | change line| deletes from the cursor to the end of the line and enters insert       |
-|    o       | open line  | opens a new line below the cursor and moves to it                      |
-|    O       | open line ^| opens a new line above the cursor and moves to it                      |
-|    s       | sub char   | deletes the character under the cursor and enters insert mode          |
-|    S       | sub line   | deletes the line under the cursor and enters insert mode               |
-|    p       | paste below| pastes the contents of the copy-buffer to the line below the cursor    |
-|    P       | paste above| pastes the contents of the copy-buffer to the line above the cursor    |
-|    I       | Insert line| enters insert mode and moves to the first character in the current line|
-|    [       | Prev Block | moves to the previous empty line or start of file if there isn't one   |
-|    ]       | Next Block | moves to the next empty line or end of file if there isn't one         |
+|  KEY         | NAME         | DESCRIPTION                                                            |
+|--------------|--------------|------------------------------------------------------------------------|
+| `HOME      ` | `HOME       `| moves the cursor to column 0                                           |
+| `:_n_      ` | `GOTO LINE  `| at the EX prompt (`:`), enter a line number to move the cursor to it   |
+| `C= + [1-8]` | `GOTO BUFFER`| opens the buffer corresponding to the number key that is pressed       |
+| `Ctrl + h  ` | `PREV BUFFER`| opens the buffer before the active one (if there is one)               |
+| `Ctrl + l  ` | `NEXT BUFFER`| opens the buffer after the active one (if there is one)                |
+| `C= + i    ` | `JUMP UP    `| jumps forward to the next source position that was "jumped" to         |
+| `C= + o    ` | `JUMP BACK  `| jumps back to the last source position that was "jumped" to            |
+| `   $      ` | `END OF LINE`| moves the cursor to the end of the current line                        |
+| `   ;;     ` | `BANNER     `| inserts a banner (full line of semicolons) below the cursor            |
+| `   gg     ` | `TOP OF FILE`| moves the cursor to the first character in the file                    |
+| `   gd     ` | `GOTO DEF   `| if the cursor is on a label reference, navigates to that label         |
+| `   G      ` | `END OF FILE`| moves the cursor to the last line in the file                          |
+| `   h      ` | `LEFT       `| moves the cursor left                                                  |
+| `   j      ` | `DOWN       `| moves the cursor down                                                  |
+| `   k      ` | `UP         `| moves the cursor up                                                    |
+| `   l      ` | `RIGHT      `| moves the cursor right                                                 |
+| `   H      ` | `HOME       `| moves the cursor to the top left of the screen                         |
+| `   L      ` | `LAST       `| moves the cursor to the bottom left of the screen                      |
+| `   d0     ` | `DELETE TO  `| deletes everything on the line before the cursor                       |
+| `   D/d$   ` | `DELETE REST`| deletes the contents of the line after the cursor's position           |
+| `   dd     ` | `DELETE LINE`| deletes the next line                                                  |
+| `   dw     ` | `DELETE WORD`| deletes the next word                                                  |
+| `   J      ` | `JOIN LINES `| moves the contents of the next line to the end of the current one      |
+| `   0      ` | `COLUMN 0   `| moves the cursor to the first column of the current line               |
+| `   a      ` | `APPEND CHAR`| enters insert mode and moves to the next character                     |
+| `   A      ` | `APPEND LINE`| enters insert mode and moves to the last character in the current line |
+| `   C      ` | `CHANGE LINE`| deletes from the cursor to the end of the line and enters insert       |
+| `   o      ` | `OPEN LINE  `| opens a new line below the cursor and moves to it                      |
+| `   O      ` | `OPEN LINE ^`| opens a new line above the cursor and moves to it                      |
+| `   s      ` | `SUB CHAR   `| deletes the character under the cursor and enters insert mode          |
+| `   S      ` | `SUB LINE   `| deletes the line under the cursor and enters insert mode               |
+| `   p      ` | `PASTE BELOW`| pastes the contents of the copy-buffer to the line below the cursor    |
+| `   P      ` | `PASTE ABOVE`| pastes the contents of the copy-buffer to the line above the cursor    |
+| `   I      ` | `INSERT LINE`| enters insert mode and moves to the first character in the current line|
+| `   [      ` | `PREV BLOCK `| moves to the previous empty line or start of file if there isn't one   |
+| `   ]      ` | `NEXT BLOCK `| moves to the next empty line or end of file if there isn't one         |
 
 ### INSERT MODE
 Entering insert mode allows the user to enter text at the cursor location.  Keystrokes are
@@ -297,10 +269,10 @@ In _VISUAL_ mode (accessed via `v` in _COMMAND_ mode), the user can select
 a block of text which may then be deleted or copied.  Below is the table of supported commands
 while in visual mode. The `<-` key will return the user to _COMMAND_ mode.
 
-|  key       | name       | description                                                            |
-|------------|------------|------------------------------------------------------------------------|
-|    d       | delete     | deletes the selected text _and_ copies it to the copy buffer           |
-|    y       | yank       | copies the selected text (in VISUAL mode) to the copy buffer           |
+|  KEY         | NAME      | DESCRIPTION                                                            |
+|--------------|-----------|------------------------------------------------------------------------|
+|    `d`       | `DELETE`  | deletes the selected text _and_ copies it to the copy buffer           |
+|    `y`       | `YANK  `  | copies the selected text (in VISUAL mode) to the copy buffer           |
 
 ### VISUAL LINE MODE
 _VISUAL LINE_, which is entered with the `SHIFT - v` key combination from _COMMAND_ mode is similar to _VISUAL_ mode,
@@ -357,16 +329,16 @@ This editor allows you to visually create simple graphics for your programs.  Na
 is done with the same vi-like commands used in the main editor and graphics are created using the
 following commands:
 
-| command Name  |   key   |  behavior
-|---------------|---------|------------------------------------------------------------------------------------------------------|
-|  Plot Color 1 |    1    | Sets the selected position to the background color                                                   |
-|  Plot Color 2 |    2    | Sets the selected position to the character color (hires mode) or the border color (multicolor mode) |
-|  Plot Color 3 |    3    | Multicolor mode only. Sets the selected position to the character color                              |
-|  Plot Color 4 |    4    | Multicolor mode only. Sets the selected position to the auxiliary color                              |
-|  Clear        |SHIFT+CLR| Sets all pixels in the UDG to the background color                                                   |
-|  Done         | RETURN  | Exits the editor and enters (or updates) the .db commands to create the graphic in the editor        |
-|  Quit         | STOP    | Exits the editor without creating/updating the graphic contained in the editor                       |
-| Toggle Mode   |   M     | If in hires mode, switches to multicolor mode or vice versa                                          |
+| COMMAND NAME    |   KEY     |  BEHAVIOR
+|-----------------|-----------|------------------------------------------------------------------------------------------------------|
+| ` PLOT COLOR 1` |`    1    `| Sets the selected position to the background color                                                   |
+| ` PLOT COLOR 2` |`    2    `| Sets the selected position to the character color (hires mode) or the border color (multicolor mode) |
+| ` PLOT COLOR 3` |`    3    `| Multicolor mode only. Sets the selected position to the character color                              |
+| ` PLOT COLOR 4` |`    4    `| Multicolor mode only. Sets the selected position to the auxiliary color                              |
+| ` CLEAR       ` |`SHIFT+CLR`| Sets all pixels in the UDG to the background color                                                   |
+| ` DONE        ` |` RETURN  `| Exits the editor and enters (or updates) the .db commands to create the graphic in the editor        |
+| ` QUIT        ` |` STOP    `| Exits the editor without creating/updating the graphic contained in the editor                       |
+| `TOGGLE MODE  ` |`   M     `| If in hires mode, switches to multicolor mode or vice versa                                          |
 
 Entering the editor while on a line with an 8-byte ".db" definition (e.g. `.db $ff,$00,$ff,$00,$ff,$00,$ff,$00`) will pre-populate the
 UDG editor with the character defined by these directives.

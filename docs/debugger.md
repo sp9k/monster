@@ -82,26 +82,26 @@ the free-run that crashed the system was initiated.
 The following commands are supported by the debugger and are accessed by their
 respective Key in the table below.
 
-|  key         | name            |   description                                                                        |
-|--------------|-----------------|--------------------------------------------------------------------------------------|
-|  F1          | Source View     | maximizes the screen area for viewing the source code                                |
-|  F2          | Register Editor | enters the register editor                                                           |
-|  F3          | Mem View        | activates the memory window, which takes control until `<-` is pressed               |
-|  F5          | Break View      | displays the breakpoints that have been set and allows them to be enabled/disabled   |
-|  F6          | Watch View      | displays the watches that have been set (see the _Watch Viewer_ section)             |
-|  F7          | Monitor         | opens the text-based monitor as a window over the debug view                         |
-|  F8          | Monitor (full)  | opens the text-based monitor maximized (`SHIFT + F7`)                                |
-|  s           | Step Over      | steps to the next instruction. If it is a JSR, continues AFTER the target subroutine |
-|  y           | Step Out        | steps until the next RTS instruction                                                 |
-|  z           | Step            | steps to the next instruction.                                                       |
-|  t           | Trace           | like GO but the debugger takes control between each instruction                      |
-|  C= + g      | Go              | begins execution at the cursor                                                       |
-|  C= + p      | Jump to         | sets the PC to the address corresponding to the line the cursor is on                |
-|  C= + r      | Reset Stopwatch | resets the value of the stopwatch to 0                                               |
-| C= + x       | Quit Debugger   | Prompts the user for confirmation then quits the debugger upon receiving it          |
-|   <-         | Exit            | exits the debugger and returns to the editor                                         |
-| SPACE        | Show Frame      | Displays the current state of the user program                                       |
-| ^ (up arrow) |  Goto Break     | navigates to the address that the debugger is currently paused at                    |
+|  KEY           | NAME            |   DESCRIPTION                                                                        |
+|----------------|-----------------|--------------------------------------------------------------------------------------|
+|  `f1          `| SOURCE VIEW     | maximizes the screen area for viewing the source code                                |
+|  `f2          `| REGISTER EDITOR | enters the register editor                                                           |
+|  `f3          `| MEM VIEW        | activates the memory window, which takes control until `<-` is pressed               |
+|  `f5          `| BREAK VIEW      | displays the breakpoints that have been set and allows them to be enabled/disabled   |
+|  `f6          `| WATCH VIEW      | displays the watches that have been set (see the _Watch Viewer_ section)             |
+|  `f7          `| MONITOR         | opens the text-based monitor as a window over the debug view                         |
+|  `f8          `| MONITOR (FULL)  | opens the text-based monitor maximized (`SHIFT + F7`)                                |
+|  `s           `| STEP OVER       | steps to the next instruction. If it is a JSR, continues AFTER the target subroutine |
+|  `y           `| STEP OUT        | steps until the next RTS instruction                                                 |
+|  `z           `| STEP            | steps to the next instruction.                                                       |
+|  `t           `| TRACE           | like GO but the debugger takes control between each instruction                      |
+|  `C= + g      `| GO              | begins execution at the cursor                                                       |
+|  `C= + p      `| JUMP TO         | sets the PC to the address corresponding to the line the cursor is on                |
+|  `C= + r      `| RESET STOPWATCH | resets the value of the stopwatch to 0                                               |
+|  `C= + x      `| QUIT DEBUGGER   | Prompts the user for confirmation then quits the debugger upon receiving it          |
+|  ` <-         `| EXIT            | exits the debugger and returns to the editor                                         |
+|  `SPACE       `| SHOW FRAME      | Displays the current state of the user program                                       |
+|  `^ (up arrow)`| GOTO BREAK      | navigates to the address that the debugger is currently paused at                    |
 
 ### REGISTER EDITOR (`F2`)
 
@@ -208,15 +208,15 @@ runtime.
 
 There are other commands available during the "capture" view:
 
-|  KEY         | NAME            |   DESCRIPTION                                                                        |
-|--------------|-----------------|--------------------------------------------------------------------------------------|
-|   f          | FINISH FRAME    | traces the program until the end of the current frame and captures/displays it       |
-|   k          | SELECTION UP    | moves the "exact" selection up (or activates "exact" mode if not in it)              |
-|   j          | SELECTION DOWN  | moves the "exact" selection down (or activates "exact" mode if not in it)            |
-|   z          | STEP            | executes one step of the program and captures/displays the next frame of it          |
-|   +          | GROW SELECTION  | makes the "exact" selection taller (bounded by the CPU time the restore can afford)  |
-|   -          | SHRINK SELECTION| makes the "exact" selection shorter                                                  |
-|   RESTORE    | EXIT            | returns to the debugger                                                              |
+|  KEY           | NAME            |   DESCRIPTION                                                                        |
+|----------------|-----------------|--------------------------------------------------------------------------------------|
+|   `f      `    | FINISH FRAME    | traces the program until the end of the current frame and captures/displays it       |
+|   `k      `    | SELECTION UP    | moves the "exact" selection up (or activates "exact" mode if not in it)              |
+|   `j      `    | SELECTION DOWN  | moves the "exact" selection down (or activates "exact" mode if not in it)            |
+|   `z      `    | STEP            | executes one step of the program and captures/displays the next frame of it          |
+|   `+      `    | GROW SELECTION  | makes the "exact" selection taller (bounded by the CPU time the restore can afford)  |
+|   `-      `    | SHRINK SELECTION| makes the "exact" selection shorter                                                  |
+|   `RESTORE`    | EXIT            | returns to the debugger                                                              |
 
 The replay leaves very few free cycles, so the keyboard is only scanned once per
 frame and an ordinary key must still be held when that scan comes around.  The
@@ -253,12 +253,12 @@ change and overwriting it with a new hex value. The change occurs immediately.
 In addition to hexadecimal keys to edit memory values, the following commands
 are supported within the memory viewer:
 
-| shortcut     | name      |  description                                            |
-|--------------|-----------|---------------------------------------------------------|
-| C= + w       | Add watch | Add watch to the highlighted address                    |
-|    /         | Find Value| Seeks from current memory address for given value       |
-|   <-         |  Exit     | Returns to the debugger                                 |
-| ^ (up-arrow) | Set Addr  | Sets the viewer's address to the given value            |
+| SHORTCUT       | NAME      |  DESCRIPTION                                            |
+|----------------|-----------|---------------------------------------------------------|
+| `C= + w      ` | ADD WATCH | Add watch to the highlighted address                    |
+| `   /        ` | FIND VALUE| Seeks from current memory address for given value       |
+| `  <-        ` | EXIT      | Returns to the debugger                                 |
+| `^ (up-arrow)` | SET ADDR  | Sets the viewer's address to the given value            |
 
 #### SET WATCH (`C= + w`)
 
@@ -307,11 +307,11 @@ was modified as ranges do not list the previous or current values for the watch.
 
 The following keys are supported within the watch viewer:
 
-| shortcut     | name       |  description                                            |
+| SHORTCUT     | NAME       |  DESCRIPTION                                            |
 |--------------|------------|---------------------------------------------------------|
-| C= + w       | Add watch  | Prompt the user for expressions to watch                |
-|  RETURN      | Select/Edit| Enters the memory editor at the watch's address         |
-|   <-         |  Exit      | Returns to the debugger                                 |
+| `C= + w `    | ADD WATCH  | Prompt the user for expressions to watch                |
+| ` RETURN`    | SELECT/EDIT| Enters the memory editor at the watch's address         |
+| `  <-   `    | EXIT       | Returns to the debugger                                 |
 
 #### ADD WATCH (`C= + w`)
 

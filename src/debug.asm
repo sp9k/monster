@@ -228,8 +228,7 @@ blank   = scr::blank
 	lda #CUR_SELECT
 	sta cur::mode
 
-	; set the simulator's initial PC value
-	stxy sim::pc
+	stxy sim::pc		; set the simulator's initial PC value
 
 	; init state
 	ldx #$00

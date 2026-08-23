@@ -324,7 +324,7 @@ Relocations can either be _segment-relative_ (references to object-local SEGMENT
 
 The following table describes the relocation record format in detail.
 
-| field             | size | description
+| FIELD             | SIZE | DESCRIPTION
 |-------------------|------|-------------------------------------------------------------------------------------
 | info              |  1   | bitfield of information about the relocation entry
 | offset            |  2   | offset from SEGMENT to relocate
@@ -335,7 +335,7 @@ The following table describes the relocation record format in detail.
 
 `info` is a bitfield with the following format:
 
-| field      | bit(s) | description
+| FIELD      | BIT(S) | DESCRIPTION
 |------------|--------|---------------------------------------------------------------------
 | size       |   0    | size of target value to modify 0=1 byte, 1=2 bytes
 | mode       |   1    | what to relocate relative to: 0=segment relative, 1=symbol relative

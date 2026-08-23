@@ -356,27 +356,6 @@ main:	jsr key::getch
 .endproc
 
 ;*******************************************************************************
-; LABEL_ADDR_OR_ORG
-; Returns the address of the label given in .XY or, if no label is given (a
-; 0-length string is given) the address of the program origin
-; IN:
-;  - .XY: the address of the label to get the address of
-; OUT:
-;  - .XY: the address of the given label or the address of the origin if no
-;         label was given.
-;  - .C: set on error, clear on success
-.proc label_addr_or_org
-@lbl=r0
-	stxy zp::line
-	ldy #$00
-	lda (zp::line),y
-	bne @label
-	ldxy asm::origin ; use ORG if no label given
-	RETURN_OK
-@label:	jmp expr::eval
-.endproc
-
-;*******************************************************************************
 ; MONITOR
 ; Opens (or re-activates) the monitor as a maximized window
 .proc monitor
@@ -463,16 +442,10 @@ main:	jsr key::getch
 ; IN:
 ;  - .XY: the label name or address to start debugging at
 .proc command_debug
-@addr=zp::editortmp
 	lda debugging
 	bne @ret		; if already debugging, don't do anything
 
-	jsr label_addr_or_org	; get address to begin debugging at
-	stxy @addr
-	bcc :+
-	jmp report_typein_error	; invalid expression
-
-:	jsr src::anydirty
+	jsr src::anydirty
 	beq :+			; if no dirty buffers, continue
 	jsr prompt_saveall	; ask user if they want to save buffers
 	bcc :+
@@ -483,7 +456,7 @@ main:	jsr key::getch
 	jsr close_windows	; close any open windows (also resizes)
 	inc readonly		; enable read-only mode
 
-	ldxy @addr
+	ldxy asm::origin
 	JUMPMAIN dbg::start	; start debugging at address in .XY
 .endproc
 
@@ -2672,8 +2645,8 @@ cancel = enter_command
 	.byte K_UP		; up arrow
 	.byte K_DOWN		; down
 	.byte K_HOME		; HOME
-	;.byte K_ASM 		; assemble
-	.byte K_ASM_DEBUG	; debug
+	.byte K_ASM_DEBUG	; assemble
+	.byte K_DEBUG		; debug
 	.byte K_SHOW_BUFFERS	; show buffers
 	.byte K_MEMVIEW		; mem viewer/editor (same as while debugging)
 	.byte K_BRKVIEW		; breakpoint viewer/editor (same as while debugging)
@@ -2711,7 +2684,7 @@ cancel = enter_command
 .linecont +
 .define specialvecs ccleft, ccright, ccup, ccdown, \
 	home, \
-	command_asmdbg, show_buffers, \
+	command_asmdbg, command_debug, show_buffers, \
 	view::edit, brkpt::edit, watch::edit, \
 	refresh, \
 	view_symbols, view_macros, show_log, command_link, \
@@ -3437,7 +3410,6 @@ goto_buffer:
 .PUSHSEG
 .segment "EDITCODE"	; read from the banked context
 @ex_commands:
-	.byte $64	; d - debug
 	.byte $65	; e - open file
 	.byte $72	; r - rename
 	.byte $73	; s - save file
@@ -3452,9 +3424,8 @@ goto_buffer:
 @num_ex_commands=*-@ex_commands
 
 .linecont +
-.define ex_command_vecs command_debug, \
-	edit_load, command_rename, command_save, command_saveall, \
-	command_scratch, command_assemble_file, \
+.define ex_command_vecs edit_load, command_rename, command_save, \
+	command_saveall, command_scratch, command_assemble_file, \
 	command_savebin, command_saveprg, command_savedbg, command_loaddbg, \
 	command_asm_obj
 .linecont -
