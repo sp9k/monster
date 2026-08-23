@@ -2428,7 +2428,11 @@ cancel = enter_command
 	jsr draw_active_line	; redraw the newly joined line
 	inc zp::cury
 	jsr bumpup
-	jmp end_of_line		; go to end of the new line
+
+	jsr src::before_newl
+	bne @sync		; not at end of the line -> position is valid
+	jsr src::left		; brought up line was empty, back up a character
+@sync:	jmp sync_cur
 .endproc
 
 ;*******************************************************************************
