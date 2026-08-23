@@ -4911,19 +4911,35 @@ goto_buffer:
 ;  - .X: the row to start scrolling at
 ;  - .A: the row to stop scrolling at
 .proc scrollup
+	ldy #$01
+
+	; fall through to scrollupn
+.endproc
+
+;*******************************************************************************
+; SCROLLUPN
+; scrolls everything in the given range of rows up by the given number of rows
+; and highlights the row that is scrolled in (if highlight is enabled)
+; IN:
+;  - .X: the row to start scrolling at
+;  - .A: the row to stop scrolling at
+;  - .Y: the number of rows to scroll by
+.proc scrollupn
 @start=r1
 @stop=r2
+@num=r3
 	stx @start
 	sta @stop
+	sty @num
 	; scroll everything up from below the line we deleted
-	jsr text::scrollup
+	jsr text::scrollupn
 
-	; shift colors up by 1
+	; shift colors up by the same amount
 	ldx @start
 	beq :+
 	dex
 :	ldy @stop
-	lda #$01
+	lda @num
 	jsr draw::scrollcolorsu
 
 .ifdef hard8x8
@@ -5432,7 +5448,7 @@ goto_buffer:
 	sty @tmp
 	lda height
 	ldx #$00
-	jsr text::scrollupn
+	jsr scrollupn		; scroll text/colors/breakpoints/gutter
 	lda zp::cury
 	sec
 	sbc @tmp
@@ -5605,17 +5621,23 @@ goto_buffer:
 ; clear whatever rows are left
 @clrextra:
 	jsr text::clrline
-	ldx zp::cury
-	stx @rowsave
+	lda zp::cury
+	sta @rowsave
+
+	; clear rows [cury, height] inclusive
 @clrloop:
-	txa
-	jsr scr::clrline
-	inc zp::cury
-@clrnext:
 	ldx zp::cury
-	dex
-	cpx height
+	lda #$00
+	sta mem::breakpoint_rows,x	; clear breakpoint render flag
+	jsr draw::resetline		; reset the color for the row
+	lda zp::cury
+	jsr scr::clrline		; clear the bitmap data for the row
+
+	inc zp::cury
+	lda zp::cury
+	cmp height
 	bcc @clrloop
+	beq @clrloop
 
 	lda @rowsave
 	sta zp::cury
