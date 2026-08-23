@@ -3925,7 +3925,6 @@ goto_buffer:
 ; If successful, formats the source according to the type of the assembled line
 ; (instruction, label, etc.) and creates a line/address mapping.
 .proc linedone
-@indent=zp::editortmp
 	jsr is_readonly
 	bne :+
 	jmp begin_next_line	; if READONLY, just go down a line
@@ -3942,20 +3941,23 @@ goto_buffer:
 	pha
 
 	lda #$00
-	sta @indent	; init indent to OFF
 	jsr text::putch
 
 	lda zp::curx
-	beq @fmt_done	; @ column 0, skip tokenization and go to the next line
-	jsr src::up
+	bne @fmt
+	pha			; @ column 0: indent hint is OFF (.A is 0)
+	beq @fmt_done		; skip tokenization (branch always)
+
+@fmt:	jsr src::up
 	jsr fmt_line
-	sta @indent	; set indent from fmt::line's hint
-	php
+	pha			; save indent hint (fmt::line's hint)
+	php			; save fmt_line's result
 	jsr src::down
 	plp
-	bcc @ok
+	bcc @fmt_done
 
 @err:	; invalid line, back up and return
+	pla			; discard the indent hint
 	jsr beep::short
 	pla
 	tay
@@ -3965,12 +3967,15 @@ goto_buffer:
 	jsr src::backspace	; delete the newline that was added
 	jmp sync_cur
 
-@ok:
 @fmt_done:
+	pla			; get the indent hint
+	tax
 	pla			; clean stack
 	pla
+	txa
+	pha			; hold the hint over scroll_line
 	jsr scroll_line
-	lda @indent
+	pla			; restore the indent hint
 
 	; fall through to start_next_line
 .endproc
@@ -4104,8 +4109,10 @@ goto_buffer:
 ; PRESERVED:
 ;   - .X
 .proc insert
-@xsave=zp::editortmp
-	stx @xsave
+	tay			; save the character
+	txa
+	pha			; save .X
+	tya			; restore the character
 	cmp #$14		; handle DEL
 	bne :+
 	jsr ccdel
@@ -4134,7 +4141,8 @@ goto_buffer:
 	bcs @done
 	jsr src::insert
 
-@done:	ldx @xsave
+@done:	pla			; restore .X
+	tax
 	rts
 .endproc
 
