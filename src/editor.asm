@@ -4885,6 +4885,7 @@ goto_buffer:
 	jsr src::downn		; move to the line that we're bringing up
 	bcs @done		; no new line to get
 
+	jsr src::home
 	jsr src::get
 	lda height
 	jsr draw_src_line	; draw the new line that was scrolled up
