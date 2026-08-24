@@ -68,6 +68,9 @@ __str_debug_stop_debugging: .byte "stop debugging? y/n",0
 .export __str_device_not_present
 __str_device_not_present: .byte "device not present",0
 
+.export __str_drive_error
+__str_drive_error: .byte "drive error",0
+
 .export __str_jam_detected
 __str_jam_detected: .byte "jam detected",0
 
@@ -80,6 +83,9 @@ __str_vital_addr_clobber_detected: .byte "dangerous write:$", ESCAPE_VALUE, "",0
 .else
 __str_vital_addr_clobber_detected: .byte "dangerous write detected ($", ESCAPE_VALUE, ")",0
 .endif
+
+.export __str_saved
+__str_saved: .byte "saved",0
 
 .export __str_saveall
 __str_saveall: .byte "save all buffers? ", yes_no, 0
@@ -170,7 +176,12 @@ __str_watches_range_line: .byte ESCAPE_BYTE, ESCAPE_CHAR, " $", ESCAPE_VALUE, "-
 __str_errors: .byte "errors",0
 
 .export __str_tracing
-__str_tracing: .byte "tracing...",0
+.ifdef hard8x8
+; the 22 column screen can't fit the long form of the message
+__str_tracing: .byte "tracing.. RESTORE=stop",0
+.else
+__str_tracing: .byte "tracing.. (press RESTORE to stop)",0
+.endif
 
 .export __str_pass1
 __str_pass1:

@@ -54,8 +54,10 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	bne :+
 	ldxy #strings::device_not_present
 	jmp seterr
-:	sec
-	rts
+
+	; we couldn't read the drive's message
+:	ldxy #strings::drive_error
+	jmp seterr
 
 @ok:	ldx #$0f		; filenumber 15
 	jsr krn::chkin		; CHKIN (file 15 now used as input)

@@ -39,6 +39,7 @@ VSCREEN_WIDTH = 80	; virtual screen size (in 8-pixel characters)
 ;*******************************************************************************
 .BSS
 blank_backup: .res 16
+blanked:      .byte 0	; !0 if the screen is currently blanked
 
 .CODE
 
@@ -155,6 +156,12 @@ blank_backup: .res 16
 ; Ends a "blank"; call when sensitive IRQ disabled work has finished
 .export __screen_unblank
 .proc __screen_unblank
+	lda blanked
+	bne :+
+	rts
+:	lda #$00
+	sta blanked
+
 	jsr irq::on
 
 	lda #$0f
@@ -196,6 +203,11 @@ __screen_draw_gutter_row:
 ;   - .XY: a message to display while the screen is "blanked"
 .export __screen_blank
 .proc __screen_blank
+	lda blanked
+	beq :+
+	rts
+:	inc blanked
+
 	lda #$82
 :	cmp $9004
 	bne :-

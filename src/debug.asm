@@ -739,6 +739,8 @@ blank   = scr::blank
 :	jsr key::waitch
 
 	; 'N' or QUIT: return back to debugger, 'Y': exit debugger
+	; accept either case for 'y'/'n'
+	and #$df
 	cmp #$4e		; N
 	beq @abort
 	cmp #K_QUIT
@@ -1791,6 +1793,16 @@ __debug_step:
 	; the next time the monitor is opened
 	CALL FINAL_BANK_MONITOR, mon::log
 
+	jsr unblank		; blanked screen means no keyboard IRQ
+
+	; map the illegal/JAM etc. to its line (if we can- unlikely)
+	jsr cur::off
+	ldxy sim::pc
+	jsr gotoaddr
+	bcs :+
+	CALLMAIN edit::sethighlight
+	inc lineset
+:
 	ldxy #mem::linebuffer2	; the rendered message (text::render output)
 	lda #REGISTERS_LINE-1
 	CALLMAIN text::print

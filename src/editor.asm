@@ -265,6 +265,10 @@ guitogglehide = gui::togglehide
 	stx fmt::enable		; enable formatting
 	stx autoindent		; enable auto-indent
 
+	; restore the blinking editor cursor
+	lda #CUR_NORMAL
+	sta cur::mode
+
 	jsr edit		; initialize size/mode/etc.
 
 	jsr text::update
@@ -898,12 +902,20 @@ main:	jsr key::getch
 	bne :+			; exit? (abort)
 	rts			; return with .C set
 
-:	cmp #$79		; 'y'?
-	beq command_saveall	; save all dirty buffers
-	cmp #$6e		; 'n'?
+:	and #$df		; accept either case ('y' or 'Y')
+	cmp #$59		; 'y'?
+	beq @saveall		; save all dirty buffers
+	cmp #$4e		; 'n'?
 	bne @getch
 
 @done:	RETURN_OK
+
+@saveall:
+	; these buffers are being written back to the files they were loaded
+	; from; replace them instead of failing with a FILE EXISTS error
+	lda #$01
+	sta overwrite
+	jmp command_saveall
 .endproc
 
 ;*******************************************************************************
@@ -3726,7 +3738,7 @@ goto_buffer:
 @scratch:
 	ldxy @file
 	jsr file::scratch	; (try to) delete the existing file
-	bcs @err
+	; ignore any error here; the file may simply not exist yet
 
 	; open the file, write the source to it, and close the file
 @open:	ldxy @file
@@ -3755,8 +3767,10 @@ goto_buffer:
 	bcs @err
 
 @ok:	lda #$00
-	jsr src::setflags	; clear flags on the source buffer and return
-	jmp unblank
+	jsr src::setflags	; clear flags on the source buffer
+	jsr unblank
+	ldxy #strings::saved	; confirm that the file was written
+	jmp text::info
 
 @err:	pha
 	jsr unblank
@@ -5734,7 +5748,10 @@ goto_buffer:
 ; Reports the error that was last read from the drive (iec::readerr)
 .proc report_drive_error
 	ldxy #mem::drive_err
-
+	lda mem::drive_err
+	bne :+				; if drive gave us a message, report it
+	ldxy #strings::drive_error	; if it didn't, report a generic error
+:
 	; fall through to report_error
 .endproc
 

@@ -30,21 +30,27 @@ business is to define _where_ we are assembling.
 On the first line, type:
 
 ```
-.ORG $1000
+.org $1000
 ```
 
-This tells the assembler to place the origin of what follows to address $1000.  An origin is required before any instructions because, without it, the assembler doesn’t know where to assemble the instructions.  With this taken care of, we can continue with the meat of our program.
+Note that upon pressing `[RETURN]` the line is automatically formatted.  Labels are automatically left-aligned
+by the autoformatter while everything else is indented by a tab character. Tabs can also be manually inserted with the `C= + i` key
+chord.  However, practically speaking, you are unlikely to need to do this often (if ever) because of the formatter.
+
+This tells the assembler to place the origin of what follows to address $1000.  An origin is required before any instructions because,
+without it, the assembler doesn’t know where to assemble the instructions.  With this taken care of, we can continue with the meat of our program.
 However, as we will later discuss, it isn't necessarily an absolute address.
+
 Next enter the following:
 
 ```
-	LDX #0
-LOOP
-	LDA MSG,X
-	BEQ DONE
-	JSR $FFD2
-	INX
-	BNE LOOP
+	ldx #0
+loop
+	lda msg,x
+	beq done
+	jsr $ffd2
+	inx
+	bne loop
 ```
 
 Here we have defined a loop.  Note that we have two instructions that reference labels.
@@ -57,9 +63,9 @@ We’re almost done with the program.  We referenced two labels in the above sni
 not been defined.  Now let’s finish the program making sure we do that:
 
 ```
-DONE
-	JMP *
-MSG	.DB "HELLO WORLD!",0
+done
+	jmp *
+msg	.db "hello world!",0
 ```
 
 Now we’ve defined a complete program.  As is standard in 6502 assembly syntax the ‘*’ character
@@ -99,9 +105,9 @@ handled the same way regardless of which mode you are in.
 If you entered the program correctly, you should see a message like the one below telling
 you that the assembly was completed along with the address range it occupies.
 
-With the program in memory, it's time to debug it!
-
 <insert screenshot here>
+
+With the program in memory, it's time to debug it!
 
 To enter the debugger, press “:” again to enter EX MODE. Then enter the following at the prompt:
 `:d`

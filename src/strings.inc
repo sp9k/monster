@@ -11,6 +11,7 @@
 .import __str_buffers
 .import __str_deleting
 .import __str_device_not_present
+.import __str_drive_error
 .import __str_dir
 .import __str_done
 .import __str_dumping
@@ -46,6 +47,7 @@
 .import __str_question_marks
 .import __str_run
 .import __str_saveall
+.import __str_saved
 .import __str_saving
 .import __str_segments
 .import __str_symview_title
@@ -74,6 +76,7 @@
 	debug_stop_debugging    = __str_debug_stop_debugging
 	deleting                = __str_deleting
 	device_not_present      = __str_device_not_present
+	drive_error             = __str_drive_error
 	dir                     = __str_dir
 	done                    = __str_done
 	dumping                 = __str_dumping
@@ -104,6 +107,7 @@
 	pass2                   = __str_pass2
 	saving                  = __str_saving
 	saveall			= __str_saveall
+	saved			= __str_saved
 	symview_title           = __str_symview_title
 	monitor_title           = __str_monitor_title
 	tracing                 = __str_tracing
