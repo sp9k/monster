@@ -3398,14 +3398,37 @@ goto_buffer:
 	ldx #$01
 
 	lda @cmdbuff+2
-	cmp #'@'		; check overwrite flag (for SAVE commands)
-	bne :+
-	stx overwrite		; set OVERWRITE flag
-	inx			; move past '@'
-:	cmp #$62		; check binary ('b') flag (also used by DEBUG)
-	bne @parsearg
+	cmp #$62		; check binary ('b') flag (also used by DEBUG)
+	bne @chk_overwrite
 	inc __edit_binary_flag	; set binary flag
 	inx			; move past 'b'
+
+; check the overwrite flag ('@') for SAVE commands.
+@chk_overwrite:
+	; eat whitespace
+	lda @cmdbuff+1,x
+	jsr util::is_whitespace
+	bne :+
+	inx
+	bne @chk_overwrite	; branch always
+:	cmp #'@'
+	bne @parsearg
+	lda #$01
+	sta overwrite		; set OVERWRITE flag
+	inx			; move past '@'
+
+	; handle CBM DOS' "@:" and "@0:" too
+	lda @cmdbuff+1,x
+	cmp #'0'
+	bcc @chk_colon
+	cmp #'9'+1
+	bcs @chk_colon
+	inx			; move past the drive #
+	lda @cmdbuff+1,x
+@chk_colon:
+	cmp #':'
+	bne @parsearg
+	inx			; move past ':'
 
 ; get the argument for the command and send it along to the vector
 @parsearg:
