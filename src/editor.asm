@@ -6,6 +6,7 @@
 ; Most of the README is dedicated to the instructions on operating the editor.
 ;*******************************************************************************
 
+.include "alert.inc"
 .include "asm.inc"
 .include "beep.inc"
 .include "breakpoints.inc"
@@ -615,24 +616,27 @@ main:	jsr key::getch
 
 	; SAVE
 	CALL FINAL_BANK_LINKER, obj::dump	; dump the object code
-	bcc @ok
+	bcs @errdump
 
-	; print the error
-	jsr report_typein_error
-	jsr key::getch
-
-@ok:	; CLOSE
+	; CLOSE
 	lda @fileid
 	jsr file::close
-	jmp @done
-
-@erropen:
-	; print the error
-	jsr report_typein_error
-	jsr key::getch
 
 @done:	dec asm::mode		; switch back to DIRECT assembly mode
 	jmp unblank
+
+;-------------------------------------------------------------------------------
+@errdump:
+	pha			; save the error
+	lda @fileid
+	jsr file::close
+	pla			; restore err
+@erropen:			; no file to close
+	pha
+	dec asm::mode		; switch back to DIRECT assembly mode
+	jsr unblank
+	pla
+	jmp report_errcode
 .endproc
 
 ;*******************************************************************************
@@ -868,7 +872,8 @@ main:	jsr key::getch
 @waitch:
 	ldx #STATUS_ROW
 	jsr draw::hline
-	jsr key::waitch		; wait for key
+	ldxy #mem::linebuffer2	; the rendered result (still in the linebuffer)
+	jsr alert::show		; and wait for the user to acknowledge it
 	ldx #STATUS_ROW
 	jsr draw::hiline
 	CALLMAIN lbl::index		; index labels for debugging, etc.
@@ -879,7 +884,7 @@ main:	jsr key::getch
 ;-------------------------------------------------------------------------------
 .PUSHSEG
 .RODATA
-@success_msg: .byte "done. from $", $fe, "-$", $fe, " ($", $fe, " bytes)", 0
+@success_msg: .byte "done. $", $fe, "-$", $fe, " ", $fe, " bytes", 0
 .POPSEG
 .endproc
 
@@ -5780,12 +5785,22 @@ goto_buffer:
 
 ;*******************************************************************************
 ; REPORT ERROR
-; Reports a general error and wait for a keypress to erase it
+; Reports a general error in an alert and waits for the user to acknowledge it
 ; IN:
 ;   - .XY: address of string to report
 .proc report_error
-	jsr print_info
-	jmp key::waitch
+	jmp alert::show
+.endproc
+
+;*******************************************************************************
+; REPORT ERRCODE
+; Reports the given error in an alert and waits for the user to acknowledge it
+; IN:
+;   - .A: the code of the error to report
+.proc report_errcode
+	jsr err::get
+	RENDER_STR
+	jmp alert::show
 .endproc
 
 ;*******************************************************************************

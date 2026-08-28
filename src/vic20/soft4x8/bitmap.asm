@@ -366,11 +366,11 @@ __screen_draw_gutter_row:
 
 ;*******************************************************************************
 ; RVSLINE PART
-; Reverses the given number of character (8 pixels high) in the given row
+; Reverses the characters (8 pixels high) in columns [.Y, .X) of the given row
 ; IN:
 ;  - .A: the text row to reverse (pixel number / 8)
 ;  - .Y: the first column to reverse
-;  - .X: the last column to reverse
+;  - .X: one past the last column to reverse
 .export __screen_rvsline_part
 .proc __screen_rvsline_part
 @dst=r0

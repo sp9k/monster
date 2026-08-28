@@ -12,6 +12,8 @@
 .import __text_print
 .import __text_info
 .import __text_putch
+.import __text_puts_start
+.import __text_puts_stop
 .import __text_puterr
 .import __text_render
 .import __text_render_indirect
@@ -79,6 +81,8 @@ CH_R_ARROW	    = 135
 	linelen          = __text_linelen
 	print            = __text_print
 	putch            = __text_putch
+	puts_start       = __text_puts_start
+	puts_stop        = __text_puts_stop
 	render           = __text_render
 	render_ind       = __text_render_indirect
 	rendered_line_len= __text_rendered_line_len

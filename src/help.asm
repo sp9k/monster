@@ -217,12 +217,18 @@ START_ROW = 0
 	jsr print
 
 ;------------------------------------------------------------------------------
-; draw a separator after all the info that was printed
+; draw a separator after all the info that was printed, then say what we are
+; waiting for.  This screen is modal and covers the editor already, so it gets
+; a prompt of its own rather than an alert window on top of it.
 	lda #START_ROW+13
 	CALLMAIN scr::clrline
 	lda #COLOR_RVS
 	ldx #START_ROW+13
 	CALLMAIN draw::hline
+
+	ldxy #@anykey_msg
+	lda #START_ROW+15
+	jsr print
 
 	CALLMAIN key::waitch
 @done:
@@ -258,6 +264,7 @@ START_ROW = 0
                   .byte ESCAPE_VALUE_DEC, "/", .string(MAX_IMPORTS), 0
 @exports_msg:     .byte "exports     "
                   .byte ESCAPE_VALUE_DEC, "/", .string(MAX_EXPORTS), 0
+@anykey_msg:      .byte "press any key",0
 .POPSEG
 .endproc
 

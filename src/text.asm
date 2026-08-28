@@ -33,6 +33,14 @@
 .import puts
 .import putch
 
+.PUSHSEG
+.segment "DATA"
+.export __text_puts_start
+__text_puts_start: .byte 0
+.export __text_puts_stop
+__text_puts_stop:  .byte SCREEN_WIDTH
+.POPSEG
+
 ;*******************************************************************************
 ; CHARACTER ESCAPE CODES
 ; These codes, when encountered by text::print, will be expanded to values

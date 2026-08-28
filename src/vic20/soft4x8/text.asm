@@ -2,6 +2,7 @@
 .include "../expansion.inc"
 .include "../../macros.inc"
 .include "../../ram.inc"
+.include "../../text.inc"
 .include "../../zeropage.inc"
 
 .CODE
@@ -106,8 +107,25 @@
 	lda #>BITMAP_ADDR
         sta @txtdst+1
 
-	ldy #$00
+	ldy text::puts_start
+	cpy text::puts_stop
+	bcs @done		; empty window -> nothing to draw
 	sty @cnt
+
+	; move destination up to the window's first byte column
+	tya
+	lsr			; 2 characters per byte column
+	beq @l0
+	tax
+@skip:	lda @txtdst
+	clc
+	adc #192
+	sta @txtdst
+	bcc :+
+	inc @txtdst+1
+:	dex
+	bne @skip
+
 @l0:    lda (@txtsrc),y
 	tax
 	iny
@@ -144,9 +162,9 @@
 	inc @txtdst+1
 @nextch:
 	ldy @cnt
-	cpy #40
+	cpy text::puts_stop
 	bcc @l0
-        rts
+@done:  rts
 .endproc
 
 ;*******************************************************************************
@@ -278,6 +296,13 @@ charmap:
 .byte   $00,$00,$22,$77,$77,$22,$00,$00	  ; 133 bullet/breakpoint symbol
 .byte   $00,$00,$22,$55,$55,$22,$00,$00	  ; 134 unfilled bullet/breakpoint unset
 .byte   $00,$44,$66,$77,$77,$66,$44,$00	  ; 135 arrow pointing right
+
+; characters for box drawing (see alert.asm)
+.byte   $00,$00,$00,$77,$44,$44,$44,$44	  ; 136 top left corner
+.byte   $00,$00,$00,$cc,$44,$44,$44,$44	  ; 137 top right corner
+.byte   $44,$44,$44,$77,$00,$00,$00,$00	  ; 138 bottom left corner
+.byte   $44,$44,$44,$cc,$00,$00,$00,$00	  ; 139 bottom right corner
+.byte   $00,$00,$00,$ff,$00,$00,$00,$00	  ; 140 horizontal line
 num_chars = (*-charmap)/8
 
 .segment "SETUP"

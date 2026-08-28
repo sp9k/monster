@@ -15,6 +15,9 @@
 .include "../../util.inc"
 .include "../../zeropage.inc"
 
+.import __text_puts_start	; first column puts draws
+.import __text_puts_stop	; one past the last column puts draws
+
 .import __vscreen_save
 .import __vscreen_restore
 
@@ -770,14 +773,16 @@ __text_puts:
 	; The row table points at CONTENT_COL, so this never touches the gutter
 	; (physical column 0); reverse rows are handled by the per-row $900f
 	; color in the IRQ, not here.
-	ldy #$00
+	ldy __text_puts_start
+	cpy __text_puts_stop
+	bcs @done		; empty window -> nothing to draw
 @l0:	lda (@src),y
 	jsr asc2scr
 	sta (@dst),y
 	iny
-	cpy #NUM_COLS
-	bne @l0
-	rts
+	cpy __text_puts_stop
+	bcc @l0
+@done:	rts
 .endproc
 
 ;*******************************************************************************

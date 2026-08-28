@@ -4,6 +4,7 @@
 ; and assembled program.
 ;*******************************************************************************
 
+.include "alert.inc"
 .include "asm.inc"
 .include "asmflags.inc"
 .include "breakpoints.inc"
@@ -1816,11 +1817,9 @@ __debug_step:
 	CALLMAIN edit::sethighlight
 	inc lineset
 :
-	ldxy #mem::linebuffer2	; the rendered message (text::render output)
-	lda #REGISTERS_LINE-1
-	CALLMAIN text::print
 	jsr scr::clrcolor
-	jsr key::waitch		; wait for keypress
+	ldxy #mem::linebuffer2	; the rendered message (text::render output)
+	jsr alert::show		; tell the user, and wait for them to acknowledge
 	sec
 	rts
 .endproc

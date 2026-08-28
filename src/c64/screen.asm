@@ -15,6 +15,9 @@
 .include "../util.inc"
 .include "../zeropage.inc"
 
+.import __text_puts_start	; first column puts draws
+.import __text_puts_stop	; one past the last column puts draws
+
 ;*******************************************************************************
 ; CONSTANTS
 .define COLMEM_ADDR $d800
@@ -577,7 +580,9 @@ __text_puts:
 	lda mem::rowcolors,x
 	sta @color
 
-	ldy #$00
+	ldy __text_puts_start
+	cpy __text_puts_stop
+	bcs @done		; empty window -> nothing to draw
 @l0:	lda (@src),y
 	jsr asc2scr
 	; check if we need to reverse
@@ -587,10 +592,10 @@ __text_puts:
 	ora #$80
 :	sta (@dst),y
 	iny
-	cpy #NUM_COLS
-	bne @l0
+	cpy __text_puts_stop
+	bcc @l0
 
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
