@@ -307,20 +307,30 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	jsr krn::readst
 	cmp #$00
 	beq @readfile
-	bne @parse
+
+	; read done; map KERNAL status to an internal error code
+	cmp #$40			; EOF is the only clean way to finish
+	beq @readok
+	lda #ERR_IO_ERROR		; any other status is a read failure
+	bne @closefile			; branch always
 
 @toobig:
-	lda #$00			; not EOF (fail with I/O error below)
-
+	lda #ERR_FILE_TOO_BIG
+	skw
+@readok:
+	lda #$00
 ;-------------------------------------------------------------------------------
-@parse: sta @errcode
+@closefile:
+	sta @errcode
 	pla				; restore file ID
 	CALLMAIN file::close		; CLOSE the LINK file
 
 	lda @errcode
-	cmp #$40			; check status, EOF?
-	bne @err			; if not, failed for some other reason
+	beq @parse			; no read error -> parse the buffer
+	sec
+	rts				; return read error
 
+@parse:
 	ldxy #@filebuff
 	stxy zp::line
 
@@ -362,9 +372,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	beq @parse_segments
 
 	; else invalid string
+	RETURN_ERR ERR_SYNTAX_ERROR	; not a MEMORY or SEGMENTS block
 
-@err:	sec
-	rts
+@err:	rts			; propagate the error code already in .A
 
 @too_many:
 	RETURN_ERR ERR_TOO_MANY_SEGMENTS
@@ -374,8 +384,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	; make sure we haven't already declared sections
 	lda @sections_declared
 	beq :+
-	sec
-	rts			; err, sections already declared
+	RETURN_ERR ERR_DUPLICATE_BLOCK	; MEMORY block already declared
 
 :	; read past "MEMORY" declaration
 	CALLMAIN line::process_word
@@ -400,15 +409,14 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	jsr @get_closing_brace
 	bne @l0			; if not ']', read next section
 	incw zp::line		; else, move over the ']'
-	bne @getblock		; and get the next block (SEGMENTS)
+	jmp @getblock		; and get the next block (SEGMENTS)
 
 ;-------------------------------------------------------------------------------
 @parse_segments:
 	; make sure SEGMENTS weren't already declared
 	lda @segments_declared
 	beq :+
-	sec
-	rts			; err, sections already declared
+	RETURN_ERR ERR_DUPLICATE_BLOCK	; SEGMENTS block already declared
 
 :	; read past "SEGMENTS"
 	CALLMAIN line::process_word
@@ -554,7 +562,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	; run the handler for the given key
 	jsr zp::jmpaddr
 	bcc @getprops	; repeat (get next key if there is one)
-
+	jcs log_error	; handler failed -> return its error
 
 @next:	; move zp::str2 to the next key to check
 	ldy #$00
@@ -568,8 +576,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda @cnt
 	cmp #@numkeys
 	bne @findkey
+	RETURN_ERR ERR_UNKNOWN_KEY	; no key matched the one in the file
 
-	; sec (unknown key)
 @ret:	rts
 
 ;-------------------------------------------------------------------------------
@@ -753,9 +761,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda @cnt
 	cmp #@numkeys
 	bne @findkey
-
-	; sec (unknown key)
-@ret:	rts
+	RETURN_ERR ERR_UNKNOWN_KEY	; no key matched the one in the file
 
 ;-------------------------------------------------------------------------------
 ; handler for the "run" key in SEGMENT
@@ -1031,7 +1037,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	; (parsed from the LINK file prior to calling this procedured)
 	ldx numsegments
 	bne @init
-	sec		; no segments defined; return error
+	RETURN_ERR ERR_NO_SEGMENTS	; nothing to link into
 @ret:	rts
 
 @init:  ; initialize state:

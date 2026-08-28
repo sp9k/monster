@@ -98,7 +98,7 @@ eval_expr = expr::eval
 .endif
 
 ;*******************************************************************************
-MAX_IFS      = 4 ; max nesting depth for .if/.endif
+MAX_IFS      = 8 ; max nesting depth for .if/.endif
 
 ;*******************************************************************************
 ; ASM INFORMATION
@@ -621,7 +621,7 @@ BANKED_CODE "ASMBANK"
 	lda ifstacksp
 	cmp #MAX_IFS
 	bcc :+
-	RETURN_ERR ERR_STACK_OVERFLOW
+	RETURN_ERR ERR_TOO_MANY_IFS
 :	inc ifstacksp
 	ldx ifstacksp
 	lda #$00
@@ -3465,7 +3465,7 @@ include_entry:
 	lda ifstacksp
 	cmp #MAX_IFS
 	bcc :+
-	RETURN_ERR ERR_STACK_OVERFLOW
+	RETURN_ERR ERR_TOO_MANY_IFS
 
 :	txa
 	bne @true
@@ -3530,7 +3530,7 @@ include_entry:
 :	lda ifstacksp
 	cmp #MAX_IFS
 	bcc :+
-	RETURN_ERR ERR_STACK_OVERFLOW
+	RETURN_ERR ERR_TOO_MANY_IFS
 
 :	jsr pass1
 	bne @replay	; pass 2 -> replay the result recorded in pass 1
@@ -3604,7 +3604,7 @@ include_entry:
 	RETURN_OK
 
 @toomany:
-	RETURN_ERR ERR_STACK_OVERFLOW
+	RETURN_ERR ERR_TOO_MANY_IFDEFS
 .endproc
 
 ;*******************************************************************************
@@ -3637,7 +3637,7 @@ include_entry:
 :	RETURN_OK
 
 @norecord:
-	RETURN_ERR ERR_STACK_OVERFLOW
+	RETURN_ERR ERR_IFDEF_PASS_MISMATCH
 .endproc
 
 ;-------------------------------------------------------------------------------

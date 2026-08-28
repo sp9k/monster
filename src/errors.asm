@@ -295,6 +295,30 @@ err_divide_by_zero:
 ; .byte "divide by zero",0
 .byte $22,$56,$49,$5,$d8,$99,$de,$85,$93,$c0
 
+err_duplicate_block:
+; .byte "duplicate block",0
+.byte $25,$50,$62,$43,$d,$5,$d8,$8c,$78,$cb,$0
+
+err_unknown_key:
+; .byte "unknown key",0
+.byte $ab,$8b,$73,$d7,$76,$cb,$2e,$40
+
+err_no_segments:
+; .byte "no segments defined",0
+.byte $73,$db,$99,$47,$69,$4e,$a4,$db,$21,$46,$4b,$85,$20,$0
+
+err_too_many_ifs:
+; .byte "too many nested ifs",0
+.byte $a3,$cf,$db,$41,$76,$5b,$71,$53,$a1,$44,$da,$46,$98,$0
+
+err_too_many_ifdefs:
+; .byte "too many ifdefs",0
+.byte $a3,$cf,$db,$41,$76,$5b,$49,$84,$29,$93,$0
+
+err_ifdef_pass_mismatch:
+; .byte "ifdef pass mismatch",0
+.byte $49,$84,$29,$9b,$80,$53,$9e,$cd,$4c,$cd,$d,$3,$40,$0
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -367,7 +391,13 @@ err_divide_by_zero:
 	err_unclosed_if, \
 	err_unclosed_ctx, \
 	err_cannot_assemble_log, \
-	err_divide_by_zero
+	err_divide_by_zero, \
+	err_duplicate_block, \
+	err_unknown_key, \
+	err_no_segments, \
+	err_too_many_ifs, \
+	err_too_many_ifdefs, \
+	err_ifdef_pass_mismatch
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

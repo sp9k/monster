@@ -103,6 +103,18 @@ ERR_UNCLOSED_CTX         = 67
 ERR_CANNOT_ASSEMBLE_LOG  = 68
 ERR_DIVIDE_BY_ZERO       = 69
 
+;*******************************************************************************
+; LINK file (linker config) errors
+ERR_DUPLICATE_BLOCK = 70
+ERR_UNKNOWN_KEY     = 71
+ERR_NO_SEGMENTS     = 72
+
+;*******************************************************************************
+; .IF/.IFDEF errors
+ERR_TOO_MANY_IFS         = 73
+ERR_TOO_MANY_IFDEFS      = 74
+ERR_IFDEF_PASS_MISMATCH  = 75
+
 .import __err_get
 
 .scope err
