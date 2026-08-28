@@ -199,15 +199,26 @@ __ram_dst = reu::move_dst
 ; This is called by __ram_copy_line when the bank is "MAIN"
 .proc copy_line_main
 	ldy #$00
-:	lda (zp::bankaddr0),y
+:	cpy #MAX_LINE_LEN
+	bcs @last		; at the limit: classify without storing
+	lda (zp::bankaddr0),y
 	sta (zp::bankaddr1),y
 	beq @done
 	cmp #$0d
 	beq @done
 	iny
-	cpy #MAX_LINE_LEN
-	bcc :-
-@done:	rts
+	bne :-			; branch always (.Y < MAX_LINE_LEN)
+
+@last:	; MAX_LINE_LEN characters were copied; the line only lost something if
+	; it doesn't end right here
+	lda (zp::bankaddr0),y
+	beq @done
+	cmp #$0d
+	beq @done
+	sec			; the line was truncated
+	rts
+@done:	clc
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -221,6 +232,7 @@ __ram_dst = reu::move_dst
 ; OUT:
 ;  - .Y: the number of bytes copied
 ;  - .A: the last byte copied
+;  - .C: set if the source line was longer than MAX_LINE_LEN (truncated)
 .export	__ram_copy_line
 .proc __ram_copy_line
 @src=zp::bankaddr0
@@ -230,16 +242,28 @@ __ram_dst = reu::move_dst
 	sta reu::reuaddr+2
 
 	ldy #$00
-:	jsr reu::loadb_off
+:	cpy #MAX_LINE_LEN
+	bcs @last		; at the limit: classify without storing
+	jsr reu::loadb_off
 	.byte @src
 	sta (@dst),y
 	beq @done
 	cmp #$0d
 	beq @done
 	iny
-	cpy #MAX_LINE_LEN
-	bne :-
-@done:	rts
+	bne :-			; branch always (.Y < MAX_LINE_LEN)
+
+@last:	; MAX_LINE_LEN characters were copied; the line only lost something if
+	; it doesn't end right here
+	jsr reu::loadb_off
+	.byte @src
+	beq @done
+	cmp #$0d
+	beq @done
+	sec			; the line was truncated
+	rts
+@done:	clc
+	rts
 .endproc
 
 ;*******************************************************************************

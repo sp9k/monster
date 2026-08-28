@@ -125,21 +125,38 @@
 ;  OUT:
 ;   - .Y: the number of bytes copied
 ;   - .A: the last byte copied
+;   - .C: set if the source line was longer than MAX_LINE_LEN (truncated)
 .export __ram_copy_line
 .proc __ram_copy_line
 	ldx __ultimem_bank		; get current bank
 	jsr __ultimem_select_bank	; set bank to copy within
 
 	ldy #$00
-:	lda (zp::bankaddr0),y
+:	cpy #MAX_LINE_LEN
+	bcs @last			; at the limit: classify, don't store
+	lda (zp::bankaddr0),y
 	sta (zp::bankaddr1),y
-	beq return_to_x
+	beq @done
 	cmp #$0d
-	beq return_to_x
+	beq @done
 	iny
-	cpy #MAX_LINE_LEN
-	bne :-
-@done:	beq return_to_x			; branch always (restore bank)
+	bne :-				; branch always (.Y < MAX_LINE_LEN)
+
+@last:	; MAX_LINE_LEN characters were copied; the line only lost something if
+	; it doesn't end right here
+	lda (zp::bankaddr0),y
+	beq @done
+	cmp #$0d
+	beq @done
+	sec				; the line was truncated
+	bcs @ret			; branch always
+@done:	clc
+	; return_to_x clobbers .A and .C, so preserve the truncation flag
+@ret:	php
+	txa
+	jsr __ultimem_select_bank	; restore the caller's bank
+	plp
+	rts
 .endproc
 
 .CODE

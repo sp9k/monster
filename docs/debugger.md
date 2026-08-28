@@ -167,10 +167,18 @@ instruction _after_ the `JSR` (after the subroutine returns).
 The step out command traces the program until the current subroutine returns
 (via an RTS instruction).  The RTI instruction also returns execution to the debugger.
 
+By default this command will abort if the stack pointer is at its max value (when
+another `RTS` would underflow). Pressing `SHIFT+y` (`Y`) overrides this and will allow
+the stack pointer to underflow.
+
 #### TRACE (`t`)
 
 Trace executes the program as a series of STEPs until the user indicates we
 should halt the trace by pressing the `RESTORE` key.
+
+The trace command renders the current state of the screen and color memory in addition to
+the current VIC register values so that you can visually watch your program execute
+during a trace if it has a visual component.
 
 ### Free Run (GO) (`C= + g`)
 

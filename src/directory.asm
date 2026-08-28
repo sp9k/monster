@@ -90,6 +90,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	bne @l0			; if no -> try next
 
 @match:	; filename has the requested extension, append to result
+	inc @cnt		; count the match
 	ldy #$00
 @l1:	lda @buff,y
 	sta (@resultptr),y
@@ -112,9 +113,13 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	jsr file::close
 
 @ok:	lda @cnt
+	beq @nofiles		; no file has the requested extension -> error
 	ldxy @resultptr
 	clc
 @ret:	rts
+
+@nofiles:
+	RETURN_ERR ERR_FILE_NOT_FOUND
 .endproc
 
 ;*******************************************************************************

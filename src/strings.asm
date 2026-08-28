@@ -178,9 +178,9 @@ __str_errors: .byte "errors",0
 .export __str_tracing
 .ifdef hard8x8
 ; the 22 column screen can't fit the long form of the message
-__str_tracing: .byte "tracing.. RESTORE=stop",0
+__str_tracing: .byte "tracing.. restore=stop",0
 .else
-__str_tracing: .byte "tracing.. (press RESTORE to stop)",0
+__str_tracing: .byte "tracing.. press [restore] to stop",0
 .endif
 
 .export __str_pass1

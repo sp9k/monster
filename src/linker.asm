@@ -94,7 +94,7 @@ numsymbols:  .byte 0
 ; defines the start and end addresses of the section plus a byte of flag
 ; data, which is used to, for example, flag that the section should be padded
 ; if the SEGMENTs that map to this section do not span the entire
-; [start, stop] address space.
+; [start, stop) address space.
 ; The format of a SECTION is:
 ;  .word start addr
 ;  .word stop addr
@@ -1010,6 +1010,13 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	bne @l1			; repeat for all SEGMENTS
 
 @nextsec:
+	ldx @secid
+	lda sections_stoplo,x
+	cmp @secoff
+	lda sections_stophi,x
+	sbc @secoff+1
+	bcc @toosmall		; stop < secoff -> the SEGMENTs don't fit
+
 	; update the start offset for SEGMENT by secoff
 	inc @secid		; move to next SECTION
 	lda @secid
@@ -1017,6 +1024,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	bcc @l0
 
 @done:	RETURN_OK
+
+@toosmall:
+	RETURN_ERR ERR_SECTION_TOO_SMALL
 .endproc
 
 ;*******************************************************************************
@@ -1127,10 +1137,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	jsr log_msg
 	jsr resolve_symbols
 	jcs log_error
-
-	; make sure SEGMENT base+size is less than the top of the SEGMENT
-	; TODO:
-	; RETURN_ERR ERR_SECTION_TOO_SMALL
 
 @start_pass2:
 	jsr log_banner
@@ -2021,7 +2027,8 @@ __link_get_segment_by_name:
 
 @done:	pla					; restore file handle
 	CALLMAIN file::close
-	JUMPMAIN file::geterr			; report write errors (e.g. disk full)
+	JUMPMAIN file::geterr			; report write errors
+						; (e.g. disk full)
 
 ;-------------------------------------------------------------------------------
 @seglist_title:  .byte "segments",$0d,0

@@ -127,6 +127,25 @@ ifstack:   .res MAX_IFS	; TRUE/FALSE values for the active IF blocks
 ifstacksp: .byte 0	; stack pointer to "if" stack
 
 ;*******************************************************************************
+; INCLUDE STACK
+; Stack of debug file ID of every file whose assembly is currently in
+; progress (the outermost file is at index 0).  A file that is already on the
+; chain is a cyclic .INC
+.ifdef ultimem
+.segment "SHAREBSS2"
+.endif
+
+MAX_INCLUDE_DEPTH = 6
+
+includestack: .res MAX_INCLUDE_DEPTH
+includesp:    .byte 0	; number of files on the include stack
+includeabort: .byte 0	; error code that stopped assembly (0 if none)
+
+.ifdef ultimem
+.segment "BSS_NOINIT"
+.endif
+
+;*******************************************************************************
 ; .IFDEF result log.  Pass 2's label table contains ALL labels defined during
 ; pass 1, so re-evaluating a .IFDEF in pass 2 answers TRUE for symbols that
 ; are defined AFTER it (where pass 1 answered FALSE)
@@ -458,6 +477,35 @@ illegal_opcodes:
 	.byte %11111100 ; CPX abs,x
 num_illegals = *-illegal_opcodes
 
+;*******************************************************************************
+; PUSH INCLUDE
+; Adds the file that dbgi::file names to the include stack. A file that is
+; already on the stack is being included by one of its own includes.
+; OUT:
+;   - .A: the error code if the file could not be added to the stack
+;   - .C: set on error
+.proc push_include
+	lda dbgi::file
+	ldx #$00
+@l0:	cpx includesp
+	beq @push		; reached the end of the stack: no cycle
+	cmp includestack,x
+	beq @cyclic
+	inx
+	bne @l0			; branch always
+
+@push:	cpx #MAX_INCLUDE_DEPTH
+	bcs @toodeep
+	sta includestack,x
+	inc includesp
+	RETURN_OK
+
+@cyclic:
+	RETURN_ERR ERR_CYCLIC_INCLUDE
+@toodeep:
+	RETURN_ERR ERR_TOO_MANY_OPEN_FILES
+.endproc
+
 BANKED_CODE "ASMBANK"
 
 ;*******************************************************************************
@@ -503,6 +551,8 @@ BANKED_CODE "ASMBANK"
 	sta zp::verify
 
 	sta ifstacksp		; reset the .IF stack (may leak from prior pass)
+	sta includesp		; reset the include stack
+	sta includeabort	; and the "stop assembling" latch
 	sta top			; set top of program to 0
 	sta top+1
 	sta origin
@@ -569,7 +619,10 @@ BANKED_CODE "ASMBANK"
 	ldxy #asmbuffer
 	stxy zp::bankaddr1
 	jsr ram::copyline
+	bcc @copied
+	RETURN_ERR ERR_LINE_TOO_LONG	; line doesn't fit the asm buffer
 
+@copied:
 	ldy #$00
 	sty mem::asmbuffer+MAX_LINE_LEN
 
@@ -2363,11 +2416,19 @@ include_entry:
 	sec
 	rts
 
+@reterr_pop:
+	dec includesp		; drop this file from the include stack
+	jmp @reterr
+
 :	; add the filename to debug info (if it isn't yet), reset line number
 	; and finally create a new block of debug information.
 	ldxy @fname
 	CALLMAIN dbgi::setfile
 	bcs @reterr		; propagate error (e.g. too many files)
+
+	; add this file to the include stack (fails if it's already in it)
+	jsr push_include
+	bcs @reterr		; every exit below here unwinds through @close
 
 	ldxy #1
 	stxy dbgi::srcline
@@ -2385,11 +2446,11 @@ include_entry:
 	CALLMAIN dbgi::endblock	; end the current block
 	ldxy zp::virtualpc	; current address
 	CALLMAIN dbgi::newblock	; start new block for included file
-	bcs @reterr		; propagate error (e.g. debug info full)
+	bcs @reterr_pop		; propagate error (e.g. debug info full)
 
 @open:	ldxy @fname
 	jsr file::open_r	; open the file we are including
-	bcs @reterr
+	bcs @reterr_pop
 
 	pha			; save id of the file we're working on
 	sta zp::file
@@ -2403,7 +2464,9 @@ include_entry:
 	ldx file::eof
 	bne @close		; at end of file -> done
 	jsr errlog::log		; log the read error
-	jmp @close		; and stop assembling this file
+	bcc :+
+	sta includeabort	; fatal/at limit: stop assembling everything
+:	jmp @close		; and stop assembling this file
 
 ; assemble the line
 @asm:	ldxy #mem::spare
@@ -2418,6 +2481,9 @@ include_entry:
 	jsr tokenize
 	bcc @ok
 	jsr errlog::log		; log the error (.C stays set if fatal/too many)
+	bcc @ok
+	sta includeabort	; fatal/at limit: stop assembling everything
+				; (.C is still set, so @ok falls out to @close)
 
 @ok:	pla			; restore our EOF state
 	sta file::eof
@@ -2438,7 +2504,8 @@ include_entry:
 :	lda file::eof		; EOF?
 	beq @doline		; repeat til we are
 
-@close: pla			; get the file ID for the include file to close
+@close: dec includesp		; this file is no longer on the include stack
+	pla			; get the file ID for the include file to close
 	jsr file::close		; close the file
 
 	pla
@@ -2465,8 +2532,11 @@ include_entry:
 	CALLMAIN dbgi::newblock	; start a new block in original file
 	bcs @err
 @done:
-	lda #$00
-	RETURN_OK
+	lda includeabort	; did a fatal error / the error limit stop us?
+	bne @abort		; if so, don't keep assembling the including file
+	RETURN_OK		; (.A is the 0 we just loaded)
+@abort:	sec			; return the code that ended assembly
+	rts
 @err:	rts
 .endproc
 

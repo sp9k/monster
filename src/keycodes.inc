@@ -87,6 +87,7 @@ K_TRACE    = $74	; t
 K_STEP     = $7a	; z
 ; K_STEPOUT  = $5e	; up-arrow
 K_STEPOUT  = $79	; y
+K_STEPOUT_LIMITED  = $59	; Y
 
 K_SET_WATCH = $77	; w (for use in MEMORY editor)
 K_ADD_WATCH = $b3	; C= + w (for use in WATCH editor)

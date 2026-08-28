@@ -653,6 +653,18 @@ blank   = scr::blank
 .endproc
 
 ;*******************************************************************************
+; STEP OUT LIMITED
+; Steps out if the stack is not already at its minimum value
+.export __debug_stepout_limited
+.proc __debug_stepout_limited
+	; don't step out if stack is already at its base
+	lda sim::reg_sp
+	cmp #<PROGRAM_STACK_START
+	bcc __debug_step_out
+	rts
+.endproc
+
+;*******************************************************************************
 ; STEP OUT
 ; Runs the user program until the next RTS is executed
 ; OUT:
@@ -683,6 +695,7 @@ blank   = scr::blank
 	bne @trace		; if not loop
 	lda sim::rti_irq	; RTI from a simulated IRQ/NMI?
 	bne @trace		; if so, it doesn't end a subroutine
+
 @dec_depth:
 	dec step_out_depth
 	bpl @trace		; continue trace until depth is negative
@@ -2104,6 +2117,7 @@ commands:
 	.byte K_GO
 	.byte K_JUMP
 	.byte K_STEPOUT
+	.byte K_STEPOUT_LIMITED
 	.byte K_TRACE
 	.byte K_SRCVIEW
 	.byte K_MEMVIEW
@@ -2120,10 +2134,11 @@ num_commands=*-commands
 
 .linecont +
 .define command_vectors quit, edit_source, __debug_step, __debug_step_over, \
-	__debug_go, jump, __debug_step_out, __debug_trace, edit_source, \
-	edit_mem, edit_breakpoints, __debug_edit_watches, \
-	__debug_swap_user_mem, reset_stopwatch, edit_state_vec, \
-	goto_pc, activate_monitor, activate_monitor_win, toggle_extended_info
+	__debug_go, jump, __debug_stepout_limited, __debug_step_out, \
+	__debug_trace, edit_source, edit_mem, edit_breakpoints, \
+	__debug_edit_watches, __debug_swap_user_mem, reset_stopwatch, \
+	edit_state_vec, goto_pc, activate_monitor, activate_monitor_win, \
+	toggle_extended_info
 .linecont -
 command_vectorslo: .lobytes command_vectors
 command_vectorshi: .hibytes command_vectors

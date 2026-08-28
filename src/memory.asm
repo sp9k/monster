@@ -87,22 +87,16 @@ __mem_init_sig: .res 4
 ; This allows the buffer to be manipulated from any bank
 .segment "LINEBUFF"
 
+LINEBUFFER_SIZE = MAX_LINE_LEN+3
+
 .export __linebuffer
 __linebuffer:
 .assert * & $ff = $00, error, "line buffer not page-aligned"
-.ifdef hard8x8
-	.res LINESIZE*4
-.else
-	.res LINESIZE
-.endif
+	.res LINEBUFFER_SIZE
 
 .export __linebuffer2
 __linebuffer2:
-.ifdef hard8x8
-	.res LINESIZE*4
-.else
-	.res LINESIZE	; backup buffer for when the linebuffer must be saved
-.endif
+	.res LINEBUFFER_SIZE	; backup for when the linebuffer must be saved
 
 .export __mem_asmbuffer
 __mem_asmbuffer:
