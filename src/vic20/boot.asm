@@ -35,6 +35,7 @@
 .include "../zeropage.inc"
 
 .include "fastcopy.inc"
+.include "prefs.inc"
 .include "vic20.inc"
 
 .import __BSS_LOAD__
@@ -241,6 +242,18 @@ cart_start:
 .endproc
 .endif
 
+.ifdef CART
+;*******************************************************************************
+; RECOVERY PROMPT
+RECOVER_ROW        = 10						; row for prompt
+RECOVER_TEXT_COLOR = $06					; blue
+RECOVER_BG_COLOR   = $03					; cyan
+RECOVER_900F       = (RECOVER_BG_COLOR<<4) | BORDER_COLOR
+
+.define RECOVER_MSG "restore? (y/n)"
+RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
+.endif
+
 .CODE
 ;*******************************************************************************
 ; ENTER
@@ -271,11 +284,27 @@ cart_start:
 @recover:
 	; do some basic init to allow displaying recovery message
 	jsr scr::init
+
+	; clear the screen with the prompt's (blue) text color
+	lda prefs::text_color
+	pha
+	lda #RECOVER_TEXT_COLOR
+	sta prefs::text_color
+	jsr scr::clr		; clear screen & fill color RAM with text color
+	pla
+	sta prefs::text_color
+	jsr scr::clrrowcolors
+
+	lda #$00
+	sta mem::coloron
+	lda #RECOVER_900F
+	sta $900f
+
         jsr irq::on
 
 	; signature intact, ask user if they wish to recover
 	ldxy #recover_reset
-	lda #10
+	lda #RECOVER_ROW
 	jsr text::print
 	jsr key::flush		; don't let a typed-ahead key answer this
 	jsr key::waitch
@@ -283,9 +312,14 @@ cart_start:
         jsr irq::off
 	pla
 	cmp #$79		; Y
-	beq @enter
+	beq :+
 	cmp #$6e		; N
 	bne @recover
+
+:	; blank screen (again)
+	lda #00
+	sta $9002
+	sta $9003
 .endif
 
 @init:	jsr src::init
@@ -298,6 +332,7 @@ cart_start:
 	lda #$00
 	sta mem::linebuffer
 	CALL FINAL_BANK_MONITOR, mon::init
+	jsr run::clr		; init user state (run BASIC startup proc)
 
 @enter:
 .ifndef TEST
@@ -309,9 +344,6 @@ cart_start:
 	dex
 	bpl :-
 .endif
-
-	jsr run::clr		; init user state (run BASIC startup proc)
-
 	; init some BASIC variables that are used (keyboard ptrs/delay)
 	lda #<irq::keydecode	; custom decode logic (maps CTRL+key combos)
 	sta $028f		; set keyboard decode logic pointer low byte
@@ -341,6 +373,7 @@ init_sig:
 init_sig_len=*-init_sig
 
 recover_reset:
-	.byte "restore? (y/n)",0
+	.byte ESCAPE_GOTO, RECOVER_COL	; center the message on its row
+	.byte RECOVER_MSG, 0
 .POPSEG
 .endif
