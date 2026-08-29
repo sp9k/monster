@@ -65,8 +65,8 @@ but note that if the entire expression is enclosed in parentheses, the
 assembler will interpret this as indirect addressing. For example:
 
 ```
-JMP (1+3)	; jump-indirect to the address in memory address (4)
-JMP 1+3 	; jump-absolute to address 4
+JMP (1+3)   ; jump-indirect to the address in memory address (4)
+JMP 1+3     ; jump-absolute to address 4
 ```
 
 Immediate addressing and indirect addressing are mutually exclusive, so the assembler
@@ -108,7 +108,7 @@ Long labels are harder to squeeze onto a line.
 They are case-insensitive (`a` and `A` refer to the same label)
 and their definitions may end with a colon (':') but are not required to (`A:` and `A` are both valid label definitions)
 
-#### LOCAL LABELS
+### LOCAL LABELS
 
 Local labels are defined by prefixing the label with a '@' symbol.  This _does_
 count toward the 16 character label limit.
@@ -143,10 +143,10 @@ PLAYER
 @Y: .db 0
 
 GAME:
-	LDA PLAYER@X
+    LDA PLAYER@X
 ```
 
-#### ANONYMOUS LABELS
+### ANONYMOUS LABELS
 
 Anonymous labels can be declared with ':'.
 Anonymous labels are useful when you need to do a short branch where
@@ -190,7 +190,7 @@ The following example illustrates why this is necessary:
 
 ```
 .REP NUM, I
-  ASL
+    ASL
 .ENDREP
 .EQ NUM 5
 ```
@@ -272,9 +272,9 @@ See [.IF](#if-expression)
 
 ```
 .IF NTSC
-  .EQ LINES 261
+    .EQ LINES 261
 .ELSE
-  .EQ LINES 312
+    .EQ LINES 312
 .ENDIF
 ```
 
@@ -288,8 +288,8 @@ Closes a macro definition.
 
 ```
 .MAC LDXY A
-   LDX <A
-   LDY >A
+    LDX <A
+    LDY >A
 .ENDMAC
 ```
 
@@ -298,7 +298,7 @@ Closes a repeat block.
 
 ```
 .REP 10
-  ASL
+    ASL
 .ENDREP
 ```
 
@@ -308,8 +308,8 @@ Defines a constant which may be used in expressions
 
 ```
 .EQ BITMAP $1100
-  LDA #$00
-  STA BITMAP+20
+    LDA #$00
+    STA BITMAP+20
 ```
 
 #### .EXPORT _name_
@@ -321,7 +321,7 @@ manual for more details.
 ```
 .EXPORT blit
 blit
-   ...
+    ...
 ```
 
 #### .IF _expression_
@@ -354,9 +354,9 @@ manual for more details.
 ```
 .IMPORT blit
 
-   ldx #10
-   ldy #20
-   jsr blit
+    ldx #10
+    ldy #20
+    jsr blit
 ```
 
 #### .IMPORTZP _name_
@@ -367,9 +367,9 @@ manual for more details.
 
 ```
 .IMPORTZP curx
-	ldx curx
-	ldy #$00
-	jsr blit
+    ldx curx
+    ldy #$00
+    jsr blit
 ```
 
 #### .INC _filename_
@@ -379,8 +379,8 @@ from disk and assembled as if the code was copy/pasted in place of the include d
 
 ```
 .INC "KERNAL.INC"
-  LDA #$00
-  JSR CHROUT
+    LDA #$00
+    JSR CHROUT
 ```
 
 #### .INCBIN _filename_
@@ -390,12 +390,12 @@ of the assembly target when this directive is encountered
 
 ```
 .EQ BITMAP $1100
-  LDX #$07
+    LDX #$07
 L0:
-  LDA SPRITES,X
-  STA BITMAP,X
-  DEX
-  BPL L0
+    LDA SPRITES,X
+    STA BITMAP,X
+    DEX
+    BPL L0
 
 SPRITES:
 .INCBIN "SPRITES.BIN"
@@ -407,18 +407,18 @@ Defines a macro
 
 ```
 .MAC LDXY VAL
-  LDX #<VAL
-  LDY #>VAL
+    LDX #<VAL
+    LDY #>VAL
 .ENDMAC
 
-  LDXY $1234
+    LDXY $1234
 ```
 
 Will generate the following code:
 
 ```
-  LDX #$34
-  LDY #$12
+    LDX #$34
+    LDY #$12
 ```
 
 Macro definitions begin with the `.MAC` directive followed by the name of the
@@ -444,7 +444,7 @@ Sets the address to assemble code to
 Fills the number of bytes defined by the evaluated expression with 0's.
 
 ```
-  .res SCREEN_W * SCREEN_H
+    .res SCREEN_W * SCREEN_H
 ```
 
 #### .RORG _expression_
@@ -455,11 +455,11 @@ This is useful for code that will be relocated prior to execution.
 ```
 .ORG $1000
 .RORG $00
-  ; some tight loop
-  LDA #$01
-  STA *+3
-  LDA #$00
-  STA $900F
+    ; some tight loop
+    LDA #$01
+    STA *+3
+    LDA #$00
+    STA $900F
 ```
 
 Note that the `.RORG` directive must follow the `.ORG` directive in order to
@@ -473,16 +473,16 @@ times.
 
 ```
 .REP 3
-  ASL
+    ASL
 .ENDREP
 ```
 
 Becomes
 
 ```
-  ASL
-  ASL
-  ASL
+    ASL
+    ASL
+    ASL
 ```
 
 An optional parameter can be given that will be assigned the value of
@@ -490,18 +490,18 @@ the current iteration of repetition during assembly.
 
 ```
 .REP 5,I
-   INC $F0+I
+    INC $F0+I
 .ENDREP
 ```
 
 Becomes
 
 ```
-  INC $F0
-  INC $F1
-  INC $F2
-  INC $F3
-  INC $F4
+    INC $F0
+    INC $F1
+    INC $F2
+    INC $F3
+    INC $F4
 ```
 
 Nested `.REP` directives are also supported:
@@ -509,28 +509,28 @@ Nested `.REP` directives are also supported:
 ```
 .REP 2,I
 .REP 5,J
-   INC $F0+I*5+J
+        INC $F0+I*5+J
 @skip:
 .ENDREP
-  ASL
+    ASL
 .ENDREP
 ```
 
 Becomes:
 
 ```
-  INC $F0
-  INC $F1
-  INC $F2
-  INC $F3
-  INC $F4
-  ASL
-  INC $F5
-  INC $F6
-  INC $F7
-  INC $F8
-  INC $F9
-  ASL
+    INC $F0
+    INC $F1
+    INC $F2
+    INC $F3
+    INC $F4
+    ASL
+    INC $F5
+    INC $F6
+    INC $F7
+    INC $F8
+    INC $F9
+    ASL
 ```
 
 #### .SEG "name"
@@ -541,8 +541,8 @@ linker section of the manual.
 
 ```
 .SEG "CODE"
-   lda #$00
-   sta $900f
+    lda #$00
+    sta $900f
 ```
 
 #### .SEGZP "name"
@@ -553,9 +553,9 @@ linker section of the manual.
 
 ```
 .SEGZP "ZPCODE"
-:	asl
-	asl
-	bcc :-
+:   asl
+    asl
+    bcc :-
 ```
 
 ---
@@ -569,18 +569,18 @@ They may be recursive as in this example:
 
 ```
 .MAC LDXY VAL
-	LDX VAL
-	LDY VAL+1
+    LDX VAL
+    LDY VAL+1
 .ENDMAC
 
 .MAC STXY ADDR
-	STX ADDR
-	STY ADDR+1
+    STX ADDR
+    STY ADDR+1
 .ENDMAC
 
 .MAC SET DST, SRC
-	LDXY SRC
-	STXY DST
+    LDXY SRC
+    STXY DST
 .ENDMAC
 ```
 
@@ -590,16 +590,16 @@ less than the maximum number it expects as in this example:
 ```
 .MAC SAVEBYTES A, B, C
 .IFDEF A
-	LDA A
-	PHA
+    LDA A
+    PHA
 .ENDIF
 .IFDEF B
-	LDA B
-	PHA
+    LDA B
+    PHA
 .ENDIF
 .IFDEF C
-	LDA C
-	PHA
+    LDA C
+    PHA
 .ENDIF
 .ENDMAC
 ```

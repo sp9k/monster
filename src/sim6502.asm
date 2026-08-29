@@ -76,7 +76,9 @@ __sim_jammed: .byte 0
 .export __sim_vital_addr_clobbered
 __sim_vital_addr_clobbered: .byte 0
 
-; set if the CPU has encountered an "illegal" (undocumented) opcode
+; set if the CPU has encountered a JAM.  All 256 opcodes are implemented, so
+; this now only ever mirrors __sim_jammed; it is kept because the debugger's
+; "illegal opcode" warning hangs off it.
 .export __sim_illegal
 __sim_illegal: .byte 0
 
@@ -309,70 +311,70 @@ tracing: .byte 0
 ;*******************************************************************************
 .linecont +
 .define handlers \
-	h_brk,     h_ora_indx, h_jam,      h_ill, \
-	h_ill,     h_ora_zp,   h_asl_zp,   h_ill, \
-	h_php,     h_ora_imm,  h_asl_a,    h_ill, \
-	h_ill,     h_ora_abs,  h_asl_abs,  h_ill, \
-	h_bpl,     h_ora_indy, h_jam,      h_ill, \
-	h_ill,     h_ora_zpx,  h_asl_zpx,  h_ill, \
-	h_clc,     h_ora_absy, h_ill,      h_ill, \
-	h_ill,     h_ora_absx, h_asl_absx, h_ill, \
-	h_jsr,     h_and_indx, h_jam,      h_ill, \
-	h_bit_zp,  h_and_zp,   h_rol_zp,   h_ill, \
-	h_plp,     h_and_imm,  h_rol_a,    h_ill, \
-	h_bit_abs, h_and_abs,  h_rol_abs,  h_ill, \
-	h_bmi,     h_and_indy, h_jam,      h_ill, \
-	h_ill,     h_and_zpx,  h_rol_zpx,  h_ill, \
-	h_sec,     h_and_absy, h_ill,      h_ill, \
-	h_ill,     h_and_absx, h_rol_absx, h_ill, \
-	h_rti,     h_eor_indx, h_jam,      h_ill, \
-	h_ill,     h_eor_zp,   h_lsr_zp,   h_ill, \
-	h_pha,     h_eor_imm,  h_lsr_a,    h_ill, \
-	h_jmp_abs, h_eor_abs,  h_lsr_abs,  h_ill, \
-	h_bvc,     h_eor_indy, h_jam,      h_ill, \
-	h_ill,     h_eor_zpx,  h_lsr_zpx,  h_ill, \
-	h_cli,     h_eor_absy, h_ill,      h_ill, \
-	h_ill,     h_eor_absx, h_lsr_absx, h_ill, \
-	h_rts,     h_adc_indx, h_jam,      h_ill, \
-	h_ill,     h_adc_zp,   h_ror_zp,   h_ill, \
-	h_pla,     h_adc_imm,  h_ror_a,    h_ill, \
-	h_jmp_ind, h_adc_abs,  h_ror_abs,  h_ill, \
-	h_bvs,     h_adc_indy, h_jam,      h_ill, \
-	h_ill,     h_adc_zpx,  h_ror_zpx,  h_ill, \
-	h_sei,     h_adc_absy, h_ill,      h_ill, \
-	h_ill,     h_adc_absx, h_ror_absx, h_ill, \
-	h_ill,     h_sta_indx, h_ill,      h_ill, \
-	h_sty_zp,  h_sta_zp,   h_stx_zp,   h_ill, \
-	h_dey,     h_ill,      h_txa,      h_ill, \
-	h_sty_abs, h_sta_abs,  h_stx_abs,  h_ill, \
-	h_bcc,     h_sta_indy, h_jam,      h_ill, \
-	h_sty_zpx, h_sta_zpx,  h_stx_zpy,  h_ill, \
-	h_tya,     h_sta_absy, h_txs,      h_ill, \
-	h_ill,     h_sta_absx, h_ill,      h_ill, \
-	h_ldy_imm, h_lda_indx, h_ldx_imm,  h_ill, \
-	h_ldy_zp,  h_lda_zp,   h_ldx_zp,   h_ill, \
-	h_tay,     h_lda_imm,  h_tax,      h_ill, \
-	h_ldy_abs, h_lda_abs,  h_ldx_abs,  h_ill, \
-	h_bcs,     h_lda_indy, h_jam,      h_ill, \
-	h_ldy_zpx, h_lda_zpx,  h_ldx_zpy,  h_ill, \
-	h_clv,     h_lda_absy, h_tsx,      h_ill, \
-	h_ldy_absx,h_lda_absx, h_ldx_absy, h_ill, \
-	h_cpy_imm, h_cmp_indx, h_ill,      h_ill, \
-	h_cpy_zp,  h_cmp_zp,   h_dec_zp,   h_ill, \
-	h_iny,     h_cmp_imm,  h_dex,      h_ill, \
-	h_cpy_abs, h_cmp_abs,  h_dec_abs,  h_ill, \
-	h_bne,     h_cmp_indy, h_jam,      h_ill, \
-	h_ill,     h_cmp_zpx,  h_dec_zpx,  h_ill, \
-	h_cld,     h_cmp_absy, h_ill,      h_ill, \
-	h_ill,     h_cmp_absx, h_dec_absx, h_ill, \
-	h_cpx_imm, h_sbc_indx, h_ill,      h_ill, \
-	h_cpx_zp,  h_sbc_zp,   h_inc_zp,   h_ill, \
-	h_inx,     h_sbc_imm,  h_nop,      h_ill, \
-	h_cpx_abs, h_sbc_abs,  h_inc_abs,  h_ill, \
-	h_beq,     h_sbc_indy, h_jam,      h_ill, \
-	h_ill,     h_sbc_zpx,  h_inc_zpx,  h_ill, \
-	h_sed,     h_sbc_absy, h_ill,      h_ill, \
-	h_ill,     h_sbc_absx, h_inc_absx, h_ill
+	h_brk,      h_ora_indx, h_jam,      h_slo_indx, \
+	h_nop_zp,   h_ora_zp,   h_asl_zp,   h_slo_zp, \
+	h_php,      h_ora_imm,  h_asl_a,    h_anc_imm, \
+	h_nop_abs,  h_ora_abs,  h_asl_abs,  h_slo_abs, \
+	h_bpl,      h_ora_indy, h_jam,      h_slo_indy, \
+	h_nop_zpx,  h_ora_zpx,  h_asl_zpx,  h_slo_zpx, \
+	h_clc,      h_ora_absy, h_nop,      h_slo_absy, \
+	h_nop_absx, h_ora_absx, h_asl_absx, h_slo_absx, \
+	h_jsr,      h_and_indx, h_jam,      h_rla_indx, \
+	h_bit_zp,   h_and_zp,   h_rol_zp,   h_rla_zp, \
+	h_plp,      h_and_imm,  h_rol_a,    h_anc_imm, \
+	h_bit_abs,  h_and_abs,  h_rol_abs,  h_rla_abs, \
+	h_bmi,      h_and_indy, h_jam,      h_rla_indy, \
+	h_nop_zpx,  h_and_zpx,  h_rol_zpx,  h_rla_zpx, \
+	h_sec,      h_and_absy, h_nop,      h_rla_absy, \
+	h_nop_absx, h_and_absx, h_rol_absx, h_rla_absx, \
+	h_rti,      h_eor_indx, h_jam,      h_sre_indx, \
+	h_nop_zp,   h_eor_zp,   h_lsr_zp,   h_sre_zp, \
+	h_pha,      h_eor_imm,  h_lsr_a,    h_alr_imm, \
+	h_jmp_abs,  h_eor_abs,  h_lsr_abs,  h_sre_abs, \
+	h_bvc,      h_eor_indy, h_jam,      h_sre_indy, \
+	h_nop_zpx,  h_eor_zpx,  h_lsr_zpx,  h_sre_zpx, \
+	h_cli,      h_eor_absy, h_nop,      h_sre_absy, \
+	h_nop_absx, h_eor_absx, h_lsr_absx, h_sre_absx, \
+	h_rts,      h_adc_indx, h_jam,      h_rra_indx, \
+	h_nop_zp,   h_adc_zp,   h_ror_zp,   h_rra_zp, \
+	h_pla,      h_adc_imm,  h_ror_a,    h_arr_imm, \
+	h_jmp_ind,  h_adc_abs,  h_ror_abs,  h_rra_abs, \
+	h_bvs,      h_adc_indy, h_jam,      h_rra_indy, \
+	h_nop_zpx,  h_adc_zpx,  h_ror_zpx,  h_rra_zpx, \
+	h_sei,      h_adc_absy, h_nop,      h_rra_absy, \
+	h_nop_absx, h_adc_absx, h_ror_absx, h_rra_absx, \
+	h_nop_imm,  h_sta_indx, h_nop_imm,  h_sax_indx, \
+	h_sty_zp,   h_sta_zp,   h_stx_zp,   h_sax_zp, \
+	h_dey,      h_nop_imm,  h_txa,      h_ane_imm, \
+	h_sty_abs,  h_sta_abs,  h_stx_abs,  h_sax_abs, \
+	h_bcc,      h_sta_indy, h_jam,      h_sha_indy, \
+	h_sty_zpx,  h_sta_zpx,  h_stx_zpy,  h_sax_zpy, \
+	h_tya,      h_sta_absy, h_txs,      h_tas_absy, \
+	h_shy_absx, h_sta_absx, h_shx_absy, h_sha_absy, \
+	h_ldy_imm,  h_lda_indx, h_ldx_imm,  h_lax_indx, \
+	h_ldy_zp,   h_lda_zp,   h_ldx_zp,   h_lax_zp, \
+	h_tay,      h_lda_imm,  h_tax,      h_lax_imm, \
+	h_ldy_abs,  h_lda_abs,  h_ldx_abs,  h_lax_abs, \
+	h_bcs,      h_lda_indy, h_jam,      h_lax_indy, \
+	h_ldy_zpx,  h_lda_zpx,  h_ldx_zpy,  h_lax_zpy, \
+	h_clv,      h_lda_absy, h_tsx,      h_las_absy, \
+	h_ldy_absx, h_lda_absx, h_ldx_absy, h_lax_absy, \
+	h_cpy_imm,  h_cmp_indx, h_nop_imm,  h_dcp_indx, \
+	h_cpy_zp,   h_cmp_zp,   h_dec_zp,   h_dcp_zp, \
+	h_iny,      h_cmp_imm,  h_dex,      h_sbx_imm, \
+	h_cpy_abs,  h_cmp_abs,  h_dec_abs,  h_dcp_abs, \
+	h_bne,      h_cmp_indy, h_jam,      h_dcp_indy, \
+	h_nop_zpx,  h_cmp_zpx,  h_dec_zpx,  h_dcp_zpx, \
+	h_cld,      h_cmp_absy, h_nop,      h_dcp_absy, \
+	h_nop_absx, h_cmp_absx, h_dec_absx, h_dcp_absx, \
+	h_cpx_imm,  h_sbc_indx, h_nop_imm,  h_isc_indx, \
+	h_cpx_zp,   h_sbc_zp,   h_inc_zp,   h_isc_zp, \
+	h_inx,      h_sbc_imm,  h_nop,      h_sbc_imm, \
+	h_cpx_abs,  h_sbc_abs,  h_inc_abs,  h_isc_abs, \
+	h_beq,      h_sbc_indy, h_jam,      h_isc_indy, \
+	h_nop_zpx,  h_sbc_zpx,  h_inc_zpx,  h_isc_zpx, \
+	h_sed,      h_sbc_absy, h_nop,      h_isc_absy, \
+	h_nop_absx, h_sbc_absx, h_inc_absx, h_isc_absx
 .linecont -
 
 htab_lo: .lobytes handlers
@@ -389,328 +391,328 @@ htab_hi: .hibytes handlers
 ;                   the carry returned by am_absx/am_absy/am_indy.
 ;*******************************************************************************
 affected_tab:
-.byte $00				; $00: brk
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $01: ora_indx
-.byte $00				; $02: jam
-.byte $00				; $03: ill
-.byte $00				; $04: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $05: ora_zp
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $06: asl_zp
-.byte $00				; $07: ill
-.byte OP_STACK|OP_STORE			; $08: php
-.byte OP_REG_A|OP_FLAG			; $09: ora_imm
-.byte OP_REG_A|OP_FLAG			; $0a: asl_a
-.byte $00				; $0b: ill
-.byte $00				; $0c: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $0d: ora_abs
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $0e: asl_abs
-.byte $00				; $0f: ill
-.byte OP_PC				; $10: bpl
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $11: ora_indy
-.byte $00				; $12: jam
-.byte $00				; $13: ill
-.byte $00				; $14: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $15: ora_zpx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $16: asl_zpx
-.byte $00				; $17: ill
-.byte OP_FLAG				; $18: clc
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $19: ora_absy
-.byte $00				; $1a: ill
-.byte $00				; $1b: ill
-.byte $00				; $1c: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $1d: ora_absx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $1e: asl_absx
-.byte $00				; $1f: ill
-.byte OP_PC|OP_STACK|OP_STORE		; $20: jsr
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $21: and_indx
-.byte $00				; $22: jam
-.byte $00				; $23: ill
-.byte OP_LOAD|OP_FLAG			; $24: bit_zp
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $25: and_zp
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $26: rol_zp
-.byte $00				; $27: ill
-.byte OP_STACK|OP_LOAD|OP_FLAG		; $28: plp
-.byte OP_REG_A|OP_FLAG			; $29: and_imm
-.byte OP_REG_A|OP_FLAG			; $2a: rol_a
-.byte $00				; $2b: ill
-.byte OP_LOAD|OP_FLAG			; $2c: bit_abs
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $2d: and_abs
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $2e: rol_abs
-.byte $00				; $2f: ill
-.byte OP_PC				; $30: bmi
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $31: and_indy
-.byte $00				; $32: jam
-.byte $00				; $33: ill
-.byte $00				; $34: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $35: and_zpx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $36: rol_zpx
-.byte $00				; $37: ill
-.byte OP_FLAG				; $38: sec
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $39: and_absy
-.byte $00				; $3a: ill
-.byte $00				; $3b: ill
-.byte $00				; $3c: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $3d: and_absx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $3e: rol_absx
-.byte $00				; $3f: ill
-.byte OP_STACK|OP_LOAD|OP_PC|OP_FLAG	; $40: rti
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $41: eor_indx
-.byte $00				; $42: jam
-.byte $00				; $43: ill
-.byte $00				; $44: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $45: eor_zp
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $46: lsr_zp
-.byte $00				; $47: ill
-.byte OP_STACK|OP_STORE			; $48: pha
-.byte OP_REG_A|OP_FLAG			; $49: eor_imm
-.byte OP_REG_A|OP_FLAG			; $4a: lsr_a
-.byte $00				; $4b: ill
-.byte OP_PC				; $4c: jmp_abs
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $4d: eor_abs
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $4e: lsr_abs
-.byte $00				; $4f: ill
-.byte OP_PC				; $50: bvc
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $51: eor_indy
-.byte $00				; $52: jam
-.byte $00				; $53: ill
-.byte $00				; $54: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $55: eor_zpx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $56: lsr_zpx
-.byte $00				; $57: ill
-.byte OP_FLAG				; $58: cli
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $59: eor_absy
-.byte $00				; $5a: ill
-.byte $00				; $5b: ill
-.byte $00				; $5c: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $5d: eor_absx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $5e: lsr_absx
-.byte $00				; $5f: ill
-.byte OP_STACK|OP_LOAD|OP_PC		; $60: rts
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $61: adc_indx
-.byte $00				; $62: jam
-.byte $00				; $63: ill
-.byte $00				; $64: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $65: adc_zp
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $66: ror_zp
-.byte $00				; $67: ill
-.byte OP_STACK|OP_LOAD|OP_REG_A|OP_FLAG	; $68: pla
-.byte OP_REG_A|OP_FLAG			; $69: adc_imm
-.byte OP_REG_A|OP_FLAG			; $6a: ror_a
-.byte $00				; $6b: ill
-.byte OP_PC|OP_LOAD			; $6c: jmp_ind
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $6d: adc_abs
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $6e: ror_abs
-.byte $00				; $6f: ill
-.byte OP_PC				; $70: bvs
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $71: adc_indy
-.byte $00				; $72: jam
-.byte $00				; $73: ill
-.byte $00				; $74: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $75: adc_zpx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $76: ror_zpx
-.byte $00				; $77: ill
-.byte OP_FLAG				; $78: sei
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $79: adc_absy
-.byte $00				; $7a: ill
-.byte $00				; $7b: ill
-.byte $00				; $7c: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $7d: adc_absx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $7e: ror_absx
-.byte $00				; $7f: ill
-.byte $00				; $80: ill
-.byte OP_STORE|OP_REG_A			; $81: sta_indx
-.byte $00				; $82: ill
-.byte $00				; $83: ill
-.byte OP_STORE|OP_REG_Y			; $84: sty_zp
-.byte OP_STORE|OP_REG_A			; $85: sta_zp
-.byte OP_STORE|OP_REG_X			; $86: stx_zp
-.byte $00				; $87: ill
-.byte OP_REG_Y|OP_FLAG			; $88: dey
-.byte $00				; $89: ill
-.byte OP_REG_A|OP_FLAG			; $8a: txa
-.byte $00				; $8b: ill
-.byte OP_STORE|OP_REG_Y			; $8c: sty_abs
-.byte OP_STORE|OP_REG_A			; $8d: sta_abs
-.byte OP_STORE|OP_REG_X			; $8e: stx_abs
-.byte $00				; $8f: ill
-.byte OP_PC				; $90: bcc
-.byte OP_STORE|OP_REG_A			; $91: sta_indy
-.byte $00				; $92: jam
-.byte $00				; $93: ill
-.byte OP_STORE|OP_REG_Y			; $94: sty_zpx
-.byte OP_STORE|OP_REG_A			; $95: sta_zpx
-.byte OP_STORE|OP_REG_X			; $96: stx_zpy
-.byte $00				; $97: ill
-.byte OP_REG_A|OP_FLAG			; $98: tya
-.byte OP_STORE|OP_REG_A			; $99: sta_absy
-.byte OP_REG_X				; $9a: txs
-.byte $00				; $9b: ill
-.byte $00				; $9c: ill
-.byte OP_STORE|OP_REG_A			; $9d: sta_absx
-.byte $00				; $9e: ill
-.byte $00				; $9f: ill
-.byte OP_REG_Y|OP_FLAG			; $a0: ldy_imm
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $a1: lda_indx
-.byte OP_REG_X|OP_FLAG			; $a2: ldx_imm
-.byte $00				; $a3: ill
-.byte OP_LOAD|OP_REG_Y|OP_FLAG		; $a4: ldy_zp
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $a5: lda_zp
-.byte OP_LOAD|OP_REG_X|OP_FLAG		; $a6: ldx_zp
-.byte $00				; $a7: ill
-.byte OP_REG_Y|OP_FLAG			; $a8: tay
-.byte OP_REG_A|OP_FLAG			; $a9: lda_imm
-.byte OP_REG_X|OP_FLAG			; $aa: tax
-.byte $00				; $ab: ill
-.byte OP_LOAD|OP_REG_Y|OP_FLAG		; $ac: ldy_abs
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $ad: lda_abs
-.byte OP_LOAD|OP_REG_X|OP_FLAG		; $ae: ldx_abs
-.byte $00				; $af: ill
-.byte OP_PC				; $b0: bcs
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $b1: lda_indy
-.byte $00				; $b2: jam
-.byte $00				; $b3: ill
-.byte OP_LOAD|OP_REG_Y|OP_FLAG		; $b4: ldy_zpx
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $b5: lda_zpx
-.byte OP_LOAD|OP_REG_X|OP_FLAG		; $b6: ldx_zpy
-.byte $00				; $b7: ill
-.byte OP_FLAG				; $b8: clv
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $b9: lda_absy
-.byte OP_REG_X|OP_FLAG			; $ba: tsx
-.byte $00				; $bb: ill
-.byte OP_LOAD|OP_REG_Y|OP_FLAG		; $bc: ldy_absx
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $bd: lda_absx
-.byte OP_LOAD|OP_REG_X|OP_FLAG		; $be: ldx_absy
-.byte $00				; $bf: ill
-.byte OP_FLAG				; $c0: cpy_imm
-.byte OP_LOAD|OP_FLAG			; $c1: cmp_indx
-.byte $00				; $c2: ill
-.byte $00				; $c3: ill
-.byte OP_LOAD|OP_FLAG			; $c4: cpy_zp
-.byte OP_LOAD|OP_FLAG			; $c5: cmp_zp
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $c6: dec_zp
-.byte $00				; $c7: ill
-.byte OP_REG_Y|OP_FLAG			; $c8: iny
-.byte OP_FLAG				; $c9: cmp_imm
-.byte OP_REG_X|OP_FLAG			; $ca: dex
-.byte $00				; $cb: ill
-.byte OP_LOAD|OP_FLAG			; $cc: cpy_abs
-.byte OP_LOAD|OP_FLAG			; $cd: cmp_abs
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $ce: dec_abs
-.byte $00				; $cf: ill
-.byte OP_PC				; $d0: bne
-.byte OP_LOAD|OP_FLAG			; $d1: cmp_indy
-.byte $00				; $d2: jam
-.byte $00				; $d3: ill
-.byte $00				; $d4: ill
-.byte OP_LOAD|OP_FLAG			; $d5: cmp_zpx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $d6: dec_zpx
-.byte $00				; $d7: ill
-.byte OP_FLAG				; $d8: cld
-.byte OP_LOAD|OP_FLAG			; $d9: cmp_absy
-.byte $00				; $da: ill
-.byte $00				; $db: ill
-.byte $00				; $dc: ill
-.byte OP_LOAD|OP_FLAG			; $dd: cmp_absx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $de: dec_absx
-.byte $00				; $df: ill
-.byte OP_FLAG				; $e0: cpx_imm
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $e1: sbc_indx
-.byte $00				; $e2: ill
-.byte $00				; $e3: ill
-.byte OP_LOAD|OP_FLAG			; $e4: cpx_zp
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $e5: sbc_zp
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $e6: inc_zp
-.byte $00				; $e7: ill
-.byte OP_REG_X|OP_FLAG			; $e8: inx
-.byte OP_REG_A|OP_FLAG			; $e9: sbc_imm
-.byte $00				; $ea: nop
-.byte $00				; $eb: ill
-.byte OP_LOAD|OP_FLAG			; $ec: cpx_abs
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $ed: sbc_abs
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $ee: inc_abs
-.byte $00				; $ef: ill
-.byte OP_PC				; $f0: beq
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $f1: sbc_indy
-.byte $00				; $f2: jam
-.byte $00				; $f3: ill
-.byte $00				; $f4: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $f5: sbc_zpx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $f6: inc_zpx
-.byte $00				; $f7: ill
-.byte OP_FLAG				; $f8: sed
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $f9: sbc_absy
-.byte $00				; $fa: ill
-.byte $00				; $fb: ill
-.byte $00				; $fc: ill
-.byte OP_LOAD|OP_REG_A|OP_FLAG		; $fd: sbc_absx
-.byte OP_LOAD|OP_STORE|OP_FLAG		; $fe: inc_absx
-.byte $00				; $ff: ill
+.byte $00                                        ; $00: brk
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $01: ora_indx
+.byte $00                                        ; $02: jam
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $03: slo_indx
+.byte OP_LOAD                                    ; $04: nop_zp
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $05: ora_zp
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $06: asl_zp
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $07: slo_zp
+.byte OP_STACK|OP_STORE                          ; $08: php
+.byte OP_REG_A|OP_FLAG                           ; $09: ora_imm
+.byte OP_REG_A|OP_FLAG                           ; $0a: asl_a
+.byte OP_REG_A|OP_FLAG                           ; $0b: anc_imm
+.byte OP_LOAD                                    ; $0c: nop_abs
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $0d: ora_abs
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $0e: asl_abs
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $0f: slo_abs
+.byte OP_PC                                      ; $10: bpl
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $11: ora_indy
+.byte $00                                        ; $12: jam
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $13: slo_indy
+.byte OP_LOAD                                    ; $14: nop_zpx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $15: ora_zpx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $16: asl_zpx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $17: slo_zpx
+.byte OP_FLAG                                    ; $18: clc
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $19: ora_absy
+.byte $00                                        ; $1a: nop
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $1b: slo_absy
+.byte OP_LOAD                                    ; $1c: nop_absx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $1d: ora_absx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $1e: asl_absx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $1f: slo_absx
+.byte OP_PC|OP_STACK|OP_STORE                    ; $20: jsr
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $21: and_indx
+.byte $00                                        ; $22: jam
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $23: rla_indx
+.byte OP_LOAD|OP_FLAG                            ; $24: bit_zp
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $25: and_zp
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $26: rol_zp
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $27: rla_zp
+.byte OP_STACK|OP_LOAD|OP_FLAG                   ; $28: plp
+.byte OP_REG_A|OP_FLAG                           ; $29: and_imm
+.byte OP_REG_A|OP_FLAG                           ; $2a: rol_a
+.byte OP_REG_A|OP_FLAG                           ; $2b: anc_imm
+.byte OP_LOAD|OP_FLAG                            ; $2c: bit_abs
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $2d: and_abs
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $2e: rol_abs
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $2f: rla_abs
+.byte OP_PC                                      ; $30: bmi
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $31: and_indy
+.byte $00                                        ; $32: jam
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $33: rla_indy
+.byte OP_LOAD                                    ; $34: nop_zpx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $35: and_zpx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $36: rol_zpx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $37: rla_zpx
+.byte OP_FLAG                                    ; $38: sec
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $39: and_absy
+.byte $00                                        ; $3a: nop
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $3b: rla_absy
+.byte OP_LOAD                                    ; $3c: nop_absx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $3d: and_absx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $3e: rol_absx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $3f: rla_absx
+.byte OP_STACK|OP_LOAD|OP_PC|OP_FLAG             ; $40: rti
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $41: eor_indx
+.byte $00                                        ; $42: jam
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $43: sre_indx
+.byte OP_LOAD                                    ; $44: nop_zp
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $45: eor_zp
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $46: lsr_zp
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $47: sre_zp
+.byte OP_STACK|OP_STORE                          ; $48: pha
+.byte OP_REG_A|OP_FLAG                           ; $49: eor_imm
+.byte OP_REG_A|OP_FLAG                           ; $4a: lsr_a
+.byte OP_REG_A|OP_FLAG                           ; $4b: alr_imm
+.byte OP_PC                                      ; $4c: jmp_abs
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $4d: eor_abs
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $4e: lsr_abs
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $4f: sre_abs
+.byte OP_PC                                      ; $50: bvc
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $51: eor_indy
+.byte $00                                        ; $52: jam
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $53: sre_indy
+.byte OP_LOAD                                    ; $54: nop_zpx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $55: eor_zpx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $56: lsr_zpx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $57: sre_zpx
+.byte OP_FLAG                                    ; $58: cli
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $59: eor_absy
+.byte $00                                        ; $5a: nop
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $5b: sre_absy
+.byte OP_LOAD                                    ; $5c: nop_absx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $5d: eor_absx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $5e: lsr_absx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $5f: sre_absx
+.byte OP_STACK|OP_LOAD|OP_PC                     ; $60: rts
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $61: adc_indx
+.byte $00                                        ; $62: jam
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $63: rra_indx
+.byte OP_LOAD                                    ; $64: nop_zp
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $65: adc_zp
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $66: ror_zp
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $67: rra_zp
+.byte OP_STACK|OP_LOAD|OP_REG_A|OP_FLAG          ; $68: pla
+.byte OP_REG_A|OP_FLAG                           ; $69: adc_imm
+.byte OP_REG_A|OP_FLAG                           ; $6a: ror_a
+.byte OP_REG_A|OP_FLAG                           ; $6b: arr_imm
+.byte OP_PC|OP_LOAD                              ; $6c: jmp_ind
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $6d: adc_abs
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $6e: ror_abs
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $6f: rra_abs
+.byte OP_PC                                      ; $70: bvs
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $71: adc_indy
+.byte $00                                        ; $72: jam
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $73: rra_indy
+.byte OP_LOAD                                    ; $74: nop_zpx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $75: adc_zpx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $76: ror_zpx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $77: rra_zpx
+.byte OP_FLAG                                    ; $78: sei
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $79: adc_absy
+.byte $00                                        ; $7a: nop
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $7b: rra_absy
+.byte OP_LOAD                                    ; $7c: nop_absx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $7d: adc_absx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $7e: ror_absx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $7f: rra_absx
+.byte $00                                        ; $80: nop_imm
+.byte OP_STORE|OP_REG_A                          ; $81: sta_indx
+.byte $00                                        ; $82: nop_imm
+.byte OP_STORE|OP_REG_A|OP_REG_X                 ; $83: sax_indx
+.byte OP_STORE|OP_REG_Y                          ; $84: sty_zp
+.byte OP_STORE|OP_REG_A                          ; $85: sta_zp
+.byte OP_STORE|OP_REG_X                          ; $86: stx_zp
+.byte OP_STORE|OP_REG_A|OP_REG_X                 ; $87: sax_zp
+.byte OP_REG_Y|OP_FLAG                           ; $88: dey
+.byte $00                                        ; $89: nop_imm
+.byte OP_REG_A|OP_FLAG                           ; $8a: txa
+.byte OP_REG_A|OP_FLAG                           ; $8b: ane_imm
+.byte OP_STORE|OP_REG_Y                          ; $8c: sty_abs
+.byte OP_STORE|OP_REG_A                          ; $8d: sta_abs
+.byte OP_STORE|OP_REG_X                          ; $8e: stx_abs
+.byte OP_STORE|OP_REG_A|OP_REG_X                 ; $8f: sax_abs
+.byte OP_PC                                      ; $90: bcc
+.byte OP_STORE|OP_REG_A                          ; $91: sta_indy
+.byte $00                                        ; $92: jam
+.byte OP_STORE|OP_REG_A|OP_REG_X                 ; $93: sha_indy
+.byte OP_STORE|OP_REG_Y                          ; $94: sty_zpx
+.byte OP_STORE|OP_REG_A                          ; $95: sta_zpx
+.byte OP_STORE|OP_REG_X                          ; $96: stx_zpy
+.byte OP_STORE|OP_REG_A|OP_REG_X                 ; $97: sax_zpy
+.byte OP_REG_A|OP_FLAG                           ; $98: tya
+.byte OP_STORE|OP_REG_A                          ; $99: sta_absy
+.byte OP_REG_X                                   ; $9a: txs
+.byte OP_STORE|OP_REG_A|OP_REG_X|OP_STACK        ; $9b: tas_absy
+.byte OP_STORE|OP_REG_Y                          ; $9c: shy_absx
+.byte OP_STORE|OP_REG_A                          ; $9d: sta_absx
+.byte OP_STORE|OP_REG_X                          ; $9e: shx_absy
+.byte OP_STORE|OP_REG_A|OP_REG_X                 ; $9f: sha_absy
+.byte OP_REG_Y|OP_FLAG                           ; $a0: ldy_imm
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $a1: lda_indx
+.byte OP_REG_X|OP_FLAG                           ; $a2: ldx_imm
+.byte OP_LOAD|OP_REG_A|OP_REG_X|OP_FLAG          ; $a3: lax_indx
+.byte OP_LOAD|OP_REG_Y|OP_FLAG                   ; $a4: ldy_zp
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $a5: lda_zp
+.byte OP_LOAD|OP_REG_X|OP_FLAG                   ; $a6: ldx_zp
+.byte OP_LOAD|OP_REG_A|OP_REG_X|OP_FLAG          ; $a7: lax_zp
+.byte OP_REG_Y|OP_FLAG                           ; $a8: tay
+.byte OP_REG_A|OP_FLAG                           ; $a9: lda_imm
+.byte OP_REG_X|OP_FLAG                           ; $aa: tax
+.byte OP_REG_A|OP_REG_X|OP_FLAG                  ; $ab: lax_imm
+.byte OP_LOAD|OP_REG_Y|OP_FLAG                   ; $ac: ldy_abs
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $ad: lda_abs
+.byte OP_LOAD|OP_REG_X|OP_FLAG                   ; $ae: ldx_abs
+.byte OP_LOAD|OP_REG_A|OP_REG_X|OP_FLAG          ; $af: lax_abs
+.byte OP_PC                                      ; $b0: bcs
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $b1: lda_indy
+.byte $00                                        ; $b2: jam
+.byte OP_LOAD|OP_REG_A|OP_REG_X|OP_FLAG          ; $b3: lax_indy
+.byte OP_LOAD|OP_REG_Y|OP_FLAG                   ; $b4: ldy_zpx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $b5: lda_zpx
+.byte OP_LOAD|OP_REG_X|OP_FLAG                   ; $b6: ldx_zpy
+.byte OP_LOAD|OP_REG_A|OP_REG_X|OP_FLAG          ; $b7: lax_zpy
+.byte OP_FLAG                                    ; $b8: clv
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $b9: lda_absy
+.byte OP_REG_X|OP_FLAG                           ; $ba: tsx
+.byte OP_LOAD|OP_REG_A|OP_REG_X|OP_STACK|OP_FLAG ; $bb: las_absy
+.byte OP_LOAD|OP_REG_Y|OP_FLAG                   ; $bc: ldy_absx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $bd: lda_absx
+.byte OP_LOAD|OP_REG_X|OP_FLAG                   ; $be: ldx_absy
+.byte OP_LOAD|OP_REG_A|OP_REG_X|OP_FLAG          ; $bf: lax_absy
+.byte OP_FLAG                                    ; $c0: cpy_imm
+.byte OP_LOAD|OP_FLAG                            ; $c1: cmp_indx
+.byte $00                                        ; $c2: nop_imm
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $c3: dcp_indx
+.byte OP_LOAD|OP_FLAG                            ; $c4: cpy_zp
+.byte OP_LOAD|OP_FLAG                            ; $c5: cmp_zp
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $c6: dec_zp
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $c7: dcp_zp
+.byte OP_REG_Y|OP_FLAG                           ; $c8: iny
+.byte OP_FLAG                                    ; $c9: cmp_imm
+.byte OP_REG_X|OP_FLAG                           ; $ca: dex
+.byte OP_REG_X|OP_FLAG                           ; $cb: sbx_imm
+.byte OP_LOAD|OP_FLAG                            ; $cc: cpy_abs
+.byte OP_LOAD|OP_FLAG                            ; $cd: cmp_abs
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $ce: dec_abs
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $cf: dcp_abs
+.byte OP_PC                                      ; $d0: bne
+.byte OP_LOAD|OP_FLAG                            ; $d1: cmp_indy
+.byte $00                                        ; $d2: jam
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $d3: dcp_indy
+.byte OP_LOAD                                    ; $d4: nop_zpx
+.byte OP_LOAD|OP_FLAG                            ; $d5: cmp_zpx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $d6: dec_zpx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $d7: dcp_zpx
+.byte OP_FLAG                                    ; $d8: cld
+.byte OP_LOAD|OP_FLAG                            ; $d9: cmp_absy
+.byte $00                                        ; $da: nop
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $db: dcp_absy
+.byte OP_LOAD                                    ; $dc: nop_absx
+.byte OP_LOAD|OP_FLAG                            ; $dd: cmp_absx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $de: dec_absx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $df: dcp_absx
+.byte OP_FLAG                                    ; $e0: cpx_imm
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $e1: sbc_indx
+.byte $00                                        ; $e2: nop_imm
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $e3: isc_indx
+.byte OP_LOAD|OP_FLAG                            ; $e4: cpx_zp
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $e5: sbc_zp
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $e6: inc_zp
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $e7: isc_zp
+.byte OP_REG_X|OP_FLAG                           ; $e8: inx
+.byte OP_REG_A|OP_FLAG                           ; $e9: sbc_imm
+.byte $00                                        ; $ea: nop
+.byte OP_REG_A|OP_FLAG                           ; $eb: sbc_imm
+.byte OP_LOAD|OP_FLAG                            ; $ec: cpx_abs
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $ed: sbc_abs
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $ee: inc_abs
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $ef: isc_abs
+.byte OP_PC                                      ; $f0: beq
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $f1: sbc_indy
+.byte $00                                        ; $f2: jam
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $f3: isc_indy
+.byte OP_LOAD                                    ; $f4: nop_zpx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $f5: sbc_zpx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $f6: inc_zpx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $f7: isc_zpx
+.byte OP_FLAG                                    ; $f8: sed
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $f9: sbc_absy
+.byte $00                                        ; $fa: nop
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $fb: isc_absy
+.byte OP_LOAD                                    ; $fc: nop_absx
+.byte OP_LOAD|OP_REG_A|OP_FLAG                   ; $fd: sbc_absx
+.byte OP_LOAD|OP_STORE|OP_FLAG                   ; $fe: inc_absx
+.byte OP_LOAD|OP_STORE|OP_REG_A|OP_FLAG          ; $ff: isc_absx
 
 cycles_tab:
-.byte 0, 6, 0, 0	; $00: brk,ora_indx,jam,ill
-.byte 0, 3, 5, 0	; $04: ill,ora_zp,asl_zp,ill
-.byte 3, 2, 2, 0	; $08: php,ora_imm,asl_a,ill
-.byte 0, 4, 6, 0	; $0c: ill,ora_abs,asl_abs,ill
-.byte 0, 5, 0, 0	; $10: bpl,ora_indy,jam,ill
-.byte 0, 4, 6, 0	; $14: ill,ora_zpx,asl_zpx,ill
-.byte 2, 4, 0, 0	; $18: clc,ora_absy,ill,ill
-.byte 0, 4, 7, 0	; $1c: ill,ora_absx,asl_absx,ill
-.byte 6, 6, 0, 0	; $20: jsr,and_indx,jam,ill
-.byte 3, 3, 5, 0	; $24: bit_zp,and_zp,rol_zp,ill
-.byte 4, 2, 2, 0	; $28: plp,and_imm,rol_a,ill
-.byte 4, 4, 6, 0	; $2c: bit_abs,and_abs,rol_abs,ill
-.byte 0, 5, 0, 0	; $30: bmi,and_indy,jam,ill
-.byte 0, 4, 6, 0	; $34: ill,and_zpx,rol_zpx,ill
-.byte 2, 4, 0, 0	; $38: sec,and_absy,ill,ill
-.byte 0, 4, 7, 0	; $3c: ill,and_absx,rol_absx,ill
-.byte 6, 6, 0, 0	; $40: rti,eor_indx,jam,ill
-.byte 0, 3, 5, 0	; $44: ill,eor_zp,lsr_zp,ill
-.byte 3, 2, 2, 0	; $48: pha,eor_imm,lsr_a,ill
-.byte 3, 4, 6, 0	; $4c: jmp_abs,eor_abs,lsr_abs,ill
-.byte 0, 5, 0, 0	; $50: bvc,eor_indy,jam,ill
-.byte 0, 4, 6, 0	; $54: ill,eor_zpx,lsr_zpx,ill
-.byte 2, 4, 0, 0	; $58: cli,eor_absy,ill,ill
-.byte 0, 4, 7, 0	; $5c: ill,eor_absx,lsr_absx,ill
-.byte 6, 6, 0, 0	; $60: rts,adc_indx,jam,ill
-.byte 0, 3, 5, 0	; $64: ill,adc_zp,ror_zp,ill
-.byte 4, 2, 2, 0	; $68: pla,adc_imm,ror_a,ill
-.byte 5, 4, 6, 0	; $6c: jmp_ind,adc_abs,ror_abs,ill
-.byte 0, 5, 0, 0	; $70: bvs,adc_indy,jam,ill
-.byte 0, 4, 6, 0	; $74: ill,adc_zpx,ror_zpx,ill
-.byte 2, 4, 0, 0	; $78: sei,adc_absy,ill,ill
-.byte 0, 4, 7, 0	; $7c: ill,adc_absx,ror_absx,ill
-.byte 0, 6, 0, 0	; $80: ill,sta_indx,ill,ill
-.byte 3, 3, 3, 0	; $84: sty_zp,sta_zp,stx_zp,ill
-.byte 2, 0, 2, 0	; $88: dey,ill,txa,ill
-.byte 4, 4, 4, 0	; $8c: sty_abs,sta_abs,stx_abs,ill
-.byte 0, 6, 0, 0	; $90: bcc,sta_indy,jam,ill
-.byte 4, 4, 4, 0	; $94: sty_zpx,sta_zpx,stx_zpy,ill
-.byte 2, 5, 2, 0	; $98: tya,sta_absy,txs,ill
-.byte 0, 5, 0, 0	; $9c: ill,sta_absx,ill,ill
-.byte 2, 6, 2, 0	; $a0: ldy_imm,lda_indx,ldx_imm,ill
-.byte 3, 3, 3, 0	; $a4: ldy_zp,lda_zp,ldx_zp,ill
-.byte 2, 2, 2, 0	; $a8: tay,lda_imm,tax,ill
-.byte 4, 4, 4, 0	; $ac: ldy_abs,lda_abs,ldx_abs,ill
-.byte 0, 5, 0, 0	; $b0: bcs,lda_indy,jam,ill
-.byte 4, 4, 4, 0	; $b4: ldy_zpx,lda_zpx,ldx_zpy,ill
-.byte 2, 4, 2, 0	; $b8: clv,lda_absy,tsx,ill
-.byte 4, 4, 4, 0	; $bc: ldy_absx,lda_absx,ldx_absy,ill
-.byte 2, 6, 0, 0	; $c0: cpy_imm,cmp_indx,ill,ill
-.byte 3, 3, 5, 0	; $c4: cpy_zp,cmp_zp,dec_zp,ill
-.byte 2, 2, 2, 0	; $c8: iny,cmp_imm,dex,ill
-.byte 4, 4, 6, 0	; $cc: cpy_abs,cmp_abs,dec_abs,ill
-.byte 0, 5, 0, 0	; $d0: bne,cmp_indy,jam,ill
-.byte 0, 4, 6, 0	; $d4: ill,cmp_zpx,dec_zpx,ill
-.byte 2, 4, 0, 0	; $d8: cld,cmp_absy,ill,ill
-.byte 0, 4, 7, 0	; $dc: ill,cmp_absx,dec_absx,ill
-.byte 2, 6, 0, 0	; $e0: cpx_imm,sbc_indx,ill,ill
-.byte 3, 3, 5, 0	; $e4: cpx_zp,sbc_zp,inc_zp,ill
-.byte 2, 2, 2, 0	; $e8: inx,sbc_imm,nop,ill
-.byte 4, 4, 6, 0	; $ec: cpx_abs,sbc_abs,inc_abs,ill
-.byte 0, 5, 0, 0	; $f0: beq,sbc_indy,jam,ill
-.byte 0, 4, 6, 0	; $f4: ill,sbc_zpx,inc_zpx,ill
-.byte 2, 4, 0, 0	; $f8: sed,sbc_absy,ill,ill
-.byte 0, 4, 7, 0	; $fc: ill,sbc_absx,inc_absx,ill
+.byte 0, 6, 0, 8  	; $00: brk,ora_indx,jam,slo_indx
+.byte 3, 3, 5, 5  	; $04: nop_zp,ora_zp,asl_zp,slo_zp
+.byte 3, 2, 2, 2  	; $08: php,ora_imm,asl_a,anc_imm
+.byte 4, 4, 6, 6  	; $0c: nop_abs,ora_abs,asl_abs,slo_abs
+.byte 0, 5, 0, 8  	; $10: bpl,ora_indy,jam,slo_indy
+.byte 4, 4, 6, 6  	; $14: nop_zpx,ora_zpx,asl_zpx,slo_zpx
+.byte 2, 4, 2, 7  	; $18: clc,ora_absy,nop,slo_absy
+.byte 4, 4, 7, 7  	; $1c: nop_absx,ora_absx,asl_absx,slo_absx
+.byte 6, 6, 0, 8  	; $20: jsr,and_indx,jam,rla_indx
+.byte 3, 3, 5, 5  	; $24: bit_zp,and_zp,rol_zp,rla_zp
+.byte 4, 2, 2, 2  	; $28: plp,and_imm,rol_a,anc_imm
+.byte 4, 4, 6, 6  	; $2c: bit_abs,and_abs,rol_abs,rla_abs
+.byte 0, 5, 0, 8  	; $30: bmi,and_indy,jam,rla_indy
+.byte 4, 4, 6, 6  	; $34: nop_zpx,and_zpx,rol_zpx,rla_zpx
+.byte 2, 4, 2, 7  	; $38: sec,and_absy,nop,rla_absy
+.byte 4, 4, 7, 7  	; $3c: nop_absx,and_absx,rol_absx,rla_absx
+.byte 6, 6, 0, 8  	; $40: rti,eor_indx,jam,sre_indx
+.byte 3, 3, 5, 5  	; $44: nop_zp,eor_zp,lsr_zp,sre_zp
+.byte 3, 2, 2, 2  	; $48: pha,eor_imm,lsr_a,alr_imm
+.byte 3, 4, 6, 6  	; $4c: jmp_abs,eor_abs,lsr_abs,sre_abs
+.byte 0, 5, 0, 8  	; $50: bvc,eor_indy,jam,sre_indy
+.byte 4, 4, 6, 6  	; $54: nop_zpx,eor_zpx,lsr_zpx,sre_zpx
+.byte 2, 4, 2, 7  	; $58: cli,eor_absy,nop,sre_absy
+.byte 4, 4, 7, 7  	; $5c: nop_absx,eor_absx,lsr_absx,sre_absx
+.byte 6, 6, 0, 8  	; $60: rts,adc_indx,jam,rra_indx
+.byte 3, 3, 5, 5  	; $64: nop_zp,adc_zp,ror_zp,rra_zp
+.byte 4, 2, 2, 2  	; $68: pla,adc_imm,ror_a,arr_imm
+.byte 5, 4, 6, 6  	; $6c: jmp_ind,adc_abs,ror_abs,rra_abs
+.byte 0, 5, 0, 8  	; $70: bvs,adc_indy,jam,rra_indy
+.byte 4, 4, 6, 6  	; $74: nop_zpx,adc_zpx,ror_zpx,rra_zpx
+.byte 2, 4, 2, 7  	; $78: sei,adc_absy,nop,rra_absy
+.byte 4, 4, 7, 7  	; $7c: nop_absx,adc_absx,ror_absx,rra_absx
+.byte 2, 6, 2, 6  	; $80: nop_imm,sta_indx,nop_imm,sax_indx
+.byte 3, 3, 3, 3  	; $84: sty_zp,sta_zp,stx_zp,sax_zp
+.byte 2, 2, 2, 2  	; $88: dey,nop_imm,txa,ane_imm
+.byte 4, 4, 4, 4  	; $8c: sty_abs,sta_abs,stx_abs,sax_abs
+.byte 0, 6, 0, 6  	; $90: bcc,sta_indy,jam,sha_indy
+.byte 4, 4, 4, 4  	; $94: sty_zpx,sta_zpx,stx_zpy,sax_zpy
+.byte 2, 5, 2, 5  	; $98: tya,sta_absy,txs,tas_absy
+.byte 5, 5, 5, 5  	; $9c: shy_absx,sta_absx,shx_absy,sha_absy
+.byte 2, 6, 2, 6  	; $a0: ldy_imm,lda_indx,ldx_imm,lax_indx
+.byte 3, 3, 3, 3  	; $a4: ldy_zp,lda_zp,ldx_zp,lax_zp
+.byte 2, 2, 2, 2  	; $a8: tay,lda_imm,tax,lax_imm
+.byte 4, 4, 4, 4  	; $ac: ldy_abs,lda_abs,ldx_abs,lax_abs
+.byte 0, 5, 0, 5  	; $b0: bcs,lda_indy,jam,lax_indy
+.byte 4, 4, 4, 4  	; $b4: ldy_zpx,lda_zpx,ldx_zpy,lax_zpy
+.byte 2, 4, 2, 4  	; $b8: clv,lda_absy,tsx,las_absy
+.byte 4, 4, 4, 4  	; $bc: ldy_absx,lda_absx,ldx_absy,lax_absy
+.byte 2, 6, 2, 8  	; $c0: cpy_imm,cmp_indx,nop_imm,dcp_indx
+.byte 3, 3, 5, 5  	; $c4: cpy_zp,cmp_zp,dec_zp,dcp_zp
+.byte 2, 2, 2, 2  	; $c8: iny,cmp_imm,dex,sbx_imm
+.byte 4, 4, 6, 6  	; $cc: cpy_abs,cmp_abs,dec_abs,dcp_abs
+.byte 0, 5, 0, 8  	; $d0: bne,cmp_indy,jam,dcp_indy
+.byte 4, 4, 6, 6  	; $d4: nop_zpx,cmp_zpx,dec_zpx,dcp_zpx
+.byte 2, 4, 2, 7  	; $d8: cld,cmp_absy,nop,dcp_absy
+.byte 4, 4, 7, 7  	; $dc: nop_absx,cmp_absx,dec_absx,dcp_absx
+.byte 2, 6, 2, 8  	; $e0: cpx_imm,sbc_indx,nop_imm,isc_indx
+.byte 3, 3, 5, 5  	; $e4: cpx_zp,sbc_zp,inc_zp,isc_zp
+.byte 2, 2, 2, 2  	; $e8: inx,sbc_imm,nop,sbc_imm
+.byte 4, 4, 6, 6  	; $ec: cpx_abs,sbc_abs,inc_abs,isc_abs
+.byte 0, 5, 0, 8  	; $f0: beq,sbc_indy,jam,isc_indy
+.byte 4, 4, 6, 6  	; $f4: nop_zpx,sbc_zpx,inc_zpx,isc_zpx
+.byte 2, 4, 2, 7  	; $f8: sed,sbc_absy,nop,isc_absy
+.byte 4, 4, 7, 7  	; $fc: nop_absx,sbc_absx,inc_absx,isc_absx
 
 ;*******************************************************************************
 ; TRACE
@@ -1292,12 +1294,6 @@ h_jam:
 	inc __sim_illegal
 	inc __sim_jammed
 	rts
-
-h_ill:
-	inc __sim_illegal
-	lda #MODE_IMPLIED
-	sta __sim_op_mode
-	rts				; illegal opcode; abort the step
 
 h_nop:
 	lda #MODE_IMPLIED
@@ -2399,6 +2395,518 @@ h_rti:
 	jsr vpull			; PC hi
 	sta __sim_pc+1
 	rts
+
+;*******************************************************************************
+; UNDOCUMENTED ("UNINTENDED") OPCODES
+; Simulated per "NMOS 6510 Unintended Opcodes" (groepaz/solution, v0.99).
+; The stable opcodes are exact.  The unstable groups follow the documented
+; deterministic behaviour; see the notes on the SH* and ANE/LAX #imm groups.
+;*******************************************************************************
+
+;*******************************************************************************
+; "magic constant" for ANE ($8b) and LAX #imm ($ab).  On real hardware this is
+; chip- and temperature-dependent (common values are $ee, $00 and $ff); $ee is
+; what most emulators settle on.
+MAGIC_CONST = $ee
+
+;*******************************************************************************
+; SLO (ASO) - ASL {addr} + ORA {addr}
+; N/Z come from the ORA, C from the ASL
+;*******************************************************************************
+h_slo_zp:
+	jsr am_zp
+	jmp do_slo
+
+h_slo_zpx:
+	jsr am_zpx
+	jmp do_slo
+
+h_slo_indx:
+	jsr am_indx
+	jmp do_slo
+
+h_slo_indy:
+	jsr am_indy		; RMW: fixed 8 cycles, no page-cross penalty
+	jmp do_slo
+
+h_slo_abs:
+	jsr am_abs
+	jmp do_slo
+
+h_slo_absx:
+	jsr am_absx		; RMW: fixed 7 cycles
+	jmp do_slo
+
+h_slo_absy:
+	jsr am_absy
+	; fall through to do_slo
+
+do_slo:
+	jsr fetch_ea
+	asl
+	jsr rmw_done		; write back; N/Z/C from the shift
+	jmp do_ora		; re-read and OR into .A; N/Z updated, C kept
+
+;*******************************************************************************
+; RLA (RLN) - ROL {addr} + AND {addr}
+;*******************************************************************************
+h_rla_zp:
+	jsr am_zp
+	jmp do_rla
+
+h_rla_zpx:
+	jsr am_zpx
+	jmp do_rla
+
+h_rla_indx:
+	jsr am_indx
+	jmp do_rla
+
+h_rla_indy:
+	jsr am_indy
+	jmp do_rla
+
+h_rla_abs:
+	jsr am_abs
+	jmp do_rla
+
+h_rla_absx:
+	jsr am_absx
+	jmp do_rla
+
+h_rla_absy:
+	jsr am_absy
+	; fall through to do_rla
+
+do_rla:
+	jsr fetch_ea
+	jsr do_rol_mem		; rotate + write back; N/Z/C from the rotate
+	jmp do_and
+
+;*******************************************************************************
+; SRE (LSE) - LSR {addr} + EOR {addr}
+;*******************************************************************************
+h_sre_zp:
+	jsr am_zp
+	jmp do_sre
+
+h_sre_zpx:
+	jsr am_zpx
+	jmp do_sre
+
+h_sre_indx:
+	jsr am_indx
+	jmp do_sre
+
+h_sre_indy:
+	jsr am_indy
+	jmp do_sre
+
+h_sre_abs:
+	jsr am_abs
+	jmp do_sre
+
+h_sre_absx:
+	jsr am_absx
+	jmp do_sre
+
+h_sre_absy:
+	jsr am_absy
+	; fall through to do_sre
+
+do_sre:
+	jsr fetch_ea
+	lsr
+	jsr rmw_done
+	jmp do_eor
+
+;*******************************************************************************
+; RRA (RRD) - ROR {addr} + ADC {addr}
+; The ADC sees the carry produced by the rotate, and honours decimal mode
+; (do_adc runs the add on the host CPU with the virtual .P restored)
+;*******************************************************************************
+h_rra_zp:
+	jsr am_zp
+	jmp do_rra
+
+h_rra_zpx:
+	jsr am_zpx
+	jmp do_rra
+
+h_rra_indx:
+	jsr am_indx
+	jmp do_rra
+
+h_rra_indy:
+	jsr am_indy
+	jmp do_rra
+
+h_rra_abs:
+	jsr am_abs
+	jmp do_rra
+
+h_rra_absx:
+	jsr am_absx
+	jmp do_rra
+
+h_rra_absy:
+	jsr am_absy
+	; fall through to do_rra
+
+do_rra:
+	jsr fetch_ea
+	jsr do_ror_mem		; rotate + write back; C = old bit 0
+	jsr fetch_ea
+	jmp do_adc
+
+;*******************************************************************************
+; DCP (DCM) - DEC {addr} + CMP {addr}
+;*******************************************************************************
+h_dcp_zp:
+	jsr am_zp
+	jmp do_dcp
+
+h_dcp_zpx:
+	jsr am_zpx
+	jmp do_dcp
+
+h_dcp_indx:
+	jsr am_indx
+	jmp do_dcp
+
+h_dcp_indy:
+	jsr am_indy
+	jmp do_dcp
+
+h_dcp_abs:
+	jsr am_abs
+	jmp do_dcp
+
+h_dcp_absx:
+	jsr am_absx
+	jmp do_dcp
+
+h_dcp_absy:
+	jsr am_absy
+	; fall through to do_dcp
+
+do_dcp:
+	jsr fetch_ea
+	sec
+	sbc #$01
+	jsr do_inc_done		; write back; N/Z updated, C untouched
+	jsr fetch_ea
+	jmp do_cmp_a		; N/Z/C from the compare
+
+;*******************************************************************************
+; ISC (ISB, INS) - INC {addr} + SBC {addr}
+; The SBC uses the carry from before the instruction as its borrow, and
+; honours decimal mode
+;*******************************************************************************
+h_isc_zp:
+	jsr am_zp
+	jmp do_isc
+
+h_isc_zpx:
+	jsr am_zpx
+	jmp do_isc
+
+h_isc_indx:
+	jsr am_indx
+	jmp do_isc
+
+h_isc_indy:
+	jsr am_indy
+	jmp do_isc
+
+h_isc_abs:
+	jsr am_abs
+	jmp do_isc
+
+h_isc_absx:
+	jsr am_absx
+	jmp do_isc
+
+h_isc_absy:
+	jsr am_absy
+	; fall through to do_isc
+
+do_isc:
+	jsr fetch_ea
+	clc
+	adc #$01
+	jsr do_inc_done		; write back; N/Z updated, C untouched
+	jsr fetch_ea
+	jmp do_sbc
+
+;*******************************************************************************
+; SAX (AXS, AAX) - {addr} = .A & .X; no flags are affected
+;*******************************************************************************
+h_sax_zp:
+	jsr am_zp
+	jmp do_sax
+
+h_sax_zpy:
+	jsr am_zpy
+	jmp do_sax
+
+h_sax_indx:
+	jsr am_indx
+	jmp do_sax
+
+h_sax_abs:
+	jsr am_abs
+	; fall through to do_sax
+
+do_sax:
+	lda __sim_reg_a
+	and __sim_reg_x
+	jmp store_ea
+
+;*******************************************************************************
+; LAX - .A = .X = {addr}
+;*******************************************************************************
+h_lax_zp:
+	jsr am_zp
+	jmp do_lax
+
+h_lax_zpy:
+	jsr am_zpy
+	jmp do_lax
+
+h_lax_indx:
+	jsr am_indx
+	jmp do_lax
+
+h_lax_indy:
+	jsr am_indy_pc
+	jmp do_lax
+
+h_lax_abs:
+	jsr am_abs
+	jmp do_lax
+
+h_lax_absy:
+	jsr am_absy_pc
+	; fall through to do_lax
+
+do_lax:
+	jsr fetch_ea
+	sta __sim_reg_a
+	sta __sim_reg_x
+	jmp update_nz
+
+;*******************************************************************************
+; ANC (ANC2, ANA, ANB) $0b/$2b - .A = .A & #imm, then C = N
+;*******************************************************************************
+h_anc_imm:
+	jsr am_imm
+	jsr fetch_ea
+	and __sim_reg_a
+	sta __sim_reg_a
+	jsr update_nz
+	lda __sim_reg_p
+	and #$fe		; C = 0
+	sta __sim_reg_p
+	lda __sim_reg_a
+	bpl :+
+	inc __sim_reg_p		; result was negative -> C = 1
+:	rts
+
+;*******************************************************************************
+; ALR (ASR) $4b - .A = (.A & #imm) >> 1; N=0, Z, C = bit 0 before the shift
+;*******************************************************************************
+h_alr_imm:
+	jsr am_imm
+	jsr fetch_ea
+	and __sim_reg_a
+	lsr
+	sta __sim_reg_a
+	jmp update_nzc
+
+;*******************************************************************************
+; ARR $6b - .A = (.A & #imm) rotated right, with ADC-like flags:
+;   C = bit 7 of (.A & #imm)
+;   V = bit 7 XOR bit 6 of (.A & #imm)
+;   N/Z from the result (bit 7 of which is the incoming carry)
+; NOTE: the (quite different) decimal-mode behaviour is not modelled
+;*******************************************************************************
+h_arr_imm:
+	jsr am_imm
+	jsr fetch_ea
+	and __sim_reg_a
+	sta r4			; r4 = .A & #imm
+
+	lda __sim_reg_p
+	and #$fb		; force I=0 so the PLP can't enable interrupts
+	pha
+	lda r4
+	plp			; restore the virtual carry
+	ror
+	cld			; don't leak the virtual D flag to the host
+	sta __sim_reg_a
+	jsr update_nz		; N/Z from the rotated result
+
+	; C = bit 7 of the input
+	lda r4
+	asl
+	lda #$00
+	rol
+	sta r5
+
+	; V = bit 7 XOR bit 6 of the input
+	lda r4
+	asl			; bit 7 of this is the input's bit 6
+	eor r4
+	and #$80
+	lsr			; move into the V position ($40)
+	ora r5
+
+	sta r5
+	lda __sim_reg_p
+	and #$be		; clear V and C
+	ora r5
+	sta __sim_reg_p
+	rts
+
+;*******************************************************************************
+; SBX (AXS, XMA) $cb - .X = (.A & .X) - #imm
+; Flags are set like CMP: this subtract ignores the carry, ignores decimal
+; mode, and does not touch V
+;*******************************************************************************
+h_sbx_imm:
+	jsr am_imm
+	jsr fetch_ea
+	sta r4
+	lda __sim_reg_a
+	and __sim_reg_x
+	sec
+	sbc r4
+	sta __sim_reg_x
+	jmp update_nzc
+
+;*******************************************************************************
+; ANE (XAA) $8b - .A = (.A | CONST) & .X & #imm
+; CONST is the unstable "magic constant"; see MAGIC_CONST above
+;*******************************************************************************
+h_ane_imm:
+	jsr am_imm
+	jsr fetch_ea
+	sta r4
+	lda __sim_reg_a
+	ora #MAGIC_CONST
+	and __sim_reg_x
+	and r4
+	sta __sim_reg_a
+	jmp update_nz
+
+;*******************************************************************************
+; LAX #imm (LXA, OAL, ATX) $ab - .A = .X = (.A | CONST) & #imm
+;*******************************************************************************
+h_lax_imm:
+	jsr am_imm
+	jsr fetch_ea
+	sta r4
+	lda __sim_reg_a
+	ora #MAGIC_CONST
+	and r4
+	sta __sim_reg_a
+	sta __sim_reg_x
+	jmp update_nz
+
+;*******************************************************************************
+; SHA/SHX/SHY/TAS - the "unstable address high byte" group
+; The value stored is ANDed with the high byte of the un-indexed target
+; address plus one ({H+1}).  When the indexing crosses a page boundary the
+; high byte of the address actually written is corrupted to {H+1} & value.
+; The remaining instability (the AND dropping out when RDY goes low during a
+; DMA) is not modelled - there is no DMA in the simulator.
+; None of these affect any flag.
+;*******************************************************************************
+h_sha_indy:
+	jsr am_indy		; fixed 6 cycles
+	jmp do_sha
+
+h_sha_absy:
+	jsr am_absy		; fixed 5 cycles
+	; fall through to do_sha
+
+do_sha:
+	lda __sim_reg_a
+	and __sim_reg_x		; lda/and leave .C (the page-cross flag) alone
+	jmp do_sh
+
+h_shx_absy:
+	jsr am_absy
+	lda __sim_reg_x
+	jmp do_sh
+
+h_shy_absx:
+	jsr am_absx
+	lda __sim_reg_y
+	jmp do_sh
+
+h_tas_absy:
+	jsr am_absy
+	lda __sim_reg_a
+	and __sim_reg_x
+	sta __sim_reg_sp	; SP = .A & .X
+	; fall through to do_sh
+
+;-------------------------------------------------------------------------------
+; DO SH
+; IN:
+;   - .A: the value to store
+;   - .C: set if the indexing crossed a page boundary
+do_sh:
+	sta r4
+	lda __sim_effective_addr+1
+	bcs @cross
+	clc
+	adc #$01		; {H+1}
+	and r4
+	jmp store_ea
+
+@cross:	and r4			; the address' high byte is already {H+1}
+	sta __sim_effective_addr+1
+	jmp store_ea
+
+;*******************************************************************************
+; LAS (LAR) $bb - .A = .X = SP = {addr} & SP
+;*******************************************************************************
+h_las_absy:
+	jsr am_absy_pc
+	jsr fetch_ea
+	and __sim_reg_sp
+	sta __sim_reg_a
+	sta __sim_reg_x
+	sta __sim_reg_sp
+	jmp update_nz
+
+;*******************************************************************************
+; NOP - the undocumented NOPs with operands.  All but NOP #imm perform a real
+; read of the effective address (NOP $912d is a legitimate way to acknowledge
+; a timer interrupt without disturbing a register), so they go through
+; fetch_ea and can trip a watch.
+;*******************************************************************************
+h_nop_imm:
+	jmp am_imm
+
+h_nop_zp:
+	jsr am_zp
+	jmp fetch_ea
+
+h_nop_zpx:
+	jsr am_zpx
+	jmp fetch_ea
+
+h_nop_abs:
+	jsr am_abs
+	jmp fetch_ea
+
+h_nop_absx:
+	jsr am_absx_pc
+	jmp fetch_ea
 
 .ifdef vic20
 ;*******************************************************************************

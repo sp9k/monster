@@ -226,17 +226,28 @@ asmbuffer = mem::asmbuffer
 
 .segment "ASMBANK"
 ;*******************************************************************************
-NUM_OPCODES = 58
+NUM_OPCODES = 78
 CC_00       = 0
 CC_01       = 8
 CC_10       = 16
 CC_IMP      = 24
+CC_11       = 58	; undocumented "combination" ops (SLO, RLA, ...)
+CC_EXC      = 66	; undocumented ops that need an explicit opcode
 AAA_JMP     = $02
 AAA_JMP_IND = $03
 
+; Internal marker values for the `cc` variable.  0-2 are the real cc bits of
+; the aaabbbcc encoding, and CC_11 instructions use the real %11 as well. The
+; two blocks that don't encode normally use markers outside that range
+CC_IMP_ID   = 4		; branches, JSR and the implied single-byte instructions
+CC_EXC_ID   = 5		; entry in the exception table (see opcode_exceptions)
+
 opcodes:
 ; cc = 00
-.byte $ff,$ff,$ff ; unused
+; The aaa=000 slot is NOP: $04 (zp), $0C (abs), $14 (zp,x) and $1C (abs,x)
+; all fall out of the normal encoding.  Its implied ($EA) and immediate ($80)
+; forms do not, and are handled by @validate_cc.
+.byte "nop" ; 000 0
 .byte "bit" ; 001 3
 .byte "jmp" ; 010 4
 .byte "jmp" ; 011 5
@@ -302,6 +313,138 @@ opcode_singles_strings:
 .byte "tsx"
 .byte "dex"
 .byte "nop"
+
+;*******************************************************************************
+; UNDOCUMENTED OPCODES
+; cc = 11 opcodes
+; These encode normally like the documented instructions. The entry's
+; position in this block is its aaa value and the bbb encoding is the same as
+; the one used by the cc = 01 instructions (see bbb01).  The combinations that
+; don't exist are rejected by the illegal_opcodes list.
+opcode_illegals:
+.byte "slo" ; 000
+.byte "rla" ; 001
+.byte "sre" ; 010
+.byte "rra" ; 011
+.byte "sax" ; 100
+.byte "lax" ; 101
+.byte "dcp" ; 110
+.byte "isc" ; 111
+
+;*******************************************************************************
+; UNDOCUMENTED OPCODES
+; These don't follow the aaabbbcc encoding.  aaa is insufficient to identify
+; these (e.g. aaa=100 is SAX at 4 bbb values but TAS at bbb=110 and SHA at
+; bbb=100/111), so their opcodes are given explicitly and selected by the
+; address mode the operand parses to.
+; A mnemonic that has more than one form lists them consecutively with bit 7
+; of its mode byte set on all but the last (see @validate_exception).
+opcode_exceptions:
+.byte "anc"
+.byte "alr"
+.byte "arr"
+.byte "sbx"
+.byte "ane"
+.byte "sha"	; (zp),y
+.byte "sha"	; abs,y
+.byte "shx"
+.byte "shy"
+.byte "tas"
+.byte "las"
+.byte "jam"
+
+MORE = $80	; set in exception_modes if another form of the mnemonic follows
+
+;*******************************************************************************
+; Indices into the mnemonic table (opcodes) for the undocumented opcodes
+; that have to be disassembled from a table (see disasm_exc_ops)
+MNE_NOP = 0		; the aaa=000, cc=00 slot
+MNE_SBC = CC_01+7
+MNE_ANC = CC_EXC+0
+MNE_ALR = CC_EXC+1
+MNE_ARR = CC_EXC+2
+MNE_SBX = CC_EXC+3
+MNE_ANE = CC_EXC+4
+MNE_SHA = CC_EXC+5
+MNE_SHX = CC_EXC+7
+MNE_SHY = CC_EXC+8
+MNE_TAS = CC_EXC+9
+MNE_LAS = CC_EXC+10
+MNE_JAM = CC_EXC+11
+
+; MODE_ flag combinations, named to match the address modes
+M_IMP  = MODE_IMPLIED
+M_IMM  = MODE_IMMEDIATE|MODE_ZP
+M_ZP   = MODE_ZP
+M_ZPX  = MODE_ZP|MODE_X_INDEXED
+M_ABS  = MODE_ABS
+M_ABSX = MODE_ABS|MODE_X_INDEXED
+M_ABSY = MODE_ABS|MODE_Y_INDEXED
+M_INDY = MODE_ZP|MODE_INDIRECT|MODE_Y_INDEXED
+
+exception_ops:
+.byte $0b	; anc #imm
+.byte $4b	; alr #imm
+.byte $6b	; arr #imm
+.byte $cb	; sbx #imm
+.byte $8b	; ane #imm
+.byte $93	; sha (zp),y
+.byte $9f	; sha abs,y
+.byte $9e	; shx abs,y
+.byte $9c	; shy abs,x
+.byte $9b	; tas abs,y
+.byte $bb	; las abs,y
+.byte $02	; jam
+
+exception_modes:
+.byte IMMEDIATE, IMMEDIATE, IMMEDIATE, IMMEDIATE, IMMEDIATE
+.byte ZEROPAGE_Y_INDIRECT|MORE, ABS_Y
+.byte ABS_Y			; shx
+.byte ABS_X			; shy
+.byte ABS_Y			; tas
+.byte ABS_Y			; las
+.byte IMPLIED			; jam
+
+;*******************************************************************************
+; DISASSEMBLY EXCEPTIONS
+; Undocumented opcodes whose mnemonic and/or address mode can't be recovered
+; from the aaabbbcc encoding.  Everything else, including the cc = 11 block
+; and NOP $04/$0C/$14/$1C, decodes normally.
+; This list is searched before illegal_opcodes, which still rejects the
+; documented mnemonics that share these encodings (e.g. STY abs,x is $9C)
+disasm_exc_ops:
+	; immediate combinations
+	.byte $0b, $2b, $4b, $6b, $8b, $cb, $eb
+	; the "unstable address high byte" group
+	.byte $93, $9b, $9c, $9e, $9f, $bb
+	; JAM
+	.byte $02, $12, $22, $32, $42, $52, $62, $72, $92, $b2, $d2, $f2
+	; NOP, implied
+	.byte $1a, $3a, $5a, $7a, $da, $fa
+	; NOP, immediate
+	.byte $80, $82, $89, $c2, $e2
+	; NOP, zeropage and zeropage,x
+	.byte $44, $64
+	.byte $34, $54, $74, $d4, $f4
+	; NOP, absolute,x
+	.byte $3c, $5c, $7c, $dc, $fc
+num_disasm_exc = *-disasm_exc_ops
+
+disasm_exc_mne:
+	.byte MNE_ANC, MNE_ANC, MNE_ALR, MNE_ARR, MNE_ANE, MNE_SBX, MNE_SBC
+	.byte MNE_SHA, MNE_TAS, MNE_SHY, MNE_SHX, MNE_SHA, MNE_LAS
+	.res 12, MNE_JAM
+	.res 23, MNE_NOP
+
+disasm_exc_modes:
+	.byte M_IMM, M_IMM, M_IMM, M_IMM, M_IMM, M_IMM, M_IMM
+	.byte M_INDY, M_ABSY, M_ABSX, M_ABSY, M_ABSY, M_ABSY
+	.res 12, M_IMP
+	.res 6, M_IMP
+	.res 5, M_IMM
+	.res 2, M_ZP
+	.res 5, M_ZPX
+	.res 5, M_ABSX
 
 ;*******************************************************************************
 ; OPCODETAB
@@ -475,6 +618,20 @@ illegal_opcodes:
 	.byte %11011100 ; CPY abs,x
 	.byte %11110100 ; CPX zp,x
 	.byte %11111100 ; CPX abs,x
+
+	; cc = 11 gaps
+	; exceptions to the normal encoding handled via opcode_exceptions
+	.byte $0b	; SLO #imm (really ANC)
+	.byte $2b	; RLA #imm (really ANC)
+	.byte $4b	; SRE #imm (really ALR)
+	.byte $6b	; RRA #imm (really ARR)
+	.byte $8b	; SAX #imm (really ANE)
+	.byte $cb	; DCP #imm (really SBX)
+	.byte $eb	; ISC #imm (really SBC)
+	.byte $93	; SAX (zp),y (really SHA)
+	.byte $9b	; SAX abs,y  (really TAS)
+	.byte $9f	; SAX abs,x  (really SHA abs,y)
+	.byte $bb	; LAX abs,y with explicit Y indexing (really LAS)
 num_illegals = *-illegal_opcodes
 
 ;*******************************************************************************
@@ -1079,12 +1236,14 @@ BANKED_CODE "ASMBANK"
 	bne @err 	; only ABS supported for JMP XXXX
 	lda #$4c
 	sta opcode
-	bne @noerr	; branch always
+	jne @noerr	; branch always
 
 @getbbb:
 	; get bbb bits based upon the address mode and cc
 	lda cc
-	cmp #$03
+	cmp #CC_EXC_ID
+	jeq @validate_exception
+	cmp #CC_IMP_ID
 	beq :+
 	jmp @validate_cc
 
@@ -1232,6 +1391,26 @@ BANKED_CODE "ASMBANK"
 ;-------------------------------------------------------------------------------
 ; check that the BBB and CC combination we have is valid
 @validate_cc:
+	lda cc
+	ora opcode
+	bne @getbbb_cc
+
+	; at this point if aaa000 and cc=00 we are dealing with a NOP
+	; check the special undocumented forms of it (IMPLIED and IMMEDIATE)
+	; its ZP and absolute forms encode normally
+	cpx #IMPLIED
+	bne :+
+	lda #$ea
+	sta opcode
+	jmp @noerr
+
+:	cpx #IMMEDIATE
+	bne @getbbb_cc
+	lda #$80
+	sta opcode
+	jmp @noerr
+
+@getbbb_cc:
 	ldy cc		; are CC bits 0?
 	bne :+		; if so, skip
 	lda bbb00,x
@@ -1241,9 +1420,12 @@ BANKED_CODE "ASMBANK"
 :	cpy #$02
 	bne :+
 	lda bbb10,x
+:	cpy #$03	; cc = 11 indexes the same bbb table as cc = 01
+	bne :+
+	lda bbb01,x
 
 :	cmp #$ff	; check INVALID value ($ff)
-	beq @err	; if invalid, return error
+	jeq @err	; if invalid, return error
 
 	; move bbb bits to their proper location (<< 2)
 	asl
@@ -1261,6 +1443,41 @@ BANKED_CODE "ASMBANK"
 	bpl :-
 
 	; if instruction is valid, write out its opcode
+	sta opcode
+	jmp @noerr
+
+;-------------------------------------------------------------------------------
+; resolve an entry in the exception table (see opcode_exceptions).
+; `opcode` contains the index of the mnemonic's first form and .X holds the
+; address mode the operand parsed to.  A mnemonic with more than one form
+; lists them consecutively with MORE set in all but the last mode byte.
+@validate_exception:
+	stx @tmp		; .X = address mode
+@exc_retry:
+	ldy opcode		; .Y = the mnemonic's first form
+:	lda exception_modes,y
+	and #$ff & ~MORE
+	cmp @tmp
+	beq @exc_found		; this form takes the mode we parsed
+	lda exception_modes,y
+	bpl @exc_promote	; no more forms to try
+	iny
+	bne :-			; branch always
+
+@exc_promote:
+	; none of the forms take a zeropage-indexed operand - every indexed
+	; instruction in this table is absolute-indexed - so promote the
+	; operand to 2 bytes and look again (as is done for "zp, y")
+	lda @tmp
+	cmp #ZEROPAGE_X
+	jne @err
+	lda #ABS_X
+	sta @tmp
+	inc operandsz
+	bne @exc_retry		; branch always
+
+@exc_found:
+	lda exception_ops,y
 	sta opcode
 	jmp @noerr
 .endproc
@@ -1646,13 +1863,41 @@ BANKED_CODE "ASMBANK"
 	inc cc
 	cmp #CC_IMP
 	bcc @setcc
-	inc cc
+	cmp #CC_11
+	bcs @undocumented
 
-; if we reached this point, instruction is a CC 00 encoding, look up the opcode
-; from a table
+; branches, JSR and the implied single-byte instructions don't follow the
+; aaabbbcc encoding; look their opcode up in a table
+	ldx #CC_IMP_ID
+	stx cc
+	sec
 	sbc #CC_IMP
 	tax
 	lda opcodetab,x
+	tax
+	jmp @return
+
+;-------------------------------------------------------------------------------
+@undocumented:
+	cmp #CC_EXC
+	bcs @exception
+
+; the cc = 11 block encodes normally (the entry's position within the block is
+; also its aaa value)
+	ldx #$03		; the real cc bits
+	stx cc
+	sec
+	sbc #CC_11
+	bcs @setcc		; branch always (.C is set by the SBC)
+
+;-------------------------------------------------------------------------------
+@exception:
+; opcode depends on the address mode, which hasn't been parsed yet
+; save the table index and resolve it in @validate_exception once it has been.
+	ldx #CC_EXC_ID
+	stx cc
+	sec
+	sbc #CC_EXC
 	tax
 	jmp @return
 
@@ -3137,7 +3382,7 @@ include_entry:
 	beq @implied_or_jsr
 	dex
 	bpl :-
-	bmi @chkillegals
+	bmi @chkexceptions
 
 @implied_or_jsr:
 	pha
@@ -3168,6 +3413,24 @@ include_entry:
 	ldx #MODE_IMPLIED
 	clc			; ok
 @ret:	rts
+
+@chkexceptions:
+	; check for undocumented opcodes that don't follow the typical encoding
+	ldx #num_disasm_exc-1
+:	lda @op
+	cmp disasm_exc_ops,x
+	beq @exception
+	dex
+	bpl :-
+	bmi @chkillegals	; branch always
+
+@exception:
+	; write the mnemonic first: @modes and @optab are the same register
+	lda disasm_exc_mne,x
+	jsr @write_mneumonic
+	lda disasm_exc_modes,x	; (.X is preserved by @write_mneumonic)
+	sta @modes
+	jmp @chkimplied
 
 @chkillegals:
 	; check if the opcode is "illegal"
@@ -3255,7 +3518,10 @@ include_entry:
 	asl
 	asl
 	asl
-	sta @cc8
+	cmp #$03*8	; cc = 11?
+	bne :+
+	lda #CC_11	; its mnemonics are past the single-byte ones
+:	sta @cc8
 
 	; get aaa - opcode offset (each mneumonic is 3 bytes)
 	lda @op
@@ -3266,29 +3532,16 @@ include_entry:
 	lsr
 	clc
 	adc @cc8
+	ldy @cc
+	cpy #$03
+	beq :+			; every cc = 11 mnemonic exists
 	cmp #(opcode_branches-opcodes)/3
 	bcs @invalid
-	sta @cc8_plus_aaa
-	asl
-	adc @cc8_plus_aaa
-	bne :+
-	sec
+:	jsr @write_mneumonic
+	jmp @get_addrmode
+
 @invalid:
-	rts			; optab code 0 is invalid
-
-:	adc #<opcodes
-	sta @optab
-	lda #>opcodes
-	adc #$00
-	sta @optab+1
-
-	; write the opcode (optab),aaa to the destination
-	ldy #$00
-:	lda (@optab),y
-	jsr @appendch
-	iny
-	cpy #$03
-	bne :-
+	rts			; .C is still set from the bounds check
 
 @get_addrmode:
 	; get bbb and find the addressing mode for the instruction
@@ -3306,7 +3559,10 @@ include_entry:
 
 	; get the cc offset into the bbb_modes table
 	lda @cc
-	asl
+	cmp #$03
+	bne :+
+	lda #$01	; cc = 11 has the same address modes as cc = 01
+:	asl
 	asl
 	asl
 	adc @bbb	; add bbb to get the table position of our instruction
@@ -3315,13 +3571,20 @@ include_entry:
 	lda bbb_modes,x
 	sta @modes
 
-	; for LDX/STX the ,X encodings (bbb=101/111) actually mean ,Y
+	; for LDX/STX (and LAX/SAX, which share their aaa values) the ,X
+	; encodings (bbb=101/111) actually mean ,Y
 	lda @cc
 	cmp #$02
+	beq :+
+	cmp #$03
 	bne @chkimplied
+:
 	lda @modes
 	and #MODE_X_INDEXED
 	beq @chkimplied
+	lda @modes
+	and #MODE_INDIRECT	; (zp,x) is x-indexed but never means ,Y
+	bne @chkimplied
 	lda @op
 	and #$e0	; get aaa
 	cmp #$80	; STX?
@@ -3441,6 +3704,33 @@ include_entry:
 	txa			; .A = size
 	ldx @modes		; .X = address modes
 	RETURN_OK
+
+;-------------------------------------------------------------------------------
+; WRITE MNEUMONIC
+; Writes the 3 character mnemonic for the give OPCODES index
+; IN:
+;   - .A: index in opcodes table to get mneumonic for
+; CLOBBERS:
+;   - @optab (and therefore @modes)
+; PRESERVES:
+;   - .X
+@write_mneumonic:
+	sta @xxy
+	asl
+	adc @xxy	; * 3 to get the offset into the mnemonic table
+	adc #<opcodes
+	sta @optab
+	lda #>opcodes
+	adc #$00
+	sta @optab+1
+
+	ldy #$00
+:	lda (@optab),y
+	jsr @appendch
+	iny
+	cpy #$03
+	bne :-
+	rts
 
 ;-------------------------------------------------------------------------------
 ; APPEND CH
@@ -3756,14 +4046,18 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 ;  - .C: clear if the given opcode is a LDX/STX
 .proc is_ldx_stx
 	pha
+	lda indirect_hint
+	bne @no		; "(zp), y" is a real Y-indexed mode, don't fold it
 	lda cc
-	cmp #$02	; only applicable if cc = %10
+	cmp #$02	; cc = %10 (STX/LDX)?
+	beq :+
+	cmp #$03	; cc = %11 (SAX/LAX, same aaa values)?
 	bne @no
 
-	lda opcode	; get aaa
-	cmp #$80	; aaa = 100 STX ($8)
+:	lda opcode	; get aaa
+	cmp #$80	; aaa = 100 STX/SAX ($8)
 	beq @yes
-	cmp #$a0	; aaa = 101 LDX ($a)
+	cmp #$a0	; aaa = 101 LDX/LAX ($a)
 	beq @yes
 @no:	sec
 	skb

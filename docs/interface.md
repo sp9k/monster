@@ -11,15 +11,15 @@ commands.
 
 | COMMAND    |  KEY       |  DESCRIPTION
 |------------|------------|----------------------------------------------------------------------------------------------------
-| `NEXT WIN` | `C= + W  ` | Cycles to the next available window (if already in the editor, enters the active window)
-| `EXIT    ` | `RUN/STOP` | If window is active, exits it, returning to editor
-| `HIDE    ` | `C= + H  ` | Toggles the display of windows entirely
+| `NEXT WIN` | {c64-keys}`C= + W` | Cycles to the next available window (if already in the editor, enters the active window)
+| `EXIT    ` | {c64-key}`RUN/STOP` | If window is active, exits it, returning to editor
+| `HIDE    ` | {c64-keys}`C= + H` | Toggles the display of windows entirely
 
 Some windows, in particular the memory viewer/editor and the text-based monitor, are resizable; this is done with
 the following keys.
 
 | COMMAND    |  KEY       |  DESCRIPTION
 |------------|------------|-----------------------------------------------------------------------------------------------------
-| `GROW    ` | `C= + K`   | Enlarges the active window
-| `SHRINK  ` | `C= + J`   | Shrinks the active window
-| `MAXIMIZE` | `C= + Z`   | Toggles between full screen (if currently not maximized) or its last un-maximized size (if maximized)
+| `GROW    ` | {c64-keys}`C= + K` | Enlarges the active window
+| `SHRINK  ` | {c64-keys}`C= + J` | Shrinks the active window
+| `MAXIMIZE` | {c64-keys}`C= + Z` | Toggles between full screen (if currently not maximized) or its last un-maximized size (if maximized)

@@ -7,8 +7,8 @@ single executable binary file.  To link a program there are a few prerequisites:
 2. produce a LINK file to describe the desired layout for the linked program
 3. link the program
 
-### SAVING AN OBJECT FILE
-Object files are nothing more than individually assembled fragments.  Anything you assemble (C=+a) can
+### BUILDING OBJECT FILES
+Object files are nothing more than individually assembled fragments.  Anything you assemble ({c64-keys}`C= + A`) can
 be stored to disk in the object format.  This is done with the `:o` Ex command.  The linker will
 specifically look for files that end in `.o` when it goes to link, so be sure to enter a filename
 with that suffix: e.g. `:o hello.o`.
@@ -21,35 +21,35 @@ Its real value comes when you use the `.seg` directive instead.  The linker's jo
 code and data that was defined in the same segment and to put it together into one contiguous block.
 
 For example, say we have two object files: a.o and b.o
-#### a.s
+
+`a.s`
 ```
 .seg "CODE"
-	lda #$00
-	sta $900f
+    lda #$00
+    sta $900f
 .seg "DATA"
-	.byte "hello"
+    .byte "hello"
 ```
 
-#### b.s
+`b.s`
 ```
 .seg "CODE"
-	rol $9000
+    rol $9000
 .seg "DATA"
-	.byte " world"
+    .byte " world"
 ```
 
 The linker will _concatenate_ each segment in b.o to the corresponding ones defined in a.o.
 Effectively, the linked binary will correspond to something like this:
 
-#### c.s
 ```
 .seg "CODE"
-	lda #$00
-	sta $900f
-	rol $9000
+    lda #$00
+    sta $900f
+    rol $9000
 .seg "DATA"
-	.byte "hello"
-	.byte " world"
+    .byte "hello"
+    .byte " world"
 ```
 
 But what physical address will "CODE" and "DATA" actually correspond to?  Enter the `LINK` file.
@@ -73,19 +73,19 @@ the LINK file.
 
 ```
 MEMORY [
-SECTIONA:
- START=$0400
- END=$1000
- FILL=1;
-SECTIONB:
- START=$1000
- END=$1200;
+    SECTIONA:
+        START=$0400
+        END=$1000
+        FILL=1;
+    SECTIONB:
+        START=$1000
+        END=$1200;
 ]
 
 SEGMENTS [
- SEGA:
-   LOAD=SECTIONA
-   RUN=SECTIONB;
+    SEGA:
+        LOAD=SECTIONA
+        RUN=SECTIONB;
 ]
 ```
 
@@ -96,7 +96,7 @@ memory within a SECTION.  The table below describes the available flags and thei
 
 Note that any nonzero value for these flags will enable them while the zero value disables them.
 
-| name | description
+| NAME | DESCRIPTION
 |------|--------------------------------------------------------------
 | FILL |  if '1' fills unused memory in the section with 0's
 
@@ -135,7 +135,7 @@ To link multiple object files the linker follows the following procedure:
 ### OBJECT FILE FORMAT
 Below is a description of the object file's components.  These are listed in the order they appear in the object file.  These are described in further depth in the rest of this document.
 
-| field          | description
+| FIELD          | DESCRIPTION
 |----------------|-----------------------------------------------------------
 | OBJ HEADER     | basic info (number of segments, and symbols)
 | SEGMENT HEADER | names and usage of each SEGMENT
@@ -147,7 +147,7 @@ Below is a description of the object file's components.  These are listed in the
 At the beginning of the object file is the _header_, which gives basic details about the object file.  The header simply tells us how many segments and symbols are defined in the object file.
 The linker uses the header in each object file to determine the final layout in pass 1.
 
-| field        | size |  description
+| FIELD        | SIZE |  DESCRIPTION
 |--------------|------|--------------------------------------------------
 | num segments |  1   | number of SEGMENTS used
 | num exports  |  1   | number of exports in object file
@@ -164,12 +164,12 @@ For example, given the following assembly code:
 .seg "DATA"
     .byte 1, 2, 3, 4, 5
 .seg "CODE"
-     lda #$00
+    lda #$00
 ```
 
 The SEGMENT header will be:
 
-| segment name  | size
+| SEGMENT NAME  | SIZE
 |---------------|------------
 |     CODE      |  3
 |     DATA      |  5
@@ -177,7 +177,7 @@ The SEGMENT header will be:
 
 The format of this header in the object code is as follows:
 
-| field | size |  description
+| FIELD | SIZE |  DESCRIPTION
 |-------|------|--------------------------------------------------
 | name  |   8  | SEGMENT name (where to write SECTION to)
 | size  |   2  | size in bytes
@@ -193,7 +193,7 @@ Next is the _symbol_ table. This table contains all labels that are used in the 
 
 The symbol table has two parts: IMPORTS and EXPORTS, which appear in the order shown in this table:
 
-| field          | description
+| FIELD          | DESCRIPTION
 |----------------|--------------------------------------------------------------------------------
 | IMPORTS        | symbols that are defined in other object files but used in this one
 | EXPORTS        | symbols that are defined in this object file and (potentially) used in others
@@ -217,7 +217,7 @@ Resolving names to their SEGMENT and offset occurs by reading the EXPORTS block 
 Validation is performed on each global (EXPORT/IMPORT) to ensure that the same symbol doesn't have conflicting definitions (e.g. two differing sizes).
 
 
-|  field  | size  |  description
+|  FIELD  | SIZE  |  DESCRIPTION
 |---------|-------|-----------------------------------------------------------------
 |  name   | 1-33  | the symbol name as a 0-terminated string
 |  info   |   1   | information about the import (size)
@@ -226,7 +226,7 @@ Validation is performed on each global (EXPORT/IMPORT) to ensure that the same s
 
 The info field uses the following bitfield format:
 
-|  field  | bit(s)|  description
+|  FIELD  | BIT(S)|  DESCRIPTION
 |---------|-------|----------------------------------------------------
 |  size   |   0   | 0=zeropage import ($00-$ff), 1=absolute (>= $100)
 
@@ -241,7 +241,7 @@ references it.  This also happens in pass 1.
 
 Suppose we have the following files where the `.CODE` segment begins at the address listed:
 
-| filename | .CODE base
+| FILENAME | .CODE BASE
 |----------|--------------------------------
 |  foo     |  $1000
 |  bar     |  $1020
@@ -255,7 +255,7 @@ This duplication allows the linker to read the EXPORTS block in pass 1 and fully
 without having to load the entire LOCALS table for each object file.
 
 
-| field   | size  | description
+| FIELD   | SIZE  | DESCRIPTION
 |---------|-------|----------------------------------------------------------------------
 | name    |  1-33 | the name of the symbol as a 0-terminated string
 | segment |   1   | segment the symbol resides in (index in object's SEGMENT table)
@@ -271,7 +271,7 @@ Each SEGMENT contains a short header that tells us the size of the three sub-tab
 
 Below is the format for the header which precedes the SEGMENT tables:
 
-| field           | size | description
+| FIELD           | SIZE | DESCRIPTION
 |-----------------|------|---------------------------------------------------------------------
 |  info           |  1   | info byte: zeropage/absolute etc.
 |  code size      |  2   | size of the object-code binary table for the SEGMENT
@@ -280,7 +280,7 @@ Below is the format for the header which precedes the SEGMENT tables:
 
 The _info_ bitfield for the SEGMENT uses the following format:
 
-| field           | bit(s) | description
+| FIELD           | BIT(S) | DESCRIPTION
 |-----------------|------|-------------------------------------------------------
 |  size           |  0   | 0=zeropage, 1=absolute
 
@@ -362,12 +362,12 @@ Because of this, records that contain post-processing are 6 bytes instead of 5.
 ### DEBUG INFO
 This table stores the program to evaluate line numbers and addresses within the object file as well as references to which source files were used to create the object file.  This information allows the linker to produce a single mega debug file (or .D file) that contains all the information for the linked program, which allows for source level debugging.
 
-|       field       |     size     | description
+|       FIELD       |     SIZE     | DESCRIPTION
 |-------------------|--------------|----------------------------------------------------------
 | file table        |      ...     | 0-terminated list of all files
 | num blocks        |       1      | number of BLOCKS in the object file
 | line program size |       2      | total number of bytes of line program data in all blocks
-| headers           | 2\*BLOCKSIZE  | the BLOCK header data for all blocks
+| headers           | 2\*BLOCKSIZE | the BLOCK header data for all blocks
 | line program data |      ...     | the line program data for the object code for all blocks
 
 The debug info format itself (headers and line program data) is described in further detail in [debug-info.md](debug-info.md).

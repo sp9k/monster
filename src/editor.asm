@@ -4184,6 +4184,10 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
+
+;*******************************************************************************
 ; CCUP
 ; Handles the up cursor key
 ; OUT:
@@ -4424,10 +4428,6 @@ goto_buffer:
 	sta selection_type
 	RETURN_OK
 .endproc
-
-;*******************************************************************************
-; PART 2 of editor code + data
-.segment "EDITCODE"
 
 ;*******************************************************************************
 ; CLEAR ERRORS
@@ -5037,13 +5037,10 @@ goto_buffer:
 	jsr draw::hline			; color the row (+gutter for hard8x8)
 	jmp @drawtext
 
-@noerr:
-.ifdef hard8x8
-	pla
+@noerr:	pla
 	tax				; .X = row
 	pha				; keep the row on the stack
-	jsr scr::draw_gutter_row	; refresh gutter
-.endif
+	jsr draw::resetline		; reset color (and/or gutter)
 
 @drawtext:
 	pla				; restore the row

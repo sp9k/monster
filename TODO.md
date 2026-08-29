@@ -11,9 +11,9 @@
 
 ### TODO V1.1
 - [x] Increase copy buffer size to max size of source buffer
-- [ ] Save/restore VIA timers while debugging
+- [x] Save/restore VIA timers while debugging
 - [ ] Emulate VIC (see raster position and full frame of VIC state while debugging)
-- [ ] Save/restore raster position while debugging
+- [x] Save/restore raster position while debugging
 
 ### TODO V1
 - [ ] Support .REP and .MAC in monitor

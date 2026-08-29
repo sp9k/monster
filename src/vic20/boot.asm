@@ -311,9 +311,10 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 	pha
         jsr irq::off
 	pla
-	cmp #$79		; Y
+	and #$df		; make case insensitive
+	cmp #$59		; Y
 	beq :+
-	cmp #$6e		; N
+	cmp #$4e		; N
 	bne @recover
 
 :	; blank screen (again)

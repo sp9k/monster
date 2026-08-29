@@ -6,18 +6,18 @@ manipulate the program state.  The monitor and graphical debugger affect the sam
 Changes made in one (e.g. creating a watch) will be reflected in the other.
 
 Input in the monitor is buffered as with BASIC commands (but unlike the graphical
-debugger). Lines are entered and when you wish to execute them, press `RETURN`.
+debugger). Lines are entered and when you wish to execute them, press {c64-key}`RETURN`.
 
 ---
 
 ### ACTIVATION
 
-The monitor is activated as a window with the `f7` key.  In this mode the editor (or, while debugging,
-the source view) remains visible above the monitor window.  The window may be resized with `C= + k`
-(grow) and `C= + j` (shrink).  These keys work both while the monitor is active and from the editor
+The monitor is activated as a window with the {c64-key}`F7` key.  In this mode the editor (or, while debugging,
+the source view) remains visible above the monitor window.  The window may be resized with {c64-keys}`C= + K`
+(grow) and {c64-keys}`C= + J` (shrink).  These keys work both while the monitor is active and from the editor
 while the window is open.
 
-Pressing `f8` (`SHIFT + f7`) opens the monitor _maximized_ (fullscreen) instead.
+Pressing {c64-key}`F8` ({c64-keys}`Shift + F7`) opens the monitor _maximized_ (fullscreen) instead.
 
 The monitor can be activated from the editor both during normal editing and while debugging.
 The default state of the virtual machine when you boot is the state of the Vic right after its normal
@@ -25,7 +25,7 @@ cold start procedure executes, which is what you will see in the monitor if ente
 assembling a program.
 
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
-Press `f7` or `f8` to re-enter it.  The monitor window is closed, just as other windows are, with the `<-` key.
+Press {c64-key}`F7` or {c64-key}`F8` to re-enter it.  The monitor window is closed, just as other windows are, with the {c64-key}`Left-arrow` key.
 
 ### FILE REDIRECTION
 The output from a given monitor command can be redirected to file instead of the screen by using the
@@ -75,8 +75,8 @@ Most parameters may be expressions (e.g. `label+10`).
 |  `  x     `| `QUIT                  `  |                                    |                      | exits the monitor                                                                                                             |
 |  `  z     `| `STEP                  `  |                                    |                      | runs the next instruction and returns to the monitor prompt                                                                   |
 |  `  zo    `| `STEP-OUT              `  |                                    |                      | runs the program that is being debugged until the current subroutine is RTS'd from                                            |
-|  `  F1    `| `VIEW SCREEN           `  |                                    |                      | toggles the view of the user-memory (swaps the $1000-$2000 range monitor <-> program)                                         |
-|  `  F2    `| `ENTER USER PROGRAM    `  |                                    |                      | enters the actively running program (or the default KERNAL BASIC interpreter if nothing has been debugged yet)                |
-|  `  C= + l`| `CLEAR                 `  |                                    |                      | shortcut to clear the screen (equivalent to the clear command)                                                                |
-|  `  C= + k`| `GROW WINDOW           `  |                                    |                      | grows the monitor window by one row (windowed mode only)                                                                      |
-|  `  C= + j`| `SHRINK WINDOW         `  |                                    |                      | shrinks the monitor window by one row (windowed mode only)                                                                    |
+| {c64-key}`F1` | `VIEW SCREEN           `  |                                    |                      | toggles the view of the user-memory (swaps the $1000-$2000 range monitor <-> program)                                      |
+| {c64-key}`F2` | `ENTER USER PROGRAM    `  |                                    |                      | enters the actively running program (or the default KERNAL BASIC interpreter if nothing has been debugged yet)             |
+| {c64-keys}`C= + L` | `CLEAR                 `  |                                    |                      | shortcut to clear the screen (equivalent to the clear command)                                                     |
+| {c64-keys}`C= + K` | `GROW WINDOW           `  |                                    |                      | grows the monitor window by one row (windowed mode only)                                                           |
+| {c64-keys}`C= + J` | `SHRINK WINDOW         `  |                                    |                      | shrinks the monitor window by one row (windowed mode only)                                                         |

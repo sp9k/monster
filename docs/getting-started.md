@@ -12,7 +12,7 @@ many other features, and the mode from which this is all done is aptly called **
 which is the default mode that Monster enters on startup.
 
 Advanced editor functionality is described later in this document, but to get started, press
-the `[i]` key to enter **INSERT MODE**.  Insert mode behaves much like the stock KERNAL.  That is,
+the {c64-key}`I` key to enter **INSERT MODE**.  Insert mode behaves much like the stock KERNAL.  That is,
 letters are added to the source buffer upon entry.
 
 Type some characters and you will see them appear onscreen.  Unlike the KERNAL, text cannot be arbitrarily
@@ -20,7 +20,7 @@ entered anywhere on the screen.  The screen displays a representation of the **S
 contains no further characters on the current line, you are unable to navigate to that positon.  If the buffer
 contains only 10 lines, you cannot navigate to line 11.
 
-Press [RUN/STOP] and you will exit INSERT MODE and return to COMMAND MODE.
+Press {c64-key}`RUN/STOP` and you will exit INSERT MODE and return to COMMAND MODE.
 
 ---
 
@@ -33,8 +33,8 @@ On the first line, type:
 .org $1000
 ```
 
-Note that upon pressing `[RETURN]` the line is automatically formatted.  Labels are automatically left-aligned
-by the autoformatter while everything else is indented by a tab character. Tabs can also be manually inserted with the `C= + i` key
+Note that upon pressing {c64-key}`RETURN` the line is automatically formatted.  Labels are automatically left-aligned
+by the autoformatter while everything else is indented by a tab character. Tabs can also be manually inserted with the {c64-keys}`C= + I` key
 chord.  However, practically speaking, you are unlikely to need to do this often (if ever) because of the formatter.
 
 This tells the assembler to place the origin of what follows to address $1000.  An origin is required before any instructions because,
@@ -44,13 +44,13 @@ However, as we will later discuss, it isn't necessarily an absolute address.
 Next enter the following:
 
 ```
-	ldx #0
+    ldx #0
 loop
-	lda msg,x
-	beq done
-	jsr $ffd2
-	inx
-	bne loop
+    lda msg,x
+    beq done
+    jsr $ffd2
+    inx
+    bne loop
 ```
 
 Here we have defined a loop.  Note that we have two instructions that reference labels.
@@ -64,8 +64,8 @@ not been defined.  Now let’s finish the program making sure we do that:
 
 ```
 done
-	jmp *
-msg	.db "hello world!",0
+    jmp *
+msg .db "hello world!",0
 ```
 
 Now we’ve defined a complete program.  As is standard in 6502 assembly syntax the ‘*’ character
@@ -78,10 +78,10 @@ their own line and may coexist with instructions, or other items we have yet to 
 Now that our program is complete, it’s almost time for us to assemble it and run it.
 Before we can assemble the program, however, we must provide it a name.
 
-To do this first press “:” from COMMAND MODE.  This puts the editor in EX MODE.
+To do this first press {c64-key}`Colon` from COMMAND MODE.  This puts the editor in EX MODE.
 In this mode, the editor accepts a string, interprets it, and executes it.
 To name our source buffer, we will use the “r” (rename) command. Enter the following
-at the prompt and press [RETURN]:
+at the prompt and press {c64-key}`RETURN`:
 
 `:r hello.s`
 
@@ -98,8 +98,8 @@ to assemble multiple buffers, they must be first saved to disk.
 <insert screenshot here>
 
 With all the code written, and our buffer named, we’re finally ready to assemble the program.
-Press the `C= + A` key chord to do this. This can be done whether you are in INSERT MODE or COMMAND MODE.
-The reason for this is because the `C= + <key>` chords are considered _universal keys_, meaning they're
+Press the {c64-keys}`C= + A` key chord to do this. This can be done whether you are in INSERT MODE or COMMAND MODE.
+The reason for this is because the {c64-key}`C=` + `<key>` chords are considered _universal keys_, meaning they're
 handled the same way regardless of which mode you are in.
 
 If you entered the program correctly, you should see a message like the one below telling
@@ -109,72 +109,72 @@ you that the assembly was completed along with the address range it occupies.
 
 With the program in memory, it's time to debug it!
 
-To enter the debugger, press “:” again to enter EX MODE. Then enter the following at the prompt:
+To enter the debugger, press {c64-key}`Colon` again to enter EX MODE. Then enter the following at the prompt:
 `:d`
 
-Now press the `[RETURN]` key.  This will launch the debugger, a major component of Monster.
+Now press the {c64-key}`RETURN` key.  This will launch the debugger, a major component of Monster.
 
 The debugger enables source level debugging of an assembled program.  At the bottom of the screen,
 the debugger displays information about the state of the machine at the current step of the program:
 the contents of the registers, the current line number, the number of cycles that have elapsed,
 and some other information.
 
-Press the `[z]` key and the debugger will step into the program by one instruction.
+Press the {c64-key}`Z` key and the debugger will step into the program by one instruction.
 You should now be at the next line of your program.  Do this until you get to jsr $ffd2.
-Press z one more time and you will notice that the debugger no longer shows you a line number.
+Press {c64-key}`Z` one more time and you will notice that the debugger no longer shows you a line number.
 That is because $ffd2 is not part of your program, so it has no line or even file to map to.
 Because of that, the debugger will instead show you the address and instruction that it is executing.
 
 Since we trust that Commodore did a good job writing this KERNAL routine (no need to debug it),
-we can simply press `[y]` to step out of this routine and back to our program.
-If you stepped into several subroutines within $ffd2, you may need to press `[y]` a couple times
+we can simply press {c64-key}`Y` to step out of this routine and back to our program.
+If you stepped into several subroutines within $ffd2, you may need to press {c64-key}`Y` a couple times
 to get back to your program.
 Once the debugger has completed stepping out of the subroutine, it should place you at your
 next line after the subroutine call: `inx`.
 
 You can also execute a version of step that will step _over_ subroutine calls.
 Since, as we've established, we’re not _too_ interested in debugging the Commodore Kernal at the moment,
-this command might be a better fit for us here.  Press `[s]` (step over) a few times
+this command might be a better fit for us here.  Press {c64-key}`S` (step over) a few times
 and notice that when we reach the line `JSR $FFD2` the next iteration lands our cursor
 on the `INX` after tracing all the KERNAL instructions in ROM.
 
-Press the spacebar now and the screen will swap to a view that looks much like your Vic-20’s
+Press the {c64-key}`SPACE` now and the screen will swap to a view that looks much like your Vic-20’s
 BASIC startup screen.  This is the current state of your program’s memory, also called virtual memory.
 This is a common flow for debugging visual programs: step through your program until you've
-reached a place you want to visibly observe, press `[SPACE]` to see if it matches your expectations,
+reached a place you want to visibly observe, press {c64-key}`SPACE` to see if it matches your expectations,
 and repeat.
 
 Take a close look at the display and you should see that we have just printed a character to the screen by calling `$FFD2`.
-Let’s run our program to finish displaying the message.  To do this, press the `[C= + g]` key chord.
+Let’s run our program to finish displaying the message.  To do this, press the {c64-keys}`C= + G` key chord.
 
 You should be back on the BASIC screen with your full message on display now.
 
-Note that the **GO** (`[C= + g]`) command runs the program free of debugger intervention.
+Note that the **GO** ({c64-keys}`C= + G`) command runs the program free of debugger intervention.
 Use it with caution as your program, likely in an unstable state, may leave the processor in
 an unrecoverable state and you will be forced to reset the machine if it does.
 
 Congratulations on writing, assembling, and debugging your first program!
 
-To return to the debugger, simply press the `[RESTORE]` key.
+To return to the debugger, simply press the {c64-key}`RESTORE` key.
 The debugger will catch you at the line that the CPU is currently running.
 For us, this should be the endless loop we placed at the end of our program.
-To exit the debugger, press the `[C= + x]` key chord and confirm your intention to quit debugging at the prompt.
+To exit the debugger, press the {c64-keys}`C= + X` key chord and confirm your intention to quit debugging at the prompt.
 
-Assuming you have a disk drive attached, we may now wish to save our work that we have so proudly completed.  Enter Ex Command mode once again (`[:]`) and type:
+Assuming you have a disk drive attached, we may now wish to save our work that we have so proudly completed.  Enter Ex Command mode once again ({c64-key}`Colon`) and type:
 
 `:s hello.s`
 
 This will save your source code to a new file named, per our instruction, hello.s.
-You can confirm that the file has been saved by pressing the `[-]` key while in **COMMAND MODE**,
+You can confirm that the file has been saved by pressing the {c64-key}`Minus` key while in **COMMAND MODE**,
 which will bring up a directory viewer.  If all is well you should see your new program among
 the other files on your disk.
 
 
 ---
 
-### GETTING STARTED WITH OBJECT CODE
+## GETTING STARTED WITH OBJECT CODE
 
-#### Your First Object File
+### YOUR FIRST OBJECT FILE
 
 The following instructions are overkill for any program you’re likely to write as you just get acquainted
 with the Monster environment, but sooner or later you may wish to work on projects that are thousands

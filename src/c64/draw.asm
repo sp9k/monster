@@ -139,28 +139,38 @@ COLOR_SELECT  = 6
 @last=r1
 	sty @last
 	cpx @last
-	bcs @done
-	sta @n
+	beq :+
+	bcs @done		; first row is past the last one, nothing to do
+:	sta @n
 
 	; get start row + scroll amount
 	txa
 	clc
 	adc @n
 	tay
-	cmp @last
-	bcs @done		; if first row + n >= last row, don't scroll
-@l0:	lda mem::rowcolors,y	; start+.X
-	sta mem::rowcolors,x	; start+.A+.X
+
+	; copy row (.Y) to row (.X) for every row in [start, last].  rows whose
+	; source lies past the last row are cleared instead: they are NOT part
+	; of the scroll region (they belong to the status/debugger rows below)
+@l0:	cpy @last
+	beq @cp
+	bcs @clr		; source row is out of range -> clear it
+@cp:	lda mem::rowcolors,y	; start+.A+.X
+	sta mem::rowcolors,x	; start+.X
 	lda mem::rowcolors_idx,y
 	sta mem::rowcolors_idx,x
-	inx
-	iny
-	cpx @last
-	bne @l0
-	lda prefs::normal_color
-	sta mem::rowcolors,x	; clear last row
+	jmp @next
+
+@clr:	lda prefs::normal_color
+	sta mem::rowcolors,x
 	lda #COLOR_NORMAL
 	sta mem::rowcolors_idx,x
+
+@next:	inx
+	iny
+	cpx @last
+	beq @l0
+	bcc @l0
 @done:	rts
 .endproc
 

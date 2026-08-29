@@ -9,7 +9,7 @@ Debug information is stored in a few tables as described below. At a high level,
 The FILE TABLE maps filenames to an implicit ID, which is the index of a given filename in this table.
 
 
-|  size    | description                     |
+|  SIZE    | DESCRIPTION                     |
 |----------|---------------------------------|
 |   16     | filename 0                      |
 |   16     | filename 1                      |
@@ -23,7 +23,7 @@ Each BLOCK header  defines a file id (BLOCKS will always reference one file only
 The table below describes the layout of a BLOCK (header).
 
 
-|  field       | size  | description
+|  FIELD       | SIZE  | DESCRIPTION
 |--------------|-------|-----------------------------------------------------------------
 | base         |  2    | the (segment relative) address that this block begins at
 | top address  |  2    | the (segment relative) top address represented by the block + 1
@@ -71,7 +71,7 @@ The most basic operation, which is so common that it requires no special opcode,
 offset to the current line number AND program counter.  These are both encoded into a single
 byte according to the following layout:
 
-|   field     | bits |  description
+|   FIELD     | BITS |  DESCRIPTION
 |-------------|------|------------------------------------------------------
 | line offset | 0-3  | number of lines to advance the "line" count
 | addr offset | 4-7  | number of bytes to advance the PC or address offset
@@ -85,7 +85,7 @@ because at least one of the line or address states must be advanced for each ent
 
 Below is the list of extended commands and their effects.
 
-| command Name  |  operand  | code | operand Size| effect                                            |
+| COMMAND NAME  |  OPERAND  | CODE | OPERAND SIZE| EFFECT                                            |
 |---------------|-----------|------|-------------|---------------------------------------------------|
 | `SET_ADDRESS` | address   |  $01 | 2           | Sets the address to the given absolute address    |
 | `RESERVED`    |    -      |  $02 | x           | Reserved (unused)
@@ -114,7 +114,7 @@ meaningful line (line that may be executed) is line 2, so we store this in the h
 This example has 5 lines and occupies 8 bytes. With these two pieces of data we have enough information
 to complete our header:
 
-| field                 | data
+| FIELD                 | DATA
 |-----------------------|--------------
 | base address          | $00 $10
 | top address           | $08 $10
@@ -136,7 +136,7 @@ All that's left now is to build the line program for this block.  As mentioned, 
 handled by the base state for the state machine, which means we only need two "basic" line-program
 instructions to resolve "sta $900f" and "jmp loop".  Here's what those look like in memory:
 
-| value | description                                                 |
+| VALUE | DESCRIPTION                                                 |
 |-------|-------------------------------------------------------------|
 | $22   | move line by 2 and address by 2 (we are now at `sta $900f`) |
 | $32   | move line by 2 and address by 3 (we are now at `jmp loop`)  |
