@@ -230,6 +230,7 @@ START_ROW = 0
 	lda #START_ROW+15
 	jsr print
 
+	CALLMAIN key::flush	; a held key would scroll straight past this
 	CALLMAIN key::waitch
 @done:
 	CALLMAIN scr::restore

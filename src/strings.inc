@@ -52,6 +52,8 @@
 .import __str_segments
 .import __str_symview_title
 .import __str_tracing
+.import __str_tracing_msg
+.import __str_tracing_stop
 .import __str_watch_added
 .import __str_watches_changed_line
 .import __str_watches_line
@@ -111,6 +113,8 @@
 	symview_title           = __str_symview_title
 	monitor_title           = __str_monitor_title
 	tracing                 = __str_tracing
+	tracing_msg             = __str_tracing_msg
+	tracing_stop            = __str_tracing_stop
 	jam_detected            = __str_jam_detected
 	watch_added             = __str_watch_added
 	watches_line            = __str_watches_line

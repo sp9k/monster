@@ -183,6 +183,16 @@ __str_tracing: .byte "tracing.. restore=stop",0
 __str_tracing: .byte "tracing.. press [restore] to stop",0
 .endif
 
+.export __str_tracing_msg
+__str_tracing_msg: .byte "tracing...",0
+
+.export __str_tracing_stop
+.ifdef hard8x8
+__str_tracing_stop: .byte "restore=stop",0
+.else
+__str_tracing_stop: .byte "press [restore] to stop",0
+.endif
+
 .export __str_pass1
 __str_pass1:
 	.byte ESCAPE_SPACING

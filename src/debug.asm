@@ -702,7 +702,8 @@ blank   = scr::blank
 	bpl @trace		; continue trace until depth is negative
 	clc			; ok
 
-@done:	jmp reenable_irq
+@done:	jsr clear_tracing
+	jmp reenable_irq
 .endproc
 
 ;*******************************************************************************
@@ -750,6 +751,7 @@ blank   = scr::blank
 	lda edit::status_row
 	jsr text::print
 
+	jsr key::flush		; don't let a typed-ahead key answer this
 :	jsr key::waitch
 
 	; 'N' or QUIT: return back to debugger, 'Y': exit debugger
@@ -876,6 +878,10 @@ blank   = scr::blank
 .endproc
 
 ;*******************************************************************************
+.PUSHSEG
+.segment "GUICODE"
+
+;*******************************************************************************
 ; PRINT TRACING
 ; Prints the "tracing" info
 .proc print_tracing
@@ -884,10 +890,24 @@ blank   = scr::blank
 	beq @gui
 	JUMP FINAL_BANK_MONITOR, mon::puts
 
-@gui:	lda #REGISTERS_LINE-1
-	jsr text::print			; print the TRACING message
-	rts
+@gui:	ldxy #strings::tracing_stop
+	stxy alert::prompt
+	ldxy #strings::tracing_msg
+	jmp alert::open
 .endproc
+
+;*******************************************************************************
+; CLEAR TRACING
+; Closes the "tracing" alert (GUI only)
+.proc clear_tracing
+	lda __debug_interface
+	bne @done
+	php
+	jsr alert::close
+	plp
+@done:	rts
+.endproc
+.POPSEG
 
 ;*******************************************************************************
 ; STEP OVER

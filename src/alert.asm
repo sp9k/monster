@@ -39,18 +39,17 @@ ALERT_RCOL = ALERT_MARGIN+ALERT_WIDTH-1
 
 ;*******************************************************************************
 ; PROMPT
-ALERT_PROMPT_LEN = 13			; sizeof("press any key")
+ALERT_PROMPT_MAX = 23		; sizeof("press [restore] to stop")
 
 ; the field is rounded out to even columns, and never wider than the text area
-.if ALERT_TEXT_LEN < ((ALERT_PROMPT_LEN+3) & $fe)
+.if ALERT_TEXT_LEN < ((ALERT_PROMPT_MAX+1) & $fe)
 ALERT_RVS_LEN = ALERT_TEXT_LEN & $fe
 .else
-ALERT_RVS_LEN = (ALERT_PROMPT_LEN+3) & $fe
+ALERT_RVS_LEN = (ALERT_PROMPT_MAX+1) & $fe
 .endif
 
-ALERT_RVS_START  = (ALERT_TEXT_COL+((ALERT_TEXT_LEN-ALERT_RVS_LEN)/2)) & $fe
-ALERT_RVS_STOP   = ALERT_RVS_START+ALERT_RVS_LEN
-ALERT_PROMPT_COL = ALERT_RVS_START+((ALERT_RVS_LEN-ALERT_PROMPT_LEN)/2)
+ALERT_RVS_START = (ALERT_TEXT_COL+((ALERT_TEXT_LEN-ALERT_RVS_LEN)/2)) & $fe
+ALERT_RVS_STOP  = ALERT_RVS_START+ALERT_RVS_LEN
 
 .ifdef soft4x8
 .assert (ALERT_LCOL .mod 2) = 0, error, "alert must start on an even column"
@@ -93,6 +92,9 @@ colsave: .res ALERT_HEIGHT	; row colors the window is covering
 cnt:     .byte 0		; row counter (0 = the window's top row)
 textcol: .byte 0		; column the next text row starts its text at
 
+.export __alert_prompt
+__alert_prompt: .word 0		; the prompt "open" draws under the message
+
 .segment "GUICODE"
 
 ;*******************************************************************************
@@ -105,10 +107,80 @@ textcol: .byte 0		; column the next text row starts its text at
 ;  - .A: the key that was pressed
 .export __alert_show
 .proc __alert_show
+	jsr copymsg
+	ldxy #@anykey
+	stxy __alert_prompt
+	jsr drawwin
+
+	jsr key::flush
+	jsr key::waitch
+	pha			; save the key
+	jsr __alert_close
+	pla			; restore key
+	rts
+
+.PUSHSEG
+.RODATA
+@anykey: .byte "press any key"
+	.assert *-@anykey <= ALERT_PROMPT_MAX, error, "prompt too long for field"
+	.byte 0
+.POPSEG
+.endproc
+
+;*******************************************************************************
+; OPEN
+; Draws an alert window containing the given message
+; IN:
+;  - .XY:           the message to display
+;  - alert::prompt: the prompt to display beneath it
+.export __alert_open
+.proc __alert_open
+	jsr copymsg
+	jmp drawwin
+.endproc
+
+;*******************************************************************************
+; CLOSE
+; Restores the screen and color under the alert window
+.export __alert_close
+.proc __alert_close
+	; restore colors
+	lda #ALERT_HEIGHT-1
+	sta cnt
+@uncolor:
+	ldx cnt
+	lda colsave,x
+	pha
+	txa
+	clc
+	adc #ALERT_ROW
+	tax
+	pla
+	jsr draw::hline
+	dec cnt
+	bpl @uncolor
+
+	; restore screen contents
+	lda #ALERT_HEIGHT-1
+	sta cnt
+@restore:
+	lda cnt
+	clc
+	adc #ALERT_ROW
+	jsr scr::restore_row
+	dec cnt
+	bpl @restore
+	rts
+.endproc
+
+;*******************************************************************************
+; COPYMSG
+; Copies the message to display to the msg buffer
+; IN:
+;  - .XY: the message to display
+.proc copymsg
 @src = r0
 	stxy @src
-
-	; copy message to display to msg buffer
 	ldy #$00
 :	lda (@src),y
 	beq :+
@@ -118,7 +190,13 @@ textcol: .byte 0		; column the next text row starts its text at
 	bcc :-
 :	lda #$00
 	sta msg,y
+	rts
+.endproc
 
+;*******************************************************************************
+; DRAWWIN
+; Saves what the window is about to cover and draws it
+.proc drawwin
 	jsr cur::off
 
 	; save the rows the window is about to cover, and their colors
@@ -155,17 +233,14 @@ textcol: .byte 0		; column the next text row starts its text at
 	ldx #ALERT_TL
 	ldy #ALERT_TR
 	jsr border
+
 	lda #ALERT_TEXT_COL
 	sta textcol
 	ldxy #msg
 	lda #ALERT_ROW+1
 	jsr textrow
 
-	lda #ALERT_PROMPT_COL
-	sta textcol
-	ldxy #@prompt
-	lda #ALERT_ROW+2
-	jsr textrow
+	jsr draw_prompt
 
 	lda #ALERT_ROW+ALERT_HEIGHT-1
 	ldx #ALERT_BL
@@ -181,48 +256,37 @@ textcol: .byte 0		; column the next text row starts its text at
 	ldy #ALERT_RVS_START
 	ldx #ALERT_RVS_STOP
 	lda #ALERT_ROW+2
-	jsr scr::rvsline_part
+	jmp scr::rvsline_part
+.endproc
 
-	jsr key::flush
-	jsr key::waitch
-	pha			; save the key
+;*******************************************************************************
+; PROMPT ROW
+; Draws the prompt centered in the field that will be reversed
+.proc draw_prompt
+@src = r0
+	ldxy __alert_prompt
+	stxy @src
 
-	; restore colors
-	lda #ALERT_HEIGHT-1
-	sta cnt
-@uncolor:
-	ldx cnt
-	lda colsave,x
-	pha
-	txa
+	; get the prompt's length, clamped to the field
+	ldy #$00
+:	lda (@src),y
+	beq :+
+	iny
+	cpy #ALERT_RVS_LEN
+	bcc :-
+
+:	sty textcol
+	lda #ALERT_RVS_LEN
+	sec
+	sbc textcol		; the space left over
+	lsr			; half of it goes before the prompt
 	clc
-	adc #ALERT_ROW
-	tax
-	pla
-	jsr draw::hline
-	dec cnt
-	bpl @uncolor
+	adc #ALERT_RVS_START
+	sta textcol
 
-	; restore screen contents
-	lda #ALERT_HEIGHT-1
-	sta cnt
-@restore:
-	lda cnt
-	clc
-	adc #ALERT_ROW
-	jsr scr::restore_row
-	dec cnt
-	bpl @restore
-
-	pla			; get the key back
-	rts
-
-.PUSHSEG
-.RODATA
-@prompt: .byte "press any key"
-	.assert *-@prompt = ALERT_PROMPT_LEN, error, "ALERT_PROMPT_LEN is wrong"
-	.byte 0
-.POPSEG
+	ldxy __alert_prompt
+	lda #ALERT_ROW+2
+	jmp textrow
 .endproc
 
 ;*******************************************************************************

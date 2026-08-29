@@ -277,6 +277,7 @@ cart_start:
 	ldxy #recover_reset
 	lda #10
 	jsr text::print
+	jsr key::flush		; don't let a typed-ahead key answer this
 	jsr key::waitch
 	pha
         jsr irq::off

@@ -877,7 +877,7 @@ main:	jsr key::getch
 ;-------------------------------------------------------------------------------
 .PUSHSEG
 .RODATA
-@success_msg: .byte "done. $", $fe, "-$", $fe, " ", $fe, " bytes", 0
+@success_msg: .byte "ok $", $fe, "-$", $fe, " (", $fe, " bytes)", 0
 .POPSEG
 .endproc
 
@@ -895,6 +895,8 @@ main:	jsr key::getch
 	ldxy #strings::saveall
 	lda #STATUS_ROW
 	CALLMAIN text::print
+
+	jsr key::flush		; don't let a typed-ahead key answer this
 @getch:	jsr key::waitch
 	cmp #K_QUIT
 	bne :+			; exit? (abort)
