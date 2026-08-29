@@ -1,3 +1,4 @@
+.import __key_flush
 .import __key_getch
 .import __key_gethex
 .import __key_isdown
@@ -10,6 +11,7 @@
 .import __key_waitch
 
 .scope key
+	flush        = __key_flush
 	getch        = __key_getch
 	gethex       = __key_gethex
 	isdown       = __key_isdown

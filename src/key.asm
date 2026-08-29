@@ -113,6 +113,16 @@ CURSOR_LR_MASK = 2
 .endproc
 
 ;*******************************************************************************
+; FLUSH
+; Empties the keyboard buffer
+.export __key_flush
+.proc __key_flush
+	lda #$00
+	sta $c6		; keyboard buffer length
+	rts
+.endproc
+
+;*******************************************************************************
 ; GETHEX
 ; Gets a key from the keyboard, and returns its value ONLY
 ; if it is a hex value, a DELETE, a RETURN, or a QUIT (<-)

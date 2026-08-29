@@ -183,6 +183,7 @@ textcol: .byte 0		; column the next text row starts its text at
 	lda #ALERT_ROW+2
 	jsr scr::rvsline_part
 
+	jsr key::flush
 	jsr key::waitch
 	pha			; save the key
 

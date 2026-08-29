@@ -559,8 +559,10 @@ main:	jsr key::getch
 	CALLMAIN lbl::index
 	jmp unblank
 
-@err:	jsr report_typein_error
-	jmp unblank
+@err:	pha			; save the error
+	jsr unblank
+	pla
+	jmp report_errcode
 .endproc
 
 ;*******************************************************************************
@@ -577,7 +579,7 @@ main:	jsr key::getch
 	bne @notlog
 
 	lda #ERR_CANNOT_ASSEMBLE_LOG
-	jmp report_typein_error
+	jmp report_errcode
 
 @notlog:
 	lda #$01
@@ -665,7 +667,7 @@ main:	jsr key::getch
 	cmp #LOG_BUFFER
 	bne @notlog
 	lda #ERR_CANNOT_ASSEMBLE_LOG
-	jmp report_typein_error
+	jmp report_errcode
 
 @notlog:
 	; ensure that the buffer we are assembling has a name
@@ -832,9 +834,7 @@ main:	jsr key::getch
 	lda __edit_sigint	; was assembly aborted? (SIGINT)
 	beq :+
 	ldxy #strings::aborted
-	jsr print_info
-	lda #COLOR_FAILURE
-	jmp @waitch
+	jmp @print
 
 :	; get the size of the assembled program and print it
 	ldxy #strings::done
@@ -865,17 +865,10 @@ main:	jsr key::getch
 	CALL FINAL_BANK_LINKER, obj::log_state
 
 	ldxy #@success_msg
-@print: RENDER_STR
-	jsr print_info
 
-	lda #COLOR_SUCCESS
-@waitch:
-	ldx #STATUS_ROW
-	jsr draw::hline
-	ldxy #mem::linebuffer2	; the rendered result (still in the linebuffer)
-	jsr alert::show		; and wait for the user to acknowledge it
-	ldx #STATUS_ROW
-	jsr draw::hiline
+@print: RENDER_STR		; .XY = rendered string
+	jsr alert::show		; display result in a popup modal
+
 	CALLMAIN lbl::index		; index labels for debugging, etc.
 
 	jsr log::close
