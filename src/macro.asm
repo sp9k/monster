@@ -859,6 +859,8 @@ MODE_DEF  = 1
 ;  - .XY: the address of the label
 ; OUT:
 ;  - .C: set if the label is NOT valid
+;  - .X: (if .C is clear) 0 if no parameters were given, 1 some were
+;        this is used for formatting
 .export __mac_isvalid
 .proc __mac_isvalid
 	lda zp::line
@@ -883,7 +885,11 @@ MODE_DEF  = 1
 	bcs @err
 
 	; make sure string is not an opcode (opcodes are not valid macros)
+	tya
+	pha			; save name offset (isopcode clobbers .Y)
 	CALLMAIN asm::isopcode
+	pla
+	tay			; restore name offset
 	bcc @err
 
 	; following characters must be between '0' and 'Z'
@@ -925,13 +931,21 @@ MODE_DEF  = 1
 	CALLMAIN asm::isopcode
 	bcc @perr		; opcode -> not a macro invocation
 
+	; check the first parameter separately; if the line ends here, the
+	; invocation has no parameters
+	ldy #$00		; (isopcode clobbers .Y)
+	lda (zp::line),y
+	jsr @is_end_of_line
+	beq @noparams
+	bne @param		; branch always
+
 @paramloop:
 	jsr @process_ws
 	ldy #$00
 	lda (zp::line),y
 	jsr @is_end_of_line
 	beq @ok
-	cmp #'#'
+@param:	cmp #'#'
 	bne :+
 	incw zp::line		; skip '#' (macro params may be immediate)
 .ifdef vic20
@@ -953,8 +967,16 @@ MODE_DEF  = 1
 	bne @paramloop		; comma found, check next param
 
 @perr:	sec
-	skb			; return error
-@ok:	clc
+	bcs @done		; return error (branch always)
+
+@noparams:
+	ldx #$00		; no parameters were given
+	clc
+	bcc @done		; branch always
+
+@ok:	ldx #$01		; 1 or more parameters were given
+	clc
+
 @done:	; restore zp::line
 	pla
 	sta zp::line+1

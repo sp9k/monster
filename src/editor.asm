@@ -5120,7 +5120,7 @@ goto_buffer:
 ; found
 ; IN:
 ;  - .XY: the text to find (0-terminated)
-.proc edfind
+.proc find
 @string=zp::str0
 @seekptr=zp::str2
 @target=r8

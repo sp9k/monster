@@ -954,13 +954,26 @@ BANKED_CODE "ASMBANK"
 ; check if the line contains a macro
 @macro:	ldxy zp::line
 	lda zp::verify
-	beq :+
+	beq @getmacro
+
 	; if verifying, check if the line looks like a macro invocation
 	CALL FINAL_BANK_MACROS, mac::isvalid
-	bcs @chklabels
-	rts			; if line looks like a valid macro, allow it
+	bcs @chklabels		; doesn't look like a macro -> check for a label
+	cpx #$00		; were any parameters given?
+	beq @only_name		; if not, the line is ambiguous (see below)
+	RETURN_OK		; macro invocation (.A is already ASM_MACRO)
 
-:	CALL FINAL_BANK_MACROS, mac::get
+	; could be either a macro invocation or a label definition
+	; only treat as macro if one if that macro has been defined
+@only_name:
+	ldxy zp::line
+	CALL FINAL_BANK_MACROS, mac::get
+	bcs @chklabels		; no such macro -> it's a label definition
+	lda #ASM_MACRO
+	RETURN_OK
+
+@getmacro:
+	CALL FINAL_BANK_MACROS, mac::get
 	bcs @chklabels		; if not macro, skip
 
 	pha			; save macro id

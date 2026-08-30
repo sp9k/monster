@@ -1374,7 +1374,11 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	sta zp::line
 	lda @name+1
 	sta zp::line+1
+	tya
+	pha			; save name offset (isopcode clobbers .Y)
 	CALLMAIN asm::isopcode
+	pla
+	tay			; restore name offset
 	pla
 	sta zp::line+1
 	pla
