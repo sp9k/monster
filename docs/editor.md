@@ -108,7 +108,7 @@ Invoking the debugger will invoke it for the last assembled file (not the curren
 source buffer) in this scenario.  The debugger cares about the active debug
 information _not_ the active file.
 
-Example:
+**EXAMPLE:**
 `:a HELLO.S`
 
 #### EXPORT BINARY :B [filename]
@@ -118,7 +118,7 @@ no load address is prepended to the file.  This can be useful if you are using
 Monster to create level data or other code loaded by your main program.  It
 can also be used to export things like data tables for use with .INCBIN
 
-Example:
+**EXAMPLE:**
 `:B DATA.B`
 
 #### EXPORT DEBUG FILE :D [filename]
@@ -129,7 +129,7 @@ binaries: a `.D` file can be loaded (`:L`) and debugged without having to
 reassemble/relink it.  This command should be run after a successful assembly
 or link.
 
-Example:
+**EXAMPLE:**
 `:D HELLO.D`
 
 #### LOAD DEBUG FILE :L [filename]
@@ -138,14 +138,14 @@ Loads the given debug (`.D`) file.  The symbol table, debug information, and
 program data are all loaded into virtual memory so you can begin debugging,
 view symbols, etc. as if you had just assembled the program.
 
-Example:
+**EXAMPLE:**
 `:L HELLO.D`
 
 #### EDIT :e [filename]
 
 Loads the given filename to a new buffer and activates it.
 
-Example:
+**EXAMPLE:**
 `:e HELLO.S`
 
 #### ASSEMBLE TO OBJECT :o [filename]
@@ -155,7 +155,7 @@ The filename must have a `.o` (or `.O`) extension if you want the linker to
 pick it up at link time.  See the [Linker](linker.md) document for more on
 object files and linking.
 
-Example:
+**EXAMPLE:**
 `:o HELLO.O`
 
 #### EXPORT .PRG :P [filename]
@@ -164,13 +164,13 @@ Exports the active assembly ({c64-keys}`C= + A`) to the given file as a .PRG fil
 a load address is prepended to the file prior to export.  This produces a
 standalone executable you can use when you are done working on your program.
 
-Example:
+**EXAMPLE:**
 `:P GAME.PRG`
 
 #### RENAME :r [buffername]
 
 Renames the active buffer to the given name.
-Example:
+**EXAMPLE:**
 `:r TEST2.S`
 
 #### SAVE :s [filename]
@@ -193,13 +193,13 @@ Saves all buffers that have been modified since they were last saved.
 As with the _Save_ command, adding `@` to the command (`S@`) will overwrite
 existing files if they exist.
 
-Example:
+**EXAMPLE:**
 `:S@`
 
 #### SCRATCH :x [filename]
 
 Deletes the file of the given name.
-Example:
+**EXAMPLE:**
 `:x TEST.S`
 
 ---

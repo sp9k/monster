@@ -197,47 +197,6 @@ the user program.  We cannot know what memory will be affected once we
 hand over control to the user program, so Monster saves the _entire_ *debugger* state of
 the internal RAM and restores the _entire_ *user* state.
 
-### FRAME CAPTURE
-
-Pressing {c64-key}`SPACE` generates a still image of the state of the program on the current
-frame.  Beyond just showing you the screen and color RAM, this generates a cycle-exact
-replay of the code that was traced for the current frame so far, which loops until
-{c64-key}`SPACE` is pressed again.
-
-#### EXACT MODE
-There are cases, if you are doing lots of screen updates, where a full frame cannot
-be shown.  This is simply due to a lack of CPU cycles.  The frame capture must
-restore the state of the affected areas before the frame is redrawn again, and if enough
-writes are made to screen or color memory, that can exceed the available cycles to reset
-to the original state of the frame.  For this reason, you can select a band of the
-screen using 'j'/'k' (down/up).  This is called EXACT mode.  The area "selected" in this mode
-is guaranteed to not exceed the limitations of the CPU time and thus appear exactly as it would at
-runtime.
-
-There are other commands available during the "capture" view:
-
-|  KEY           | NAME            |   DESCRIPTION                                                                        |
-|----------------|-----------------|--------------------------------------------------------------------------------------|
-| {c64-key}`F` | FINISH FRAME    | traces the program until the end of the current frame and captures/displays it       |
-| {c64-key}`K` | SELECTION UP    | moves the "exact" selection up (or activates "exact" mode if not in it)              |
-| {c64-key}`J` | SELECTION DOWN  | moves the "exact" selection down (or activates "exact" mode if not in it)            |
-| {c64-key}`Z` | STEP            | executes one step of the program and captures/displays the next frame of it          |
-| {c64-key}`Plus` | GROW SELECTION  | makes the "exact" selection taller (bounded by the CPU time the restore can afford)  |
-| {c64-key}`Minus` | SHRINK SELECTION| makes the "exact" selection shorter                                                  |
-| {c64-key}`RESTORE` | EXIT            | returns to the debugger                                                         |
-
-The replay leaves very few free cycles, so the keyboard is only scanned once per
-frame and an ordinary key must still be held when that scan comes around.  The
-keys above also do nothing at all while a frame is being built, which on a busy
-frame is a visible pause.  While that build is running the border cycles through
-colours to show it is working -- the cycling is driven by the writes being
-processed, so it slows down and speeds up with the real rate of progress, and
-the border returns to the program's own colour as soon as the replay starts.
-
-{c64-key}`RESTORE` is the exception on both counts: it latches in the VIA, so a tap
-always registers, and it is checked during frame generation as well as during
-the replay.  It abandons whatever is in progress and returns to the debugger.
-
 ---
 
 ## AUXILIARY VIEWS
@@ -261,19 +220,19 @@ change and overwriting it with a new hex value. The change occurs immediately.
 In addition to hexadecimal keys to edit memory values, the following commands
 are supported within the memory viewer:
 
-| SHORTCUT       | NAME      |  DESCRIPTION                                            |
-|----------------|-----------|---------------------------------------------------------|
-| {c64-keys}`C= + W` | ADD WATCH | Add watch to the highlighted address                    |
-| {c64-key}`Slash` | FIND VALUE| Seeks from current memory address for given value       |
-| {c64-key}`Left-arrow` | EXIT      | Returns to the debugger                            |
-| {c64-key}`Up-arrow` | SET ADDR  | Sets the viewer's address to the given value          |
+| SHORTCUT              | NAME      |  DESCRIPTION                                     |
+|-----------------------|-----------|--------------------------------------------------|
+| {c64-keys}`C= + W`    | ADD WATCH | Add watch to the highlighted address             |
+| {c64-key}`Slash`      | FIND VALUE| Seeks from current memory address for given value|
+| {c64-key}`Left-arrow` | EXIT      | Returns to the debugger                          |
+| {c64-key}`Up-arrow`   | SET ADDR  | Sets the viewer's address to the given value     |
 
 #### SET WATCH ({c64-keys}`C= + W`)
 
-Watches may be placed while navigating in the memory editor.  This is done
-by pressing the {c64-keys}`C= + W` key combination while the cursor is on the desired
-byte to watch. See the _Watch Viewer_ section for more information on
-watches.
+The `SET WATCH` command activates a watch at the address of the cursor.  The watch created
+is a `LOAD/STORE` watch meaning it will trigger whether the selected byte is written to or
+read from. See the _Watch Viewer_ section for more information on watches and how to use
+their more advanced functionality.
 
 #### FIND VALUE ({c64-key}`Slash`)
 

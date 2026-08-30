@@ -790,7 +790,7 @@ blank   = scr::blank
 
 	; enable color for the message row
 	ldx #DEBUG_MESSAGE_LINE-2
-	sta edit::status_row
+	stx edit::status_row
 	jsr draw::hiline
 	ldx #DEBUG_MESSAGE_LINE-2
 	skw

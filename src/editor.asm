@@ -329,7 +329,15 @@ main:	jsr key::getch
 	bcs @draw			; no error on this line -> default status
 	jsr err::get			; .A=code -> .XY=message
 	jsr set_status_err		; overwrite the status line w/ the message
-@draw:	lda status_row
+
+@draw:	; redraw status row
+	ldx status_row
+	lda mem::rowcolors_idx,x
+	cmp #COLOR_RVS
+	beq :+
+	lda #COLOR_RVS
+	jsr draw::hline
+:	lda status_row
 	jmp text::status
 .endproc
 
@@ -2990,7 +2998,7 @@ edit_refresh:
 	jsr scr::clrline		; clear the bitmap data for this row
 	jmp @clr
 
-@done:	ldx #STATUS_ROW
+@done:	ldx status_row
 	lda #COLOR_RVS
 	jsr draw::hline		; re-init status row's color
 	lda #$01

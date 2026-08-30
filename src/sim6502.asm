@@ -2819,8 +2819,6 @@ h_lax_imm:
 ; The value stored is ANDed with the high byte of the un-indexed target
 ; address plus one ({H+1}).  When the indexing crosses a page boundary the
 ; high byte of the address actually written is corrupted to {H+1} & value.
-; The remaining instability (the AND dropping out when RDY goes low during a
-; DMA) is not modelled - there is no DMA in the simulator.
 ; None of these affect any flag.
 ;*******************************************************************************
 h_sha_indy:
