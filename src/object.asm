@@ -56,7 +56,6 @@
 ; Must be >= MAX_SEGMENTS (limits.inc): every SEGMENT has at least one
 ; SECTION and the per-object segment tables are sized by MAX_SECTIONS
 MAX_SECTIONS         = MAX_SEGMENTS
-MAX_OBJS             = 16	; max number of object files that may be used
 MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
 
 MAX_SYMBOL_INDEXES = $200	; max number of symbols that may be referenced
@@ -172,9 +171,18 @@ segments_type:     .res MAX_SECTIONS
 __obj_segments:
 segments: .res MAX_SEGMENT_NAME_LEN*MAX_SECTIONS ; name of target SEG
 
-; link-time start addresses of each SEGMENT
+; link-time LOAD start addresses of each SEGMENT (where its bytes are placed)
+.export __obj_segments_startlo
+__obj_segments_startlo:
 segments_startlo:      .res MAX_SECTIONS
+.export __obj_segments_starthi
+__obj_segments_starthi:
 segments_starthi:      .res MAX_SECTIONS
+
+; link-time RUN start addresses of each SEGMENT (what its code is relocated
+; for)
+segments_runlo:        .res MAX_SECTIONS
+segments_runhi:        .res MAX_SECTIONS
 
 ; SEGMENT id for each SECTION
 .export __obj_segment_ids
@@ -1317,8 +1325,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 @seg:	; apply segment (local symbol) based relocation
 	lda @rec+3		; 3 = index to SEGMENT ID
 
-	; get the current address of the SEGMENT
-	jsr get_segment_base
+	; get the address the SEGMENT will run at
+	jsr get_segment_run_base
 
 @add_offset:
 	stxy @tmp		; save resolved symbol/section value
@@ -1525,7 +1533,23 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	jsr link::set_segtype		; set type for the segment
 	bcs @ret			; if conflicts with existing seg -> rts
 
-	; get the current GLOBAL offset for the SEGMENT
+	; Resolve the RUN base first: the file's LOCAL offset is still in
+	; segments_start at this point and is consumed by the LOAD add below.
+	ldy @i
+	lda __obj_segment_ids,y		; restore global segment id
+	jsr link::segrunaddr_by_id
+	tya
+	pha
+	ldy @i
+	txa
+	clc
+	adc segments_startlo,y		; add offset
+	sta segments_runlo,y		; store LSB of SEGMENT RUN base
+	pla
+	adc segments_starthi,y
+	sta segments_runhi,y		; store MSB of SEGMENT RUN base
+
+	; get the current GLOBAL LOAD offset for the SEGMENT
 	ldy @i
 	lda __obj_segment_ids,y		; restore global segment id
 	jsr link::segaddr_by_id
@@ -1547,6 +1571,12 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 @abs:	ldy @i
 	lda #SEG_ABS
 	sta __obj_segment_ids,y		; store ABS id for SEGMENT
+
+	; ABS SEGMENTs run at the literal address they load to
+	lda segments_startlo,y
+	sta segments_runlo,y
+	lda segments_starthi,y
+	sta segments_runhi,y
 
 @next:	; move name pointer to next location
 	lda @name
@@ -1830,6 +1860,24 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	tax
 	ldy segments_starthi-1,x
 	lda segments_startlo-1,x
+	tax
+	rts
+.endproc
+
+;*******************************************************************************
+; GET SEGMENT RUN BASE
+; Returns the base address the given SEGMENT's code is relocated for
+; NOTE: all indexing in this procedure is relative to table-1 because segment
+; id's are 1-based.
+; IN:
+;   - .A: ID of the SEGMENT to get the current RUN base address of
+; OUT:
+;   - .XY: the RUN base address of the section
+.proc get_segment_run_base
+	; segments_run[segment_id]
+	tax
+	ldy segments_runhi-1,x
+	lda segments_runlo-1,x
 	tax
 	rts
 .endproc

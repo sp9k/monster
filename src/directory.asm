@@ -49,22 +49,38 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ; IN:
 ;   - .A:  the extension (one character, uppercase)
 ;   - .XY: the address to the buffer to store to
+;   - r0:  exclusive end address of the destination buffer
+;   - r2:  maximum number of filenames to return
 ; OUT:
 ;   - .A:  number of files returned (or error)
-;   - .XY: address of 0-terminated buffer containing 0-terminated filenames
+;   - .XY: address of the final list terminator
 ;   - .C:  set on error
 
 .proc getbytype
 @ext=r5
+@resultend=r6
 @file=r8
 @resultptr=ra
 @cnt=rc
+@max=rd
+@nextptr=re
 @buff=$100
 	sta @ext
 	stxy @resultptr
+	lda r2
+	sta @max
+	ldxy r0
+	stxy @resultend
 
-	jsr open_dir		; open the directory "file"
-	bcs @ret
+	ldxy @resultptr
+	cmpw @resultend
+	bcc :+
+	RETURN_ERR ERR_BUFFER_FULL
+
+:	jsr open_dir		; open the directory "file"
+	bcc :+
+	rts			; propagate open error
+:
 	sta @file
 
 	ldxy #@buff		; use filename buffer as scratch for disk name
@@ -90,6 +106,22 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	bne @l0			; if no -> try next
 
 @match:	; filename has the requested extension, append to result
+	lda @cnt
+	cmp @max
+	bcs @too_many
+
+	; reserve room for this filename's terminator + list terminator
+	tya
+	sec			; filename length + 1
+	adc @resultptr
+	sta @nextptr
+	lda @resultptr+1
+	adc #$00
+	sta @nextptr+1
+	ldxy @nextptr
+	cmpw @resultend
+	bcs @buffer_full
+
 	inc @cnt		; count the match
 	ldy #$00
 @l1:	lda @buff,y
@@ -97,13 +129,27 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	beq @next
 	iny
 	bne @l1
-@next:	tya
+@next:	ldxy @nextptr
+	stxy @resultptr
+	jmp @l0
+
+@too_many:
+	lda #ERR_TOO_MANY_OBJECTS
+	bne @abort		; branch always
+
+@buffer_full:
+	lda #ERR_BUFFER_FULL
+
+@abort:
+	pha
+	ldy #$00
+	tya
+	sta (@resultptr),y	; leave a valid partial list
+	lda @file
+	jsr file::close
+	pla
 	sec
-	adc @resultptr
-	sta @resultptr
-	bcc @l0
-	inc @resultptr+1
-	bne @l0
+	rts
 
 @done:	ldy #$00
 	tya

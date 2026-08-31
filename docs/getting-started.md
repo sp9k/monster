@@ -95,7 +95,15 @@ debug information generated at assembly time doesn’t know which buffer our lin
 While a buffer can be assembled, the assembler **cannot** reference buffers.  If you wish
 to assemble multiple buffers, they must be first saved to disk.
 
-<insert screenshot here>
+```{figure} screenshots/getting-started-1.png
+:alt: The complete hello world program in the editor, with hello.s shown in the status bar
+:align: center
+:width: 75%
+:class: screenshot
+
+The finished program in the editor.  The status bar shows the buffer's new
+name, `hello.s`, at the right.
+```
 
 With all the code written, and our buffer named, we’re finally ready to assemble the program.
 Press the {c64-keys}`C= + A` key chord to do this. This can be done whether you are in INSERT MODE or COMMAND MODE.
@@ -105,7 +113,14 @@ handled the same way regardless of which mode you are in.
 If you entered the program correctly, you should see a message like the one below telling
 you that the assembly was completed along with the address range it occupies.
 
-<insert screenshot here>
+```{figure} screenshots/getting-started-2.png
+:alt: The assembler reporting OK $1000-$101d (001d bytes) after a successful assembly
+:align: center
+:width: 75%
+:class: screenshot
+
+A successful assembly reports the address range that the program occupies.
+```
 
 With the program in memory, it's time to debug it!
 

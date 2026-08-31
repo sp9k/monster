@@ -20,6 +20,8 @@
 .import __obj_segment_ids
 .import __obj_segments_sizelo
 .import __obj_segments_sizehi
+.import __obj_segments_startlo
+.import __obj_segments_starthi
 
 .scope obj
 	add_export             = __obj_add_export
@@ -44,6 +46,8 @@
 	segment_ids            = __obj_segment_ids
 	segments_sizelo        = __obj_segments_sizelo
 	segments_sizehi        = __obj_segments_sizehi
+	segments_startlo       = __obj_segments_startlo
+	segments_starthi       = __obj_segments_starthi
 .endscope
 
 ;*******************************************************************************

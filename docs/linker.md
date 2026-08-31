@@ -64,6 +64,96 @@ the program.
 The LINK file must always be named "LINK". Therefore, only 1 such file may exist on a given disk.
 The linker loads this file before beginning the link process and uses it to initialize the layout for the final linked binary as well as define the constraints for it.
 
+Every `MEMORY` section must define both `START` and `END`. Note that the `END` address is exclusive.
+Every `SEGMENTS` entry must define `LOAD`. `RUN` is optional and defaults to the
+same memory section as `LOAD`. `FILL` is also optional and defaults to disabled.
+Names must be unique within each block.
+
+#### LOAD vs RUN
+
+The `LOAD` property decides which SECTION the memory SEGMENT's bytes are written to in the linked
+binary. The `RUN` property tells the linker where the SEGMENT's code will be executed at
+runtime.  This is useful if you have code that is loaded somewhere but copied somewhere else
+before execution.
+
+When `RUN` and `LOAD` name the same section (as is usually the case) the two layouts are
+identical. When they differ, the linker places the bytes at the `LOAD` address
+but generates all relocation data against the `RUN` address, so the segment can
+be copied to its run address by your program (the linker does nothing to perform the actual
+copy) before execution.
+
+Segments are packed into their section in the order they appear in the
+`SEGMENTS` block: the first segment listed for a section starts at that
+section's `START`, and each subsequent one begins where the previous ended.
+
+The linker does this packing *twice*: once over the `LOAD` sections to decide
+where each segment's bytes go in the output binary, and once over the `RUN`
+sections to decide the addresses that relocation is performed against.  The two
+passes are independent -- neither one knows about the other's offsets -- so a
+segment that names different sections for `LOAD` and `RUN` reserves a range of
+its own size in *both* of them.
+
+That reservation is what "consumes space" means.  In the `LOAD` section the
+space holds real bytes that are written to the binary.  In the `RUN` section no
+bytes are emitted at all, but the address range is still claimed: the segments
+listed after it that also `RUN` in that section are pushed past it, and the
+section must be large enough to hold it or the link fails with
+`SECTION TOO SMALL`.
+
+For example, with the LINK file below:
+
+```
+MEMORY [
+    LOADSEC:
+        START=$2000
+        END=$3000;
+    RAM:
+        START=$0400
+        END=$1000;
+]
+
+SEGMENTS [
+    BOOT:
+        LOAD=LOADSEC;
+    FAST:
+        LOAD=LOADSEC
+        RUN=RAM;
+    VARS:
+        LOAD=RAM;
+]
+```
+
+if `BOOT` assembles to $100 bytes and `FAST` to $80, the layouts come out as:
+
+| SEGMENT | LOAD address    | RUN address     |
+|---------|-----------------|-----------------|
+| BOOT    | $2000 (LOADSEC) | $2000 (LOADSEC) |
+| FAST    | $2100 (LOADSEC) | $0400 (RAM)     |
+| VARS    | $0400 (RAM)     | $0400 (RAM)     |
+
+`FAST` occupies $2100-$217f in LOADSEC (where its bytes are written) *and*
+$0400-$047f in RAM (where it is assembled to run).  Note that `VARS` collides
+with `FAST`'s run range: `VARS` is packed by the `RUN` pass at RAM's `START`
+because its own `RUN` defaults to `LOAD`, while `FAST` is packed by the `LOAD`
+pass and never advances RAM's `LOAD` offset.  Copying `FAST` to $0400 at
+runtime would therefore clobber `VARS`.  To reserve the space in both layouts,
+give the copied segment a placeholder in each section, or order the sections so
+that the two ranges cannot meet.
+
+The `FILL` flag follows the `LOAD` layout only: a section is padded from
+`START` plus the sizes of the segments that *load* there out to `END`.
+
+#### LIMITS
+
+| ITEM                                                | LIMIT |
+|-----------------------------------------------------|-------|
+| `MEMORY` sections                                   | 8     |
+| `SEGMENTS` entries / segments per object on C64     | 8     |
+| `SEGMENTS` entries / segments per object on VIC-20  | 64    |
+| Object files in one link                            | 16    |
+| Imports per object file                             | 128   |
+| Exports per object file                             | 32    |
+
 #### EXAMPLE
 Below is a simple LINK file example to demonstrate its configuration format
 

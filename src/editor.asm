@@ -35,6 +35,7 @@
 .include "labels.inc"
 .include "linebuffer.inc"
 .include "linker.inc"
+.include "limits.inc"
 .include "log.inc"
 .include "macro.inc"
 .include "macros.inc"
@@ -554,6 +555,10 @@ main:	jsr key::getch
 	bcs @err				; error
 
 	; get all object files on disk
+	ldxy #mem::spareend			; exclusive destination-buffer end
+	stxy r0
+	lda #MAX_OBJS
+	sta r2				; maximum number of filenames
 	lda #$4f				; 'O'
 	ldxy #link::objfiles
 	jsr dir::get_by_type

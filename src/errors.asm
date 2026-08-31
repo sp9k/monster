@@ -319,6 +319,22 @@ err_ifdef_pass_mismatch:
 ; .byte "ifdef pass mismatch",0
 .byte $49,$84,$29,$9b,$80,$53,$9e,$cd,$4c,$cd,$d,$3,$40,$0
 
+err_missing_required_key:
+; .byte "missing required key",0
+.byte $6a,$53,$9a,$4e,$3e,$d2,$2c,$55,$4c,$85,$26,$cb,$2e,$40
+
+err_too_many_objects:
+; .byte "too many objects",0
+.byte $a3,$cf,$db,$41,$76,$5b,$78,$8a,$28,$d4,$98,$0
+
+err_duplicate_name:
+; .byte "duplicate name",0
+.byte $25,$50,$62,$43,$d,$5,$db,$81,$69,$40
+
+err_segment_out_of_range:
+; .byte "segment out of range",0
+.byte $99,$47,$69,$4e,$a6,$cf,$ad,$1b,$79,$9b,$90,$4e,$39,$40
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -397,7 +413,11 @@ err_ifdef_pass_mismatch:
 	err_no_segments, \
 	err_too_many_ifs, \
 	err_too_many_ifdefs, \
-	err_ifdef_pass_mismatch
+	err_ifdef_pass_mismatch, \
+	err_missing_required_key, \
+	err_too_many_objects, \
+	err_duplicate_name, \
+	err_segment_out_of_range
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

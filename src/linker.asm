@@ -24,6 +24,7 @@
 .include "util.inc"
 .include "target.inc"
 .include "text.inc"
+.include "vmem.inc"
 .include "zeropage.inc"
 
 .include "ram.inc"
@@ -36,7 +37,6 @@
 ;*******************************************************************************
 ; CONSTANTS
 MAX_SECTIONS         = 8	; max number of memory sections
-MAX_OBJS             = 16	; max number of object files that may be used
 MAX_SECTION_NAME_LEN = 8	; max length of a single section name
 MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
 
@@ -53,6 +53,15 @@ SYM_ABS_EXPORT_WORD = 6
 ;*******************************************************************************
 ; SECTION flags
 SECTION_FILL = $01	; flag to pad section's unused bytes with 0
+
+; LINK definition properties seen while parsing
+SECTION_PROP_START     = $01
+SECTION_PROP_END       = $02
+SECTION_PROPS_REQUIRED = SECTION_PROP_START | SECTION_PROP_END
+
+SEGMENT_PROP_LOAD      = $01
+SEGMENT_PROP_RUN       = $02
+SEGMENT_PROPS_REQUIRED = SEGMENT_PROP_LOAD
 
 ;*******************************************************************************
 ; ZEROPAGE variables
@@ -78,8 +87,10 @@ __link_objfiles=mem::spare
 numsegments: .byte 0
 numsections: .byte 0
 
-activeobj: .byte 0	; the current OBJECT (id) being linked
-objerr:    .byte 0	; error code from linking an object (see link_object)
+activeobj:         .byte 0	; the current OBJECT (id) being linked
+objerr:            .byte 0	; error code from linking an object
+parsed_properties: .byte 0	; properties seen in the current LINK definition
+absolute_end:      .word 0	; next free entry in absolute_ranges
 
 ;*******************************************************************************
 ; OBJECT STATE
@@ -132,11 +143,25 @@ segments_sizelo: .res MAX_SEGMENTS
 segments_sizehi: .res MAX_SEGMENTS
 segments_type:   .res MAX_SEGMENTS
 
-; pointers for the current address of each SEGMENT during linking
+; pointers for the current LOAD address of each SEGMENT during linking.
+; This is where the SEGMENT's bytes are placed in the output image.
 segments_addrlo: .res MAX_SEGMENTS
 segments_addrhi: .res MAX_SEGMENTS
 
+; pointers for the current RUN address of each SEGMENT during linking.
+; This is the address the SEGMENT's code is relocated for; it differs from the
+; LOAD address when the SEGMENT declares a RUN SECTION of its own (the program
+; is expected to copy the SEGMENT from LOAD to RUN before executing it).
+segments_runaddrlo: .res MAX_SEGMENTS
+segments_runaddrhi: .res MAX_SEGMENTS
+
 segment_names: .res MAX_SEGMENT_NAME_LEN*MAX_SEGMENTS
+
+; Absolute SEGMENT ranges collected from object headers.  Each record is
+; start, stop (two little-endian words).  The maximum follows from the object
+; and per-object SEGMENT limits.
+absolute_ranges: .res MAX_OBJS*MAX_SEGMENTS*4
+absolute_ranges_end = *
 
 .export segments_load
 .export segments_run
@@ -239,6 +264,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda #$00
 	sta numsegments
 	sta numsections
+	ldxy #absolute_ranges
+	stxy absolute_end
 
 	rts
 .endproc
@@ -484,6 +511,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 @val=r2
 @cnt=r4
 @keybuff=$100
+	lda #$00
+	sta parsed_properties
+
 	; get address to store new section name to
 	lda numsections
 	asl			; *2
@@ -515,8 +545,17 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	;sec			; +1 (move pointer after the ':')
 	adc zp::line
 	sta zp::line
-	bcc @getprops
+	bcc @check_duplicate
 	inc zp::line+1
+
+@check_duplicate:
+	; numsections does not include the section currently being parsed
+	lda numsections
+	beq @getprops
+	ldxy @name
+	jsr get_section_by_name
+	bcs @getprops
+	RETURN_ERR ERR_DUPLICATE_NAME
 
 ; read all properties defined for the SECTION
 @getprops:
@@ -526,6 +565,15 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda (zp::line),y
 	cmp #';'		; are we at the end of the section?
 	bne :+
+
+	; make sure section declared all required properties
+	lda parsed_properties
+	and #SECTION_PROPS_REQUIRED
+	cmp #SECTION_PROPS_REQUIRED
+	beq @properties_ok
+	RETURN_ERR ERR_MISSING_REQUIRED_KEY
+
+@properties_ok:
 	incw zp::line		; move beyond the semicolon
 	RETURN_OK		; we're at the end, return
 
@@ -589,6 +637,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	sta sections_startlo,x
 	tya
 	sta sections_starthi,x
+	lda parsed_properties
+	ora #SECTION_PROP_START
+	sta parsed_properties
 	rts
 
 ;-------------------------------------------------------------------------------
@@ -600,15 +651,32 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	sta sections_stoplo,x
 	tya
 	sta sections_stophi,x
+	lda parsed_properties
+	ora #SECTION_PROP_END
+	sta parsed_properties
 	rts
 
 ;-------------------------------------------------------------------------------
 ; handler for the "fill" key in config file
 @fillvec:
+	cpy #$00
+	bne @fill_enable
+	cpx #$00
+	bne @fill_enable
+
+@fill_disable:
 	ldx numsections
-	lda #SECTION_FILL
+	lda sections_flags,x
+	and #($ff ^ SECTION_FILL)
 	sta sections_flags,x
-	rts
+	RETURN_OK
+
+@fill_enable:
+	ldx numsections
+	lda sections_flags,x
+	ora #SECTION_FILL
+	sta sections_flags,x
+	RETURN_OK
 
 ;-------------------------------------------------------------------------------
 ; keys table
@@ -644,6 +712,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 @cnt=r4
 @keybuff=$100
 @valbuff=$100
+	lda #$00
+	sta parsed_properties
+
 	; get address to store new segment name to
 	lda #$00
 	sta @name+1
@@ -680,8 +751,17 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	;sec			; +1 (move pointer after the ':')
 	adc zp::line
 	sta zp::line
-	bcc @getprops
+	bcc @check_duplicate
 	inc zp::line+1
+
+@check_duplicate:
+	; numsegments does not include the segment currently being parsed
+	lda numsegments
+	beq @getprops
+	ldxy @name
+	jsr get_segment_by_name
+	bcs @getprops
+	RETURN_ERR ERR_DUPLICATE_NAME
 
 ; read all properties defined for the SEGMENT
 @getprops:
@@ -691,6 +771,22 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda (zp::line),y
 	cmp #';'		; are we at the end of the segment?
 	bne :+
+	lda parsed_properties
+	and #SEGMENT_PROPS_REQUIRED
+	cmp #SEGMENT_PROPS_REQUIRED
+	beq @properties_ok
+	RETURN_ERR ERR_MISSING_REQUIRED_KEY
+
+@properties_ok:
+	; RUN defaults to LOAD when omitted
+	lda parsed_properties
+	and #SEGMENT_PROP_RUN
+	bne @properties_done
+	ldx numsegments
+	lda segments_load,x
+	sta segments_run,x
+
+@properties_done:
 	incw zp::line		; move beyond the semicolon
 	RETURN_OK		; we're at the end, return
 
@@ -746,7 +842,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 :	; run the handler for the given key
 	jsr zp::jmpaddr
-	bcc @getprops		; repeat (get next key if there is one)
+	jcc @getprops		; repeat (get next key if there is one)
 	jcs log_error
 
 @next:	; move zp::str2 to the next key to check
@@ -776,6 +872,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 :	; set the run section for the segment
 	ldx numsegments
 	sta segments_run,x
+	lda parsed_properties
+	ora #SEGMENT_PROP_RUN
+	sta parsed_properties
 	RETURN_OK
 
 ;-------------------------------------------------------------------------------
@@ -791,6 +890,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 :	; set the load section for the segment
 	ldx numsegments
 	sta segments_load,x
+	lda parsed_properties
+	ora #SEGMENT_PROP_LOAD
+	sta parsed_properties
 	RETURN_OK
 
 ;-------------------------------------------------------------------------------
@@ -923,14 +1025,15 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	ldxy @i
 	CALLMAIN lbl::getaddr		; .XY = segment-relative value
 
-	; value = segment origin + segment-relative value
+	; value = segment RUN origin + segment-relative value
+	; (symbols name the address the code will execute at, not where it loads)
 	txa
 	ldx @seg
 	clc
-	adc segments_addrlo-1,x
+	adc segments_runaddrlo-1,x
 	sta zp::label_value
 	tya
-	adc segments_addrhi-1,x
+	adc segments_runaddrhi-1,x
 	sta zp::label_value+1
 	lda @seg
 	sta zp::label_segmentid
@@ -950,19 +1053,55 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 ;*******************************************************************************
 ; CALC SEG ORIGINS
-; Calculates the start address for each global SEGMENT
+; Calculates the LOAD and RUN start addresses for each global SEGMENT.
+; SEGMENTs are packed into their SECTION in LINK-file order.  The LOAD and RUN
+; layouts are packed independently: a SEGMENT occupies space in the SECTION it
+; LOADs to (where its bytes go in the output image) and, separately, in the
+; SECTION it RUNs in (the address its code is relocated for).  For the common
+; case where RUN and LOAD name the same SECTION the two layouts are identical.
 ; OUT:
 ;   - .C: set on error
 .proc calc_seg_origins
 @secid=r0
 @segid=r1
 @secoff=r2
+@key=r4			; SECTION id table to pack by (LOAD or RUN)
+@dstlo=r6		; address table to write the packed origins to
+@dsthi=r8
 	lda #$00
-	sta @secid
 	cmp numsegments
 	beq @done
 	cmp numsections
 	beq @done
+
+	; pack the LOAD addresses
+	ldxy #segments_load
+	stxy @key
+	ldxy #segments_addrlo
+	stxy @dstlo
+	ldxy #segments_addrhi
+	stxy @dsthi
+	jsr @pack
+	bcs @ret
+
+	; pack the RUN addresses
+	ldxy #segments_run
+	stxy @key
+	ldxy #segments_runaddrlo
+	stxy @dstlo
+	ldxy #segments_runaddrhi
+	stxy @dsthi
+	jsr @pack
+@ret:	rts
+
+@done:	RETURN_OK
+
+;-------------------------------------------------------------------------------
+; Packs every SEGMENT into the SECTION named by the (@key) table and writes the
+; resulting origins to the (@dstlo)/(@dsthi) tables.
+; NOTE: SEGMENT ids are 1-based, so the tables are indexed by (id-1).
+@pack:	lda #$00
+	sta @secid
 
 ; iterate over all SECTIONS
 @l0:	; init offset to the START location of the SECTION
@@ -975,24 +1114,26 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda #$01
 	sta @segid
 
-; iterate over all SEGMENTS to find the ones that LOAD to this SECTION
-@l1:	ldx @segid
-	lda @secid
-	cmp segments_load-1,x	; does this SEGMENT load to SECTION?
+; iterate over all SEGMENTS to find the ones that map to this SECTION
+@l1:	ldy @segid
+	dey			; SEGMENT ids are 1-based
+	lda (@key),y		; does this SEGMENT map to SECTION?
+	cmp @secid
 	bne @nextseg
 
 	; SEGMENT is in SECTION, update offset for SEGMENT by size of SECTION
 	; up to this point
 	; segment.addr = segment.addr + secoff
-	lda @secoff
+	lda (@dstlo),y
 	clc
-	adc segments_addrlo-1,x
-	sta segments_addrlo-1,x
-	lda @secoff+1
-	adc segments_addrhi-1,x
-	sta segments_addrhi-1,x
+	adc @secoff
+	sta (@dstlo),y
+	lda (@dsthi),y
+	adc @secoff+1
+	sta (@dsthi),y
 
 	; secoff += segment.size
+	ldx @segid
 	lda @secoff
 	clc
 	adc segments_sizelo-1,x
@@ -1000,6 +1141,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda @secoff+1
 	adc segments_sizehi-1,x
 	sta @secoff+1
+	bcs @outofrange		; SECTION's SEGMENTs run past $ffff
 
 @nextseg:
 	lda @segid
@@ -1022,11 +1164,192 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda @secid
 	cmp numsections
 	bcc @l0
-
-@done:	RETURN_OK
+	RETURN_OK
 
 @toosmall:
 	RETURN_ERR ERR_SECTION_TOO_SMALL
+
+@outofrange:
+	RETURN_ERR ERR_SEGMENT_OUT_OF_RANGE
+.endproc
+
+;*******************************************************************************
+; FILL SECTIONS
+; 0 pads the unused bytes of each SECTION configured with FILL=true
+; SEGMENTs within a SECTION are stored from START in LINK-file order, so the
+; unused portion is [START + sum(segment sizes), END).
+.proc fill_sections
+@section=r0
+@segment=r1
+@addr=r2
+	lda numsections
+	jeq @done
+
+	lda #$00
+	sta @section
+
+@section_loop:
+	ldx @section
+	lda sections_flags,x
+	and #SECTION_FILL
+	jeq @next_section
+
+	; an empty SECTION contributes no bytes to the output
+	lda sections_startlo,x
+	cmp sections_stoplo,x
+	bne @nonempty_section
+	lda sections_starthi,x
+	cmp sections_stophi,x
+	jeq @next_section
+
+@nonempty_section:
+	; begin at START, then advance past every SEGMENT loaded in this SECTION
+	lda sections_startlo,x
+	sta @addr
+	lda sections_starthi,x
+	sta @addr+1
+
+	lda #$00
+	sta @segment
+@segment_loop:
+	ldx @segment
+	lda @section
+	cmp segments_load,x
+	bne @next_segment
+
+	lda @addr
+	clc
+	adc segments_sizelo,x
+	sta @addr
+	lda @addr+1
+	adc segments_sizehi,x
+	sta @addr+1
+
+@next_segment:
+	inc @segment
+	lda @segment
+	cmp numsegments
+	bcc @segment_loop
+
+	; include the entire filled SECTION in the flat output
+	ldx @section
+	lda sections_starthi,x
+	cmp asm::origin+1
+	bcc @set_origin
+	bne @check_top
+	lda sections_startlo,x
+	cmp asm::origin
+	bcs @check_top
+
+@set_origin:
+	lda sections_startlo,x
+	sta asm::origin
+	lda sections_starthi,x
+	sta asm::origin+1
+
+@check_top:
+	lda sections_stophi,x
+	cmp asm::top+1
+	bcc @fill
+	bne @set_top
+	lda sections_stoplo,x
+	cmp asm::top
+	bcc @fill
+	beq @fill
+
+@set_top:
+	lda sections_stoplo,x
+	sta asm::top
+	lda sections_stophi,x
+	sta asm::top+1
+
+@fill:	; stop when fill pointer reaches the SECTION's END
+	ldx @section
+	lda @addr
+	cmp sections_stoplo,x
+	lda @addr+1
+	sbc sections_stophi,x
+	bcs @next_section	; addr >= END -> SECTION is done
+
+	; ABS SEGMENTs write their own bytes here; don't zero over them
+	jsr skip_absolute
+	bcs @fill		; addr was advanced -> recheck the SECTION's END
+
+@store_zero:
+	lda #$00
+	ldxy @addr
+	CALLMAIN vmem::store
+	incw @addr
+	jmp @fill
+
+@next_section:
+	inc @section
+	lda @section
+	cmp numsections
+	jcc @section_loop
+
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; SKIP ABSOLUTE
+; Advances the given address past the absolute SEGMENT range that contains it,
+; if any.  The ranges are those collected from the object headers during pass 1
+; (see add_absolute_segment).
+; IN:
+;   - r2: the address to check
+; OUT:
+;   - r2: the address, advanced to the END of the ABS range that contained it
+;   - .C: set if the address was advanced
+.proc skip_absolute
+@addr=r2
+@ptr=r4
+	ldxy #absolute_ranges
+	stxy @ptr
+
+@l0:	ldxy @ptr
+	cmpw absolute_end
+	beq @done		; end of table -> addr is in no ABS range
+
+	; addr < range.start -> not in this range
+	ldy #$00
+	lda @addr
+	cmp (@ptr),y
+	iny
+	lda @addr+1
+	sbc (@ptr),y
+	bcc @next
+
+	; addr >= range.stop -> not in this range
+	iny
+	lda @addr
+	cmp (@ptr),y
+	iny
+	lda @addr+1
+	sbc (@ptr),y
+	bcs @next
+
+	; addr is within the range; move it to the range's END
+	ldy #$02
+	lda (@ptr),y
+	sta @addr
+	iny
+	lda (@ptr),y
+	sta @addr+1
+	sec			; address was advanced
+	rts
+
+@next:	; move to the next 4-byte range record
+	lda @ptr
+	clc
+	adc #$04
+	sta @ptr
+	bcc @l0
+	inc @ptr+1
+	jmp @l0
+
+@done:	clc			; address was not in any ABS range
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1100,6 +1423,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	jcs log_error
 
 	jsr update_segments
+	jcs log_error
 
 @nextfile:
 	jsr log_newl
@@ -1129,6 +1453,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 @pass1done:
 	jsr calc_seg_origins
+	jcs log_error
+	jsr validate_segments
 	jcs log_error
 
 	; now that SEGMENT origins are known, finalize the values of the
@@ -1204,13 +1530,14 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	stxy asm::origin
 	jsr segmax
 	stxy asm::top
+	jsr fill_sections	; fill any sections that are marked "FILL"
 
 	jsr validate_symbols
 	jcs log_error
 
 	jsr generate_map	; produce the map file
 	jcs log_error
-	jmp validate_segments	; validate segments and return error if needed
+	RETURN_OK
 
 @done:	rts
 
@@ -1264,6 +1591,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda #$00
 @l0:	sta segments_addrlo-1,x
 	sta segments_addrhi-1,x
+	sta segments_runaddrlo-1,x
+	sta segments_runaddrhi-1,x
 	dex
 	bne @l0
 	rts
@@ -1272,7 +1601,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ;*******************************************************************************
 ; UPDATE SEGMENTS
 ; Add SEGMENT usage in the object file that was just read to running sum for
-; each global SEGMENT
+; each global SEGMENT and record absolute SEGMENT ranges.
+; OUT:
+;   - .C: set if absolute SEGMENTs overlap or cannot be recorded
 .proc update_segments
 	; add usage in object file to running sum for each SEGMENT
 	ldx #$00
@@ -1281,7 +1612,20 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 :	ldy obj::segment_ids,x		; get GLOBAL SEGMENT id from local one
 	cpy #SEG_ABS			; ABS segments have no global SEGMENT
-	beq @next			; if ABS, skip it
+	bne @relative
+
+	; Preserve the local index while the absolute range is recorded.
+	txa
+	pha
+	jsr add_absolute_segment
+	sta objerr
+	pla
+	tax
+	lda objerr
+	bcs @ret
+	jmp @next
+
+@relative:
 	lda obj::segments_sizelo,x
 	clc
 	adc segments_sizelo-1,y
@@ -1293,7 +1637,103 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 @next:	inx
 	cpx obj::numsegments
 	bne :-
-@done:	rts
+@done:	RETURN_OK
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; ADD ABSOLUTE SEGMENT
+; Adds a nonempty absolute SEGMENT range from the current object to the global
+; absolute-range table. Errors on overlap with an earlier absolute SEGMENT.
+; IN:
+;   - .A: object-local SEGMENT index
+; OUT:
+;   - .C: set on overlap or if the range table is full
+.proc add_absolute_segment
+@addr0_start = r2
+@addr0_stop  = r4
+@addr1_start = r6
+@addr1_stop  = r8
+@ptr=ra
+	tax
+	lda obj::segments_sizelo,x
+	ora obj::segments_sizehi,x
+	jeq @ok				; empty SEGMENTs cannot overlap
+
+	lda obj::segments_startlo,x
+	sta @addr0_start
+	ldy obj::segments_starthi,x
+	sty @addr0_start+1
+	clc
+	adc obj::segments_sizelo,x
+	sta @addr0_stop
+	tya
+	adc obj::segments_sizehi,x
+	sta @addr0_stop+1
+	bcs @outofrange			; SEGMENT end > $ffff
+
+	ldxy #absolute_ranges
+	stxy @ptr
+@compare:
+	ldxy @ptr
+	cmpw absolute_end
+	beq @store
+
+	ldy #$00
+	lda (@ptr),y
+	sta @addr1_start
+	iny
+	lda (@ptr),y
+	sta @addr1_start+1
+	iny
+	lda (@ptr),y
+	sta @addr1_stop
+	iny
+	lda (@ptr),y
+	sta @addr1_stop+1
+	jsr ranges_overlap
+	bcs @overlap
+
+	lda @ptr
+	clc
+	adc #$04
+	sta @ptr
+	bcc @compare
+	inc @ptr+1
+	jmp @compare
+
+@store:
+	ldxy absolute_end
+	cmpw #absolute_ranges_end
+	bcs @too_many
+
+	ldy #$00
+	lda @addr0_start
+	sta (@ptr),y
+	iny
+	lda @addr0_start+1
+	sta (@ptr),y
+	iny
+	lda @addr0_stop
+	sta (@ptr),y
+	iny
+	lda @addr0_stop+1
+	sta (@ptr),y
+
+	lda absolute_end
+	clc
+	adc #$04
+	sta absolute_end
+	bcc @ok
+	inc absolute_end+1
+
+@ok:	RETURN_OK
+@overlap:
+	RETURN_ERR ERR_OVERLAPPING_SEGMENTS
+@too_many:
+	RETURN_ERR ERR_TOO_MANY_SEGMENTS
+@outofrange:
+	RETURN_ERR ERR_SEGMENT_OUT_OF_RANGE
 .endproc
 
 ;*******************************************************************************
@@ -1316,6 +1756,14 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda obj::segments_sizehi,x
 	adc segments_addrhi-1,y
 	sta segments_addrhi-1,y
+
+	lda obj::segments_sizelo,x
+	clc
+	adc segments_runaddrlo-1,y
+	sta segments_runaddrlo-1,y
+	lda obj::segments_sizehi,x
+	adc segments_runaddrhi-1,y
+	sta segments_runaddrhi-1,y
 
 @next:	inx
 	cpx obj::numsegments
@@ -1505,6 +1953,24 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda segments_addrhi-1,y
 	tay
 	pla				; restore TYPE byte
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; SEGRUNADDR BY ID
+; Returns the (current) RUN base address for the given SEGMENT id.  This is the
+; address the SEGMENT's code is relocated for; it matches the LOAD base unless
+; the SEGMENT declares a RUN SECTION distinct from its LOAD SECTION.
+; IN:
+;   - .A: global (linker) segment id to get the RUN base address of
+; OUT:
+;   - .XY: the RUN base address for the requested segment
+.export __link_segrunaddr_by_id
+.proc __link_segrunaddr_by_id
+	tay
+	ldx segments_runaddrlo-1,y
+	lda segments_runaddrhi-1,y
+	tay
 	RETURN_OK
 .endproc
 
@@ -1904,7 +2370,7 @@ __link_get_segment_by_name:
 	lda #$00
 	sta @i
 	cmp numsegments
-	beq @symbols
+	jeq @symbols
 
 @segments:
 	ldxy #@seglist_title
@@ -1941,12 +2407,24 @@ __link_get_segment_by_name:
 
 @segstart:
 	ldx @i
-	ldy segments_addrhi,x	; get the start address (MSB)
-	lda segments_addrlo,x	; get the start address (LSB)
+	ldy segments_addrhi,x	; LOAD address (MSB)
+	lda segments_addrlo,x	; LOAD address (LSB)
 	tax
 	jsr putword
 
-	; padding between start and size
+	; padding between LOAD and RUN
+	lda #' '
+	jsr krn::chrout
+	jsr krn::chrout
+
+@segrun:
+	ldx @i
+	ldy segments_runaddrhi,x	; RUN address (MSB)
+	lda segments_runaddrlo,x	; RUN address (LSB)
+	tax
+	jsr putword
+
+	; padding between RUN and size
 	lda #' '
 	jsr krn::chrout
 	jsr krn::chrout
@@ -2032,7 +2510,7 @@ __link_get_segment_by_name:
 
 ;-------------------------------------------------------------------------------
 @seglist_title:  .byte "segments",$0d,0
-@seglist_header: .byte "name     addr   size",$0d,0
+@seglist_header: .byte "name     load   run    size",$0d,0
 @symbols_title:  .byte "symbols",$0d,0
 @symbols_header: .byte "name                             addr",$0d,0
 
@@ -2044,7 +2522,7 @@ __link_get_segment_by_name:
 
 ;*******************************************************************************
 ; VALIDATE SEGMENTS
-; Checks if any segments generated during the linking overlap
+; Checks if any named or absolute segments generated during linking overlap
 ; OUT:
 ;   - .A: error code (if validation failed)
 ;   - .C: set if any two segments overlap
@@ -2055,8 +2533,9 @@ __link_get_segment_by_name:
 @addr0_stop  = r4
 @addr1_start = r6
 @addr1_stop  = r8
+@ptr=ra
 	lda numsegments
-	beq @ok			; no segments -> ok
+	jeq @ok
 
 	lda #$00
 	sta @i
@@ -2102,7 +2581,7 @@ __link_get_segment_by_name:
 	adc segments_sizehi,x
 	sta @addr1_stop+1
 
-	jsr @check_overlap
+	jsr ranges_overlap
 	bcs @overlap
 	bcc @l1			; branch always
 
@@ -2110,17 +2589,82 @@ __link_get_segment_by_name:
 	lda @i
 	cmp numsegments
 	bcc @l0
-@ok:	RETURN_OK
+
+	; compare all absolute ranges with every named global SEGMENT now that
+	; their origins are known
+	ldxy #absolute_ranges
+	stxy @ptr
+@absolute_loop:
+	ldxy @ptr
+	cmpw absolute_end
+	beq @ok
+
+	ldy #$00
+	lda (@ptr),y
+	sta @addr0_start
+	iny
+	lda (@ptr),y
+	sta @addr0_start+1
+	iny
+	lda (@ptr),y
+	sta @addr0_stop
+	iny
+	lda (@ptr),y
+	sta @addr0_stop+1
+
+	lda #$00
+	sta @j
+@absolute_global_loop:
+	ldx @j
+	lda segments_sizelo,x
+	ora segments_sizehi,x
+	beq @next_absolute_global
+
+	lda segments_addrlo,x
+	sta @addr1_start
+	ldy segments_addrhi,x
+	sty @addr1_start+1
+	clc
+	adc segments_sizelo,x
+	sta @addr1_stop
+	tya
+	adc segments_sizehi,x
+	sta @addr1_stop+1
+
+	jsr ranges_overlap
+	bcs @overlap
+
+@next_absolute_global:
+	inc @j
+	lda @j
+	cmp numsegments
+	bcc @absolute_global_loop
+
+	lda @ptr
+	clc
+	adc #$04
+	sta @ptr
+	bcc @absolute_loop
+	inc @ptr+1
+	jmp @absolute_loop
+
+@ok:
+	RETURN_OK
 
 @overlap:
 	RETURN_ERR ERR_OVERLAPPING_SEGMENTS
+.endproc
 
 ;-------------------------------------------------------------------------------
 ; checks if [addr0_start, addr0_stop) overlaps [addr1_start, addr1_stop)
 ; overlap iff addr0.start < addr1.stop AND addr1.start < addr0.stop
 ; OUT:
 ;   - .C: set if the ranges overlap
-@check_overlap:
+.proc ranges_overlap
+@addr0_start = r2
+@addr0_stop  = r4
+@addr1_start = r6
+@addr1_stop  = r8
 	; if addr0.start >= addr1.stop, no overlap
 	lda @addr0_start
 	cmp @addr1_stop

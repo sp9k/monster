@@ -4,6 +4,7 @@
 ; drawn to inform the user what happened, and wait for them to acknowledge it.
 ;*******************************************************************************
 
+.include "border.inc"
 .include "config.inc"
 .include "cursor.inc"
 .include "draw.inc"
@@ -56,26 +57,6 @@ ALERT_RVS_STOP  = ALERT_RVS_START+ALERT_RVS_LEN
 .assert ((ALERT_RCOL+1) .mod 2) = 0, error, "alert must end on an even column"
 .assert (ALERT_RVS_START .mod 2) = 0, error, "reversed field must start even"
 .assert (ALERT_RVS_STOP .mod 2) = 0, error, "reversed field must end even"
-.endif
-
-;*******************************************************************************
-; BORDER CHARACTERS
-.ifdef soft4x8
-; 4x8 font box-drawing glyphs
-ALERT_VBAR = 128
-ALERT_HBAR = 140
-ALERT_TL   = 136
-ALERT_TR   = 137
-ALERT_BL   = 138
-ALERT_BR   = 139
-.else
-; PETSCII box-drawing glyphs
-ALERT_VBAR = $dd	; screen code $5d
-ALERT_HBAR = $c0	; screen code $40
-ALERT_TL   = $b0	; screen code $70
-ALERT_TR   = $ae	; screen code $6e
-ALERT_BL   = $ad	; screen code $6d
-ALERT_BR   = $bd	; screen code $7d
 .endif
 
 ;*******************************************************************************
@@ -230,8 +211,8 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 	sta text::puts_stop
 
 	lda #ALERT_ROW
-	ldx #ALERT_TL
-	ldy #ALERT_TR
+	ldx #BORDER_TL
+	ldy #BORDER_TR
 	jsr border
 
 	lda #ALERT_TEXT_COL
@@ -243,8 +224,8 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 	jsr draw_prompt
 
 	lda #ALERT_ROW+ALERT_HEIGHT-1
-	ldx #ALERT_BL
-	ldy #ALERT_BR
+	ldx #BORDER_BL
+	ldy #BORDER_BR
 	jsr border
 
 	lda #$00
@@ -305,7 +286,7 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 
 	jsr blankrow
 
-	lda #ALERT_HBAR
+	lda #BORDER_HBAR
 	ldx #ALERT_WIDTH-2
 :	sta rowbuf+ALERT_LCOL,x
 	dex
@@ -344,7 +325,7 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 	bcc :-
 
 :	; store left/right borders
-	lda #ALERT_VBAR
+	lda #BORDER_VBAR
 	sta rowbuf+ALERT_LCOL
 	sta rowbuf+ALERT_RCOL
 

@@ -1,6 +1,9 @@
 .ifndef __limits_inc
 .define __limits_inc
 
+; LINKER
+.define MAX_OBJS 16		; max number of object files in a link
+
 .ifdef vic20
 	.define MAX_LABELS 640		; max number of named labels
 	.define MAX_ANON   1776		; max number of anonymous labels
@@ -9,7 +12,7 @@
 	.define MAX_WATCHPOINTS 8	; max number of watchpoints that may be set
 	.define MAX_MACROS 128
 
-; LINKER
+; LINKER / OBJECT FILES
 	.define MAX_SEGMENTS 64
 	.define MAX_IMPORTS  128
 	.define MAX_EXPORTS  32
@@ -21,7 +24,7 @@
 	.define MAX_WATCHPOINTS 8	; max number of watchpoints that may be set
 	.define MAX_MACROS 128
 
-; LINKER
+; LINKER / OBJECT FILES
 	.define MAX_SEGMENTS 8
 	.define MAX_IMPORTS  128
 	.define MAX_EXPORTS  32

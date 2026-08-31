@@ -115,6 +115,16 @@ ERR_TOO_MANY_IFS         = 73
 ERR_TOO_MANY_IFDEFS      = 74
 ERR_IFDEF_PASS_MISMATCH  = 75
 
+;*******************************************************************************
+; LINK file validation errors
+ERR_MISSING_REQUIRED_KEY = 76
+ERR_TOO_MANY_OBJECTS     = 77
+ERR_DUPLICATE_NAME       = 78
+
+;*******************************************************************************
+; link-time address errors
+ERR_SEGMENT_OUT_OF_RANGE = 79
+
 .import __err_get
 
 .scope err
