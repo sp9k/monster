@@ -1065,42 +1065,12 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 @secid=r0
 @segid=r1
 @secoff=r2
-@key=r4			; SECTION id table to pack by (LOAD or RUN)
-@dstlo=r6		; address table to write the packed origins to
-@dsthi=r8
 	lda #$00
 	cmp numsegments
-	beq @done
+	jeq @done
 	cmp numsections
-	beq @done
+	jeq @done
 
-	; pack the LOAD addresses
-	ldxy #segments_load
-	stxy @key
-	ldxy #segments_addrlo
-	stxy @dstlo
-	ldxy #segments_addrhi
-	stxy @dsthi
-	jsr @pack
-	bcs @ret
-
-	; pack the RUN addresses
-	ldxy #segments_run
-	stxy @key
-	ldxy #segments_runaddrlo
-	stxy @dstlo
-	ldxy #segments_runaddrhi
-	stxy @dsthi
-	jsr @pack
-@ret:	rts
-
-@done:	RETURN_OK
-
-;-------------------------------------------------------------------------------
-; Packs every SEGMENT into the SECTION named by the (@key) table and writes the
-; resulting origins to the (@dstlo)/(@dsthi) tables.
-; NOTE: SEGMENT ids are 1-based, so the tables are indexed by (id-1).
-@pack:	lda #$00
 	sta @secid
 
 ; iterate over all SECTIONS
@@ -1114,32 +1084,54 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda #$01
 	sta @segid
 
-; iterate over all SEGMENTS to find the ones that map to this SECTION
+;-------------------------------------------------------------------------------
+; iterate over all SEGMENTS to find the ones that occupy this SECTION.
+; A SEGMENT occupies the SECTION it loads to (where its bytes are written) and
+; the SECTION it runs in (where it is relocated for); these are packed with a
+; single shared offset so the two layouts cannot be placed on top of each other
 @l1:	ldy @segid
 	dey			; SEGMENT ids are 1-based
-	lda (@key),y		; does this SEGMENT map to SECTION?
-	cmp @secid
-	bne @nextseg
 
-	; SEGMENT is in SECTION, update offset for SEGMENT by size of SECTION
-	; up to this point
-	; segment.addr = segment.addr + secoff
-	lda (@dstlo),y
+	lda segments_load,y
+	cmp @secid
+	beq @load		; SEGMENT's bytes load here
+	lda segments_run,y
+	cmp @secid
+	beq @run		; SEGMENT runs here, but loads elsewhere
+	bne @nextseg		; SEGMENT doesn't occupy this SECTION at all
+
+@load:	; segment.addr = segment.addr + secoff
+	lda segments_addrlo,y
 	clc
 	adc @secoff
-	sta (@dstlo),y
-	lda (@dsthi),y
+	sta segments_addrlo,y
+	lda segments_addrhi,y
 	adc @secoff+1
-	sta (@dsthi),y
+	sta segments_addrhi,y
 
+	; a SEGMENT whose RUN SECTION is its LOAD SECTION (the default) is
+	; placed once and gets the same address in both layouts
+	lda segments_run,y
+	cmp @secid
+	bne @advance
+
+@run:	; segment.runaddr = segment.runaddr + secoff
+	lda segments_runaddrlo,y
+	clc
+	adc @secoff
+	sta segments_runaddrlo,y
+	lda segments_runaddrhi,y
+	adc @secoff+1
+	sta segments_runaddrhi,y
+
+@advance:
 	; secoff += segment.size
-	ldx @segid
 	lda @secoff
 	clc
-	adc segments_sizelo-1,x
+	adc segments_sizelo,y
 	sta @secoff
 	lda @secoff+1
-	adc segments_sizehi-1,x
+	adc segments_sizehi,y
 	sta @secoff+1
 	bcs @outofrange		; SECTION's SEGMENTs run past $ffff
 
@@ -1159,12 +1151,12 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	sbc @secoff+1
 	bcc @toosmall		; stop < secoff -> the SEGMENTs don't fit
 
-	; update the start offset for SEGMENT by secoff
 	inc @secid		; move to next SECTION
 	lda @secid
 	cmp numsections
 	bcc @l0
-	RETURN_OK
+
+@done:	RETURN_OK
 
 @toosmall:
 	RETURN_ERR ERR_SECTION_TOO_SMALL
@@ -1176,11 +1168,13 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ;*******************************************************************************
 ; FILL SECTIONS
 ; 0 pads the unused bytes of each SECTION configured with FILL=true
-; SEGMENTs within a SECTION are stored from START in LINK-file order, so the
-; unused portion is [START + sum(segment sizes), END).
+; The SECTION is scanned from START to END and every byte that no SEGMENT wrote
+; to is zeroed.  The bytes in a SECTION are not necessarily contiguous from
+; "START". A SEGMENT that only RUNs in the SECTION reserves address space but
+; writes nothing there (see calc_seg_origins), and that gap is unused memory
+; like any other, so FILL zeroes it.
 .proc fill_sections
 @section=r0
-@segment=r1
 @addr=r2
 	lda numsections
 	jeq @done
@@ -1194,6 +1188,12 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	and #SECTION_FILL
 	jeq @next_section
 
+	; a zeropage SECTION holds no bytes of the image -> skip
+	lda @section
+	jsr is_zp_section
+	jeq @next_section
+	ldx @section			; restore the SECTION index
+
 	; an empty SECTION contributes no bytes to the output
 	lda sections_startlo,x
 	cmp sections_stoplo,x
@@ -1203,33 +1203,11 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	jeq @next_section
 
 @nonempty_section:
-	; begin at START, then advance past every SEGMENT loaded in this SECTION
+	; begin the scan at the SECTION's START
 	lda sections_startlo,x
 	sta @addr
 	lda sections_starthi,x
 	sta @addr+1
-
-	lda #$00
-	sta @segment
-@segment_loop:
-	ldx @segment
-	lda @section
-	cmp segments_load,x
-	bne @next_segment
-
-	lda @addr
-	clc
-	adc segments_sizelo,x
-	sta @addr
-	lda @addr+1
-	adc segments_sizehi,x
-	sta @addr+1
-
-@next_segment:
-	inc @segment
-	lda @segment
-	cmp numsegments
-	bcc @segment_loop
 
 	; include the entire filled SECTION in the flat output
 	ldx @section
@@ -1273,6 +1251,10 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 	; ABS SEGMENTs write their own bytes here; don't zero over them
 	jsr skip_absolute
+	bcs @fill		; addr was advanced -> recheck the SECTION's END
+
+	; SEGMENTs that LOAD here wrote their bytes; don't zero over them
+	jsr skip_loaded
 	bcs @fill		; addr was advanced -> recheck the SECTION's END
 
 @store_zero:
@@ -1349,6 +1331,111 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	jmp @l0
 
 @done:	clc			; address was not in any ABS range
+	rts
+.endproc
+
+;*******************************************************************************
+; SKIP LOADED
+; Advances the given address past the SEGMENT whose bytes occupy it, if any.
+; Only the SECTION a SEGMENT LOADs to receives its bytes; the SECTION it RUNs in
+; (when that is a different SECTION) holds nothing but a reservation, so a RUN
+; range is deliberately not skipped here.
+; IN:
+;   - r2: the address to check
+; OUT:
+;   - r2: the address, advanced past the SEGMENT whose bytes contained it
+;   - .C: set if the address was advanced
+.proc skip_loaded
+@addr=r2
+@i=r4
+@end=r6
+	lda #$00
+	sta @i
+	cmp numsegments
+	beq @done		; no SEGMENTs at all -> nothing to skip
+
+@l0:	ldx @i
+	; empty SEGMENTs contain no bytes
+	lda segments_sizelo,x
+	ora segments_sizehi,x
+	beq @next		; if empty -> continue to next
+
+	; addr < segment.addr -> not in this SEGMENT
+	lda @addr
+	cmp segments_addrlo,x
+	lda @addr+1
+	sbc segments_addrhi,x
+	bcc @next
+
+	; end = segment.addr + segment.size
+	lda segments_addrlo,x
+	clc
+	adc segments_sizelo,x
+	sta @end
+	lda segments_addrhi,x
+	adc segments_sizehi,x
+	sta @end+1
+
+	; addr >= end -> not in this SEGMENT
+	lda @addr
+	cmp @end
+	lda @addr+1
+	sbc @end+1
+	bcs @next
+
+	; addr is within the SEGMENT's bytes; move it past them
+	ldxy @end
+	stxy @addr
+	sec			; address was advanced
+	rts
+
+@next:	inc @i
+	lda @i
+	cmp numsegments
+	bcc @l0
+
+@done:	clc			; addr is inside no SEGMENT's data -> fill it
+	rts
+.endproc
+
+;*******************************************************************************
+; IS ZP SECTION
+; Returns .Z set if any SEGMENT LOADs into the given SECTION as a zeropage
+; SEGMENT.
+; IN:
+;   - .A: the id of the SECTION to test
+; OUT:
+;   - .Z: set if the SECTION is a zeropage SECTION
+.proc is_zp_section
+@section=r4
+@i=r5
+	sta @section
+	lda #$00
+	sta @i
+	cmp numsegments
+	beq @no			; no SEGMENTs -> not a zeropage SECTION
+
+@l0:	ldx @i
+	lda segments_load,x
+	cmp @section
+	bne @next		; SEGMENT doesn't load here
+
+	lda segments_type,x
+	eor #TYPE_SEGZP
+	beq @yes
+	lda segments_type,x
+	eor #TYPE_BSSZP
+	beq @yes
+
+@next:	inc @i
+	ldx @i
+	cpx numsegments
+	bcc @l0
+
+@no:	lda #$01		; .Z clear -> not a zeropage SECTION
+	rts
+
+@yes:	lda #$00		; .Z set -> zeropage SECTION
 	rts
 .endproc
 
@@ -1773,8 +1860,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 ;*******************************************************************************
 ; SEGMIN
-; Returns the minimum address found in the segments array, excluding empty
-; segments
+; Returns the minimum address found in the segments array, excluding SEGMENTs
+; that are not part of the loadable image (see excluded_from_image)
 .proc segmin
 @min=r0
 	ldx #$ff
@@ -1783,10 +1870,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 	inx			; .X=0
 
-@l0:	; first check if the segment is empty (size == 0)
-	lda segments_sizelo,x
-	ora segments_sizehi,x
-	beq @next			; if segment is empty, skip
+@l0:	jsr excluded_from_image
+	beq @next			; not in the image -> skip
 
 	lda segments_addrhi,x
 	cmp @min+1
@@ -1816,11 +1901,11 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ;*******************************************************************************
 ; SEGMAX
 ; Returns the maximum address found in the segments array.  This is the base
-; of the last SEGMENT + the size of it
+; of the last SEGMENT + the size of it.  SEGMENTs that are not part of the
+; loadable image are excluded (see excluded_from_image).
 .proc segmax
 @max=r0
 @i=r2
-@a=r3
 	ldx #$00
 	stx @i
 	stx @max
@@ -1831,8 +1916,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	beq @chklo
 	bcc @next
 
-	jsr @empty			; is this SEGMENT empty?
-	beq @next			; if so, exclude it
+	jsr excluded_from_image
+	beq @next			; not in the image -> skip
 
 	sta @max+1
 	lda segments_addrlo,x
@@ -1844,8 +1929,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	cmp @max
 	bcc @next
 
-	jsr @empty			; is this SEGMENT empty?
-	beq @next			; if so, exclude it
+	jsr excluded_from_image
+	beq @next			; not in the image -> skip
 	sta @max
 	lda segments_addrhi,x
 	sta @max+1
@@ -1864,14 +1949,39 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	adc segments_sizehi,y
 	tay
 	rts
+.endproc
 
-;-------------------------------------------------------------------------------
-@empty: sta @a
+;*******************************************************************************
+; EXCLUDED FROM IMAGE
+; Returns .Z set if the given SEGMENT contributes nothing to the loadable image
+; and must therefore not affect the program's ORIGIN or TOP (empty and zeropage
+; SEGMENTs)
+; IN:
+;   - .X: the (0-based) index of the SEGMENT to test
+; OUT:
+;   - .Z: set if the SEGMENT must be excluded
+; PRESERVES:
+;   - .A
+;   - .C (callers branch on the carry set before the call)
+.proc excluded_from_image
+@a=r3
+	sta @a
+	lda segments_type,x
+	eor #TYPE_SEGZP		; EOR, unlike CMP, leaves .C alone
+	beq @zp
+	lda segments_type,x
+	eor #TYPE_BSSZP
+	beq @zp
+
 	lda segments_sizelo,x
-	ora segments_sizehi,x
-	php
-	lda @a
-	plp
+	ora segments_sizehi,x	; .Z set if the SEGMENT is empty
+	jmp @done
+
+@zp:	lda #$00		; .Z set -> exclude the SEGMENT
+
+@done:	php			; save the result
+	lda @a			; restore .A
+	plp			; and the result
 	rts
 .endproc
 

@@ -82,29 +82,24 @@ but generates all relocation data against the `RUN` address, so the segment can
 be copied to its run address by your program (the linker does nothing to perform the actual
 copy) before execution.
 
-Segments are packed into their section in the order they appear in the
+SEGMENTs are packed into their SECTION in the order they appear in the
 `SEGMENTS` block: the first segment listed for a section starts at that
 section's `START`, and each subsequent one begins where the previous ended.
 
-The linker does this packing *twice*: once over the `LOAD` sections to decide
-where each segment's bytes go in the output binary, and once over the `RUN`
-sections to decide the addresses that relocation is performed against.  The two
-passes are independent -- neither one knows about the other's offsets -- so a
-segment that names different sections for `LOAD` and `RUN` reserves a range of
-its own size in *both* of them.
+If a SEGMENT defins both a `LOAD` and a `RUN` SECTION, it occupies each.  That is,
+the SECTIONs that it *loads* and *runs* in are both advanced by the size of the SEGMENT.
 
-That reservation is what "consumes space" means.  In the `LOAD` section the
-space holds real bytes that are written to the binary.  In the `RUN` section no
-bytes are emitted at all, but the address range is still claimed: the segments
-listed after it that also `RUN` in that section are pushed past it, and the
-section must be large enough to hold it or the link fails with
-`SECTION TOO SMALL`.
 
-For example, with the LINK file below:
+
+#### EXAMPLE
+
+To illustrate how the `LINK` file functions in practice, let's walk through an example.
+
+`LINK`
 
 ```
 MEMORY [
-    LOADSEC:
+    ROM:
         START=$2000
         END=$3000;
     RAM:
@@ -114,34 +109,31 @@ MEMORY [
 
 SEGMENTS [
     BOOT:
-        LOAD=LOADSEC;
+        LOAD=ROM;
     FAST:
-        LOAD=LOADSEC
+        LOAD=ROM
         RUN=RAM;
     VARS:
         LOAD=RAM;
 ]
 ```
 
-if `BOOT` assembles to $100 bytes and `FAST` to $80, the layouts come out as:
+If `BOOT` assembles to $100 bytes, `FAST` to $80, and `VARS` to $40, the layout is:
 
-| SEGMENT | LOAD address    | RUN address     |
-|---------|-----------------|-----------------|
-| BOOT    | $2000 (LOADSEC) | $2000 (LOADSEC) |
-| FAST    | $2100 (LOADSEC) | $0400 (RAM)     |
-| VARS    | $0400 (RAM)     | $0400 (RAM)     |
+| SEGMENT | LOAD ADDRESS (bytes written here) | RUN ADDRESS (relocated for this) |
+|---------|-----------------------------------|----------------------------------|
+| BOOT    | $2000 (ROM)                       | $2000 (ROM)                      |
+| FAST    | $2100 (ROM)                       | $0400 (RAM)                      |
+| VARS    | $0480 (RAM)                       | $0480 (RAM)                      |
 
-`FAST` occupies $2100-$217f in LOADSEC (where its bytes are written) *and*
-$0400-$047f in RAM (where it is assembled to run).  Note that `VARS` collides
-with `FAST`'s run range: `VARS` is packed by the `RUN` pass at RAM's `START`
-because its own `RUN` defaults to `LOAD`, while `FAST` is packed by the `LOAD`
-pass and never advances RAM's `LOAD` offset.  Copying `FAST` to $0400 at
-runtime would therefore clobber `VARS`.  To reserve the space in both layouts,
-give the copied segment a placeholder in each section, or order the sections so
-that the two ranges cannot meet.
+`FAST` consumes $80 bytes of ROM, where its bytes are actually stored, and another
+$80 bytes of RAM, where nothing is written but the address range $0400-$047f is
+reserved for it.
 
-The `FILL` flag follows the `LOAD` layout only: a section is padded from
-`START` plus the sizes of the segments that *load* there out to `END`.
+`VARS` picks up where `FAST`'s `RUN` left off: it is placed at $0480 rather than at
+RAM's `START`, because `FAST` is listed first and reserved $0400-$047f ahead of
+it.
+
 
 #### LIMITS
 
@@ -189,6 +181,24 @@ Note that any nonzero value for these flags will enable them while the zero valu
 | NAME | DESCRIPTION
 |------|--------------------------------------------------------------
 | FILL |  if '1' fills unused memory in the section with 0's
+
+#### ZEROPAGE SECTIONS
+
+A SEGMENT declared with `.SEGZP` or `.BSSZP` is an address assignment only: it
+reserves zeropage locations for its symbols and contributes no bytes to the
+linked binary.  The SECTION such a SEGMENT loads into is therefore not part of
+the program image, and the linker leaves it out when working out the program's
+start and end addresses.  Without that, a single zeropage byte would drag the
+program's start address down into the zeropage, making the saved `.PRG` load
+over the stack and KERNAL workspace on its way to your code.
+
+For the same reason `FILL` is ignored on a SECTION that any zeropage SEGMENT
+loads into.  There is nothing to pad -- the SECTION contributes no bytes -- and
+padding it would pull the program's start address back into the zeropage.
+
+Note that this applies to the SEGMENT's *type*, not its address.  A SEGMENT
+declared with plain `.SEG` that you place below $0100 is treated like any other
+SEGMENT: its bytes are part of the image and the program will start there.
 
 ---
 
