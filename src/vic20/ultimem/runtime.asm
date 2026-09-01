@@ -218,7 +218,7 @@ ret:     .word 0
 .export __run_init
 .proc __run_init
 	; copy the TRAMPOLINE handler to the user program and our RAM
-	ldy #interrupts_size
+	ldy #<__INTS_SIZE__
 @l0:	lda __INTS_LOAD__-1,y
 	sta __INTS_RUN__-1,y
 	dey

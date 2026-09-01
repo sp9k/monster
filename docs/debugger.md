@@ -29,14 +29,7 @@ to operate independently without worrying about writes to one affecting the othe
 ## REQUIREMENTS
 In order for the debugger to coexist with your program there are a few small requirements.
 
-### $28 BYTES OF STACK
-
-The debugger sets the stack pointer to $d8 before starting your program.  It is
-advisable to not set the stack pointer to anything higher than this in your
-program.  If you write to the stack above $1d8 you risk clobbering the stack and
-the 4-byte NMI handler used for tracing.
-
-### DON'T USE $9800-$9FFF
+1. DON'T USE $9800-$9FFF
 
 The I/O address range $9800-$9fff is used to store the interrupts that return
 control to the debugger.  If this range is clobbered, a BRK or NMI will not
@@ -46,7 +39,7 @@ This area is configured to be read-only when executing your program, but
 naturally, if you free-run your program, this protection can be disabled by
 clobbering the write-protect registers that also reside in this address space.
 
-### DON'T OVERWRITE BRK/NMI VECTORS ($316-$319)
+2. DON'T OVERWRITE BRK/NMI VECTORS ($316-$319)
 
 This requirement only applies when you are free-running your program.  During
 free-run, the NMI vector is used to return to the debugger during normal
@@ -298,6 +291,16 @@ back to the watch editor.
 
 ## BREAKPOINTS
 
+
+```{figure} screenshots/debug-breakpoint-1.png
+:alt: The debugger halted on a breakpoint
+:align: center
+:width: 75%
+:class: screenshot
+
+The debugger halted on a breakpoint
+```
+
 Breakpoints may be set/removed during both normal editing and while debugging.
 Setting a breakpoint inserts a special character into the source buffer, which
 tells the assembler to generate a breakpoint for the line that this character
@@ -308,7 +311,7 @@ it will automatically move as lines are inserted and deleted.  The character its
 is not editable (the cursor will not move to breakpoint characters).  You may remove
 it by toggling the breakpoint off _or_ by deleting the entire line.
 
-*NOTE:* Debug information is only generated for instructions _NOT data_.  This means
+*NOTE:* Debug information is only generated for instructions **not** data.  This means
 that, for example, you can set a breakpoint on `LDA #$00` or a macro that expands
 to such an instruction, but setting one on `.DB $00` has no effect.
 
@@ -316,10 +319,10 @@ to such an instruction, but setting one on `.DB $00` has no effect.
 During normal editing, breakpoints may be set and removed with the
 {c64-keys}`C= + B` key combination.
 
-Pressing the same key combination ({c64-keys}`C= + B`) will also remove a breakpoint
+Pressing the same key combination will also _remove_ a breakpoint
 if it is pressed while on a line that already has one.
 
-Breakpoints can only be added to buffers that have been named.
+NOTE: breakpoints can only be added to buffers that have been named.
 
 ---
 
