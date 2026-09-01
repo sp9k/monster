@@ -175,15 +175,19 @@ The debugger will catch you at the line that the CPU is currently running.
 For us, this should be the endless loop we placed at the end of our program.
 To exit the debugger, press the {c64-keys}`C= + X` key chord and confirm your intention to quit debugging at the prompt.
 
-Assuming you have a disk drive attached, we may now wish to save our work that we have so proudly completed.  Enter Ex Command mode once again ({c64-key}`Colon`) and type:
+Assuming you have a disk drive attached, we may now wish to save our work that we have so proudly completed.  You may have noticed a `*` indicator near your buffer name in the status bar.  This
+means you have edited the buffer since it was last written.
+
+Enter Ex Command mode once again ({c64-key}`Colon`) and type:
 
 `:s hello.s`
 
 This will save your source code to a new file named, per our instruction, hello.s.
-You can confirm that the file has been saved by pressing the {c64-key}`Minus` key while in **COMMAND MODE**,
-which will bring up a directory viewer.  If all is well you should see your new program among
-the other files on your disk.
+Note that the `*` indicator in the status bar has vanished.
 
+If you're still not convinced that your program is safe, you can confirm by pressing the {c64-key}`Minus` key while in **COMMAND MODE**
+to bring up a **directory viewer**.  If all is well you should see your new program among
+the other files on your disk.
 
 ---
 

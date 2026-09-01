@@ -1359,11 +1359,16 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	iny
 	lda #','
 	sta (@line),y
+
+	incw @addr		; on to the next byte
+
 	lda @line
 	clc
 	adc #$04
 	sta @line
-	dec @cnt
+	bcc :+
+	inc @line+1
+:	dec @cnt
 	bne @l1
 
 @cont:	decw @line	; delete the last ','
@@ -1374,18 +1379,11 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	ldxy #@buff
 	jsr mon::puts
 
-	lda @addr
-	clc
-	adc #$08
-	sta @addr
-	bcc :+
-	inc @addr+1
-:	tax
-	ldy @addr+1
+	ldxy @addr		; @l1 already advanced past the row
 	cmpw @stop
 	bcs :+
-	jmp @l0		; next row
-:	clc		; ok
+	jmp @l0			; next row
+:	clc			; ok
 @done:	rts
 .endproc
 

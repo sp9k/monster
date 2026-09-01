@@ -20,26 +20,26 @@ Below are the basic commands along with their associated key combinations. These
 commands are available regardless of insertion mode (see the _Editor Modes_ section
 below for more info on modes).
 
-|  KEY     | NAME            |   DESCRIPTION                                                          |
-|----------|-----------------|------------------------------------------------------------------------|
-| {c64-keys}`C= + A` | `ASSEMBLE      `| assembles the active program                                      |
-| {c64-keys}`C= + D` | `DEBUG         `| begins debugging at the origin of the assembled program           |
-| {c64-keys}`C= + B` | `SET BREAKPOINT`| sets a breakpoint at the current line                             |
-| {c64-keys}`C= + C` | `REFRESH       `| refreshes the screen by redrawing the source buffer               |
-| {c64-key}`Minus` | `FILE VIEWER   `| list directory, shows the files on the current disk                   |
-| {c64-keys}`C= + L` | `LINK          `| links all .o files on disk using the LINK file                    |
-| {c64-keys}`C= + N` | `NEW BUFFER    `| creates a new source buffer and sets it as the active buffer      |
-| {c64-keys}`C= + Q` | `CLOSE BUFFER  `| closes the current buffer and opens the next one that is open     |
-| {c64-keys}`C= + Y` | `SHOW SYMBOLS  `| lists the symbol table for the assembled program                  |
-| {c64-keys}`C= + E` | `NEXT ERROR    `| if there are errors from the last assembly, navigates to the next one |
-| {c64-keys}`C= + T` | `SHOW BUFFERS  `| displays a list of the currently open buffers                     |
-| {c64-key}`F4` | `LINK          `| links the object files in the project using the LINK file on disk         |
-| {c64-key}`F3` | `MEMVIEW       `| opens the memory viewer/editor (same as while debugging; press {c64-key}`Left-arrow` to exit) |
-| {c64-key}`F5` | `BRKVIEW       `| opens the breakpoint viewer/editor (same as while debugging)              |
-| {c64-key}`F6` | `WATCHVIEW     `| opens the watch viewer/editor (same as while debugging)                   |
-| {c64-keys}`C= + Plus` | `NEXT DRIVE    `| Selects the next drive (limited to #15)                         |
-| {c64-keys}`C= + Minus` | `PREV DRIVE    `| Selects the previous drive (limited to #8)                      |
-| {c64-key}`Colon` | `EX COMMAND    `| Enters "EX" mode (see the EX COMMANDS section below for more on this) |
+|  KEY     | NAME        |   DESCRIPTION                                                                                  |
+|----------|-------------|------------------------------------------------------------------------------------------------|
+| {c64-keys}`C= + A`     | `ASSEMBLE      `| assembles the active program                                              |
+| {c64-keys}`C= + D`     | `DEBUG         `| begins debugging at the origin of the assembled program                   |
+| {c64-keys}`C= + B`     | `SET BREAKPOINT`| sets a breakpoint at the current line                                     |
+| {c64-keys}`C= + C`     | `REFRESH       `| refreshes the screen by redrawing the source buffer                       |
+| {c64-key}`Minus`       | `FILE VIEWER   `| list directory, shows the files on the current disk                       |
+| {c64-keys}`C= + L`     | `LINK          `| links all .o files on disk using the LINK file                            |
+| {c64-keys}`C= + N`     | `NEW BUFFER    `| creates a new source buffer and sets it as the active buffer              |
+| {c64-keys}`C= + Q`     | `CLOSE BUFFER  `| closes the current buffer and opens the next one that is open             |
+| {c64-keys}`C= + Y`     | `SHOW SYMBOLS  `| lists the symbol table for the assembled program                          |
+| {c64-keys}`C= + E`     | `NEXT ERROR    `| if there are errors from the last assembly, navigates to the next one     |
+| {c64-keys}`C= + T`     | `SHOW BUFFERS  `| displays a list of the currently open buffers                             |
+| {c64-key}`C = + L`     | `LINK          `| links the object files in the project using the LINK file on disk         |
+| {c64-key}`F3`          | `MEMVIEW       `| opens the memory viewer/editor (same as while debugging; press {c64-key}`Left-arrow` to exit) |
+| {c64-key}`F5`          | `BRKVIEW       `| opens the breakpoint viewer/editor (same as while debugging)              |
+| {c64-key}`F6`          | `WATCHVIEW     `| opens the watch viewer/editor (same as while debugging)                   |
+| {c64-keys}`C= + Plus`  | `NEXT DRIVE    `| Selects the next drive (limited to #15)                                   |
+| {c64-keys}`C= + Minus` | `PREV DRIVE    `| Selects the previous drive (limited to #8)                                |
+| {c64-key}`Colon`       | `EX COMMAND    `| Enters "EX" mode (see the EX COMMANDS section below for more on this)     |
 
 #### DRIVE SELECTION
 
@@ -71,7 +71,7 @@ The up/down cursor keys navigate between pages of symbols. Press {c64-key}`RESTO
 | {c64-key}`F1` | `RUN           `   | saves Monster's state and transfers control to the last assembly (or enters BASIC if none) |
 | {c64-key}`F3` | `MEMORY VIEWER `   | activates the memory viewer                                                               |
 | {c64-key}`F4` | `LOG           `   | displays the active log file (if any)                                                      |
-| {c64-key}`F5` | `SHOW BUFFERS  `   | displays a list of the currently open buffers                                             |
+| {c64-key}`F5` | `BREAKPOINTS   `   | activates the breakpoint viewer                                                           |
 | {c64-key}`F6` | `SHOW PROJECT  `   | displays the current project configuration                                                |
 | {c64-key}`F7` | `MONITOR       `   | opens the text-based monitor as a window (see the _Monitor_ section)                       |
 | {c64-key}`F8` | `MONITOR (FULL)`   | opens the text-based monitor maximized ({c64-keys}`Shift + F7`)                         |

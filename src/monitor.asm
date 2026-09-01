@@ -211,8 +211,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @tmp=r6
 	stxy @msg
 
+	; if output is redirected, write to file ONLY
+	lda __monitor_outfile
+	beq :+
+	jmp @file
+
 	; check if we need to scroll
-	lda line
+:	lda line
 	cmp #HEIGHT-1
 	bcc @print
 
@@ -280,34 +285,6 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	dey
 	bpl @copy
 
-	lda __monitor_outfile
-	beq @screen
-
-@file:	; write the line to file
-	ldy #$00
-:	lda (@msg),y
-	beq @write_to_file
-	iny
-	cpy #LINESIZE
-	bcc :-
-
-@write_to_file:
-	tya
-	clc
-	adc @msg
-	sta file::save_address_end
-	lda @msg+1
-	adc #$00
-	sta file::save_address_end+1
-
-	ldxy @msg
-	lda __monitor_outfile
-	CALLMAIN file::savebin
-
-	; write a newline
-	lda #$0d
-	jsr krn::chrout
-
 @screen:
 	lda line
 	inc line
@@ -315,6 +292,32 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sbc winoff	; screen row = buffer row - winoff
 	ldxy @msg
 	JUMPMAIN text::print
+
+;-------------------------------------------------------------------------------
+@file:	; Write the line to the output file.
+	ldx __monitor_outfile
+	jsr krn::chkout		; select the output file
+	bcs @fileerr
+
+	ldy #$00
+@fileputs:
+	lda (@msg),y
+	beq @newline
+	sty @tmp
+	jsr krn::chrout
+	ldy @tmp
+	iny
+	cpy #LINESIZE
+	bcc @fileputs
+
+@newline:
+	lda #$0d
+	jsr krn::chrout
+	RETURN_OK
+
+@fileerr:
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -580,6 +583,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	beq :+
 	CALLMAIN file::close
 	jsr unblank
+	lda #$00
+	sta __monitor_outfile	; back to the screen (the handle is closed now)
 
 :	pla
 	rol @err		; restore error bit
