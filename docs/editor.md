@@ -20,8 +20,8 @@ Below are the basic commands along with their associated key combinations. These
 commands are available regardless of insertion mode (see the _Editor Modes_ section
 below for more info on modes).
 
-|  KEY     | NAME        |   DESCRIPTION                                                                               |
-|----------|-------------|---------------------------------------------------------------------------------------------|
+|  KEY                   | NAME            |   DESCRIPTION                                                             |
+|------------------------|-----------------|---------------------------------------------------------------------------|
 | {c64-keys}`C= + A`     | `ASSEMBLE      `| assembles the active program                                              |
 | {c64-keys}`C= + D`     | `DEBUG         `| begins debugging at the origin of the assembled program                   |
 | {c64-keys}`C= + B`     | `SET BREAKPOINT`| sets a breakpoint at the current line                                     |

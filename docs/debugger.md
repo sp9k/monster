@@ -2,7 +2,14 @@
 
 ---
 
-https://github.com/gummyworm/monster/assets/4626914/840f5d66-03cb-4daf-9ed2-41a4d37d4c2d
+```{figure} screenshots/debugger-1.png
+:alt: The debugger
+:align: center
+:width: 75%
+:class: screenshot
+
+The debugger
+```
 
 The debugger allows you to step through code, set breakpoints, and watch
 data as you execute your program.
@@ -24,33 +31,14 @@ transfers between the two. That is the screen data ($1000-$2000), the zeropage,
 and color RAM.  This allows the debugger and debugged program
 to operate independently without worrying about writes to one affecting the other.
 
----
-
-## REQUIREMENTS
-In order for the debugger to coexist with your program there are a few small requirements.
-
-1. DON'T USE $9800-$9FFF
-
-The I/O address range $9800-$9fff is used to store the interrupts that return
-control to the debugger.  If this range is clobbered, a BRK or NMI will not
-return to the debugger and the machine will likely JAM.
-
-This area is configured to be read-only when executing your program, but
-naturally, if you free-run your program, this protection can be disabled by
-clobbering the write-protect registers that also reside in this address space.
-
-2. DON'T OVERWRITE BRK/NMI VECTORS ($316-$319)
-
-This requirement only applies when you are free-running your program.  During
-free-run, the NMI vector is used to return to the debugger during normal
-execution of your program when the {c64-key}`RESTORE` key is pressed.
+All debugger commands except for the "GO" command operate on completely virtualized
+state.  When using the GO command it is advised that you  **DO NOT OVERWRITE the BRK/NMI VECTORS ($316-$319)**.
 
 The BRK vector is used to return to the debugger when a breakpoint is encountered.
 If your program has its own idea of how to handle breakpoints, it may overwrite the BRK
-vector, but the debugger will be unable to handle them as a result.  If tracing or
-stepping through your program, the BRK instruction is simulated so breakpoints
-will work as expected, though it is generally good practice to leave it alone
-regardless.
+vector, but the debugger will be unable to handle them as a result.
+
+The NMI vector, similarly, allows you to re-enter the debugger on command with {c64-key}`RESTORE`.
 
 ---
 
@@ -75,26 +63,26 @@ the free-run that crashed the system was initiated.
 The following commands are supported by the debugger and are accessed by their
 respective Key in the table below.
 
-|  KEY           | NAME            |   DESCRIPTION                                                                        |
-|----------------|-----------------|--------------------------------------------------------------------------------------|
-| {c64-key}`F1` | SOURCE VIEW     | maximizes the screen area for viewing the source code                                |
-| {c64-key}`F2` | REGISTER EDITOR | enters the register editor                                                           |
-| {c64-key}`F3` | MEM VIEW        | activates the memory window, which takes control until {c64-key}`Left-arrow` is pressed |
-| {c64-key}`F5` | BREAK VIEW      | displays the breakpoints that have been set and allows them to be enabled/disabled   |
-| {c64-key}`F6` | WATCH VIEW      | displays the watches that have been set (see the _Watch Viewer_ section)             |
-| {c64-key}`F7` | MONITOR         | opens the text-based monitor as a window over the debug view                         |
-| {c64-key}`F8` | MONITOR (FULL)  | opens the text-based monitor maximized ({c64-keys}`Shift + F7`)                      |
-| {c64-key}`S` | STEP OVER       | steps to the next instruction. If it is a JSR, continues AFTER the target subroutine |
-| {c64-key}`Y` | STEP OUT        | steps until the next RTS instruction                                                 |
-| {c64-key}`Z` | STEP            | steps to the next instruction.                                                       |
-| {c64-key}`T` | TRACE           | like GO but the debugger takes control between each instruction                      |
-| {c64-keys}`C= + G` | GO              | begins execution at the cursor                                                  |
-| {c64-keys}`C= + P` | JUMP TO         | sets the PC to the address corresponding to the line the cursor is on           |
-| {c64-keys}`C= + R` | RESET STOPWATCH | resets the value of the stopwatch to 0                                          |
-| {c64-keys}`C= + X` | QUIT DEBUGGER   | Prompts the user for confirmation then quits the debugger upon receiving it     |
-| {c64-key}`Left-arrow` | EXIT            | exits the debugger and returns to the editor                               |
-| {c64-key}`SPACE` | SHOW FRAME      | Displays the current state of the user program                                  |
-| {c64-key}`Up-arrow` | GOTO BREAK      | navigates to the address that the debugger is currently paused at             |
+|  KEY                  | NAME            |   DESCRIPTION                                                                           |
+|-----------------------|-----------------|-----------------------------------------------------------------------------------------|
+| {c64-key}`F1`         | SOURCE VIEW     | maximizes the screen area for viewing the source code                                   |
+| {c64-key}`F2`         | REGISTER EDITOR | enters the register editor                                                              |
+| {c64-key}`F3`         | MEM VIEW        | activates the memory window, which takes control until {c64-key}`Left-arrow` is pressed |
+| {c64-key}`F5`         | BREAK VIEW      | displays the breakpoints that have been set and allows them to be enabled/disabled      |
+| {c64-key}`F6`         | WATCH VIEW      | displays the watches that have been set (see the _Watch Viewer_ section)                |
+| {c64-key}`F7`         | MONITOR         | opens the text-based monitor as a window over the debug view                            |
+| {c64-key}`F8`         | MONITOR (FULL)  | opens the text-based monitor maximized ({c64-keys}`Shift + F7`)                         |
+| {c64-key}`S`          | STEP OVER       | steps to the next instruction. If it is a JSR, continues AFTER the target subroutine    |
+| {c64-key}`Y`          | STEP OUT        | steps until the next RTS instruction                                                    |
+| {c64-key}`Z`          | STEP            | steps to the next instruction.                                                          |
+| {c64-key}`T`          | TRACE           | like GO but the debugger takes control between each instruction                         |
+| {c64-keys}`C= + G`    | GO              | begins execution at the cursor                                                          |
+| {c64-keys}`C= + P`    | JUMP TO         | sets the PC to the address corresponding to the line the cursor is on                   |
+| {c64-keys}`C= + R`    | RESET STOPWATCH | resets the value of the stopwatch to 0                                                  |
+| {c64-keys}`C= + X`    | QUIT DEBUGGER   | Prompts the user for confirmation then quits the debugger upon receiving it             |
+| {c64-key}`Left-arrow` | EXIT            | exits the debugger and returns to the editor                                            |
+| {c64-key}`SPACE`      | SHOW FRAME      | Displays the current state of the user program                                          |
+| {c64-key}`Up-arrow`   | GOTO BREAK      | navigates to the address that the debugger is currently paused at                       |
 
 ### REGISTER EDITOR ({c64-key}`F2`)
 
@@ -267,11 +255,11 @@ was modified as ranges do not list the previous or current values for the watch.
 
 The following keys are supported within the watch viewer:
 
-| SHORTCUT     | NAME       |  DESCRIPTION                                            |
-|--------------|------------|---------------------------------------------------------|
-| {c64-keys}`C= + W` | ADD WATCH  | Prompt the user for expressions to watch                |
-| {c64-key}`RETURN` | SELECT/EDIT| Enters the memory editor at the watch's address         |
-| {c64-key}`Left-arrow` | EXIT       | Returns to the debugger                            |
+| SHORTCUT              | NAME       |  DESCRIPTION                                            |
+|-----------------------|------------|---------------------------------------------------------|
+| {c64-keys}`C= + W`    | ADD WATCH  | Prompt the user for expressions to watch                |
+| {c64-key}`RETURN`     | SELECT/EDIT| Enters the memory editor at the watch's address         |
+| {c64-key}`Left-arrow` | EXIT       | Returns to the debugger                                 |
 
 #### ADD WATCH ({c64-keys}`C= + W`)
 
@@ -290,7 +278,6 @@ back to the watch editor.
 ---
 
 ## BREAKPOINTS
-
 
 ```{figure} screenshots/debug-breakpoint-1.png
 :alt: The debugger halted on a breakpoint
