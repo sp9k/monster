@@ -912,9 +912,9 @@ plot3:	lda #$03
 	beq @ok
 
 	cmp #' '
-	beq @next
+	beq @skipws
 	cmp #$09
-	beq @next
+	beq @skipws
 
 	cmp #'$'
 	bne @err	; unexpected char
@@ -958,6 +958,10 @@ plot3:	lda #$03
 
 @ok:	clc
 	rts
+
+@skipws:
+	incw @buff
+	jmp @parsebyte
 .endproc
 
 ;*******************************************************************************

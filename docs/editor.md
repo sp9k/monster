@@ -20,8 +20,8 @@ Below are the basic commands along with their associated key combinations. These
 commands are available regardless of insertion mode (see the _Editor Modes_ section
 below for more info on modes).
 
-|  KEY     | NAME        |   DESCRIPTION                                                                                  |
-|----------|-------------|------------------------------------------------------------------------------------------------|
+|  KEY     | NAME        |   DESCRIPTION                                                                               |
+|----------|-------------|---------------------------------------------------------------------------------------------|
 | {c64-keys}`C= + A`     | `ASSEMBLE      `| assembles the active program                                              |
 | {c64-keys}`C= + D`     | `DEBUG         `| begins debugging at the origin of the assembled program                   |
 | {c64-keys}`C= + B`     | `SET BREAKPOINT`| sets a breakpoint at the current line                                     |
@@ -31,9 +31,10 @@ below for more info on modes).
 | {c64-keys}`C= + N`     | `NEW BUFFER    `| creates a new source buffer and sets it as the active buffer              |
 | {c64-keys}`C= + Q`     | `CLOSE BUFFER  `| closes the current buffer and opens the next one that is open             |
 | {c64-keys}`C= + Y`     | `SHOW SYMBOLS  `| lists the symbol table for the assembled program                          |
+| {c64-keys}`C= + M`     | `SHOW MACROS   `| lists the macros that are defined and allows viewing their definitions    |
 | {c64-keys}`C= + E`     | `NEXT ERROR    `| if there are errors from the last assembly, navigates to the next one     |
 | {c64-keys}`C= + T`     | `SHOW BUFFERS  `| displays a list of the currently open buffers                             |
-| {c64-key}`C = + L`     | `LINK          `| links the object files in the project using the LINK file on disk         |
+| {c64-keys}`C = + L`    | `LINK          `| links the object files in the project using the LINK file on disk         |
 | {c64-key}`F3`          | `MEMVIEW       `| opens the memory viewer/editor (same as while debugging; press {c64-key}`Left-arrow` to exit) |
 | {c64-key}`F5`          | `BRKVIEW       `| opens the breakpoint viewer/editor (same as while debugging)              |
 | {c64-key}`F6`          | `WATCHVIEW     `| opens the watch viewer/editor (same as while debugging)                   |
@@ -60,21 +61,58 @@ to the first one.
 
 #### SYMBOL VIEWER
 
-The symbol viewer, activated with the {c64-keys}`C= + Y` key combination displays all the labels in the program
+The symbol viewer, activated with {c64-keys}`C= + Y` displays all the labels in the program
 along with their corresponding address.
 The up/down cursor keys navigate between pages of symbols. Press {c64-key}`RESTORE` to return to the debugger.
 
+#### MACRO VIEWER
+
+The macro viewer, activated with {c64-keys}`C= + M`, lists every macro
+that is currently defined and allows you to inspect the body of any of them.
+
+Macros are registered with the assembler when their definition is _assembled_
+({c64-keys}`C= + A`), so the list reflects the macros from your last assembly, not
+necesarrily the macros that happen to be visible in the active buffer.  If no macros have been
+defined, the viewer aborts and reports `NO MACROS` in the status bar.
+
+The viewer has two modes:
+
+**MACRO LIST**: the initial mode, titled `MACROS`.  Each row is the name of one
+defined macro, in the order of their definition.  The highlighted row is the
+current selection.
+
+**DEFINITION**: entered by pressing {c64-key}`RETURN` on the selected macro.  The
+screen is cleared and the top row shows the macro's name followed by its parameter
+names; the rows below it are the lines of the macro's body as defined.
+
+| KEY                                                | MODE       | DESCRIPTION                                                          |
+|----------------------------------------------------|------------|----------------------------------------------------------------------|
+| {c64-key}`K`                                       | both       | moves the selection up (macro list) or scrolls up (definition)       |
+| {c64-key}`J`                                       | both       | moves the selection down (macro list) or scrolls down (definition)   |
+| {c64-sequence}`GG`                                 | both       | goes to the first macro (or first line of the definition)            |
+| {c64-key}`G`                                       | both       | goes to the last macro (or last line of the definition)              |
+| {c64-key}`RETURN`                                  | macro list | opens the definition of the selected macro                           |
+| {c64-key}`RUN/STOP`                                | definition | returns to the macro list                                            |
+| {c64-key}`RUN/STOP`                                | macro list | exits the viewer and restores the editor screen                      |
+
+Lists longer than the screen scroll automatically as the selection reaches the top
+or bottom row.
+
+Note that the viewer is read-only; it is a way to confirm _what_ the assembler
+actually recorded for a macro.  See the [Assembler](assembler.md) document for the
+`.MAC` directive and the limits on macro count and size.
+
 #### FUNCTION (F KEY) COMMANDS
 
-|  KEY     | NAME             |   DESCRIPTION                                                                                |
-|----------|------------------|----------------------------------------------------------------------------------------------|
-| {c64-key}`F1` | `RUN           `   | saves Monster's state and transfers control to the last assembly (or enters BASIC if none) |
-| {c64-key}`F3` | `MEMORY VIEWER `   | activates the memory viewer                                                               |
-| {c64-key}`F4` | `LOG           `   | displays the active log file (if any)                                                      |
-| {c64-key}`F5` | `BREAKPOINTS   `   | activates the breakpoint viewer                                                           |
-| {c64-key}`F6` | `SHOW PROJECT  `   | displays the current project configuration                                                |
-| {c64-key}`F7` | `MONITOR       `   | opens the text-based monitor as a window (see the _Monitor_ section)                       |
-| {c64-key}`F8` | `MONITOR (FULL)`   | opens the text-based monitor maximized ({c64-keys}`Shift + F7`)                         |
+|  KEY          | NAME               |   DESCRIPTION                                                                                |
+|---------------|--------------------|----------------------------------------------------------------------------------------------|
+| {c64-key}`F1` | `RUN           `   | saves Monster's state and transfers control to the last assembly (or enters BASIC if none)   |
+| {c64-key}`F3` | `MEMORY VIEWER `   | activates the memory viewer                                                                  |
+| {c64-key}`F4` | `LOG           `   | displays the active log file (if any)                                                        |
+| {c64-key}`F5` | `BREAKPOINTS   `   | activates the breakpoint viewer                                                              |
+| {c64-key}`F6` | `SHOW PROJECT  `   | displays the current project configuration                                                   |
+| {c64-key}`F7` | `MONITOR       `   | opens the text-based monitor as a window (see the _Monitor_ section)                         |
+| {c64-key}`F8` | `MONITOR (FULL)`   | opens the text-based monitor maximized ({c64-keys}`Shift + F7`)                              |
 
 ### EX COMMANDS
 
@@ -217,44 +255,44 @@ source code and to enter other modes.
 Navigation behaves similar to `vi` and many basic `vi` commands are supported.
 The following keys are handled in COMMAND mode.
 
-|  KEY         | NAME         | DESCRIPTION                                                            |
-|--------------|--------------|------------------------------------------------------------------------|
-| {c64-key}`HOME` | `HOME       `| moves the cursor to column 0                                           |
-| {c64-key}`Colon` + _n_ | `GOTO LINE  `| at the EX prompt ({c64-key}`Colon`), enter a line number to move the cursor to it |
+|  KEY         | NAME         | DESCRIPTION                                                                                   |
+|--------------|--------------|-----------------------------------------------------------------------------------------------|
+| {c64-key}`HOME` | `HOME       `| moves the cursor to column 0                                                               |
+| {c64-key}`Colon` + _n_ | `GOTO LINE  `| at the EX prompt ({c64-key}`Colon`), enter a line number to move the cursor to it   |
 | {c64-key}`C=` + {c64-key}`1`–{c64-key}`8` | `GOTO BUFFER`| opens the buffer corresponding to the number key that is pressed |
-| {c64-keys}`Ctrl + H` | `PREV BUFFER`| opens the buffer before the active one (if there is one)               |
-| {c64-keys}`Ctrl + L` | `NEXT BUFFER`| opens the buffer after the active one (if there is one)                |
-| {c64-keys}`C= + I` | `JUMP UP    `| jumps forward to the next source position that was "jumped" to         |
-| {c64-keys}`C= + O` | `JUMP BACK  `| jumps back to the last source position that was "jumped" to            |
-| {c64-key}`Dollar` | `END OF LINE`| moves the cursor to the end of the current line                        |
-| {c64-sequence}`;;` | `BANNER     `| inserts a banner (full line of semicolons) below the cursor            |
-| {c64-sequence}`GG` | `TOP OF FILE`| moves the cursor to the first character in the file                    |
-| {c64-sequence}`GD` | `GOTO DEF   `| if the cursor is on a label reference, navigates to that label         |
-| {c64-keys}`Shift + G` | `END OF FILE`| moves the cursor to the last line in the file                  |
-| {c64-key}`H` | `LEFT       `| moves the cursor left                                                  |
-| {c64-key}`J` | `DOWN       `| moves the cursor down                                                  |
-| {c64-key}`K` | `UP         `| moves the cursor up                                                    |
-| {c64-key}`L` | `RIGHT      `| moves the cursor right                                                 |
-| {c64-keys}`Shift + H` | `HOME       `| moves the cursor to the top left of the screen                 |
-| {c64-keys}`Shift + L` | `LAST       `| moves the cursor to the bottom left of the screen              |
-| {c64-sequence}`D0` | `DELETE TO  `| deletes everything on the line before the cursor                       |
-| {c64-keys}`Shift + D` / {c64-sequence}`D$` | `DELETE REST`| deletes the contents of the line after the cursor's position |
-| {c64-sequence}`DD` | `DELETE LINE`| deletes the next line                                                  |
-| {c64-sequence}`DW` | `DELETE WORD`| deletes the next word                                                  |
-| {c64-keys}`Shift + J` | `JOIN LINES `| moves the contents of the next line to the end of the current one |
-| {c64-key}`0` | `COLUMN 0   `| moves the cursor to the first column of the current line               |
-| {c64-key}`A` | `APPEND CHAR`| enters insert mode and moves to the next character                     |
-| {c64-keys}`Shift + A` | `APPEND LINE`| enters insert mode and moves to the last character in the current line |
-| {c64-keys}`Shift + C` | `CHANGE LINE`| deletes from the cursor to the end of the line and enters insert |
-| {c64-key}`O` | `OPEN LINE  `| opens a new line below the cursor and moves to it                      |
-| {c64-keys}`Shift + O` | `OPEN LINE ^`| opens a new line above the cursor and moves to it              |
-| {c64-key}`S` | `SUB CHAR   `| deletes the character under the cursor and enters insert mode          |
-| {c64-keys}`Shift + S` | `SUB LINE   `| deletes the line under the cursor and enters insert mode       |
-| {c64-key}`P` | `PASTE BELOW`| pastes the contents of the copy-buffer to the line below the cursor    |
-| {c64-keys}`Shift + P` | `PASTE ABOVE`| pastes the contents of the copy-buffer to the line above the cursor |
-| {c64-keys}`Shift + I` | `INSERT LINE`| enters insert mode and moves to the first character in the current line |
-| {c64-key}`Left-bracket` | `PREV BLOCK `| moves to the previous empty line or start of file if there isn't one |
-| {c64-key}`Right-bracket` | `NEXT BLOCK `| moves to the next empty line or end of file if there isn't one       |
+| {c64-keys}`Ctrl + H` | `PREV BUFFER`| opens the buffer before the active one (if there is one)                              |
+| {c64-keys}`Ctrl + L` | `NEXT BUFFER`| opens the buffer after the active one (if there is one)                               |
+| {c64-keys}`C= + I` | `JUMP UP    `| jumps forward to the next source position that was "jumped" to                          |
+| {c64-keys}`C= + O` | `JUMP BACK  `| jumps back to the last source position that was "jumped" to                             |
+| {c64-key}`Dollar` | `END OF LINE`| moves the cursor to the end of the current line                                          |
+| {c64-sequence}`;;` | `BANNER     `| inserts a banner (full line of semicolons) below the cursor                             |
+| {c64-sequence}`GG` | `TOP OF FILE`| moves the cursor to the first character in the file                                     |
+| {c64-sequence}`GD` | `GOTO DEF   `| if the cursor is on a label reference, navigates to that label                          |
+| {c64-keys}`Shift + G` | `END OF FILE`| moves the cursor to the last line in the file                                        |
+| {c64-key}`H` | `LEFT       `| moves the cursor left                                                                         |
+| {c64-key}`J` | `DOWN       `| moves the cursor down                                                                         |
+| {c64-key}`K` | `UP         `| moves the cursor up                                                                           |
+| {c64-key}`L` | `RIGHT      `| moves the cursor right                                                                        |
+| {c64-keys}`Shift + H` | `HOME       `| moves the cursor to the top left of the screen                                       |
+| {c64-keys}`Shift + L` | `LAST       `| moves the cursor to the bottom left of the screen                                    |
+| {c64-sequence}`D0` | `DELETE TO  `| deletes everything on the line before the cursor                                        |
+| {c64-keys}`Shift + D` / {c64-sequence}`D$` | `DELETE REST`| deletes the contents of the line after the cursor's position    |
+| {c64-sequence}`DD` | `DELETE LINE`| deletes the next line                                                                   |
+| {c64-sequence}`DW` | `DELETE WORD`| deletes the next word                                                                   |
+| {c64-keys}`Shift + J` | `JOIN LINES `| moves the contents of the next line to the end of the current one                    |
+| {c64-key}`0` | `COLUMN 0   `| moves the cursor to the first column of the current line                                      |
+| {c64-key}`A` | `APPEND CHAR`| enters insert mode and moves to the next character                                            |
+| {c64-keys}`Shift + A` | `APPEND LINE`| enters insert mode and moves to the last character in the current line               |
+| {c64-keys}`Shift + C` | `CHANGE LINE`| deletes from the cursor to the end of the line and enters insert                     |
+| {c64-key}`O` | `OPEN LINE  `| opens a new line below the cursor and moves to it                                             |
+| {c64-keys}`Shift + O` | `OPEN LINE ^`| opens a new line above the cursor and moves to it                                    |
+| {c64-key}`S` | `SUB CHAR   `| deletes the character under the cursor and enters insert mode                                 |
+| {c64-keys}`Shift + S` | `SUB LINE   `| deletes the line under the cursor and enters insert mode                             |
+| {c64-key}`P` | `PASTE BELOW`| pastes the contents of the copy-buffer to the line below the cursor                           |
+| {c64-keys}`Shift + P` | `PASTE ABOVE`| pastes the contents of the copy-buffer to the line above the cursor                  |
+| {c64-keys}`Shift + I` | `INSERT LINE`| enters insert mode and moves to the first character in the current line              |
+| {c64-key}`Left-bracket` | `PREV BLOCK `| moves to the previous empty line or start of file if there isn't one               |
+| {c64-key}`Right-bracket` | `NEXT BLOCK `| moves to the next empty line or end of file if there isn't one                    |
 
 ### INSERT MODE
 Entering insert mode allows the user to enter text at the cursor location.  Keystrokes are
@@ -343,4 +381,11 @@ following commands:
 Entering the editor while on a line with an 8-byte ".db" definition (e.g. `.db $ff,$00,$ff,$00,$ff,$00,$ff,$00`) will pre-populate the
 UDG editor with the character defined by these directives.
 
-<insert screenshot>
+```{figure} screenshots/editor-udg-1.png
+:alt: The UDG editor
+:align: center
+:width: 75%
+:class: screenshot
+
+The UDG editor activated on a row of .db directives
+```
