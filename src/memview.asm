@@ -185,8 +185,6 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 :	cmp #K_QUIT
 	beq @quit
-	cmp #K_CLOSE_WINDOWS	; <- (done)
-	bne @chkcycle
 @quit:	jmp @done
 
 @chkcycle:

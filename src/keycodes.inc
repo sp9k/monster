@@ -31,7 +31,6 @@ K_DEBUG          = $ac	; C= + d
 K_LINK           = $b6  ; C= + l (link)
 K_MONITOR_WIN    = $88	; F7
 K_MONITOR        = $8c	; F8 (SHIFT + F7)
-K_CLOSE_WINDOWS  = $5f	; <-
 
 K_NEXT_PAL       = $db	; SHIFT + +
 K_PREV_PAL       = $dd  ; SHIFT + -

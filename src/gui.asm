@@ -726,8 +726,6 @@ __gui_refresh:
 :	pla
 	cmp #K_QUIT
 	beq @quit
-	cmp #K_CLOSE_WINDOWS
-	beq @quit
 
 	cmp #K_SWAP_WINS
 	bne :+

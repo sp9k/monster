@@ -27,14 +27,13 @@ below for more info on modes).
 | {c64-keys}`C= + B`     | `SET BREAKPOINT`| sets a breakpoint at the current line                                     |
 | {c64-keys}`C= + C`     | `REFRESH       `| refreshes the screen by redrawing the source buffer                       |
 | {c64-key}`Minus`       | `FILE VIEWER   `| list directory, shows the files on the current disk                       |
-| {c64-keys}`C= + L`     | `LINK          `| links all .o files on disk using the LINK file                            |
 | {c64-keys}`C= + N`     | `NEW BUFFER    `| creates a new source buffer and sets it as the active buffer              |
 | {c64-keys}`C= + Q`     | `CLOSE BUFFER  `| closes the current buffer and opens the next one that is open             |
 | {c64-keys}`C= + Y`     | `SHOW SYMBOLS  `| lists the symbol table for the assembled program                          |
 | {c64-keys}`C= + M`     | `SHOW MACROS   `| lists the macros that are defined and allows viewing their definitions    |
 | {c64-keys}`C= + E`     | `NEXT ERROR    `| if there are errors from the last assembly, navigates to the next one     |
 | {c64-keys}`C= + T`     | `SHOW BUFFERS  `| displays a list of the currently open buffers                             |
-| {c64-keys}`C = + L`    | `LINK          `| links the object files in the project using the LINK file on disk         |
+| {c64-keys}`C= + L`     | `LINK          `| links the object files in the project using the LINK file on disk         |
 | {c64-key}`F3`          | `MEMVIEW       `| opens the memory viewer/editor (same as while debugging; press {c64-key}`Left-arrow` to exit) |
 | {c64-key}`F5`          | `BRKVIEW       `| opens the breakpoint viewer/editor (same as while debugging)              |
 | {c64-key}`F6`          | `WATCHVIEW     `| opens the watch viewer/editor (same as while debugging)                   |
