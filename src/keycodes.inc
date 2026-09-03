@@ -62,7 +62,7 @@ K_JUMPFORWARD    = $a2	; C= + i
 K_NEXT_DRIVE     = $a6  ; C= + +
 K_PREV_DRIVE     = $dc  ; C= + -
 K_EDIT_STATE     = $89	; F2
-K_SWAP_WINS      = $b3	; C= + s
+K_SWAP_WINS      = $b3	; C= + w
 K_NEXT_ERR       = $b1  ; C= + e
 
 ;*******************************************************************************
@@ -97,6 +97,7 @@ K_WIN_GROW		= $a1	; C= + k (grow the active window)
 K_WIN_SHRINK		= $b5	; C= + j (shrink the active window)
 K_WIN_MAXIMIZE		= $ad	; C= + z (maximize/restore the active window)
 K_WIN_HIDE		= $b4	; C= + h (toggle rendering of the windows)
+K_WIN_CLOSE		= $ab	; C= + q (close the active window)
 
 ;*******************************************************************************
 ; MONITOR KEYS

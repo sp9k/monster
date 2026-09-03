@@ -302,6 +302,8 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ; main viewer loop
 @key:	jsr key::waitch
 	cmp #K_QUIT
+	beq @exit
+	cmp #K_WIN_CLOSE
 	bne @checkdown
 @exit:  jsr scr::restore
 	RETURN_OK

@@ -263,8 +263,11 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	beq @up
 	cmp #K_RETURN		; RETURN
 	beq @select
-	cmp #K_QUIT		; <-
+	cmp #K_QUIT		; RUN/STOP
+	beq @quitview
+	cmp #K_WIN_CLOSE	; C= + q (dismisses the viewer, as with windows)
 	bne @menu		; unrecognized key
+@quitview:
 	jmp scr::restore
 
 @down:	inc @selection

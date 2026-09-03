@@ -88,8 +88,8 @@ Below is the list of extended commands and their effects.
 | COMMAND NAME  |  OPERAND  | CODE | OPERAND SIZE| EFFECT                                            |
 |---------------|-----------|------|-------------|---------------------------------------------------|
 | `SET_ADDRESS` | address   |  $01 | 2           | Sets the address to the given absolute address    |
-| `RESERVED`    |    -      |  $02 | x           | Reserved (unused)
-| `RESERVED`    |    -      |  $03 | x           | Reserved (unused)
+| `RESERVED`    |    -      |  $02 | x           | Reserved (unused)                                 |
+| `RESERVED`    |    -      |  $03 | x           | Reserved (unused)                                 |
 | `ADVANCE_LINE`| offset    |  $04 | 2           | Moves the line by the given signed offset         |
 | `ADVANCE_PC`  | offset    |  $05 | 2           | Moves the address by the given signed offset      |
 | `SET_PC`      | offset    |  $06 | 2           | Moves the address by the given signed offset      |

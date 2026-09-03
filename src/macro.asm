@@ -496,7 +496,9 @@ MODE_DEF  = 1
 ;--------------------------------------
 ; main viewer loop
 @key:	CALLMAIN key::waitch
-	cmp #K_QUIT
+	cmp #K_WIN_CLOSE		; C= + q: close the viewer from any level
+	beq @exit
+	cmp #K_QUIT			; RUN/STOP: back one level
 	bne @checkdown
 	lda @mode			; are we in MAIN mode
 	beq @exit			; if so, return to editor

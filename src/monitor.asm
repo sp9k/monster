@@ -66,6 +66,9 @@ __monitor_windowed: .byte 0
 ; set (by the key handler) when the user asks to cycle to the next window
 cyclereq: .byte 0
 
+; set (by the key handler) when the user asks to close the monitor window
+closereq: .byte 0
+
 .segment "CONSOLE_VARS"
 .export __monitor_line
 
@@ -174,6 +177,14 @@ __monitor_window:
 	lda zp::cury
 	jsr text::drawline	; redraw the input line being edited
 	jmp @handled
+
+:	cmp #K_WIN_CLOSE
+	bne :+
+	lda __monitor_windowed
+	beq @handled		; not in a window: nothing to close
+	inc closereq
+	lda #K_QUIT		; force the input to end
+	rts
 
 :	cmp #K_SWAP_WINS
 	bne :+
@@ -407,6 +418,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta line
 	sta __monitor_windowed
 	sta cyclereq
+	sta closereq
 	sta wintop
 	sta winoff
 	lda #HEIGHT-1
@@ -477,6 +489,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #$00
 	sta __monitor_quit
 	sta cyclereq
+	sta closereq
 
 	; set the interface so the debugger knows to return to the monitor
 	; and not editor (GUI)
@@ -518,6 +531,16 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	CALLMAIN edit::gets
 	bcc @submit
 
+	; did user ask to close the window?
+	lda closereq
+	beq @chkcycle
+	lda #$00
+	sta closereq
+	sta __monitor_windowed	; the window is closing
+	lda #GUI_RET_CLOSE
+	rts
+
+@chkcycle:
 	; did user prompt us to cycle windows?
 	lda cyclereq
 	beq @clrline

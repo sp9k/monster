@@ -1,5 +1,6 @@
 .import __gui_active_type
 .import __gui_baserow
+.import __gui_close
 .import __gui_closeall
 .import __gui_cursave_x
 .import __gui_cursave_y
@@ -15,6 +16,7 @@
 .scope gui
 	active_type	= __gui_active_type
 	baserow		= __gui_baserow
+	close		= __gui_close
 	closeall	= __gui_closeall
 	cursave_x	= __gui_cursave_x
 	cursave_y	= __gui_cursave_y

@@ -67,7 +67,7 @@ respective Key in the table below.
 |-----------------------|-----------------|-----------------------------------------------------------------------------------------|
 | {c64-key}`F1`         | SOURCE VIEW     | maximizes the screen area for viewing the source code                                   |
 | {c64-key}`F2`         | REGISTER EDITOR | enters the register editor                                                              |
-| {c64-key}`F3`         | MEM VIEW        | activates the memory window, which takes control until {c64-key}`Left-arrow` is pressed |
+| {c64-key}`F3`         | MEM VIEW        | activates the memory window, which takes control until {c64-key}`RUN/STOP` is pressed    |
 | {c64-key}`F5`         | BREAK VIEW      | displays the breakpoints that have been set and allows them to be enabled/disabled      |
 | {c64-key}`F6`         | WATCH VIEW      | displays the watches that have been set (see the _Watch Viewer_ section)                |
 | {c64-key}`F7`         | MONITOR         | opens the text-based monitor as a window over the debug view                            |
@@ -80,7 +80,7 @@ respective Key in the table below.
 | {c64-keys}`C= + P`    | JUMP TO         | sets the PC to the address corresponding to the line the cursor is on                   |
 | {c64-keys}`C= + R`    | RESET STOPWATCH | resets the value of the stopwatch to 0                                                  |
 | {c64-keys}`C= + X`    | QUIT DEBUGGER   | Prompts the user for confirmation then quits the debugger upon receiving it             |
-| {c64-key}`Left-arrow` | EXIT            | exits the debugger and returns to the editor                                            |
+| {c64-key}`RUN/STOP`   | SOURCE VIEW     | closes every open window and gives the whole screen back to the source view (same as {c64-key}`F1`) |
 | {c64-key}`SPACE`      | SHOW FRAME      | Displays the current state of the user program                                          |
 | {c64-key}`Up-arrow`   | GOTO BREAK      | navigates to the address that the debugger is currently paused at                       |
 
@@ -89,7 +89,7 @@ respective Key in the table below.
 Pressing {c64-key}`F2` moves the cursor to the register contents and allows the user to enter
 new values for them.  Pressing {c64-key}`RETURN` will confirm the new register values
 and update them to those values immediately.
-Pressing {c64-key}`Left-arrow` will abort this process and leave the old register values
+Pressing {c64-key}`RUN/STOP` will abort this process and leave the old register values
 intact.
 
 ### STOPWATCH
@@ -187,9 +187,10 @@ function keys.  Each shows information about the machine or debug state.
 Each viewer also contains an editor, which is activated with the keys enumerated
 below next to their corresponding editor.
 
-Pressing the {c64-key}`Left-arrow` key will return the user from the auxiliary editor to the
-source code editor.  And {c64-key}`F1` will hide the active view to maximize the
-source editor's screen size.
+Pressing the {c64-key}`RUN/STOP` key will return the user from the auxiliary editor to the
+source code editor; the view stays open below it.  To close the active view outright,
+press {c64-keys}`C= + Q` while it has focus.  {c64-key}`F1` closes every open view at once to
+maximize the source editor's screen size.
 
 ### MEMORY VIEWER ({c64-key}`F3`)
 
@@ -205,7 +206,8 @@ are supported within the memory viewer:
 |-----------------------|-----------|--------------------------------------------------|
 | {c64-keys}`C= + W`    | ADD WATCH | Add watch to the highlighted address             |
 | {c64-key}`Slash`      | FIND VALUE| Seeks from current memory address for given value|
-| {c64-key}`Left-arrow` | EXIT      | Returns to the debugger                          |
+| {c64-key}`RUN/STOP`   | EXIT      | Returns to the debugger (the view stays open)    |
+| {c64-keys}`C= + Q`    | CLOSE     | Closes the memory viewer                         |
 | {c64-key}`Up-arrow`   | SET ADDR  | Sets the viewer's address to the given value     |
 
 #### SET WATCH ({c64-keys}`C= + W`)
@@ -230,7 +232,7 @@ the first occurrence of the byte value `$34` followed by `$12`.
 
 Moves the cursor to the address of the viewer, then prompts the user for a new
 value to set the memory viewer to.  Pressing {c64-key}`RETURN` confirms the new address
-and {c64-key}`Left-arrow` cancels and returns the user to the editor without changing the address
+and {c64-key}`RUN/STOP` cancels and returns the user to the editor without changing the address
 
 ### BREAKPOINT VIEWER ({c64-key}`F5`)
 
@@ -259,7 +261,8 @@ The following keys are supported within the watch viewer:
 |-----------------------|------------|---------------------------------------------------------|
 | {c64-keys}`C= + W`    | ADD WATCH  | Prompt the user for expressions to watch                |
 | {c64-key}`RETURN`     | SELECT/EDIT| Enters the memory editor at the watch's address         |
-| {c64-key}`Left-arrow` | EXIT       | Returns to the debugger                                 |
+| {c64-key}`RUN/STOP`   | EXIT       | Returns to the debugger (the view stays open)           |
+| {c64-keys}`C= + Q`    | CLOSE      | Closes the watch viewer                                 |
 
 #### ADD WATCH ({c64-keys}`C= + W`)
 

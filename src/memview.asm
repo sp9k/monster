@@ -184,8 +184,14 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	jmp @edit
 
 :	cmp #K_QUIT
-	beq @quit
+	bne @chkclose
 @quit:	jmp @done
+
+@chkclose:
+	cmp #K_WIN_CLOSE
+	bne @chkcycle
+	lda #GUI_RET_CLOSE	; close this window
+	rts
 
 @chkcycle:
 	cmp #K_SWAP_WINS

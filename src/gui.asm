@@ -727,7 +727,12 @@ __gui_refresh:
 	cmp #K_QUIT
 	beq @quit
 
-	cmp #K_SWAP_WINS
+	cmp #K_WIN_CLOSE
+	bne :+
+	lda #GUI_RET_CLOSE
+	rts
+
+:	cmp #K_SWAP_WINS
 	bne :+
 	jsr list_savevars
 	lda #GUI_RET_CYCLE
@@ -839,8 +844,21 @@ __gui_refresh:
 	beq @cycle
 	cmp #GUI_RET_SWITCH
 	beq @loop
+	cmp #GUI_RET_CLOSE
+	bne @quit
 
-	; GUI_RET_QUIT: return focus to the editor
+	; GUI_RET_CLOSE: pop the window and focus the one below it
+	jsr __gui_close
+	bcs @quit		; that was the last one: back to the editor
+
+	; restore the physical cursor before entering the next window
+	lda __gui_cursave_x
+	sta zp::curx
+	lda __gui_cursave_y
+	sta zp::cury
+	jmp @loop
+
+@quit:	; GUI_RET_QUIT: return focus to the editor
 	jsr unhide_editor	; give the editor its rows back if it has none
 	lda #$00
 	sta infocus
@@ -1302,6 +1320,42 @@ __gui_refresh:
 	jsr restore_height
 	jmp draw_all
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; CLOSE
+; Closes the active (top of stack) window, removing it from the stack.  The
+; window below it becomes active; if it was the last open window, the editor
+; is given the entire window area back.
+; Redrawing the remaining windows is left to the caller (see __gui_enter).
+; OUT:
+;   - .C: set if no windows remain open
+.export __gui_close
+.proc __gui_close
+	lda depth
+	beq @none	; no windows are open
+	dec depth
+	beq @last
+
+	; the window below is active now.  It can only have gained room (the
+	; closed window's title row went away), so its height still fits
+	jsr active
+	ldy #WIN_TYPE
+	lda (r0),y
+	sta __gui_active_type
+	clc		; windows remain open
+	rts
+
+@last:	; that was the last window; restore whole window area to the editor
+	lda #$00
+	sta __gui_active_type
+	sta hidden
+	lda baserow	; the editor's last row when no windows are drawn
+	sec		; flag editor should be drawn
+	jsr update_editor
+
+@none:	sec		; no windows remain open
+	rts
 .endproc
 
 ;*******************************************************************************

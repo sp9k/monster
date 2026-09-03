@@ -13,8 +13,13 @@ This project will span multiple files, but when assembling directly into memory,
 active source file.  For us, that will be a `main.s` file.  All other files will be _included_ from
 this one (more on that when we get to it).
 
-If you still have buffers open from your past work, close them with {c64-keys}`C= + Q` until only one remains.  Press {c64-keys}`C= + T` to see the
-active buffers (you should only see our lone unnamed buffer).  Press {c64-key}`RUN/STOP` to leave the buffers view.
+If you still have buffers open from your past work, close them with {c64-keys}`C= + Q` until only one remains.  Press {c64-keys}`C= + T` to
+enter the **BUFFERS VIEWER**.  This will pop open a _window_ which allows you to view all open buffers and
+select one to navigate to.  Confirm in this view that we have only one buffer open.
+
+Once confirmed, with the BUFFERS VIEWER, press {c64-keys}`C= + Q` to close the BUFFERS VIEWER.
+You can also press ({c64-key}`RUN/STOP` to re-enter the editor, but leave the viewer onscreen.
+We'll touch more on the concept of these "windows" when we start debugging.
 
 Now rename the buffer by entering EX COMMAND mode ({c64-key}`:`) and typing `r main.s` at the prompt.
 
@@ -45,16 +50,14 @@ simple ones that make life a little bit easier without hiding much from the user
 For this project, we'll define two macros to treat the index registers `X` and `Y` like a single
 16-bit value:
 
-```
-.mac ldxy_i val
-	ldx #<val
-	ldy #>val
-.endmac
 
-.mac stxy addr
-	stx addr
-	sty addr+1
-.endmac
+```{figure} screenshots/tutorial-macros.png
+:alt: Macros
+:align: center
+:width: 75%
+:class: screenshot
+
+macros.inc
 ```
 
 By now, hopefully, you're getting a sense of Monster's autoformatting and syntax checking.
@@ -173,28 +176,116 @@ true in the buffer viewer as well as the UDG editor and others we've yet to expl
 Okay, time for the exciting stuff: let's work on writing the logic that ties everything together.
 Navigate to the `main.s` buffer.
 
-#### BUFFER NAVIGATION
+First things first, we need to setup the display. The VIC registers at $9000 retain their
+"cold start" defaults in Monster's virtual memory upon boot, but those are not fit for our
+purposes.  Configuring the display can be thought of in two parts: the geometry/attributes, and the
+matrix.
 
-Our buffer is getting big enough that navigation by individual cursor motion is probably
-feeling a little cumbersome.  Fortunately Monster has many options for zipping around your
-code more efficiently.  We will touch on only a few here.
+Let's begin with geometry and attributes.  This is configured by writing to the VIC registers
+to achieve the desired number of rows/columns, colors, etc.  For our program, we will use
+a matrix that is 12x20 with double height characters.  This arrangement allows us to create a large
+"bitmap" which only uses a single page of memory for the screen matrix (each matrix position representing
+16 bytes thanks to the double height characters).  This setup is commonly referred to as MINIGRAFIK.
 
-To go to the _top_ of the buffer, press {c64-sequence}`GG`.  Note that this command (and some others)
-waits for a second keypress (the second `G` in this case).  You can see the buffered input in
-the status bar when another key is expected.
+We will first configure the screen's width and height.  Note that in `$9003`, bit 0 sets double-height
+characters and bits 1-6 sets the number of character rows.  While we're here, we might as well set the
+color of the border and background too (`$900f`).  Note that bit 3 must be _set_  for non-reverse
+colors.
 
-To go to the _bottom_ of the buffer, press {c64-keys}`SHIFT + G`.
+```
+    lda #20        ; # columns
+    sta $9002
 
-Press {c64-key}`/` to open a FIND prompt.  At the prompt, enter the string to look for, then
-press {c64-key}`RETURN`.  Press {c64-key}`N` to navigate to the next occurrence of the string
-(assuming one is found) or {c64-keys}`SHIFT + N` to navigate to the _previous_ one.
+    lda #(12*2)+1  ; (# rows << 1) | 1
+    sta $9003
 
-The {c64-key}`[` and {c64-key}`]` keys navigate to the previous and next empty lines, respectively.
-Empty lines therefore make useful logical divisions in your source.
+    lda #$08       ; black/black (no rvs)
+    sta $900f
+```
 
-This should get you started.  See the **EDITOR** chapter for the other navigation commands.
+Great, now we need to configure the screen matrix.
+As we alluded to earlier, we want to set up a sort of virtual bitmap, where each column represents one continuous
+row of bytes.  With this arrangement, we can easily address a given pixel by loading a zeropage
+variable with the address of the "sprite"'s x-position and then using indirect, y-indexed addressing
+to specify its y-position, e.g.
+
+```
+    ldy spritey
+    sta (@col),y
+```
+
+To accomplish this, we must arrange the screen matrix, which is organized row-by-row, so that the
+values in each row sequentially align with the ones on the row above, e.g.
+
+```
+0 3 6
+1 4 7
+2 5 8
+```
+
+We will accomplish this with a nested loop that initializes the screen matrix column-by-column.
+We don't explicitly track the row counter, but when we have fully initialized the screen the
+`@addr` update will leave the most significant byte of that pointer at `$20`, which we can use
+as our signal to stop.
+
+```
+init
+    .eq @addr $f0
+
+    ; set @addr to matrix origin ($1000)
+    ldxy #$1000
+    stxy @addr
+
+@l0 ldx #0        ; row counter
+:   txa
+    sta (@addr),y
+    inx
+    cpx #20
+    bne -
+
+    ; next column
+    lda @addr
+    clc
+    adc #$c0
+    sta @addr
+    bcc +
+    inc @addr+1
+:   lda @addr+1
+    cmp #$20
+    bne @l0
+```
+
+The matrix should now be established.  It lives at address `$1000` and references a custom
+character set from `$1100-$1fff` (our "bitmap").  At this point, the contents of the bitmap
+are yet uninitialized.  If we ran the program now, we'd see garbage strewn throughout the
+display.  Let's fix that by clearing the bitmap:
+
+```
+clr
+.eq @bm $f0
+    ldxy #$1100
+    stxy @bm
+
+    ldy #$00
+    ldx #$20-$11    ; # of pages to clear
+:   sta (@bm),y
+    iny
+    bne -
+    inc @bm+1
+    dex
+    bne -
+```
+
+We've already built a few logical chunks of code.  It's always a good idea to test as you
+go so that you're not left trying to hunt down a bug in hundreds of lines of untested code.
+Let's take a pause here and familiarize ourselves with the environment a bit more.  There's
+plenty more of our program to write, but it will help if we can iteratively build up to
+the final product.
 
 #### SAVING
+
+Before we even think about beginning debugging, we should make sure our progress is
+safely stored on disk.
 
 You should have a rough handle on saving buffers already (and the importance of doing so).
 It is always a good idea to save your work before assembling.  If you have any dirty buffers,
@@ -212,16 +303,14 @@ upon assembly:
 
 #### ASSEMBLY
 
-Everything is in place; it's time to start the assembly/debug/test loop.  Realistically, this
-is where you will spend most of your time.
-
-As mentioned before, assembly will typically take place from the top-level unit from which
+As mentioned earlier, assembly will typically take place from the top-level unit from which
 all others are included (`main.s` in our case).  Navigate to that buffer and press
 {c64-keys}`C= + A` to assemble it.
 
 #### ERRORS
 
-More than likely you will have one or more errors.  If you do, they are displayed in a menu,
+There's a good chance your first assembly will generate one or more errors.
+If it does, they are displayed in a menu,
 which is focused to allow you to select one for inspection.  Press {c64-key}`RETURN` to
 navigate to the error you wish to address.  This will jump the cursor to the
 file/line of the error so that you can fix it.
@@ -240,17 +329,6 @@ In addition to the error window, the log provides a chronological record of what
 during assembly.  It will show you the order in which files were processed, errors
 as they occurred, etc.  When your program is successfully assembled, it will also give you
 details about the final result.
-
-#### SYMBOL VIEWER
-
-It is often useful to examine the symbols defined once your program is assembled.  This is
-a great way to get a sense of the program's final layout and make sure things look
-as you expect.  It's also useful if you can't remember the name of one of your symbols
-and need a quick refresher.  To make inspecting this state easier, Monster has a **SYMBOL VIEWER**
-(activated with {c64-keys}`C= + Y`).  This viewer displays a list of all symbols defined in the
-last assembly along with their addresses.  {c64-key}`F1` toggles between name and address
-sorting in this view.  Press {c64-key}`RETURN` on a symbol to navigate to its
-definition.
 
 #### DEBUGGING
 
@@ -276,8 +354,8 @@ m $9000 $9010
 Our setup code is very simple, so if any correction is required it ought to be a simple exercise from here.
 
 Remember, if you need to make changes to your program at any point during the debug cycle, you must first
-stop debugging ({c64-key}`C= + X`) to return to edit mode.  When you are done with your changes, reassemble
-the program ({c64-key}`C= + A`) and try again.
+stop debugging ({c64-keys}`C= + X`) to return to edit mode.  When you are done with your changes, reassemble
+the program ({c64-keys}`C= + A`) and try again.
 
 
 Okay, however circuitous your path to get there, we are contniue our debug session post-VIC initialization.
@@ -291,8 +369,83 @@ scroll around through memory as we please using the usual motion keys (h/j/k/l).
 
 Once activated, set the address to our screen matrix by pressing {c64-key}`Up-Arrow` and then entering `1000` and
 {c64-key}`RETURN`.  The viewer will refresh with the contents at address `$1000` and _hopefully_ you will
-see a steadily increasing array of values: `01`, `02`, `03`, ...
+see a steadily increasing (by `$0c`) array of values: `01`, `0c`, `18`, ...
 
 If you don't, then try to see what is wrong with the pattern, hunt for any bugs in the initializatoin loop, and
 fix using the usual flow.
+
+#### WINDOW MANAGEMENT
+
+We introduced the concept of windows earlier with the BUFFER VIEWER. The MEMORY VIEWER is another one.
+A WINDOW is an interactive widget that can be invoked to allow you to do things like
+view breakpoints ({c64-key}`F5`), watches ({c64-key}`F6`, enter the monitor {c64-key}`F7}, etc.
+
+While these behave totally differently than the BUFFER VIEWER, they all share some common functionality.
+To control the window's gemoetry you can use {c64-key}`C= + j`/{c64-key}`C= + k} keys to resize (grow/shrink),
+or {c64-key}`C= + Z` to _maximizes_/_unmaximize_
+{c64-keys}`C= + Q` closes the active window, and {c64-key}`RUN/STOP` leaves the selected window (without
+closing it) and refocuses the editor.
+
+Note that multiple windows may be open at once.  If the MEMORY VIEWER is active, you may still invoke
+the BREAKPOINT VIEWER without closing it.  If multiple windows are active, you can cycle through them
+with {c64-keys}`C= + W` (also re-enters the visible window if the editor is in focus).
+
+Finally, all active windows can be hidden with {c64-key}`C= + H`.  The same key-combination also unhides
+them if they are already hidden.
+
+#### EDITOR TIPS
+
+Before we finish up our program, let's take a moment to hone our editing skills.
+The `main.s` buffer is still small, but it's getting big enough that navigation by individual cursor
+motion may be feeling a little cumbersome.  Fortunately Monster has many options for zipping around your
+code more efficiently.  We will touch on only a few here.
+
+To go to the _top_ of the buffer, press {c64-sequence}`GG`.  Note that this command (and some others)
+waits for a second keypress (the second `G` in this case).  You can see the buffered input in
+the status bar when another key is expected.
+
+To go to the _bottom_ of the buffer, press {c64-keys}`SHIFT + G`.
+
+Press {c64-key}`/` to open a FIND prompt.  At the prompt, enter the string to look for, then
+press {c64-key}`RETURN`.  Press {c64-key}`N` to navigate to the next occurrence of the string
+(assuming one is found) or {c64-keys}`SHIFT + N` to navigate to the _previous_ one.
+
+The {c64-key}`[` and {c64-key}`]` keys navigate to the previous and next empty lines, respectively.
+Empty lines therefore make useful logical divisions in your source.
+
+Finally, a common practice will be inserting new lines above or below the current line.
+From COMMAND mode you can do this by pressing {c64-key}`O` (to insert a line _below_) or {c64-keys}`SHIFT + O`
+to insert one _above_ the current line.  Both commands will also enter INSERT mode so that you can
+immediately begin writing your new line.
+
+This should get you started.  See the **EDITOR** chapter for the other navigation commands if
+you still find yourself frustrated at your editing/navigation speed.
+
+#### FINISHING THE PROGRAM
+
+We're not quite done with initialization just yet. Remember that we wish to use joystick input
+to move the player sprite around the screen.  To do this we need to configure the VIAs (the Vic-20's
+chips responsible for handling keyboard/joystick input, among other duties) to read the joystick.
+This is as simple as our VIC initialization was.
+
+```
+```
+
+There's a few remaining items to finish up the program.
+
+1. read input from the joystick
+2. apply the input to the "player" sprite position
+3. redraw the sprite at its new position
+
+
+#### SYMBOL VIEWER
+
+It is often useful to examine the symbols defined once your program is assembled.  This is
+a great way to get a sense of the program's final layout and make sure things look
+as you expect.  It's also useful if you can't remember the name of one of your symbols
+and need a quick refresher.  To make inspecting this state easier, Monster has a **SYMBOL VIEWER**
+(activated with {c64-keys}`C= + Y`).  This viewer displays a list of all symbols defined in the
+last assembly along with their addresses.  {c64-key}`F1` toggles between name and address
+sorting in this view.  Press {c64-key}`RETURN` on a symbol to navigate to its
+definition.
 

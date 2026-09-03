@@ -25,7 +25,7 @@ cold start procedure executes, which is what you will see in the monitor if ente
 assembling a program.
 
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
-Press {c64-key}`F7` or {c64-key}`F8` to re-enter it.  The monitor window is closed, just as other windows are, with the {c64-key}`Left-arrow` key.
+Press {c64-key}`F7` or {c64-key}`F8` to re-enter it.  The monitor window is closed, just as other windows are, with the {c64-keys}`C= + Q` key combination, which must be pressed while the monitor window has focus.
 
 ### FILE REDIRECTION
 The output from a given monitor command can be redirected to file instead of the screen by using the
@@ -43,38 +43,38 @@ Will write the contents of the simulated 6502's registers to the disk file `regs
 The table below is a quick reference for the available monitor commands. See
 the corresponding command section for syntax, argument details, and examples.
 
-| COMMAND | NAME | DESCRIPTION |
-|---------|------|-------------|
-| `a` | `ASSEMBLE` | assembles an instruction into memory |
-| `b` | `LIST BREAKPOINTS` | lists the active breakpoints |
-| `ba` | `ADD BREAKPOINT AT ADDRESS` | adds a breakpoint at an address |
-| `bl` | `ADD BREAKPOINT AT LINE` | adds a breakpoint at a source line |
-| `br` | `REMOVE BREAKPOINT` | removes a breakpoint by ID |
-| `bt` | `BACKTRACE` | displays a rendered view of the call stack |
-| `c` | `COMPARE` | compares two blocks of memory |
-| `clear` | `CLEAR` | clears the monitor display |
-| `d` | `DISASSEMBLE` | disassembles a range of memory |
-| `dump` | `DUMP MEMORY` | renders memory as assembleable `.db` directives |
-| `f` | `FILL MEMORY` | fills a memory range with one or more values |
-| `files` | `SHOW FILES` | lists files in the current debug information |
-| `g` | `GO` | continues execution, optionally at a new address |
-| `h` | `HUNT` | searches memory for a sequence of values |
-| `m` | `SHOW MEMORY` | displays the contents of memory |
-| `move` | `MOVE MEMORY` | copies a range of memory to a new address |
-| `new` | `INITIALIZE BASIC` | re-runs the BASIC warm-start process |
-| `n` | `STEP OVER` | runs the next instruction, stepping over subroutines |
-| `p` | `POKE MEMORY` | writes a byte to memory |
-| `r` | `REGISTERS` | displays the simulated 6502 registers |
-| `s` | `SAVE MEMORY` | saves a memory range to a file |
-| `t` | `TRACE` | continues execution with tracing enabled |
-| `w` | `LIST WATCHES` | lists the active watches |
-| `wa` | `ADD WATCH` | adds a load-and-store watch |
-| `wal` | `ADD LOAD WATCH` | adds a load watch |
-| `was` | `ADD STORE WATCH` | adds a store watch |
-| `wr` | `REMOVE WATCH` | removes a watch by ID |
-| `x` | `QUIT` | exits the monitor |
-| `z` | `STEP` | runs one instruction |
-| `zo` | `STEP OUT` | runs until the current subroutine returns |
+| COMMAND | NAME                        | DESCRIPTION                                          |
+|---------|-----------------------------|------------------------------------------------------|
+| `a`     | `ASSEMBLE`                  | assembles an instruction into memory                 |
+| `b`     | `LIST BREAKPOINTS`          | lists the active breakpoints                         |
+| `ba`    | `ADD BREAKPOINT AT ADDRESS` | adds a breakpoint at an address                      |
+| `bl`    | `ADD BREAKPOINT AT LINE`    | adds a breakpoint at a source line                   |
+| `br`    | `REMOVE BREAKPOINT`         | removes a breakpoint by ID                           |
+| `bt`    | `BACKTRACE`                 | displays a rendered view of the call stack           |
+| `c`     | `COMPARE`                   | compares two blocks of memory                        |
+| `clear` | `CLEAR`                     | clears the monitor display                           |
+| `d`     | `DISASSEMBLE`               | disassembles a range of memory                       |
+| `dump`  | `DUMP MEMORY`               | renders memory as assembleable `.db` directives      |
+| `f`     | `FILL MEMORY`               | fills a memory range with one or more values         |
+| `files` | `SHOW FILES`                | lists files in the current debug information         |
+| `g`     | `GO`                        | continues execution, optionally at a new address     |
+| `h`     | `HUNT`                      | searches memory for a sequence of values             |
+| `m`     | `SHOW MEMORY`               | displays the contents of memory                      |
+| `move`  | `MOVE MEMORY`               | copies a range of memory to a new address            |
+| `new`   | `INITIALIZE BASIC`          | re-runs the BASIC warm-start process                 |
+| `n`     | `STEP OVER`                 | runs the next instruction, stepping over subroutines |
+| `p`     | `POKE MEMORY`               | writes a byte to memory                              |
+| `r`     | `REGISTERS`                 | displays the simulated 6502 registers                |
+| `s`     | `SAVE MEMORY`               | saves a memory range to a file                       |
+| `t`     | `TRACE`                     | continues execution with tracing enabled             |
+| `w`     | `LIST WATCHES`              | lists the active watches                             |
+| `wa`    | `ADD WATCH`                 | adds a load-and-store watch                          |
+| `wal`   | `ADD LOAD WATCH`            | adds a load watch                                    |
+| `was`   | `ADD STORE WATCH`           | adds a store watch                                   |
+| `wr`    | `REMOVE WATCH`              | removes a watch by ID                                |
+| `x`     | `QUIT`                      | exits the monitor                                    |
+| `z`     | `STEP`                      | runs one instruction                                 |
+| `zo`    | `STEP OUT`                  | runs until the current subroutine returns            |
 
 Arguments shown in square brackets are optional. Most address and value
 arguments may be expressions, such as `label+10`.
@@ -323,7 +323,9 @@ Removes the watch with the given ID. Use `w` to list watch IDs.
 #### QUIT `x`
 
 Exits the monitor and returns to the editor or source view. The monitor window
-remains onscreen until it is closed with {c64-key}`Left-arrow`.
+remains onscreen until it is closed with {c64-keys}`C= + Q`.  Because that key
+must be pressed while the window has focus, re-enter the monitor
+({c64-key}`F7` or {c64-keys}`C= + W`) and press it there to close the window.
 
 **EXAMPLE:**
 
@@ -352,10 +354,13 @@ registers and next instruction.
 These keys perform monitor or window actions directly; they are not typed at
 the monitor prompt.
 
-| KEY | NAME | DESCRIPTION |
-|-----|------|-------------|
-| {c64-key}`F1` | `VIEW SCREEN` | toggles `$1000`-`$2000` between monitor and program memory |
-| {c64-key}`F2` | `ENTER USER PROGRAM` | enters the running program, or BASIC if no program has been debugged |
-| {c64-keys}`C= + L` | `CLEAR` | clears the monitor display, like the `clear` command |
-| {c64-keys}`C= + K` | `GROW WINDOW` | grows the monitor window by one row in windowed mode |
-| {c64-keys}`C= + J` | `SHRINK WINDOW` | shrinks the monitor window by one row in windowed mode |
+| KEY                | NAME                 | DESCRIPTION                                                          |
+|--------------------|----------------------|----------------------------------------------------------------------|
+| {c64-key}`F1`      | `VIEW SCREEN`        | toggles `$1000`-`$2000` between monitor and program memory           |
+| {c64-key}`F2`      | `ENTER USER PROGRAM` | enters the running program, or BASIC if no program has been debugged |
+| {c64-keys}`C= + L` | `CLEAR`              | clears the monitor display, like the `clear` command                 |
+| {c64-keys}`C= + K` | `GROW WINDOW`        | grows the monitor window by one row in windowed mode                 |
+| {c64-keys}`C= + J` | `SHRINK WINDOW`      | shrinks the monitor window by one row in windowed mode               |
+| {c64-keys}`C= + Z` | `MAXIMIZE WINDOW`    | toggles the monitor window between maximized and its last size       |
+| {c64-keys}`C= + Q` | `CLOSE WINDOW`       | closes the monitor window (windowed mode only)                       |
+| {c64-keys}`C= + W` | `NEXT WINDOW`        | leaves the monitor open and cycles to the next window                |
