@@ -273,7 +273,7 @@ The following keys are handled in COMMAND mode.
 |--------------------------------------------|--------------|-----------------------------------------------------------------------------------------|
 | {c64-key}`HOME`                            | `HOME       `| moves the cursor to column 0                                                            |
 | {c64-key}`Colon` + _n_                     | `GOTO LINE  `| at the EX prompt ({c64-key}`Colon`), enter a line number to move the cursor to it       |
-| {c64-key}`C=` + {c64-key}`1`–{c64-key}`8`  | `GOTO BUFFER`| opens the buffer corresponding to the number key that is pressed                        |
+| {c64-key}`Ctrl` + {c64-key}`1`–{c64-key}`8`| `GOTO BUFFER`| opens the buffer corresponding to the number key that is pressed                        |
 | {c64-keys}`Ctrl + H`                       | `PREV BUFFER`| opens the buffer before the active one (if there is one)                                |
 | {c64-keys}`Ctrl + L`                       | `NEXT BUFFER`| opens the buffer after the active one (if there is one)                                 |
 | {c64-keys}`C= + I`                         | `JUMP UP    `| jumps forward to the next source position that was "jumped" to                          |

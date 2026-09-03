@@ -164,7 +164,7 @@ _next_ one.  Go back and forth between your buffers with these keys to get a fee
 You may have noticed a number to the left of your buffers' names.  This is the buffer's "ID" but,
 more importantly, it is a handle for quick navigation to it.  If your `main.s` buffer has ID `1`,
 for example, you can jump straight to it, no matter which buffer you're currently on, by
-pressing {c64-keys}`C= + 1`.
+pressing {c64-keys}`CTRL + 1`.
 
 The last way is one we've already seen: the buffer viewer ({c64-keys}`C= + T`).  This is
 the most general way to select the buffer you want by name.  If you haven't noticed by now,
@@ -378,11 +378,11 @@ fix using the usual flow.
 
 We introduced the concept of windows earlier with the BUFFER VIEWER. The MEMORY VIEWER is another one.
 A WINDOW is an interactive widget that can be invoked to allow you to do things like
-view breakpoints ({c64-key}`F5`), watches ({c64-key}`F6`, enter the monitor {c64-key}`F7}, etc.
+view breakpoints ({c64-key}`F5`), watches ({c64-key}`F6`), enter the monitor ({c64-key}`F7`), etc.
 
 While these behave totally differently than the BUFFER VIEWER, they all share some common functionality.
-To control the window's gemoetry you can use {c64-key}`C= + j`/{c64-key}`C= + k} keys to resize (grow/shrink),
-or {c64-key}`C= + Z` to _maximizes_/_unmaximize_
+To control the window's geometry you can use the {c64-keys}`C= + J`/{c64-keys}`C= + K` keys to resize (shrink/grow),
+or {c64-keys}`C= + Z` to _maximize_/_unmaximize_
 {c64-keys}`C= + Q` closes the active window, and {c64-key}`RUN/STOP` leaves the selected window (without
 closing it) and refocuses the editor.
 
@@ -390,7 +390,7 @@ Note that multiple windows may be open at once.  If the MEMORY VIEWER is active,
 the BREAKPOINT VIEWER without closing it.  If multiple windows are active, you can cycle through them
 with {c64-keys}`C= + W` (also re-enters the visible window if the editor is in focus).
 
-Finally, all active windows can be hidden with {c64-key}`C= + H`.  The same key-combination also unhides
+Finally, all active windows can be hidden with {c64-keys}`C= + H`.  The same key-combination also unhides
 them if they are already hidden.
 
 #### EDITOR TIPS

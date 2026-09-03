@@ -754,8 +754,14 @@ __gui_refresh:
 	jsr __gui_maximize
 	jmp @loop
 
+@quit:	jsr list_savevars
+	lda #GUI_RET_QUIT
+	rts
+
 :	jsr key::isup
 	bne @chkdown
+	ldx num
+	beq @abort	; no items -> nothing to move to
 @up:	lda select
 	clc
 	adc scroll
@@ -771,9 +777,13 @@ __gui_refresh:
 @goup:	inc select
 	jmp @redraw
 
+@abort:	jmp @loop
+
 @chkdown:
 	jsr key::isdown
 	bne @getch
+	ldx num
+	beq @abort	; no items -> nothing to move to
 	lda select
 	beq @scrolldn
 	dec select
@@ -795,10 +805,6 @@ __gui_refresh:
 	jsr list_savevars
 	jsr draw_all
 	jmp @loop
-
-@quit:	jsr list_savevars
-	lda #GUI_RET_QUIT
-	rts
 
 ;-------------------------------------------------------------------------------
 @getch:	pha

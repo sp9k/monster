@@ -34,7 +34,7 @@ On the first line, type:
 ```
 
 Note that upon pressing {c64-key}`RETURN` the line is automatically formatted.  Labels are automatically left-aligned
-by the autoformatter while everything else is indented by a tab character. Tabs can also be manually inserted with the {c64-keys}`C= + I` key
+by the autoformatter while everything else is indented by a tab character. Tabs can also be manually inserted with the {c64-keys}`Ctrl + I` key
 chord.  However, practically speaking, you are unlikely to need to do this often (if ever) because of the formatter.
 
 This tells the assembler to place the origin of what follows to address $1000.  An origin is required before any instructions because,

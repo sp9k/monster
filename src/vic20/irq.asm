@@ -5,6 +5,7 @@
 .include "../breakpoints.inc"
 .include "../edit.inc"
 .include "../key.inc"
+.include "../keycodes.inc"
 .include "../layout.inc"
 .include "../macros.inc"
 .include "../memory.inc"
@@ -314,20 +315,23 @@ savebank2: .byte 0
 
 ;*******************************************************************************
 ; CTRLTAB
-; CTRL keyboard decode table: the KERNAL's table ($eda3) with additions to allow
-; use of CTRL+letter keys.
-; NOTE: there are some omissions due to overlap with other keys, for example:
-; C ($03 STOP), M ($0d RETURN), Q ($11 down), S ($13 HOME) and T ($14 DEL)
+; CTRL keyboard decode table to allow use of CTRL+{key} bindings.
+; Used for K_GOTO_BUFF[N], K_NEXT_BUFF, and K_PREV_BUFF
 ctrltab:
-	.byte $90,$1c,$9c,$1f,$12,$ff,$ff,$ff	; 1 3 5 7 9 + pound DEL
-	.byte $06,$17,$12,$19,$09,$10,$ff,$ff	; larrow W R Y I P * RETURN
-	.byte $ff,$01,$04,$07,$0a,$0c,$ff,$ff	; CTRL A D G J L ; CRSR-R
-	.byte $ff,$ff,$18,$16,$0e,$ff,$ff,$ff	; STOP SHIFT X V N , / CRSR-D
-	.byte $ff,$1a,$ff,$02,$ff,$ff,$ff,$ff	; SPACE Z C B M . SHIFT F1
-	.byte $ff,$ff,$06,$08,$0b,$ff,$ff,$ff	; C= S F H K : = F3
-	.byte $ff,$05,$ff,$15,$0f,$ff,$ff,$ff	; Q E T U O @ uarrow F5
-	.byte $05,$9f,$1e,$9e,$92,$ff,$ff,$ff	; 2 4 6 8 0 - HOME F7
+	.byte K_GOTO_BUFF1,K_GOTO_BUFF3,K_GOTO_BUFF5,K_GOTO_BUFF7
+	.byte $ff,$ff,$ff,$ff			; 9 + pound DEL
+	.byte $ff,$ff,$ff,$ff,$09,$ff,$ff,$ff	; larrow W R Y I(TAB) P * RETURN
+	.byte $ff,$ff,$ff,$ff,$ff,K_NEXT_BUFF	; CTRL A D G J L
+	.byte $ff,$ff				; ; CRSR-R
+	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; STOP SHIFT X V N , / CRSR-D
+	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; SPACE Z C B M . SHIFT F1
+	.byte $ff,$ff,$ff,K_PREV_BUFF		; C= S F H
+	.byte $ff,$ff,$ff,$ff			; K : = F3
+	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; Q E T U O @ uarrow F5
+	.byte K_GOTO_BUFF2,K_GOTO_BUFF4,K_GOTO_BUFF6,K_GOTO_BUFF8
+	.byte $ff,$ff,$ff,$ff			; 0 - HOME F7
 	.byte $ff				; no key
+.assert * - ctrltab = 65, error, "ctrltab must be 65 bytes"
 
 ;*******************************************************************************
 ; ROW HANDLER

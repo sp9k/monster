@@ -49,14 +49,16 @@ K_VIS_WHITESPACE = $be	; C= + v
 K_FIND           = $2f	; /
 K_FIND_PREV      = $2f	; /
 K_GETCMD         = ':'  ; :
-K_GOTO_BUFF1     = $81  ; C= + 1
-K_GOTO_BUFF2     = $95  ; C= + 2
-K_GOTO_BUFF3     = $96  ; C= + 3
-K_GOTO_BUFF4     = $97  ; C= + 4
-K_GOTO_BUFF5     = $98  ; C= + 5
-K_GOTO_BUFF6     = $99  ; C= + 6
-K_GOTO_BUFF7     = $9a  ; C= + 7
-K_GOTO_BUFF8     = $9b  ; C= + 8
+; NOTE: these are the KERNAL's CTRL+digit color codes; they are reused as-is
+; because Monster never prints them (key::is_printing rejects them)
+K_GOTO_BUFF1     = $90  ; CTRL + 1
+K_GOTO_BUFF2     = $05  ; CTRL + 2 (NOTE: CTRL + e produces this too)
+K_GOTO_BUFF3     = $1c  ; CTRL + 3
+K_GOTO_BUFF4     = $9f  ; CTRL + 4
+K_GOTO_BUFF5     = $9c  ; CTRL + 5
+K_GOTO_BUFF6     = $1e  ; CTRL + 6
+K_GOTO_BUFF7     = $1f  ; CTRL + 7
+K_GOTO_BUFF8     = $9e  ; CTRL + 8
 K_JUMPBACK       = $b9	; C= + o
 K_JUMPFORWARD    = $a2	; C= + i
 K_NEXT_DRIVE     = $a6  ; C= + +
