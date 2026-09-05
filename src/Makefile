@@ -65,7 +65,8 @@ TARGET_SRC=$(filter-out $(BOOTSRC), $(wildcard $(TARGET)/*.asm))
 MODE_SRC=$(wildcard $(TARGET)/$(SCREEN_MODE)/*.asm)
 
 # platform independent source files
-PI_SRC=$(wildcard *.asm)
+# flasher.asm is a standalone utility and must not be linked into Monster.
+PI_SRC=$(filter-out flasher.asm,$(wildcard *.asm))
 
 SRC=$(TARGET_SRC) $(PI_SRC) $(MODE_SRC) $(EXP_SRC)
 
@@ -79,6 +80,8 @@ all: test.d81
 
 cart: $(CART_IMAGE)
 ultimem: $(CART_IMAGE)
+
+flasher: flasher.prg $(CART_IMAGE)
 
 suite: $(TEST_IMAGE)
 
@@ -105,6 +108,13 @@ $(TEST_IMAGE): monster-cart-test.prg
 
 monster-disk.prg: $(BOOTSRC) $(SRC)
 	$(CL65) -t $(TARGET) -o $@ $(ASMFLAGS) -C $(LINK_FILE)-disk.config $^ -Ln labels.txt -v -m map.txt
+
+# Runs in an unexpanded VIC-20 and streams only the populated 8 KiB banks from
+# the padded 8 MiB image.  Derive the count from the linker's bank-laid output.
+flasher.prg: flasher.asm monster-cart.prg
+	$(CL65) -t vic20 -o $@ -C vic20-asm.cfg \
+		--asm-define DEFAULT_DEVICE=$(DEFAULT_DEVICE) \
+		--asm-define IMAGE_BLOCKS=$$(($$(wc -c < monster-cart.prg) / 8192)) $<
 
 # Split the image around the $$D000-$$DFFF I/O gap so the exomizer
 # decruncher has free RAM to work in (see makeboot-c64.py).

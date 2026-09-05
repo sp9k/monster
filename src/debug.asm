@@ -702,7 +702,8 @@ blank   = scr::blank
 	bpl @trace		; continue trace until depth is negative
 	clc			; ok
 
-@done:	jsr clear_tracing
+@done:	jsr bsp::uninstall_tracer	; give the NMI back to whoever had it
+	jsr clear_tracing
 	jmp reenable_irq
 .endproc
 
@@ -737,6 +738,7 @@ blank   = scr::blank
 	jsr safety_check_vec	; check if JAM, BRK, etc. occurred
 
 @done: ; refresh watch values so any that changed are marked dirty ('!')
+	jsr bsp::uninstall_tracer	; give the NMI back to whoever had it
 	jsr watch::update
 
 	jmp uninstall_breakpoints

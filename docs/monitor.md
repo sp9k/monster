@@ -43,6 +43,12 @@ Will write the contents of the simulated 6502's registers to the disk file `regs
 The table below is a quick reference for the available monitor commands. See
 the corresponding command section for syntax, argument details, and examples.
 
+Arguments to commands are separated by whitespace.  This means that **expression parsing behaves
+differently** than it does in other parts of Monster.  For example `M 10 + 30` is not a valid
+expression.  Expression parsing breaks at each whitespace, meaning the first argument is
+interpreted as `10` the second as `+` (illegal, by the way), and the third as `30`. The correct
+invocation would be `M 10+30`.
+
 | COMMAND | NAME                        | DESCRIPTION                                          |
 |---------|-----------------------------|------------------------------------------------------|
 | `a`     | `ASSEMBLE`                  | assembles an instruction into memory                 |

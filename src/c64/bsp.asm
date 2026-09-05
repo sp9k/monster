@@ -21,6 +21,10 @@ stop_tracing     = STOP_TRACING_NMI+4	; sizeof(inc stop_tracing)+sizeof(rti)
 .export PROGRAM_STACK_START
 PROGRAM_STACK_START = $1e0
 
+.segment "SHAREBSS"
+; the NMI vector that install_tracer took over, put back by uninstall_tracer
+saved_nmi: .res 2
+
 .CODE
 
 ;*******************************************************************************
@@ -28,6 +32,15 @@ PROGRAM_STACK_START = $1e0
 ; Installs a routine to catch
 .export __bsp_install_tracer
 .proc __bsp_install_tracer
+	; remember whose NMI handler we are displacing.  Read it from $0318,
+	; not $fffa: writes to $fffa always land in RAM but reads there see
+	; the KERNAL ROM whenever it is banked in.  install writes both
+	; vectors from the same value, so $0318 is the reliable copy
+	lda $0318
+	sta saved_nmi
+	lda $0319
+	sta saved_nmi+1
+
 	; disable NMIs
 	jsr nmi::disable
 	lda #$7f
@@ -51,6 +64,28 @@ PROGRAM_STACK_START = $1e0
 	stxy $fffa
 	stxy $0318
 
+	rts
+.endproc
+
+;*******************************************************************************
+; UNINSTALL TRACER
+; Puts back the NMI handler that install_tracer displaced.  This MUST be
+; called when a trace ends: the trace NMI is only meaningful while tracing,
+; and leaving it installed silently breaks the caller's own RESTORE handling
+; for the rest of the session.
+; Preserves .A and the flags so it can be called on a trace's exit path
+.export __bsp_uninstall_tracer
+.proc __bsp_uninstall_tracer
+	php
+	pha
+	lda saved_nmi
+	sta $fffa
+	sta $0318
+	lda saved_nmi+1
+	sta $fffb
+	sta $0319
+	pla
+	plp
 	rts
 .endproc
 

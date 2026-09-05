@@ -1,4 +1,5 @@
 .import install_trace_nmi
+.import uninstall_trace_nmi
 .import __fastcopy_restore_debug_state
 .import __fastcopy_restore_prog_visual
 .import __fastcopy_restore_prog_state
@@ -8,6 +9,7 @@
 
 .scope bsp
 	install_tracer      = install_trace_nmi
+	uninstall_tracer    = uninstall_trace_nmi
 	restore_debug_state = __fastcopy_restore_debug_state
 	restore_prog_state  = __fastcopy_restore_prog_state
 	restore_prog_visual = __fastcopy_restore_prog_visual

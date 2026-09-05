@@ -997,7 +997,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #$00
 	sta mem::linebuffer+9
 
-	lda mon::line
+	jsr mon::inputrow	; buffer row -> screen row
 	sta zp::cury
 
 	ldx #$09

@@ -42,8 +42,6 @@
 
 .import is_whitespace	; from monitorcmd.asm
 
-NMI_HANDLER_ADDR = mem::spare+120
-
 ;*******************************************************************************
 HEIGHT = SCREEN_HEIGHT
 
@@ -55,7 +53,9 @@ winrow = zp::monitor
 
 .segment "SHAREBSS"
 .export CMD_BUFF
-CMD_BUFF: .res LINESIZE		; written by edit::gets
+
+; The last command entered, kept so that an empty line repeats it.
+CMD_BUFF: .res LINESIZE+1
 
 ;*******************************************************************************
 ; WINDOWED
@@ -70,10 +70,10 @@ cyclereq: .byte 0
 closereq: .byte 0
 
 .segment "CONSOLE_VARS"
-.export __monitor_line
 
-__monitor_line:
-line:      .byte 0	; the buffer row that the monitor's input is on
+; the buffer row that the monitor's input is on
+; use __monitor_inputrow for that
+line:      .byte 0
 repeatcmd: .byte 0	; if set, empty line repeats last command
 
 wintop: .byte 0		; first screen row of the monitor's contents
@@ -158,7 +158,8 @@ __monitor_window:
 	bne :+
 	CALL FINAL_BANK_MONITOR, __monitor_clear
 	lda zp::cury		; (clear reset the linebuffer to a prompt)
-	jmp text::drawline
+	jsr text::drawline
+	jmp @handled		; text::drawline leaves garbage in .A
 
 :	cmp #K_WIN_GROW
 	bne :+
@@ -240,7 +241,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	; scroll the monitor screen buffer
 	ldxy #screen
 	stxy @scr0
-	ldxy #screen+40
+	ldxy #screen+LINESIZE
 	stxy @scr1
 
 	; scroll the screen buffer
@@ -268,28 +269,11 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	dec line
 
-@print: lda #$00
-	sta @scr0+1
-
-	; copy the rendered text to the current line of the buffer
-	; the buffer destination is screen + (line*40)
+@print:	; store the text we are about to draw to the monitor buffer
 	lda line
-	asl		; *2
-	sta @tmp
-	asl		; *4
-	asl		; *8
-	adc @tmp	; *10
-	asl		; *20
-	rol @scr0+1
-	asl		; *40
-	rol @scr0+1
-	adc #<screen
-	sta @scr0
-	lda @scr0+1
-	adc #>screen
-	sta @scr0+1
+	jsr rowptr
+	stxy @scr0
 
-	; store the text we are about to draw to the monitor buffer
 	ldy #LINESIZE-1
 @copy:	lda (@msg),y
 	sta (@scr0),y
@@ -342,7 +326,6 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @msg=r0
 @scr0=r2
 @scr1=r4
-@tmp=r6
 	stxy @msg
 
 	; check if we need to scroll
@@ -381,23 +364,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	dec line
 
 @copy:	; copy text to buffer row line (screen + line*LINESIZE)
-	lda #$00
-	sta @scr0+1
 	lda line
-	asl		; *2
-	sta @tmp
-	asl		; *4
-	asl		; *8
-	adc @tmp	; *10
-	asl		; *20
-	rol @scr0+1
-	asl		; *40
-	rol @scr0+1
-	adc #<screen
-	sta @scr0
-	lda @scr0+1
-	adc #>screen
-	sta @scr0+1
+	jsr rowptr
+	stxy @scr0
 
 	ldy #LINESIZE-1
 :	lda (@msg),y
@@ -504,9 +473,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 @prompt:
 	ldxy #mem::linebuffer
-	lda line
-	sec
-	sbc winoff
+	jsr __monitor_inputrow
 	CALLMAIN text::print
 	lda #MONITOR_PROMPT
 	sta mem::linebuffer
@@ -516,9 +483,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #$00
 	sta mem::linebuffer+1
 
-@loop:	lda line
-	sec
-	sbc winoff
+@loop:	jsr __monitor_inputrow
 	sta zp::cury		; screen row of the input line
 
 	lda #$01
@@ -538,7 +503,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta closereq
 	sta __monitor_windowed	; the window is closing
 	lda #GUI_RET_CLOSE
-	rts
+	jmp @leave
 
 @chkcycle:
 	; did user prompt us to cycle windows?
@@ -547,7 +512,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #$00
 	sta cyclereq
 	lda #GUI_RET_CYCLE
-	rts
+	jmp @leave
 
 @submit:
 	pha
@@ -562,7 +527,10 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta CMD_BUFF,x
 	beq @exec
 	inx
-	bne :-
+	cpx #LINESIZE
+	bcc :-
+	lda #$00
+	sta CMD_BUFF,x		; ran out of room: terminate what we did copy
 
 @exec:	lda #$00
 	sta __monitor_outfile	; default to screen
@@ -623,6 +591,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	; the window manager restores the editor's state
 	lda #GUI_RET_QUIT
+
+@leave:	; restore expression parsing so that whitespace is not considered
+	; a separator
+	pha
+	lda #$00
+	CALL FINAL_BANK_EXPR, expr::end_on_ws
+	pla
 	rts
 .endproc
 
@@ -883,6 +858,20 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 .endproc
 
 ;*******************************************************************************
+; INPUT ROW
+; Calculates the SCREEN row that the monitor's input line is displayed on based
+; on its current (local) line number
+; OUT:
+;   - .A: the screen row of the input line
+.export __monitor_inputrow
+.proc __monitor_inputrow
+	lda line
+	sec
+	sbc winoff
+	rts
+.endproc
+
+;*******************************************************************************
 ; ROWPTR
 ; Returns the address of the given row in the monitor's screen buffer
 ; IN:
@@ -890,29 +879,22 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; OUT:
 ;   - .XY: the address of the row (screen + row*LINESIZE)
 .proc rowptr
-@tmp=r6
-	sta @tmp
-	asl		; *2
-	asl		; *4
-	adc @tmp	; *5
-	sta @tmp
-	lda #$00
-	sta @tmp+1
-	asl @tmp
-	rol @tmp+1	; *10
-	asl @tmp
-	rol @tmp+1	; *20
-	asl @tmp
-	rol @tmp+1	; *40 (LINESIZE)
-	lda @tmp
-	clc
-	adc #<screen
 	tax
-	lda @tmp+1
-	adc #>screen
-	tay
+	ldy rowshi,x
+	lda rowslo,x
+	tax
 	rts
 .endproc
+
+;*******************************************************************************
+rowslo:
+.repeat HEIGHT, row
+	.byte <(screen + row*LINESIZE)
+.endrepeat
+rowshi:
+.repeat HEIGHT, row
+	.byte >(screen + row*LINESIZE)
+.endrepeat
 
 ;*******************************************************************************
 ; SET OUTFILE
@@ -926,8 +908,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	ldx #$00
 
 @findredir:
-	cpx #LINESIZE-2
-	beq @done
+	cpx #MAX_LINE_LEN
+	bcs @done
 	lda mem::linebuffer+1,x	; start after prompt (+1)
 	beq @done		; no redirect, return
 	cmp #'>'		; redirect?
@@ -937,7 +919,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	beq @redir
 @next:	inx
 	bne @findredir
-	rts
+	beq @done		; unreachable: the bound above stops us first
 
 @redir:	; get the filename to redirect the ouput to
 	lda #$00
@@ -1005,31 +987,26 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 ;*******************************************************************************
 ; INSTALL NMI
-; Copies the NMI handler to shared RAM and enables CA1 (RESTORE key)
-; interrupts to catch INT signal
+; Points the NMI vector at the monitor's handler and enables CA1 (RESTORE key)
+; interrupts to catch the INT signal
 .proc install_nmi
 .ifdef vic20
-@src=r0
-@dst=r2
-	ldxy #@nmi_handler
-	stxy @src
-	ldxy #NMI_HANDLER_ADDR
-	stxy @dst
-
-	ldy #@nmi_handler_end-@nmi_handler-1
-:	lda (@src),y
-	sta (@dst),y
-	dey
-	bpl :-
-
-	ldxy #NMI_HANDLER_ADDR
+	ldxy #monitor_nmi
 	stxy $0318
 	lda #$82
 	sta $911e		; enable NMIs from RESTORE key
+.endif
 	rts
+.endproc
 
-; The NMI handler - simply sets the INT signal
-@nmi_handler:
+.ifdef vic20
+.PUSHSEG
+.segment "INTS"
+;*******************************************************************************
+; MONITOR NMI
+; The monitor's NMI handler. Sets the INT signal so to gracefully halt long
+; running commands.
+monitor_nmi:
 	pha
 	lda $9111		; ack CA1 (RESTORE) so future NMIs can fire
 	lda exp::bank
@@ -1042,8 +1019,5 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	SELECT_BANK_A		; restore bank
 	pla
 	rti
-@nmi_handler_end:
-.else
-	rts
+.POPSEG
 .endif
-.endproc

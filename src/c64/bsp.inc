@@ -2,6 +2,7 @@
 C64_BSP_INC = 1
 
 .import __bsp_install_tracer
+.import __bsp_uninstall_tracer
 .import __bsp_restore_debug_state
 .import __bsp_restore_debug_visual
 .import __bsp_restore_prog_visual
@@ -13,6 +14,7 @@ C64_BSP_INC = 1
 
 .scope bsp
 	install_tracer       = __bsp_install_tracer
+	uninstall_tracer     = __bsp_uninstall_tracer
 	restore_debug_state  = __bsp_restore_debug_state
 	restore_prog_state   = __bsp_restore_prog_state
 	restore_prog_visual  = __bsp_restore_prog_visual
