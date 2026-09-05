@@ -205,7 +205,7 @@ __screen_draw_gutter_row:
 .proc __screen_blank
 	lda blanked
 	beq :+
-	rts
+	jmp hide_gutter_glyph	; already blanked; just re-assert the glyph
 :	inc blanked
 
 	lda #$82
@@ -226,26 +226,28 @@ __screen_draw_gutter_row:
 	cpx #NUM_COLS
 	bcc :-
 
+	; Restore the screen codes for the cells that share character $0f's
+	; glyph ($10f0-$10fb, the right half of the last row); the row IRQ
+	; normally rewrites them just before the last row is drawn and is about
+	; to stop running.  The carry MUST be clear here: the row-0 loop above
+	; leaves it set, which shifts every code but the first by one (so those
+	; cells display row 0's bitmap) and drops the last cell entirely.
 	lda #$7b
 	ldx #$00
+	clc
 :	sta $10f0,x
 	inx
 	adc #$0c
 	bcc :-
 
-	; turn the final character on the screen to white to hide the pattern
-	; we need to make.
-	lda #$81
-	sta COLMEM_ADDR+(PHYS_COLS*SCREEN_ROWS)-1
-
-	; set the final character to the pattern $55,$55,$55,...
+	; back up the final character; the gutter borrows it while blanked
 	ldx #15
 :	lda $1ff0,x
 	sta blank_backup,x
-	lda #$55
-	sta $1ff0,x
 	dex
 	bpl :-
+
+	jsr hide_gutter_glyph
 
 	; set the leftmost column to the final character ($ff)
 	lda #$ff
@@ -286,6 +288,36 @@ __screen_draw_gutter_row:
 .proc set_bp_cell
 	lda #$0f
 	sta $10e7
+	rts
+.endproc
+
+;*******************************************************************************
+; HIDE GUTTER GLYPH
+; Fills character $ff, which the gutter column borrows while the screen is
+; blanked, with the "empty" pattern ($55, all border color in multicolor) and
+; hides it in the bottom-right cell of the screen, which displays that same
+; character.  That cell is colored with the background color that irq::off
+; leaves in $900f, so the pattern resolves to the background color whatever
+; palette is in use (and whichever way $900f's reverse bit points) instead of
+; showing a dither.  Colors 8-15 are background-only, so mask down to their
+; low-intensity twin rather than flipping the cell into multicolor.
+; Anything that draws over the bottom two text rows while blanked (a second
+; blank message, for example) writes through to this glyph, so re-run this
+; afterwards or the gutter column will show whatever was drawn there.
+.proc hide_gutter_glyph
+	lda prefs::normal_color
+	lsr
+	lsr
+	lsr
+	lsr
+	and #$07
+	sta COLMEM_ADDR+(PHYS_COLS*SCREEN_ROWS)-1
+
+	lda #$55
+	ldx #15
+:	sta $1ff0,x
+	dex
+	bpl :-
 	rts
 .endproc
 

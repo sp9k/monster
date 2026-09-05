@@ -2,8 +2,10 @@
 .include "../expansion.inc"
 .include "../../macros.inc"
 .include "../../ram.inc"
-.include "../../text.inc"
 .include "../../zeropage.inc"
+
+.import __text_puts_start	; first column puts draws
+.import __text_puts_stop	; one past the last column puts draws
 
 .CODE
 
@@ -14,6 +16,8 @@
 ; IN:
 ;  - .XY: the string to display
 ;  - .A:  the row to display the string on
+.export __text_puts
+__text_puts:
 .export puts
 .proc puts
 	JUMP FINAL_BANK_FASTTEXT, _puts
@@ -107,8 +111,8 @@
 	lda #>BITMAP_ADDR
         sta @txtdst+1
 
-	ldy text::puts_start
-	cpy text::puts_stop
+	ldy __text_puts_start
+	cpy __text_puts_stop
 	bcs @done		; empty window -> nothing to draw
 	sty @cnt
 
@@ -162,7 +166,7 @@
 	inc @txtdst+1
 @nextch:
 	ldy @cnt
-	cpy text::puts_stop
+	cpy __text_puts_stop
 	bcc @l0
 @done:  rts
 .endproc

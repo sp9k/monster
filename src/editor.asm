@@ -4076,6 +4076,10 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
+
+;*******************************************************************************
 ; SCROLL LINE
 ; Updates the cursor and scrolls lines below the one we're on
 ; The linebuffer is also updated to contain the contents of the new line
@@ -4195,10 +4199,6 @@ goto_buffer:
 	tax
 	rts
 .endproc
-
-;*******************************************************************************
-; PART 2 of editor code + data
-.segment "EDITCODE"
 
 ;*******************************************************************************
 ; CCUP
@@ -4627,10 +4627,6 @@ goto_buffer:
 :	clc
 @done:	rts
 .endproc
-
-;*******************************************************************************
-; PART 2 of editor code + data
-.segment "EDITCODE"
 
 ;*******************************************************************************
 ; RVS CURRENT LINE

@@ -5,8 +5,8 @@
 ; file names from the disk's directory.
 ;*******************************************************************************
 
+.include "border.inc"
 .include "config.inc"
-.include "draw.inc"
 .include "edit.inc"
 .include "errors.inc"
 .include "file.inc"
@@ -26,6 +26,38 @@
 .include "zeropage.inc"
 
 HEIGHT = SCREEN_HEIGHT-2
+
+;*******************************************************************************
+; GEOMETRY
+DIR_LCOL     = 0		; column the left border is drawn in
+DIR_RCOL     = LINESIZE-1	; column the right border is drawn in
+DIR_TEXT_COL = DIR_LCOL+1	; column a row's text starts at
+
+DIR_TOP_ROW  = 0		; top border's row
+DIR_NAME_ROW = DIR_TOP_ROW+1	; disk name's row
+DIR_FILE_ROW = DIR_NAME_ROW+1	; first filename's row
+
+; lowest row the window may occupy
+DIR_MAX_ROW = HEIGHT-1
+
+; number of filenames the window can show at once
+DIR_NUM_FILE_ROWS = DIR_MAX_ROW-DIR_FILE_ROW
+
+.assert DIR_MAX_ROW < SCREEN_HEIGHT, error, "directory window doesn't fit"
+
+.ifdef soft4x8
+.assert (DIR_LCOL .mod 2) = 0, error, "directory must start on an even column"
+.assert ((DIR_RCOL+1) .mod 2) = 0, error, "directory must end on an even column"
+.endif
+
+;*******************************************************************************
+.ifdef ultimem
+.segment "SHAREBSS2"
+.else
+.BSS
+.endif
+
+rowbuf: .res LINESIZE		; row being composed
 
 .CODE
 ;*******************************************************************************
@@ -198,20 +230,29 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 :	sta @file
 
+	; the window is drawn at full width
+	lda #$00
+	sta text::puts_start
+	lda #SCREEN_WIDTH
+	sta text::puts_stop
+
 	; reset the screen so that we can print the file names normally
 
 	ldxy #@dirbuff+5
 	stxy @line
 
-	ldx #$01
+	ldx #DIR_FILE_ROW
 	stx @row
-	dex			; .X=0
+	ldx #$00
 	stx @select
 	stx @scroll
 	stx @cnt
 
-	; highlight disk name row
-	jsr draw::hiline
+	; draw the window's top border
+	lda #DIR_TOP_ROW
+	ldx #BORDER_TL
+	ldy #BORDER_TR
+	jsr border
 
 ;-------------------------------------------------------------------------------
 ; parse the name of the disk
@@ -226,10 +267,14 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	ldxy #@namebuff+@dirmsglen-1
 	jsr read_disk_name
 
-	; draw the disk name
+	; draw the disk name and highlight it
 	ldxy #@namebuff
-	lda #$00
-	CALLMAIN text::print
+	lda #DIR_NAME_ROW
+	jsr printrow
+	ldy #DIR_TEXT_COL	; reverse everything between the borders
+	ldx #DIR_RCOL
+	lda #DIR_NAME_ROW
+	CALLMAIN scr::rvsline_part
 
 ;-------------------------------------------------------------------------------
 ; parse filenames and render initial view
@@ -260,9 +305,9 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 :	; print the line (if visible)
 	lda @row
-	cmp #HEIGHT-1
+	cmp #DIR_MAX_ROW
 	bcs :+			; if line isn't visible, don't draw
-	CALLMAIN text::print
+	jsr printrow
 	inc @row
 
 :	; next line
@@ -276,27 +321,31 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 @cont:	lda @file
 	jsr file::close
 	jsr scr::unblank
-	; and the bottom (status) row
-	ldx @row
-	jsr draw::hiline
+
+	; close the window with its bottom border below the last file
 	lda @row
-	ldy #$03
-	jsr draw::rvs_line
+	ldx #BORDER_BL
+	ldy #BORDER_BR
+	jsr border
 
-	dec @row
+	; @row becomes the number of files that are on screen
+	lda @row
+	sec
+	sbc #DIR_FILE_ROW
+	sta @row
 
-	; max a user can scroll is (# of files - SCREEN_HEIGHT-1)
+	; max a user can scroll is (# of files - # of visible rows)
 	ldx #$00
 	lda @cnt
-	cmp #HEIGHT-2
+	cmp #DIR_NUM_FILE_ROWS
 	bcc :+
 	;sec
-	sbc #HEIGHT-2
+	sbc #DIR_NUM_FILE_ROWS
 	tax
 :	stx @scrollmax
 
 	; highlight the first item
-	jsr highlight_selection
+	jsr @toggle
 
 ;-------------------------------------------------------------------------------
 ; main viewer loop
@@ -313,7 +362,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	jsr key::isdown
 	bne @checkup
 @rowdown:
-	jsr unhighlight_selection
+	jsr @toggle
 	inc @select
 	lda @select
 	cmp @row
@@ -328,50 +377,40 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	inc @scroll
 
 	; scroll up and redraw the bottom line
-	ldx #$01
-	lda #HEIGHT-1-1
+	ldx #DIR_FILE_ROW
+	lda #DIR_MAX_ROW-1
 	jsr text::scrollup
 
-	lda @scroll
-	clc
-	adc @select
-	tax
-	ldy @fptrshi,x
-	lda @fptrslo,x
-	tax
-	lda #HEIGHT-1-1			; bottom row
-	CALLMAIN text::print
+	lda @select
+	jsr @getname
+	lda #DIR_MAX_ROW-1		; bottom row
+	jsr printrow
 	jmp @hiselection
 
 @checkup:
 	jsr key::isup
 	bne @checkret
 
-@rowup: jsr unhighlight_selection
+@rowup: jsr @toggle
 	dec @select
 	bpl @hiselection
 	inc @select		; lowest valid select value is 0
 	lda @scroll
 	beq @hiselection	; if nothing to scroll, continue
 
-	; scroll down and redraw the bottom line
-	lda #1
-	ldx #HEIGHT-1-1
+	; scroll down and redraw the top line
+	lda #DIR_FILE_ROW
+	ldx #DIR_MAX_ROW-1
 	jsr text::scrolldown
 
 	dec @scroll
-	lda @scroll
-	clc
-	adc @select
-	tax
-	ldy @fptrshi,x
-	lda @fptrslo,x
-	tax
-	lda #1			; top row
-	CALLMAIN text::print
+	lda @select
+	jsr @getname
+	lda #DIR_FILE_ROW	; top row
+	jsr printrow
 
 @hiselection:
-	jsr highlight_selection
+	jsr @toggle
 @nextkey:
 	jmp @key
 
@@ -388,7 +427,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	cmp #$67		; gg?
 	bne @nextkey
 
-	jsr unhighlight_selection
+	jsr @toggle
 
 	ldx #$00
 	stx @select
@@ -400,17 +439,17 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	cmp #$47		; 'G'
 	bne @nextkey
 
-	jsr unhighlight_selection
+	jsr @toggle
 
 	; set scroll to scrollmax
 	lda @scrollmax
 	sta @scroll
 
-	; set selection (row) to min(SCREEN_HEIGHT-2, @cnt)
+	; set selection (row) to min(DIR_NUM_FILE_ROWS, @cnt)
 	ldx @cnt
-	cpx #HEIGHT-2
+	cpx #DIR_NUM_FILE_ROWS
 	bcc :+
-	ldx #HEIGHT-2
+	ldx #DIR_NUM_FILE_ROWS
 :	dex
 	stx @select
 @redraw:
@@ -421,39 +460,78 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 @loadselection:
 	jsr scr::restore
 	lda @select
+	jsr @getname
+	JUMPMAIN edit::load		; load the file
+
+;-------------------------------------------------------------------------------
+; GETNAME
+; Returns the filename that the given visible row is showing
+; IN:
+;   - .A: the row's index within the window (0 = its first row)
+; OUT:
+;   - .XY: the filename
+@getname:
 	clc
 	adc @scroll
 	tax
-	lda @fptrslo,x
 	ldy @fptrshi,x
+	lda @fptrslo,x
 	tax
-	JUMPMAIN edit::load		; load the file
+	rts
+
+;-------------------------------------------------------------------------------
+; TOGGLE
+; Reverses the selected filename
+@toggle:
+@nameptr=r6
+	lda @cnt
+	beq @toggle_done	; no files -> nothing to highlight
+
+	; measure the selected filename
+	lda @select
+	jsr @getname
+	stxy @nameptr
+	ldy #$00
+:	lda (@nameptr),y
+	beq :+
+	iny
+	bne :-
+
+	; reverse the columns it occupies
+:	tya
+	clc
+	adc #DIR_TEXT_COL
+	tax			; one past the name's last column
+	ldy #DIR_TEXT_COL	; the name's first column
+	lda @select
+	clc
+	adc #DIR_FILE_ROW	; the row the name is on
+	CALLMAIN scr::rvsline_part
+@toggle_done:
+	rts
 
 ;-------------------------------------------------------------------------------
 ; refresh (redraw) all visible rows
 @refresh:
-@i=r8
-	lda #$01
+@i=r8			; index of the visible row to draw (0 = the first one)
+	lda #$00
 	sta @i
 
 :	lda @i
-	clc
-	adc @scroll
-	tax
-	ldy @fptrshi-1,x
-	lda @fptrslo-1,x
-	tax
+	jsr @getname
 	lda @i
-	CALLMAIN text::print
+	clc
+	adc #DIR_FILE_ROW
+	jsr printrow
 
 	inc @i
 	lda @i
-	cmp #HEIGHT
-	bcs @refresh_done
+	cmp #DIR_NUM_FILE_ROWS
+	bcs @refresh_done	; no more room in the window
+	clc
 	adc @scroll
 	cmp @cnt
-	beq :-
-	bcc :-
+	bcc :-			; more files to draw
 
 @refresh_done:
 	rts
@@ -464,27 +542,89 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 .endproc
 
 ;*******************************************************************************
-; UNHIGHLIGHT SELECTION
-; Unhighlights the selection (in rb)
+; BORDER
+; Builds and draws one of the window's horizontal borders
 ; IN:
-;   - rb: the row to highlight
-.proc unhighlight_selection
-@select=rb
-	ldx @select
-	inx
-	jmp draw::resetline	; deselect the current selection
+;  - .A: row to draw the border at
+;  - .X: character to draw in the leftmost column
+;  - .Y: character to draw in the rightmost column
+.proc border
+	pha			; save the row
+	tya
+	pha			; and the characters for both corners
+	txa
+	pha
+
+	jsr blankrow
+
+	lda #BORDER_HBAR
+	ldx #DIR_RCOL-1
+:	sta rowbuf,x
+	dex
+	bne :-			; stop at DIR_LCOL; the corner goes there
+
+	pla			; restore left corner char
+	sta rowbuf+DIR_LCOL
+	pla			; restore right corner char
+	sta rowbuf+DIR_RCOL
+
+	pla			; restore the row
+	; fall through to showrow
 .endproc
 
 ;*******************************************************************************
-; HIGHLIGHT SELECTION
-; Highlights the selection (in rb)
+; SHOWROW
+; Draws rowbuf on the given row
 ; IN:
-;   - rb: the row to highlight
-.proc highlight_selection
-@select=rb
-	ldx @select
+;  - .A: the row to draw it at
+.proc showrow
+	ldxy #rowbuf
+	CALLMAIN text::puts
+	rts
+.endproc
+
+;*******************************************************************************
+; PRINTROW
+; Draws the given string as one of the window's rows
+; IN:
+;  - .XY: the string to draw
+;  - .A:  the row to draw it at
+.proc printrow
+@src=r0
+@row=r2
+	sta @row
+	stxy @src
+	jsr blankrow
+
+	; copy the string into the row; its column is its index in the buffer
+	ldy #$00
+	ldx #DIR_TEXT_COL
+:	lda (@src),y
+	beq :+
+	sta rowbuf,x
+	iny
 	inx
-	jmp draw::hiline	; select the current selection
+	cpx #DIR_RCOL
+	bcc :-
+
+:	lda #BORDER_VBAR
+	sta rowbuf+DIR_LCOL
+	sta rowbuf+DIR_RCOL
+
+	lda @row
+	jmp showrow
+.endproc
+
+;*******************************************************************************
+; BLANKROW
+; Fills rowbuf (the filename display buffer) with spaces
+.proc blankrow
+	lda #' '
+	ldx #DIR_RCOL
+:	sta rowbuf,x
+	dex
+	bpl :-
+	rts
 .endproc
 
 ;*******************************************************************************
