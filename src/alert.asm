@@ -42,21 +42,12 @@ ALERT_RCOL = ALERT_MARGIN+ALERT_WIDTH-1
 ; PROMPT
 ALERT_PROMPT_MAX = 23		; sizeof("press [restore] to stop")
 
-; the field is rounded out to even columns, and never wider than the text area
-.if ALERT_TEXT_LEN < ((ALERT_PROMPT_MAX+1) & $fe)
-ALERT_RVS_LEN = ALERT_TEXT_LEN & $fe
-.else
-ALERT_RVS_LEN = (ALERT_PROMPT_MAX+1) & $fe
-.endif
-
-ALERT_RVS_START = (ALERT_TEXT_COL+((ALERT_TEXT_LEN-ALERT_RVS_LEN)/2)) & $fe
-ALERT_RVS_STOP  = ALERT_RVS_START+ALERT_RVS_LEN
+; the reversed field is exactly the prompt, so it can't be wider than the text
+.assert ALERT_PROMPT_MAX <= ALERT_TEXT_LEN, error, "no room for the prompt"
 
 .ifdef soft4x8
 .assert (ALERT_LCOL .mod 2) = 0, error, "alert must start on an even column"
 .assert ((ALERT_RCOL+1) .mod 2) = 0, error, "alert must end on an even column"
-.assert (ALERT_RVS_START .mod 2) = 0, error, "reversed field must start even"
-.assert (ALERT_RVS_STOP .mod 2) = 0, error, "reversed field must end even"
 .endif
 
 ;*******************************************************************************
@@ -72,6 +63,8 @@ rowbuf:  .res LINESIZE		; row being composed
 colsave: .res ALERT_HEIGHT	; row colors the window is covering
 cnt:     .byte 0		; row counter (0 = the window's top row)
 textcol: .byte 0		; column the next text row starts its text at
+rvsstart: .byte 0		; first column of the prompt's reversed field
+rvsstop:  .byte 0		; one past last column
 
 .export __alert_prompt
 __alert_prompt: .word 0		; the prompt "open" draws under the message
@@ -234,36 +227,47 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 	sta text::puts_stop
 
 	; reverse the field the prompt sits in
-	ldy #ALERT_RVS_START
-	ldx #ALERT_RVS_STOP
+	ldy rvsstart
+	ldx rvsstop
+	cpx rvsstart
+	beq @done		; empty prompt, nothing to reverse
 	lda #ALERT_ROW+2
 	jmp scr::rvsline_part
+@done:	rts
 .endproc
 
 ;*******************************************************************************
 ; PROMPT ROW
-; Draws the prompt centered in the field that will be reversed
+; Draws the prompt centered in the row and calculates the the start/stop column
+; to reverse to highlight it
 .proc draw_prompt
 @src = r0
+@len = r1
 	ldxy __alert_prompt
 	stxy @src
 
-	; get the prompt's length, clamped to the field
+	; get the prompt's length, clamped to the text area
 	ldy #$00
 :	lda (@src),y
 	beq :+
 	iny
-	cpy #ALERT_RVS_LEN
+	cpy #ALERT_TEXT_LEN
 	bcc :-
 
-:	sty textcol
-	lda #ALERT_RVS_LEN
+:	sty @len
+
+	; center the prompt in the text area
+	lda #ALERT_TEXT_LEN
 	sec
-	sbc textcol		; the space left over
+	sbc @len		; the space left over
 	lsr			; half of it goes before the prompt
 	clc
-	adc #ALERT_RVS_START
+	adc #ALERT_TEXT_COL
+	sta rvsstart
 	sta textcol
+	clc
+	adc @len
+	sta rvsstop
 
 	ldxy __alert_prompt
 	lda #ALERT_ROW+2
