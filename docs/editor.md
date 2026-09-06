@@ -67,6 +67,8 @@ The symbol viewer, activated with {c64-keys}`C= + Y`, displays all the labels in
 along with their corresponding address.  If no labels are defined, the viewer aborts and reports
 `NO LABELS` in the status bar.
 
+Float constants are shown in decimal/scientific notation.
+
 | KEY                   | NAME        | DESCRIPTION                                                      |
 |-----------------------|-------------|------------------------------------------------------------------|
 | {c64-key}`K`          | `UP`        | moves the selection up (the list scrolls at the top row)         |

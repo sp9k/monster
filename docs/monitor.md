@@ -51,6 +51,7 @@ invocation would be `M 10+30`.
 
 | COMMAND | NAME                        | DESCRIPTION                                          |
 |---------|-----------------------------|------------------------------------------------------|
+| `?`     | `EVAL`                      | evaluates the following expression and prints result |
 | `a`     | `ASSEMBLE`                  | assembles an instruction into memory                 |
 | `b`     | `LIST BREAKPOINTS`          | lists the active breakpoints                         |
 | `ba`    | `ADD BREAKPOINT AT ADDRESS` | adds a breakpoint at an address                      |
@@ -84,6 +85,14 @@ invocation would be `M 10+30`.
 
 Arguments shown in square brackets are optional. Most address and value
 arguments may be expressions, such as `label+10`.
+
+#### EVALUATE `? expression`
+
+Evaluates the followin expression and prints the result.
+
+**EXAMPLE:**
+
+`? (2.0*SCREEN_H)`
 
 #### ASSEMBLE `a address instruction`
 
