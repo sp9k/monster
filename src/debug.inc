@@ -12,6 +12,7 @@
 .import __debug_edit_watches
 .import __debug_enable_expansion
 .import __debug_gotoaddr
+.import __debug_gotolabel
 .import __debug_load_file
 .import __debug_go
 .import __debug_go_basic
@@ -57,6 +58,7 @@
 	edit_watches         = __debug_edit_watches
 	enable_expansion     = __debug_enable_expansion
 	gotoaddr             = __debug_gotoaddr
+	gotolabel            = __debug_gotolabel
 	loadfile             = __debug_load_file
 	is_brk               = __debug_is_brk
 	interface            = __debug_interface

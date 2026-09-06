@@ -178,6 +178,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 ;*******************************************************************************
 ; MAIN-bank entry points for the cold UI/logic
 .export __debug_gotoaddr
+.export __debug_gotolabel
 .export __debug_load_file
 .export __debug_update_pc_view
 .export __debug_setbrkatline
@@ -188,6 +189,7 @@ breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
 
 .if .defined(CART) .and .defined(c64)
 __debug_gotoaddr:             JUMP FINAL_BANK_DBGUI, gotoaddr
+__debug_gotolabel:            JUMP FINAL_BANK_DBGUI, gotolabel
 __debug_load_file:            JUMP FINAL_BANK_DBGUI, loadfile
 __debug_update_pc_view:       JUMP FINAL_BANK_DBGUI, update_pc_view
 __debug_setbrkatline:         JUMP FINAL_BANK_DBGUI, setbrkatline
@@ -200,6 +202,7 @@ showstate_vec:                JUMP FINAL_BANK_DBGUI, showstate
 safety_check_vec:             JUMP FINAL_BANK_DBGUI, safety_check
 .else
 __debug_gotoaddr             = gotoaddr
+__debug_gotolabel            = gotolabel
 __debug_load_file            = loadfile
 __debug_update_pc_view       = update_pc_view
 __debug_setbrkatline         = setbrkatline
@@ -1463,9 +1466,35 @@ __debug_step:
 ;  - .C:  set on failure (no line/file could be matched with given address)
 ;  - .XY: the line that was navigated to
 .proc gotoaddr
-@line=debugtmp+2
 	CALLMAIN dbgi::addr2line	; get the line #
 	bcs @done		; error
+	jmp goto_file_line
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; GOTO LABEL
+; Navigates to the symbol's definition, including constants with no code address.
+; IN:
+;  - .XY: the symbol ID
+; OUT:
+;  - .C: set if the definition has no source location or the file can't be opened
+;  - .XY: the line that was navigated to
+.proc gotolabel
+	CALLMAIN lbl::get_line
+	; Source lines are one-based; zero means no definition location.
+	cpx #$00
+	bne @goto
+	cpy #$00
+	bne @goto
+	sec
+	rts
+@goto:	jmp goto_file_line
+.endproc
+
+; IN: .A = file ID, .XY = source line. OUT: as for gotoaddr/gotolabel.
+.proc goto_file_line
+@line=debugtmp+2
 	sta dbgi::file
 	stxy @line
 	jsr loadfile		; load file (if not already)

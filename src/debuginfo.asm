@@ -121,6 +121,8 @@ debuginfo_end:
 
 .export __debuginfo_set_seg_id
 .export __debuginfo_get_fileid
+.export __debug_prepare_files, __debug_dump_files, __debug_load_files
+.export __debug_local_file, __debug_global_file
 
 .if .defined(vic20) .or .defined(CART)
 .RODATA
@@ -139,6 +141,12 @@ __debug_store_line:       JUMP FINAL_BANK_DEBUG, store_line
 __debuginfo_get_fileid:   JUMP FINAL_BANK_DEBUG, get_fileid
 __debuginfo_set_seg_id:   JUMP FINAL_BANK_DEBUG, set_seg_id
 
+__debug_prepare_files = prepare_files
+__debug_dump_files    = dump_files
+__debug_load_files    = load_files
+__debug_local_file    = local_objfile
+__debug_global_file   = global_file
+
 .segment "DEBUGINFO_VARS"
 
 ;*******************************************************************************
@@ -153,6 +161,7 @@ filenames: .res MAX_FILES * MAX_FILENAME_LEN
 
 ; map of local (object file) file IDs to global file IDs (used during load)
 filemap: .res MAX_FILES
+numloadedfiles: .byte 0
 
 ; map of local (object file) file IDs to global file IDs used when DUMPing an
 objfilemap:  .res MAX_FILES
@@ -1239,21 +1248,21 @@ get_filename = get_filename_addr
 .endproc
 
 ;*******************************************************************************
-; DUMP
-; Dumps the debug info in memory to the open file
-.export __debuginfo_dump
-.proc __debuginfo_dump
-@name=r0
+; PREPARE FILES
+; Build the per-object file map: find the distinct GLOBAL file ids that this
+; assembly's blocks reference and assign them 0-based LOCAL ids from both
+; debug blocks and symbol definitions
+; CLOBBERS:
+;  - .A/.X/.Y
+;  - r2, r6, r8
+.proc prepare_files
 @dbgi=r2
-@progstart=r4
 @cnt=r6
-;-------------------------------------------------------------------------------
-; build the per-object file map: find the distinct GLOBAL file ids that this
-; assembly's blocks reference and assign them 0-based LOCAL ids
+@symbol=r8
 	lda #$00
 	sta numobjfiles
 	ldx numblocks
-	beq @writefiles
+	beq @symbols
 	stx @cnt
 
 	lda #$00
@@ -1273,9 +1282,40 @@ get_filename = get_filename_addr
 :	dec @cnt
 	bne @scanfile
 
+@symbols:
+	; Constants may live in files with no executable debug blocks.
+	ldxy #$0000
+	stxy @symbol
+@symbol_loop:
+	ldxy @symbol
+	cmpw lbl::num
+	beq @done
+	CALLMAIN lbl::get_line
+	cpx #$00
+	bne @symbol_file
+	cpy #$00
+	beq @next_symbol
+@symbol_file:
+	cmp numfiles
+	bcs @next_symbol
+	jsr map_objfile
+@next_symbol:
+	incw @symbol
+	jmp @symbol_loop
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; WRITE FILES
+; Write the prepared filename list in local-ID order, with an empty terminator.
+; CLOBBERS:
+;   - .A/.X/.Y
+;   - r0, r6
+.proc dump_files
+@name=r0
+@cnt=r6
 ;-------------------------------------------------------------------------------
 ; dump the filenames used by this object (in LOCAL-id order)
-@writefiles:
 	lda #$00
 	sta @cnt		; @cnt = local file id being written
 	ldx numobjfiles
@@ -1302,6 +1342,21 @@ get_filename = get_filename_addr
 @filesdone:
 	lda #$00
 	jsr krn::chrout		; write 0 to terminate filename list
+
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; DUMP
+; Dumps the debug info in memory to the open file
+.export __debuginfo_dump
+.proc __debuginfo_dump
+@name=r0
+@dbgi=r2
+@progstart=r4
+@cnt=r6
+	jsr prepare_files
+	jsr dump_files
 
 ;-------------------------------------------------------------------------------
 ; dump the BLOCK headers
@@ -1423,16 +1478,81 @@ get_filename = get_filename_addr
 ;   - .A: the local file id (0 if not found; should not happen)
 ; CLOBBERS: .X (.Y is preserved)
 .proc local_objfile
+	ldx numobjfiles
+	beq @missing
 	ldx #$00
 :	cmp objfilemap,x
 	beq @found
 	inx
 	cpx numobjfiles
 	bne :-
-	lda #$00		; not found -> default to local id 0
+@missing:
+	lda #$00		; no source location -> default to local id 0
 	rts
 @found:	txa
 	rts
+.endproc
+
+;*******************************************************************************
+; LOAD FILES
+; Read a saved filename list and merge names into the session's file table.
+; CLOBBERS:
+;   - .A/.X/.Y
+;   - $100-$12f
+.proc load_files
+@filename=$100
+;-------------------------------------------------------------------------------
+; load the file table and map ids to global ids
+@load_files:
+	lda #$00
+	sta numloadedfiles
+@mapfile:
+	; read a filename into the filename buffer
+	ldy #$00
+:	jsr krn::readst
+	bne @ioerr
+	jsr krn::chrin
+	sta @filename,y
+	iny
+	cmp #$00
+	beq :+			; if 0, we're at the end of the filename
+	cpy #MAX_FILENAME_LEN	; is there room for more chars?
+	bcc :-			; keep reading if so
+	RETURN_ERR ERR_FILENAME_TOO_LONG
+
+:	cpy #$01		; was filename empty?
+	beq @done	; if so, we're at end of list
+
+	; generate the ID for the file
+	ldxy #@filename
+	jsr set_file
+	jcs @ret		; return error (e.g. too many files)
+	ldx numloadedfiles
+	cpx #MAX_FILES		; is there room in the file map?
+	bcc :+			; (guards against malformed file input)
+	RETURN_ERR ERR_MAX_FILES_EXCEEDED
+:	sta filemap,x
+	inc numloadedfiles
+	bne @mapfile
+
+@done:	clc
+@ret:	rts
+@ioerr:	RETURN_ERR ERR_IO_ERROR
+.endproc
+
+;*******************************************************************************
+; GLOBAL FILE
+; Translate a saved file ID in .A to the session ID.
+; OUT:
+;   - .C: set if ID is outside the loaded table
+.proc global_file
+	cmp numloadedfiles
+	bcs @badfile
+	tax
+	lda filemap,x
+	clc
+	rts
+@badfile:	RETURN_ERR ERR_FILE_NOT_FOUND
 .endproc
 
 ;*******************************************************************************
@@ -1460,9 +1580,7 @@ get_filename = get_filename_addr
 @nblocks   = zp::tmp11
 @relocate  = zp::tmp12
 @progstart = zp::tmp14
-@i         = zp::tmp16
 @filemap   = filemap
-@filename  = $100	; NOTE: must not overlap get_fileid's buffer ($120)
 	sta @relocate
 	cmp #$00
 	bne :+			; if relocating (linking), append to existing
@@ -1471,37 +1589,8 @@ get_filename = get_filename_addr
 :	ldxy freeptr
 	stxy @progstart
 
-;-------------------------------------------------------------------------------
-; load the file table and map ids to global ids
-@load_files:
-	lda #$00
-	sta @i
-@mapfile:
-	; read a filename into the filename buffer
-	ldy #$00
-:	jsr krn::chrin
-	sta @filename,y
-	iny
-	cmp #$00
-	beq :+			; if 0, we're at the end of the filename
-	cpy #MAX_FILENAME_LEN	; is there room for more chars?
-	bcc :-			; keep reading if so
-	RETURN_ERR ERR_FILENAME_TOO_LONG
-
-:	cpy #$01		; was filename empty?
-	beq @load_blocks	; if so, we're at end of list
-
-	; generate the ID for the file
-	ldxy #@filename
-	jsr set_file
-	jcs @ret		; return error (e.g. too many files)
-	ldx @i
-	cpx #MAX_FILES		; is there room in the file map?
-	bcc :+			; (guards against malformed file input)
-	RETURN_ERR ERR_MAX_FILES_EXCEEDED
-:	sta @filemap,x
-	inc @i
-	bne @mapfile
+	jsr load_files
+	jcs @ret
 
 ;-------------------------------------------------------------------------------
 ; load the BLOCK data
@@ -1562,7 +1651,7 @@ get_filename = get_filename_addr
 	; this is needed even for absolute loads: the file table persists, so
 	; global file ids may not match the ids local to the loaded file
 	ldx file
-	cpx @i			; is the local file id one that was loaded?
+	cpx numloadedfiles	; is the local file id one that was loaded?
 	jcs @badfile		; if not -> corrupt debug info
 	lda @filemap,x
 	sta file

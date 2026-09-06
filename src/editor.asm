@@ -2386,7 +2386,7 @@ cancel = enter_command
 @gotodef:
 @word=r6
 @len=r8
-@addr=ra
+@label=ra
 	jsr src::pushp
 	ldxy #mem::spare
 	stxy @word
@@ -2421,16 +2421,16 @@ cancel = enter_command
 	ldxy #mem::spare
 	jsr str::toupper
 	ldxy #mem::spare
-	CALLMAIN lbl::addr		; get the address of the line
+	CALLMAIN lbl::find		; get the symbol ID, regardless of its value
 	bcs @err
-	stxy @addr
+	stxy @label
 	bcc @ok
 
 @err:	jmp beep::short
 
 @ok:	jsr add_jump_point
-	ldxy @addr
-	jsr dbg::gotoaddr	; goto it
+	ldxy @label
+	jsr dbg::gotolabel	; goto the stored definition location
 	bcs @err
 :
 @ret:	rts			; return ok
@@ -3575,6 +3575,8 @@ goto_buffer:
 	; read the debug information
 	lda #$00				; no relocation
 	CALL FINAL_BANK_DEBUG, dbgi::load
+	bcs @errclose
+	CALLMAIN lbl::remapfiles	; saved file IDs belong to the loaded file table
 	bcc @done
 	bcs @errclose		; branch always
 

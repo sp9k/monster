@@ -74,6 +74,7 @@ LIST_NEXT   = 2
 
 ;*******************************************************************************
 .include "asm.inc"
+.include "debuginfo.inc"
 .include "config.inc"
 .include "errors.inc"
 .include "expr.inc"
@@ -186,6 +187,8 @@ __label_dump:              LBLJUMP dump
 __label_load:              LBLJUMP load
 __label_id_by_alpha_index: LBLJUMP id_by_alpha_index
 __label_get_line:          LBLJUMP get_file_and_line
+.export __label_remap_files
+__label_remap_files:       LBLJUMP remap_files
 
 ;*******************************************************************************
 ; LABEL NAMES
@@ -439,6 +442,11 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	dex
 	bne :-
 
+	; default to unavailable until assembly/object loading sets a location
+	sta zp::label_fileid
+	sta zp::label_lineno
+	sta zp::label_lineno+1
+
 	; init list free pointer to base of the node data array
 	ldxy #label_nodes
 	stxy listtop
@@ -664,6 +672,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 @overwrite:
 	; label exists, overwrite its old value
 	jsr setaddr		; set the new value for the label
+	jsr set_location		; an export replaces its import placeholder
 	ldxy id
 	clc			; ok
 @ret:	rts
@@ -724,15 +733,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	jsr set_addr
 
 	; 5. write the FILE and LINE number for the label
-	ldy #LABEL_FILE
-	lda zp::label_fileid
-	STOREB_Y label		; store file ID
-	iny
-	lda zp::label_lineno
-	STOREB_Y label		; store line # (LSB)
-	iny
-	lda zp::label_lineno+1
-	STOREB_Y label		; store line # (MSB)
+	jsr set_location
 
 	; 6. append pointer to the node we just built to its bucket's list
 	ldxy hash
@@ -1541,13 +1542,13 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .endproc
 
 ;*******************************************************************************
-; GET FILE NND LINE
+; GET FILE AND LINE
 ; Returns the file ID and the line number for the requested label ID
 ; IN:
 ;   - .XY: ID of label to get file/line # of
 ; OUT:
 ;   - .A:  file ID for label
-;   - .XY: line number within file
+;   - .XY: line number within file (zero if no source definition is available)
 .proc get_file_and_line
 	jsr loadlabel
 
@@ -1562,6 +1563,48 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	tay
 	pla
 	rts
+.endproc
+
+;*******************************************************************************
+; SET LOCATION
+; Stores definition metadata for the already loaded symbol.
+.proc set_location
+	ldy #LABEL_FILE
+	lda zp::label_fileid
+	STOREB_Y label
+	iny
+	lda zp::label_lineno
+	STOREB_Y label
+	iny
+	lda zp::label_lineno+1
+	STOREB_Y label
+	rts
+.endproc
+
+;*******************************************************************************
+; REMAP FILES
+; Translate the file IDs of the loaded .D symbol table after dbgi::load.
+.proc remap_files
+@id=r8
+	ldxy #$0000
+	stxy @id
+@loop:	ldxy @id
+	cmpw __label_num
+	beq @done
+	jsr get_file_and_line
+	cpx #$00
+	bne @map
+	cpy #$00
+	beq @next		; no source definition -> skip
+
+@map:	CALL FINAL_BANK_DEBUG, dbgi::globalfile
+	bcs @ret
+	ldy #LABEL_FILE
+	STOREB_Y label
+@next:	incw @id
+	jmp @loop
+@done:	clc
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2419,11 +2462,13 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ; DUMP
 ; Dumps the symbol table to the open file.
 ; A 2-byte header (number of symbols) is stored first
-; NOTE: anonymous symbols and symbol metadata (mode, etc.) is not dumped
+; Named symbol records include definition lines and file IDs local to dbgi::dump's
+; filename table. Anonymous symbols are not dumped.
 .proc dump
 @symname = r0
 @symdata = r2
 @cnt     = r4
+	CALL FINAL_BANK_DEBUG, dbgi::preparefiles
 	; write the number of symbols
 	lda __label_num
 	sta @cnt
@@ -2439,7 +2484,12 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 @l0:	; write symbol data for this label
 	ldy #$00
 	SELECT_BANK "SYMBOLS"
-:	LOADB_Y @symdata
+@record:
+	LOADB_Y @symdata
+	cpy #LABEL_FILE
+	bne :+
+	CALL FINAL_BANK_DEBUG, dbgi::localfile
+:
 	cpy #LABEL_FLAGS
 	bne @writebyte
 	cmp #(SEG_FLOAT << 1)
@@ -2449,7 +2499,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	jsr krn::chrout
 	iny
 	cpy #SIZEOF_LABEL
-	bcc :-
+	bcc @record
 
 	ldy #LABEL_FLAGS
 	LOADB_Y @symdata

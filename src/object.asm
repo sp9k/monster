@@ -3,11 +3,12 @@
 ; This file contains procedures used to construct object files.
 ;
 ; OBJECT FILE FORMAT:
-; NUM SEGMENTS    [0]      ; number of segments in object file
-; NUM_EXPORTS     [1]      ; number of symbols exported in object file
-; NUM_IMPORTS     [2:3]    ; number of symbols imported by object file
-; NUM_LOCALS      [4:5]	   ; number of LOCAL symbols in object file
-; SEGMENT HEADERS [6:...]  ; headers for each SEGMENT
+; FILENAMES[]                ; zero-terminated names, empty name ends the list
+; NUM SEGMENTS    [1 byte]   ; number of segments in object file
+; NUM_EXPORTS     [1 byte]   ; number of symbols exported in object file
+; NUM_IMPORTS     [2 bytes]  ; number of symbols imported by object file
+; NUM_LOCALS      [2 bytes]  ; number of LOCAL symbols in object file
+; SEGMENT HEADERS            ; headers for each SEGMENT
 ;  NAME  [$0:$7] ; segment name or $0000 for ABSOLUTE (.org derived segments)
 ;  ALIGN [$8:$9] ; offset of data (RELATIVE) or aboslute position (ABSOLUTE)
 ;  MODE  [$a]    ; address mode (0=rel zeropage, 1=rel absolute, $ff=absolute)
@@ -19,15 +20,19 @@
 ;   NAME[...]
 ;   SEGMENT ID[1]
 ;   RELATIVE ADDR[2]
+;   FILE ID[1], LINE[2]    ; index in FILENAMES, one-based source line (0=unknown)
 ; LOCALS[]
 ;   NAME[...]
 ;   SEGMENT ID[1]
 ;   RELATIVE ADDR[2]
+;   FILE ID[1], LINE[2]    ; floats use SEG_FLOAT_PACKED + five bytes before these
 ; SEGMENT TABLES:
 ;   OBJCODE
 ; DEBUGINFO
+;   FILENAMES               ; its own local-ID table for the debug block headers
 ;   HEADERS
 ;   PROGRAM
+; All two-byte fields are little-endian. There is no version/legacy header.
 ;*******************************************************************************
 
 .include "asm.inc"
@@ -561,6 +566,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	lda #$00			; dummy value
 	sta zp::label_value
 	sta zp::label_value+1
+	sta zp::label_lineno		; an import is not a source definition
+	sta zp::label_lineno+1
 
 	CALLMAIN lbl::add
 	bcs @ret			; not found -> err
@@ -930,8 +937,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 
 ;*******************************************************************************
 ; DUMP SYMBOL VALUE
-; Integer records retain their old tag+word layout. Float records use a
-; separate disk-only tag followed by all five bytes, never a pool handle.
+; Integer values use tag+word; floats use a disk-only tag and all five bytes.
+; Both are followed by a local file ID and a two-byte source line.
 .proc dump_symbol_value
 @id=zp::tmp16
 	stxy @id
@@ -945,14 +952,26 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	jsr krn::chrout
 	tya
 	jsr krn::chrout
-	clc
-	rts
+	jmp @location
 @float:
 	lda #SEG_FLOAT_PACKED
 	jsr krn::chrout
 	ldxy @id
 	CALLMAIN lbl::getaddr
-	JUMP FINAL_BANK_EXPR, expr::fconst_write
+	CALL FINAL_BANK_EXPR, expr::fconst_write
+	bcs @ret
+@location:
+	ldxy @id
+	CALLMAIN lbl::get_line
+	stxy zp::label_lineno
+	CALL FINAL_BANK_DEBUG, dbgi::localfile
+	jsr krn::chrout
+	lda zp::label_lineno
+	jsr krn::chrout
+	lda zp::label_lineno+1
+	jsr krn::chrout
+	clc
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1225,6 +1244,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 @tmp=r0
 @src=r0
 @cnt=r2
+	CALL FINAL_BANK_DEBUG, dbgi::preparefiles
+	CALL FINAL_BANK_DEBUG, dbgi::dumpfiles
 	; write the main OBJ header
 	lda numsegments			; # of segments
 	jsr krn::chrout
@@ -1453,6 +1474,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 @name=r6
 @symoff=r8
 @namebuff=$100
+	CALL FINAL_BANK_DEBUG, dbgi::loadfiles
+	jcs @ret
 	lda #<segments
 	sta @name
 	lda #>segments
@@ -1711,6 +1734,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	ldy #$00
 	sty zp::label_value	; dummy value (0)
 	sty zp::label_value+1
+	sty zp::label_lineno	; imports have no definition location
+	sty zp::label_lineno+1
 :	jsr krn::chrin
 	sta @namebuff,y
 	beq @cont
@@ -1876,8 +1901,7 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	plp
 	adc @offset+1
 	sta zp::label_value+1
-	clc
-	rts
+	jmp load_symbol_location
 
 @float:
 	CALL FINAL_BANK_EXPR, expr::fconst_read
@@ -1887,8 +1911,35 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	sta zp::label_segmentid
 	lda #$00
 	sta zp::label_mode
-	clc
+	jmp load_symbol_location
 @ret:	rts
+.endproc
+
+;*******************************************************************************
+; LOAD SYMBOL LOCATION
+; Load and translate the source location after an integer or float value.
+.proc load_symbol_location
+	jsr @getb
+	sta zp::label_fileid
+	jsr @getb
+	sta zp::label_lineno
+	jsr @getb
+	sta zp::label_lineno+1
+	ora zp::label_lineno
+	beq @done		; no definition: the file ID is unused
+	lda zp::label_fileid
+	CALL FINAL_BANK_DEBUG, dbgi::globalfile
+	bcs @ret
+	sta zp::label_fileid
+@done:	clc
+@ret:	rts
+@getb:	jsr krn::readst
+	bne @truncated
+	jmp krn::chrin
+@truncated:
+	pla
+	pla
+	RETURN_ERR ERR_IO_ERROR
 .endproc
 
 ;*******************************************************************************
@@ -2147,7 +2198,7 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	rts
 
 ;-------------------------------------------------------------------------------
-; reads past a symbol record (0-terminated name, segment id, 16-bit offset)
+; Reads past a symbol record (name, typed value, file ID, source line).
 @eat_symbol:
 :	jsr krn::chrin		; read past the name
 	cmp #$00
@@ -2160,7 +2211,10 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	jsr krn::chrin
 :
 	jsr krn::chrin		; skip the offset LSB
-	jmp krn::chrin		; skip the offset MSB (and return)
+	jsr krn::chrin		; skip the offset MSB
+	jsr krn::chrin		; skip file ID
+	jsr krn::chrin		; skip line LSB
+	jmp krn::chrin		; skip line MSB (and return)
 
 ;-------------------------------------------------------------------------------
 ; object code: $xxxx-$xxxx

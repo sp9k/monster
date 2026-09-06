@@ -4248,7 +4248,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 
 @setmode:
 	sta zp::label_mode
-	CALLMAIN lbl::add
+	jsr define_label
 	bcs @err
 
 	lda #ASM_DIRECTIVE
@@ -4284,6 +4284,19 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 @add:	sta zp::label_mode
 	lda __asm_segmentid
 	sta zp::label_segmentid
+	; fall through to add_defined_label
+.endproc
+
+;*******************************************************************************
+; DEFINE LABEL
+; Adds a label definition at the current source location.
+.proc define_label
+	lda dbgi::file
+	sta zp::label_fileid
+	lda __asm_linenum
+	sta zp::label_lineno
+	lda __asm_linenum+1
+	sta zp::label_lineno+1
 	JUMPMAIN lbl::add
 .endproc
 

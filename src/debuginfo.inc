@@ -18,6 +18,8 @@
 .import __debuginfo_get_fileid
 .import __debuginfo_set_seg_id
 .import __debuginfo_top
+.import __debug_prepare_files, __debug_dump_files, __debug_load_files
+.import __debug_local_file, __debug_global_file
 
 BLOCK_START_ADDR     = 0
 BLOCK_STOP_ADDR      = 2
@@ -30,6 +32,12 @@ BLOCK_PROG_STOP_ADDR = 12
 SIZEOF_BLOCK_HEADER  = 14
 
 .scope dbgi
+	; Direct entries in FINAL_BANK_DEBUG (use CALL, not CALLMAIN).
+	preparefiles = __debug_prepare_files
+	dumpfiles    = __debug_dump_files
+	loadfiles    = __debug_load_files
+	localfile    = __debug_local_file
+	globalfile   = __debug_global_file
 	addr2line    = __debug_addr2line
 	dump         = __debuginfo_dump
 	endblock     = __debug_end_block

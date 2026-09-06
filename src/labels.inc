@@ -20,6 +20,7 @@
 .import __label_is_local
 .import __label_isvalid
 .import __label_load
+.import __label_remap_files
 .import __label_address
 .import __label_num
 .import __label_numanon
@@ -59,6 +60,7 @@ SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 	count_floats      = __label_count_floats
 	dump              = __label_dump
 	load              = __label_load
+	remapfiles        = __label_remap_files
 	find              = __label_find
 	get_banon         = __label_get_banon
 	get_fanon         = __label_get_fanon

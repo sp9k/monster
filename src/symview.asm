@@ -2,7 +2,7 @@
 ; SYMVIEW.ASM
 ; This file contains the code for the symbol viewer, which allows the user to
 ; see all (non-local/anonymous) symbols in their program.
-; Using debug information, the user can navigate to the location of the symbol
+; The user can navigate to the definition location stored on each symbol.
 ;*******************************************************************************
 
 .include "debuginfo.inc"
@@ -123,6 +123,19 @@ print_item = print_item_impl
 	lda #>$100
 	sta r0+1
 	CALLMAIN lbl::getname	; read the symbol name into buffer ($100)
+
+	ldxy lbl
+	CALLMAIN lbl::get_line	; definition location, independent of symbol value
+	stxy line
+	cpx #$00
+	bne @getfile
+	cpy #$00
+	beq @value		; no definition location
+@getfile:
+	CALLMAIN dbgi::get_filename
+	bcs @value
+	stxy filename
+@value:
 	ldxy lbl
 .if FP_SUPPORTED
 	CALLMAIN lbl::getsegment
@@ -143,14 +156,6 @@ print_item = print_item_impl
 	stxy addr
 	sta mode
 
-	; TODO: use line/file directly stored on label struct
-	CALLMAIN dbgi::addr2line	; get file and line #
-	bcs @done		; if no mapping, skip
-				; (this will filter out constants)
-	stxy line
-	CALLMAIN dbgi::get_filename
-	bcs @done
-	stxy filename
 @done:	rts
 .endproc
 
@@ -384,6 +389,11 @@ SET_CUR_BANK FINAL_BANK_DBGUI
 	jmp @l0
 
 @select:
+	lda lbl::num
+	ora lbl::num+1
+	bne :+
+	jmp scr::restore		; nothing to select in an empty table
+:
 	jsr scr::restore
 
 	lda @row
@@ -399,11 +409,6 @@ SET_CUR_BANK FINAL_BANK_DBGUI
 	sbc #$00
 	tay
 	jsr get_item
-	lda mode
-	cmp #$02
-	beq @constant		; floats have no navigable address
-	ldxy addr
-@exit:	jmp dbg::gotoaddr	; go to the line of the symbol definition
-@constant:
-	rts
+	ldxy lbl
+	jmp dbg::gotolabel	; go to the stored definition, including constants
 .endproc
