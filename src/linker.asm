@@ -1016,6 +1016,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	beq @next			; leave it (caught by validation later)
 	cmp #SEG_ABS			; absolute?
 	beq @next			; if so, the value is already final
+	cmp #SEG_FLOAT
+	beq @next			; numeric value, not a segment-relative address
 	sta @seg
 
 	ldxy @i

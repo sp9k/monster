@@ -76,6 +76,8 @@ LIST_NEXT   = 2
 .include "asm.inc"
 .include "config.inc"
 .include "errors.inc"
+.include "expr.inc"
+.include "fp.inc"
 .include "kernal.inc"
 .include "limits.inc"
 .include "ram.inc"
@@ -83,6 +85,8 @@ LIST_NEXT   = 2
 .include "target.inc"
 .include "string.inc"
 .include "zeropage.inc"
+
+.macpack longbranch
 
 ;*******************************************************************************
 ; ZEROPAGE
@@ -117,6 +121,8 @@ SIZEOF_LABEL           = 12
 SIZEOF_LABEL_LIST_NODE = 4
 
 SEG_ABS = $ff
+SEG_FLOAT = $7e
+SEG_FLOAT_PACKED = $7d
 
 ;*******************************************************************************
 .export __label_clr
@@ -413,6 +419,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ; Removes all labels effectively resetting the label state
 .proc clr
 @map=r0
+	CALL FINAL_BANK_EXPR, expr::fconst_clr
 	; clear the hash map (linked lists of LABEL nodes)
 	ldxy #label_buckets
 	stxy @map
@@ -1071,6 +1078,38 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .endproc
 
 ;*******************************************************************************
+; COUNT FLOATS
+; Count float symbols in the current symbol table. This is a direct entry in
+; FINAL_BANK_SYMBOLS.
+; OUT:
+;   - .XY = count
+;   - .Z = set if zero
+.export __label_count_floats
+.proc __label_count_floats
+@i=temp+2		; loadlabel uses temp+0..+1
+@count=temp+4
+	lda #$00
+	sta @i
+	sta @i+1
+	sta @count
+	sta @count+1
+@loop:	ldxy @i
+	cmpw __label_num
+	beq @done
+	jsr get_segment
+	cmp #SEG_FLOAT
+	bne :+
+	incw @count
+:	incw @i
+	jmp @loop
+@done:	ldxy @count
+	txa
+	ora @count+1
+	clc
+	rts
+.endproc
+
+;*******************************************************************************
 ; ADDRESS
 ; Returns the address of the label in (.YX)
 ; The address mode of the label is returned as well.
@@ -1296,6 +1335,11 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .proc by_addr
 @arr        = r0
 @comparator = r2
+@target     = r6
+@cursor     = zp::tmp10
+	lda __label_num
+	ora __label_num+1
+	beq @none
 	lda #<label_addresses_sorted
 	sta @arr
 	lda #>label_addresses_sorted
@@ -1306,7 +1350,41 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda #>addr_comparator
 	sta @comparator+1
 
-	jmp find_sorted
+	jsr find_sorted
+@candidate:
+	jsr loadlabel
+	lda flags
+	and #$fe
+	cmp #(SEG_FLOAT << 1)
+	beq @previous		; pool handles are not addresses
+	ldxy addr
+	cmpw @target
+	beq @exact
+	bcs @previous
+	ldxy id
+	sec
+	rts
+@exact:
+	ldxy id
+	clc
+	rts
+@previous:
+	ldxy @cursor
+	cmpw #label_addresses_sorted_ids
+	beq @none
+	bcc @none
+	decw @cursor
+	decw @cursor
+	ldy #$00
+	LOADB_Y @cursor
+	tax
+	iny
+	LOADB_Y @cursor
+	tay
+	jmp @candidate
+
+@none:	ldxy #$ffff
+	RETURN_ERR ERR_LABEL_UNDEFINED
 .endproc
 
 ;*******************************************************************************
@@ -1536,6 +1614,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	plp
 @done:	rts
 @ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', ',', ':',0
+	.byte '<', '>', '=', '!'
 @numops = *-@ops
 .endproc
 
@@ -1599,7 +1678,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 ;*******************************************************************************
 ; FIND SORTED
-; Finds the value in the provided sorted array using the given comparator
+; Finds the last entry at or below the target using the given comparator
 ; IN:
 ;   - .XY: value to find
 ;   - r0:  array to seek within
@@ -1676,13 +1755,13 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	LOADB_Y @m
 	sta @a+1
 	jsr @compare_func
-	beq @done
+	beq @modlow	; search right through all equal entries
 	bcs @modhigh	; A[mid] > value
 
 @modlow:
-	; A[mid] < value
+	; A[mid] <= value
 	lda @m		; low = mid + element size
-	;clc
+	clc		; equality also reaches here, with carry set
 	adc #$02
 	sta @lb
 	lda @m+1
@@ -2361,11 +2440,30 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	ldy #$00
 	SELECT_BANK "SYMBOLS"
 :	LOADB_Y @symdata
+	cpy #LABEL_FLAGS
+	bne @writebyte
+	cmp #(SEG_FLOAT << 1)
+	bne @writebyte
+	lda #(SEG_FLOAT_PACKED << 1)
+@writebyte:
 	jsr krn::chrout
 	iny
 	cpy #SIZEOF_LABEL
 	bcc :-
 
+	ldy #LABEL_FLAGS
+	LOADB_Y @symdata
+	cmp #(SEG_FLOAT << 1)
+	bne @name
+	ldy #LABEL_ADDR
+	LOADB_Y @symdata
+	tax
+	iny
+	LOADB_Y @symdata
+	tay
+	CALL FINAL_BANK_EXPR, expr::fconst_write
+	bcs @ret
+@name:
 	; write the symbol name
 	ldy #$00
 	SELECT_BANK "SYMBOL_NAMES"
@@ -2386,7 +2484,8 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda @cnt+1
 	bne @l0
 
-@done:	rts
+@done:	clc
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2433,6 +2532,24 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	cpy #SIZEOF_LABEL
 	bcc :-
 
+	ldy #LABEL_FLAGS
+	LOADB_Y @symdata
+	and #$fe
+	cmp #(SEG_FLOAT_PACKED << 1)
+	bne @nameptr
+	CALL FINAL_BANK_EXPR, expr::fconst_read
+	jcs @error
+
+	tya
+	ldy #LABEL_ADDR+1
+	STOREB_Y @symdata
+	dey
+	txa
+	STOREB_Y @symdata
+	ldy #LABEL_FLAGS
+	lda #(SEG_FLOAT << 1)
+	STOREB_Y @symdata
+@nameptr:
 	ldy #LABEL_NAME
 	lda @symname
 	STOREB_Y @symdata
@@ -2459,9 +2576,9 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	bne :+
 	dec @cnt+1
 :	dec @cnt
-	bne @l0
+	jne @l0
 	lda @cnt+1
-	bne @l0
+	jne @l0
 
 	; rebuild the hash map and index arrays from the loaded symbols
 	SELECT_BANK "SYMBOLS"

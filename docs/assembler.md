@@ -59,6 +59,26 @@ produce the final result of 7.
 |   `.`    | binary operator: logical OR of two values                              |     5      |
 |   `<`    | unary operator: least significant byte of the value                    |     3      |
 |   `>`    | unary operator: most significant byte of the value                     |     3      |
+|   `==`   | binary operator: 1 if the two values are equal, else 0                 |     0      |
+|   `!=`   | binary operator: 1 if the two values are not equal, else 0             |     0      |
+|   `<`    | binary operator: 1 if the left value is less than the right, else 0    |     0      |
+|   `<=`   | binary operator: 1 if the left value is not greater, else 0            |     0      |
+|   `>`    | binary operator: 1 if the left value is greater than the right, else 0 |     0      |
+|   `>=`   | binary operator: 1 if the left value is not less, else 0               |     0      |
+
+Note that `<` and `>` are byte-select post-processing operators if value is expected (`LDA #<LABEL`) and
+comparisons where an operator is expected (`LDA #LABEL<$100`).
+
+The comparisons compare unsigned 16-bit values and produce the integer 1 (true)
+or 0 (false), so they may be used anywhere a value may be.  Their precedence of
+0 is lower than every other operator, meaning arithmetic on either side is always evaluated first.
+For example:
+
+```
+LDA #1+1==2      ; (1+1) == 2
+LDA #LEVEL>=3    ; 1 if the constant LEVEL is 3 or more
+.IF LEVEL>=3     ; conditional assembly on constant
+```
 
 Expressions may also contain parentheses, which are evaluated as you would expect,
 but note that if the entire expression is enclosed in parentheses, the

@@ -518,6 +518,7 @@ result=mem::spare
 .PUSHSEG
 .segment "DATA"
 @ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', '<', '>'
+	.byte '=', '!'
 @numops = *-@ops
 .POPSEG
 .endproc

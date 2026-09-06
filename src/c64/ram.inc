@@ -40,6 +40,7 @@ FINAL_BANK_DBGUI        = $16
 FINAL_BANK_FILEDIR      = $17
 FINAL_BANK_ASM          = $18
 FINAL_BANK_EXPR         = $18
+FINAL_BANK_FP           = FINAL_BANK_EXPR	; FP shares the evaluator's bank
 FINAL_BANK_EDIT         = $19
 
 ;*******************************************************************************

@@ -337,8 +337,6 @@ rowbuf: .res LINESIZE	; row being composed
 
 .PUSHSEG
 .RODATA
-; NOTE: these strings live in the main bank (not the HELP bank) because
-; text::print reads them with the main bank swapped in
 @noasm:           .res ::HELP_TEXT_COL, ' '
                   .byte "program", ESCAPE_GOTO, ::HELP_VAL_COL
                   .byte "no assembly", 0

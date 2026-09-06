@@ -950,11 +950,7 @@ MODE_DEF  = 1
 @param:	cmp #'#'
 	bne :+
 	incw zp::line		; skip '#' (macro params may be immediate)
-.ifdef vic20
-:	CALL FINAL_BANK_UDGEDIT, expr::parse
-.else
 :	CALL FINAL_BANK_EXPR, expr::parse
-.endif
 	bcs @perr
 
 	; if there is another arg, it must be separated by comma

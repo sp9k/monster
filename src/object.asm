@@ -34,6 +34,7 @@
 .include "debuginfo.inc"
 .include "errors.inc"
 .include "expr.inc"
+.include "fp.inc"
 .include "file.inc"
 .include "kernal.inc"
 .include "labels.inc"
@@ -841,23 +842,16 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 
 @cont:	; write the SEGMENT id
 	ldxy @id
-	CALLMAIN lbl::getsegment	; get SEGMENT id
-	jsr krn::chrout			; write SEGMENT id
-	ldxy @id
-
-	; look up symbol's (segment-relative) address and write it
-	CALLMAIN lbl::getaddr
-	txa
-	jsr krn::chrout			; write offset LSB
-	tya
-	jsr krn::chrout			; write offset MSB
+	jsr dump_symbol_value
+	bcs @ret
 
 	inc @i
 	lda @i
 	cmp numexports
 	bcc @l0
 
-@done:	rts
+@done:	clc
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -901,23 +895,17 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	bne :-
 
 @cont:	; write the SEGMENT id
-	lda @segid
-	jsr krn::chrout
-
-	; look up symbol's (segment-relative) address and write it
 	ldxy @id
-	CALLMAIN lbl::getaddr
-	txa
-	jsr krn::chrout			; write offset LSB
-	tya
-	jsr krn::chrout			; write offset MSB
+	jsr dump_symbol_value
+	bcs @ret
 
 @next:	incw @id
 	ldxy @id
 	cmpw lbl::num
 	bne @l0
 
-@done:	rts
+@done:	clc
+@ret:	rts
 
 ;-------------------------------------------------------------------------------
 ; check if the given label ID is an EXPORT, in which case we don't need to dump
@@ -938,6 +926,33 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	lda #$ff			; flag NOT export
 @isexport_done:
 	rts
+.endproc
+
+;*******************************************************************************
+; DUMP SYMBOL VALUE
+; Integer records retain their old tag+word layout. Float records use a
+; separate disk-only tag followed by all five bytes, never a pool handle.
+.proc dump_symbol_value
+@id=zp::tmp16
+	stxy @id
+	CALLMAIN lbl::getsegment
+	cmp #SEG_FLOAT
+	beq @float
+	jsr krn::chrout
+	ldxy @id
+	CALLMAIN lbl::getaddr
+	txa
+	jsr krn::chrout
+	tya
+	jsr krn::chrout
+	clc
+	rts
+@float:
+	lda #SEG_FLOAT_PACKED
+	jsr krn::chrout
+	ldxy @id
+	CALLMAIN lbl::getaddr
+	JUMP FINAL_BANK_EXPR, expr::fconst_write
 .endproc
 
 ;*******************************************************************************
@@ -1220,7 +1235,7 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	lda numimports+1		; # of IMPORTS (MSB)
 	jsr krn::chrout
 
-	; number of locals is total labels - (numexports+numimports)
+	; locals = total labels - (numexports + numimports)
 	lda numexports
 	clc
 	adc numimports
@@ -1245,7 +1260,9 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	; write the SYMBOL TABLE (in order: IMPORTS, EXPORTS)
 	jsr dump_imports
 	jsr dump_exports
+	bcs @ret
 	jsr dump_locals
+	bcs @ret
 
 	; write each SEGMENT (object code, relocation data)
 	jsr dump_segment_tables
@@ -1254,6 +1271,7 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	CALL FINAL_BANK_DEBUG, dbgi::dump
 
 	RETURN_OK
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1747,6 +1765,7 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 
 @addexport:
 	jsr load_symbol_value
+	bcs @ret
 
 	ldxy #@namebuff
 	CALLMAIN lbl::find			; was label already added?
@@ -1796,9 +1815,11 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	RETURN_ERR ERR_LABEL_TOO_LONG	; corrupt object file
 
 @cont:	jsr load_symbol_value
+	bcs @ret
 
 	ldxy #@namebuff
 	JUMPMAIN lbl::add
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1810,6 +1831,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 .proc load_symbol_value
 @offset=r0
 	jsr krn::chrin				; get SEGMENT id
+	cmp #SEG_FLOAT_PACKED
+	beq @float
 	cmp #SEG_ABS				; is ID $FF (ABS)?
 	bne @rel				; if not, resolve segment base
 
@@ -1823,6 +1846,17 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	beq @value				; branch always
 
 @rel:	; find the global segment id from the object-local one
+	; In particular, SEG_FLOAT is a transient pool handle, not an index.
+	cmp #$01
+	bcc @badsegment
+	cmp #MAX_SEGMENTS+1
+	bcs @badsegment
+	cmp numsegments
+	bcc :+
+	beq :+
+@badsegment:
+	RETURN_ERR ERR_UNKNOWN_SEGMENT
+:
 	tax
 	lda segments_type-1,x
 	jsr type_to_mode
@@ -1842,7 +1876,19 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	plp
 	adc @offset+1
 	sta zp::label_value+1
+	clc
 	rts
+
+@float:
+	CALL FINAL_BANK_EXPR, expr::fconst_read
+	bcs @ret
+	stxy zp::label_value
+	lda #SEG_FLOAT
+	sta zp::label_segmentid
+	lda #$00
+	sta zp::label_mode
+	clc
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1933,6 +1979,10 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	CALLMAIN lbl::getsegment
 	cmp #SEG_UNDEF		; still undefined?
 	jeq @undef		; if so -> error
+	cmp #SEG_FLOAT
+	bne :+
+	RETURN_ERR ERR_INVALID_EXPRESSION ; addresses cannot relocate to a float
+:
 
 	; store the resolved (GLOBAL) id for this symbol's index (LOCAL id)
 	ldy @i
@@ -2103,6 +2153,12 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	cmp #$00
 	bne :-
 	jsr krn::chrin		; skip the segment id
+	cmp #SEG_FLOAT_PACKED
+	bne :+
+	jsr krn::chrin
+	jsr krn::chrin
+	jsr krn::chrin
+:
 	jsr krn::chrin		; skip the offset LSB
 	jmp krn::chrin		; skip the offset MSB (and return)
 

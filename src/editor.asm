@@ -3651,6 +3651,7 @@ goto_buffer:
 
 	; write the symbol table
 	CALLMAIN lbl::dump
+	bcs @symbolerr
 
 	; write the debug information
 	CALL FINAL_BANK_DEBUG, dbgi::dump
@@ -3661,6 +3662,14 @@ goto_buffer:
 	bcc :+
 	jmp @err
 :	jmp unblank			; <- command_saveprg
+
+@symbolerr:
+	pha
+	lda @file
+	jsr file::close
+	jsr unblank
+	pla
+	jmp report_typein_error
 .endproc
 
 ;*******************************************************************************

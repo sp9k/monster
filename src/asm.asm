@@ -62,6 +62,7 @@
 .include "errlog.inc"
 .include "expr.inc"
 .include "file.inc"
+.include "fp.inc"
 .include "kernal.inc"
 .include "layout.inc"
 .include "labels.inc"
@@ -491,6 +492,7 @@ directives:
 	.byte "bsszp",0
 	.byte "align",0
 	.byte "importzp",0
+	.byte "df",0
 directives_len=*-directives
 
 ;*******************************************************************************
@@ -499,7 +501,7 @@ directives_len=*-directives
 defineorg, define_psuedo_org, repeat, macro, do_if, do_else, do_endif, \
 do_ifdef, create_macro, handle_repeat, incbinfile, import, export, \
 directive_res, directive_seg, directive_segzp, directive_bss, directive_bsszp, \
-directive_align, importzp
+directive_align, importzp, definefloat
 .linecont -
 
 directive_vectorslo: .lobytes directive_vectors
@@ -723,7 +725,7 @@ BANKED_CODE "ASMBANK"
 .if .defined(CART) .and .defined(c64)
 	jsr expr::end_on_ws	; co-banked with the evaluator on the cart build
 .else
-	CALL FINAL_BANK_UDGEDIT, expr::end_on_ws
+	CALL FINAL_BANK_EXPR, expr::end_on_ws
 .endif
 
 	jsr ctx::init		; init the context
@@ -2229,10 +2231,22 @@ BANKED_CODE "ASMBANK"
 .proc definebyte
 	jsr line::process_ws
 	jsr eval_expr
-	bcs @text				; invalid expr- try text
+	bcs @notval
 	cpy #$00
 	beq @ok
 	RETURN_ERR ERR_OVERSIZED_OPERAND
+
+@notval:
+	pha				; save parse error
+	ldy #$00
+	lda (zp::line),y
+	cmp #'"'
+	beq :+
+	pla				; restore expression parse error
+	sec
+	rts
+:	pla
+	jmp @text
 
 @ok:	; store the extracted value
 	ldy #$00
@@ -2280,6 +2294,78 @@ BANKED_CODE "ASMBANK"
 @done:	clc
 @ret:	rts
 .endproc
+
+;*******************************************************************************
+; DEFINEFLOAT
+; Defines one or more floating point values and stores them, in the BASIC ROM's
+; 5-byte packed format, at (asmresult).
+; Integer expressions are promoted (".df 1" = ".df 1.0")
+; OUT:
+;  - .C: set if a value could not be parsed
+.if FP_SUPPORTED
+
+.proc definefloat
+	JUMP FINAL_BANK_FP, definefloat_impl
+.endproc
+
+.pushseg
+FP_CALLER_BANK .set CUR_BANK
+.segment "FP"
+CUR_BANK .set FINAL_BANK_FP
+
+;-------------------------------------------------------------------------------
+.proc definefloat_impl
+@i=r4
+	CALLMAIN line::process_ws
+	jsr expr::eval_float
+	bcs @ret
+
+	; write the packed value a byte at a time
+	lda #$00
+	sta @i
+@l0:	ldx @i
+	lda expr::floatval,x
+	ldy #$00
+	CALLMAIN writeb
+	bcs @ret
+	CALLMAIN incpc
+	inc @i
+	lda @i
+	cmp #FP_SIZE
+	bcc @l0
+
+@commaorws:
+	; process rest of line (more values or terminator)
+	ldy #$00
+	lda (zp::line),y
+	beq @done
+	cmp #';'		; comment?
+	beq @done
+	CALLMAIN line::incptr
+	cmp #','
+	beq definefloat_impl
+	CALLMAIN util::is_whitespace
+	beq @commaorws
+
+	; unexpected character
+	RETURN_ERR ERR_SYNTAX_ERROR
+
+@done:	clc
+@ret:	rts
+.endproc
+
+.popseg
+CUR_BANK .set FP_CALLER_BANK
+
+.else
+
+;-------------------------------------------------------------------------------
+; FP not supported, just error
+.proc definefloat
+	RETURN_ERR ERR_INVALID_EXPRESSION
+.endproc
+
+.endif
 
 ;*******************************************************************************
 ; DEFINEWORD
@@ -3823,7 +3909,11 @@ include_entry:
 ; OUT:
 ;  - .C: set if error
 .proc do_if
+.if FP_SUPPORTED
+	CALL FINAL_BANK_EXPR, expr::eval_bool
+.else
 	jsr eval_expr
+.endif
 	bcs @done
 
 	; if verifying, evaluate the condition for its syntax only
@@ -4084,6 +4174,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 ; Hanldes the .EQ directive
 ; Effective on 1st pass only
 .proc defineconst
+@segid=r4		; SEG_ABS, or SEG_FLOAT for a named float constant
 	jsr pass1
 	beq :+
 @skip:	lda #ASM_DIRECTIVE
@@ -4106,11 +4197,25 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 
 @cont:	jsr line::process_ws	; eat whitespace
 	inc zp::pass		; require label predefinition for constants
-	jsr eval_expr		; get constant value
-	dec zp::pass		; set pass back to correct value
-	bcc @ok
 
-	; clean the stack and return error
+	CALL FINAL_BANK_EXPR, expr::eval_keep
+
+	dec zp::pass		; set pass back to correct value
+	bcs @cleanup_err
+
+	lda expr::kind
+	cmp #VAL_FLOAT
+	bne @isint
+
+	; result is a float: store its value and continue to store handle to
+	; its value in the symbol
+	CALL FINAL_BANK_EXPR, expr::fconst_add
+	bcs @cleanup_err
+	lda #SEG_FLOAT
+	bne @setval		; branch always
+
+@cleanup_err:
+	; clean the stack and return the error
 	tax
 	pla
 	pla
@@ -4118,7 +4223,10 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	sec
 @err:	rts
 
-@ok:	stxy zp::label_value
+@isint:	lda #SEG_ABS
+@setval:
+	sta @segid
+	stxy zp::label_value
 
 	; restore label name address
 	pla
@@ -4126,14 +4234,20 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	pla
 	tax
 
-	lda #SEG_ABS
+	lda @segid
 	sta zp::label_segmentid
 
-	lda zp::label_value+1
-	beq :+			; if MSB is 0, use ZP mode (0)
+	cmp #SEG_FLOAT
+	bne :+
+	lda #$00		; a float's "address" is an index; keep mode 0
+	beq @setmode
+
+:	lda zp::label_value+1
+	beq @setmode		; if MSB is 0, use ZP mode (0)
 	lda #$01		; ABS mode (1)
 
-:	sta zp::label_mode
+@setmode:
+	sta zp::label_mode
 	CALLMAIN lbl::add
 	bcs @err
 

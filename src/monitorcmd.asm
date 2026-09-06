@@ -15,6 +15,7 @@
 .include "errors.inc"
 .include "expr.inc"
 .include "file.inc"
+.include "fp.inc"
 .include "flags.inc"
 .include "labels.inc"
 .include "line.inc"
@@ -533,6 +534,37 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta @buff+5		; 0 terminate the buffer
 	ldxy #@buff
 	jmp mon::puts
+.endproc
+
+;*******************************************************************************
+; ? <expression>: show a numeric value without interpreting it as an address.
+.proc evaluate_value
+.if FP_SUPPORTED
+	CALL FINAL_BANK_EXPR, expr::eval_keep
+.else
+	jsr eval
+.endif
+	bcs @ret
+	lda expr::kind
+	cmp #VAL_REL
+	bne :+
+	RETURN_ERR ERR_INVALID_EXPRESSION
+:
+.if FP_SUPPORTED
+	cmp #VAL_FLOAT
+	bne @integer
+	CALL FINAL_BANK_EXPR, expr::float_format
+	bcs @ret
+	ldxy #expr::floatstr
+	jsr mon::puts
+	clc
+	rts
+.endif
+@integer:
+	jsr print_word
+	clc
+@ret:
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1198,6 +1230,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	; get the symbol name for this address (if there is one)
 	ldxy @addr
 	CALLMAIN lbl::by_addr
+	cmpw #$ffff
+	beq @nosym
 	stxy @lbl		; save the id of the label
 
 	; subtract the address we found from the address we were looking for
@@ -1660,13 +1694,14 @@ commands:
 .byte "p",0	; poke a single byte to the given address
 .byte "s",0	; save memory
 .byte "files",0	; shows all files that are loaded in debug-info
+.byte "?",0	; evaluate an integer or floating point expression
 
 .linecont +
 .define command_vectors clear, add_watch, add_watch_load, add_watch_store, \
 	remove_watch, list_watches, list_breakpoints, add_break_addr, \
 	add_break_line, remove_break, fill, dump, move, new, goto, compare, \
 	hunt, __dbgcmd_regs, disasm, assemble, showmem, trace, quit, step, \
-	step_over, go, backtrace, step_out, poke, savemem, show_files
+	step_over, go, backtrace, step_out, poke, savemem, show_files, evaluate_value
 .linecont -
 commandslo: .lobytes command_vectors
 commandshi: .hibytes command_vectors

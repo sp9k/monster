@@ -13,7 +13,10 @@
 
 .include "asm.inc"
 .include "errors.inc"
+.include "fp.inc"
 .include "labels.inc"
+.include "limits.inc"
+.include "kernal.inc"
 .include "macros.inc"
 .include "math.inc"
 .include "object.inc"
@@ -35,14 +38,33 @@ TOK_VALUE     = 3	; constant value e.g. 123
 TOK_PC        = 4	; current PC e.g. '*'
 TOK_BINARY_OP = 5	; binary operator e.g. '+' or '-'
 TOK_UNARY_OP  = 6	; unary operator e.g. '<'
+TOK_FLOAT     = 7	; float literal e.g. 1.5 (value is an index into
+			; fliterals, not the number itself)
 TOK_END       = $ff	; end of expression marker
 
 PC_SYMBOL_ID   = $ffff	; magic value for '*' (in eval result)
 
 ; These flags tell the expression evaluator what "kind" an operand
 ; is: REL means relocatable (symbol-based) and ABS means absolute (fixed value)
-VAL_ABS = 0
-VAL_REL = 1
+; FLOAT operands store CBM float values alongside the (unused) 16-bit value;
+; they are always absolute and are coerced back to an integer at the end of the
+; evaluation
+VAL_ABS   = 0
+VAL_REL   = 1
+VAL_FLOAT = 2
+
+;*******************************************************************************
+; How the evaluator finishes a result.  By default an expression must reduce to
+; an integer. Exceptions are:
+;  - .DF (always float)
+;  - .EQ (whichever result type evals to)
+FLOAT_MODE_COERCE = 0	; float result -> integer (error if not integral)
+FLOAT_MODE_KEEP   = 1	; leave a float result alone (.EQ)
+FLOAT_MODE_FORCE  = 2	; always return a float, promoting integers (.DF)
+
+;*******************************************************************************
+; number of named float constants (.EQ) that may be defined
+MAX_FLOAT_CONSTS = MAX_LABELS
 
 ; These flags are for "post-processing", which may be applied to a VAL_REL
 ; (relocatable) expression. In these cases, it must be applied as the final
@@ -60,6 +82,11 @@ POSTPROC_MSB  = 2
 ; If !0, expr::eval will terminate parsing when whitespace is encountered.
 ; If 0, whitespace is ignored
 end_on_whitespace: .byte 0
+
+;*******************************************************************************
+; FLOAT MODE
+; One of the FLOAT_MODE_* values; selects how a result is finished.
+float_mode: .byte 0
 
 .segment "SHAREBSS"
 
@@ -84,8 +111,54 @@ __expr_postproc: .byte 0
 .export __expr_value
 __expr_value: .word 0	; the (full 16-bit) result of the last evaluation
 
+;*******************************************************************************
+; FLOAT VALUE
+; The packed result of an evaluation whose kind is VAL_FLOAT.  This lives in
+; shared RAM (not the EXPR bank) so that the assembler can read it back after a
+; banked call to expr::eval_float.
+.export __expr_floatval
+__expr_floatval: .res FP_SIZE
+.export __expr_floatstr
+__expr_floatstr: .res 24
+
 .segment "EXPR_BSS"
+;*******************************************************************************
+; OPERANDS
+; The operand stack used by the evaluator.  Each entry is OPERAND_SIZE bytes:
+;   +0 value LSB   +1 value MSB
+;   +2 kind        +3 segment ID
+;   +4 symbol LSB  +5 symbol MSB
+;   +6 postproc
+;   +7 float value (only if kind is VAL_FLOAT)
+.if FP_SUPPORTED
+OPERAND_SIZE = 7+FP_SIZE
+.else
+OPERAND_SIZE = 7
+.endif
 operands: .res $100
+
+.if FP_SUPPORTED
+;*******************************************************************************
+; FLITERALS
+; Pool of float literals found while parsing.  TOK_FLOAT tokens in the RPN list
+; contain the byte offset of its value here.
+fliterals:  .res MAX_OPERANDS*FP_SIZE
+fliteralsz: .byte 0	; bytes of fliterals in use
+
+;*******************************************************************************
+; FBUF
+; The packed float belonging to the operand most recently pushed or popped.
+fbuff: .res FP_SIZE
+
+;*******************************************************************************
+; FCONSTS
+; Values of the named float constants defined with .EQ.  A float constant's
+; symbol carries SEG_FLOAT and holds its index here in place of an address.
+; The pool has to outlive pass 1 (where .EQ defines things) into pass 2, so it
+; is cleared alongside the symbol table in asm::reset, not per expression.
+fconsts:  .res MAX_FLOAT_CONSTS*FP_SIZE
+nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
+.endif
 
 .CODE
 
@@ -94,14 +167,9 @@ operands: .res $100
 ; Calls the evaluation procedure
 .export __expr_eval
 .proc __expr_eval
-.ifdef vic20
-	JUMP FINAL_BANK_UDGEDIT, eval
-.else
 	JUMP FINAL_BANK_EXPR, eval
-.endif
 .endproc
 
-; expression code stored in UDG bank (vic20) / ASM cart bank (c64)
 .segment "EXPR"
 
 ;*******************************************************************************
@@ -203,6 +271,10 @@ __expr_eval_bank:
 	jcs @ret
 
 	stxy @val1
+.if FP_SUPPORTED
+	jsr @finish_result	; apply the active float mode
+	jcs @ret
+.endif
 
 	; make sure stack is empty
 	lda @sp
@@ -215,6 +287,10 @@ __expr_eval_bank:
 	sta __expr_segment
 	lda @kind
 	sta __expr_kind
+.if FP_SUPPORTED
+	cmp #VAL_FLOAT
+	beq @float_result
+.endif
 	cmp #VAL_ABS
 	bne @rel_result
 @abs_result:
@@ -271,6 +347,15 @@ __expr_eval_bank:
 	stx __expr_postproc
 	beq @ok			; no postproc -> continue with current size
 	lda #$01		; force 1 byte size if we are taking '>' or '<'
+	bne @ok			; branch always
+
+.if FP_SUPPORTED
+@float_result:
+	lda #POSTPROC_NONE	; no postproc for FP results
+	sta __expr_postproc
+	lda #FP_SIZE		; floats are 5 bytes
+.endif
+
 @ok:	ldxy @val1
 	stxy __expr_value	; save full result (e.g. for relocation addend)
 	clc			; ok
@@ -322,6 +407,24 @@ __expr_eval_bank:
 	tax
 	pla			; restore TOKEN type
 
+.if FP_SUPPORTED
+	cmp #TOK_FLOAT
+	bne :++
+
+	; FP tokens operands are offsets (in .X) into the FP pool, not a value
+	ldy #$00
+:	lda fliterals,x
+	sta fbuff,y
+	inx
+	iny
+	cpy #FP_SIZE
+	bcc :-
+	lda #VAL_FLOAT
+	sta @kind
+	ldxy #$0000		; the integer half of a float operand is unused
+	jmp @valdone
+:
+.endif
 	cmp #TOK_SYMBOL_ZP
 	beq @sym
 	cmp #TOK_SYMBOL
@@ -390,8 +493,103 @@ __expr_eval_bank:
 	jmp @ret
 
 @unary_ok:
+	stxy @val1
+	pla
+	sta @operator
+	cmp #FP_POS
+	jeq @pushval_with_postproc
+	cmp #FP_NEG
+	beq @negate
+.if FP_SUPPORTED
+	cmp #FP_FLOAT
+	jcs @function
+.endif
+	jmp @byteop
+
+@negate:
+	lda @kind
+.if FP_SUPPORTED
+	cmp #VAL_FLOAT
+	bne :+
+	lda fbuff
+	beq @negfloat
+	lda fbuff+1
+	eor #$80
+	sta fbuff+1
+@negfloat:
+	ldxy #$0000
+	jmp @pushval
+:
+.endif
+	cmp #VAL_ABS
+	jne @invalid_unary
+	lda #$00
+	sec
+	sbc @val1
+	tax
+	lda #$00
+	sbc @val1+1
+	tay
+	jmp @pushval
+
+.if FP_SUPPORTED
+@function:
+	lda @kind
+	cmp #VAL_FLOAT
+	beq @function_float
+	cmp #VAL_ABS
+	jne @invalid_unary
+	ldxy @val1
+	jsr fp::fromint
+	jcs @ret
+	jmp @function_apply
+@function_float:
+	ldx #FP_SIZE-1
+:	lda fbuff,x
+	sta fp::val,x
+	dex
+	bpl :-
+@function_apply:
+	lda @operator
+	cmp #FP_INT
+	bne :+
+	jsr fp::toint
+	jcs @ret
+	lda #VAL_ABS
+	sta @kind
+	jmp @pushval
+:	cmp #FP_FLOAT
+	beq @function_result
+	jsr fp::unary
+	jcs @ret
+@function_result:
+	ldx #FP_SIZE-1
+:	lda fp::val,x
+	sta fbuff,x
+	dex
+	bpl :-
+	lda #VAL_FLOAT
+	sta @kind
+	ldxy #$0000
+	jmp @pushval
+.endif
+
+@byteop:
+.if FP_SUPPORTED
+	; '<' and '>' select a byte of an integer, so coerce a float first
+	lda @kind
+	cmp #VAL_FLOAT
+	bne :++
+	jsr @float_to_int
+	bcc :+
+	rts
+
+:	lda #VAL_ABS
+	sta @kind
+:
+.endif
 	; if VAL_REL, this must be the last operator
-	pla				; restore operator
+	lda @operator
 @lsb:	cmp #'<'
 	bne @msb
 	lda @kind
@@ -400,7 +598,7 @@ __expr_eval_bank:
 	lda #POSTPROC_LSB
 	sta @postproc
 :	ldy #$00
-	beq @pushval_with_postproc	; branch always
+	jmp @pushval_with_postproc
 
 @msb:	cmp #'>'
 	bne @invalid_unary
@@ -448,10 +646,21 @@ __expr_eval_bank:
 	lda @postproc
 	sta @operands+6,x	; store postproc
 
-	; update stack pointer (sp += 7)
+.if FP_SUPPORTED
+	; store the float value (only meaningful for VAL_FLOAT operands)
+	ldy #$00
+:	lda fbuff,y
+	sta @operands+7,x
+	inx
+	iny
+	cpy #FP_SIZE
+	bcc :-
+.endif
+
+	; update stack pointer
 	lda @sp
 	clc
-	adc #$07
+	adc #OPERAND_SIZE
 	sta @sp
 	;clc
 	rts
@@ -468,6 +677,13 @@ __expr_eval_bank:
 	jsr @popval
 	bcs @err
 	stxy @val2
+.if FP_SUPPORTED
+	ldy #FP_SIZE-1
+:	lda fbuff,y
+	sta fp::arg2,y
+	dey
+	bpl :-
+.endif
 	lda @kind
 	sta @kind2
 	lda @segment
@@ -490,6 +706,13 @@ __expr_eval_bank:
 	jsr @popval
 	bcs @err
 	stxy @val1
+.if FP_SUPPORTED
+	ldy #FP_SIZE-1
+:	lda fbuff,y
+	sta fp::arg1,y
+	dey
+	bpl :-
+.endif
 	lda @kind
 	sta @kind1
 	lda @segment
@@ -510,7 +733,89 @@ __expr_eval_bank:
 @err:	rts
 
 @cont_eval:
+.if FP_SUPPORTED
+	lda @operator
+	cmp #FP_EQ
+	bcc @check_float
+	cmp #FP_GE+1
+	bcs @check_float
+
+	; a relational operator: compare as floats only if an operand actually
+	; is one.  Two integers go to the integer comparison in @int_op, which
+	; every target shares (and which avoids entering the BASIC ROM's FP
+	; package for something as common as ".if PASS == 2")
+	lda @kind1
+	cmp #VAL_FLOAT
+	beq @frelational
+	lda @kind2
+	cmp #VAL_FLOAT
+	jne @int_op
+
+@frelational:
+	jsr @promote
+	bcs @err
+	lda @operator
+	jsr fp::binop
+	bcs @err
+	jsr fp::toint
+	bcs @err
+	lda #VAL_ABS
+	sta @kind
+	jmp @pushval
+
+@check_float:
+	; if either operand is a float, operation is a float operation
+	lda @kind1
+	cmp #VAL_FLOAT
+	beq @float_op
+	lda @kind2
+	cmp #VAL_FLOAT
+	bne @int_op
+
+@float_op:
+	jsr @promote		; bring both operands up to floats
+	bcs @err
+	lda @operator
+	cmp #'+'
+	beq @fmath
+	cmp #'-'
+	beq @fmath
+	cmp #'*'
+	beq @fmath
+	cmp #'/'
+	beq @fmath
+
+	; bitwise operators have no meaning for floats; demote to integers
+	jsr @demote
+	bcs @err
+	jmp @int_op
+
+@fmath:	jsr fp::binop
+	bcs @err
+	ldx #FP_SIZE-1
+:	lda fp::val,x
+	sta fbuff,x
+	dex
+	bpl :-
+	lda #VAL_FLOAT
+	sta @kind
+	ldxy #$0000		; integer half of a float operand is unused
+	jmp @pushval
+.endif
+
+@int_op:
 	lda @operator		; restore operator
+
+	; Relational operators on integer operands.  Integers are unsigned here
+	; and in the FP package, so both paths agree.  The result is the
+	; integer 0 (false) or 1 (true).
+	cmp #FP_EQ
+	bcc @chkadd
+	cmp #FP_GE+1
+	jcc @relational
+@chkadd:
+	lda @operator
+
 	cmp #'+'
 	bne @chksub
 
@@ -625,16 +930,68 @@ __expr_eval_bank:
 	; malformed/unbalanced expression like "1[2]")
 	RETURN_ERR ERR_INVALID_EXPRESSION
 
+;-------------------------------------------------------------------------------
+; evaluates a relational operator on two integer operands
+@relational:
+	jsr @reduce_operation_other	; both operands must be ABSolute
+	bcc :+
+	RETURN_ERR ERR_CANNOT_REDUCE
+
+	; build a code for the relation that actually holds between the
+	; operands: bit 0 = less than, bit 1 = equal, bit 2 = greater than
+:	lda @val1+1
+	cmp @val2+1
+	bne :+
+	lda @val1
+	cmp @val2
+	beq @releq
+:	lda #%00000001		; val1 < val2
+	bcc :+
+	lda #%00000100		; val1 > val2
+	skw
+@releq:	lda #%00000010		; val1 = val2
+
+	; true if the relation that holds is one this operator accepts
+:	ldx @operator
+	and @relations-FP_EQ,x
+	beq @relfalse
+	ldxy #$0001
+	jmp @pushval
+@relfalse:
+	ldxy #$0000
+	jmp @pushval
+
+; the relations each operator is true for, indexed by operator-FP_EQ
+@relations:
+	.byte %00000010		; FP_EQ: equal
+	.byte %00000101		; FP_NE: less than or greater than
+	.byte %00000001		; FP_LT: less than
+	.byte %00000011		; FP_LE: less than or equal
+	.byte %00000100		; FP_GT: greater than
+	.byte %00000110		; FP_GE: greater than or equal
+
 ;--------------------------------------
 @popval:
-	; sp -= 7
+	; sp -= OPERAND_SIZE
 	lda @sp
 	sec
 	bne :+
 	; if stack is empty, error out
 	RETURN_ERR ERR_VALUE_EXPECTED
-:	sbc #$07
+:	sbc #OPERAND_SIZE
 	sta @sp
+
+.if FP_SUPPORTED
+	; recover the packed float that travelled with this entry
+	ldx @sp
+	ldy #$00
+:	lda @operands+7,x
+	sta fbuff,y
+	inx
+	iny
+	cpy #FP_SIZE
+	bcc :-
+.endif
 
 	ldx @sp
 	lda @operands+2,x	; get "kind"
@@ -789,7 +1146,392 @@ __expr_eval_bank:
 	sta @kind
 	RETURN_OK
 
+.if FP_SUPPORTED
+;-------------------------------------------------------------------------------
+; PROMOTE
+; Makes sure fp::arg1 and fp::arg2 both hold the current operands as floats.
+; The buffers already carry whatever float travelled with each operand, so only
+; the integer operands need converting.  A relocatable operand cannot be
+; converted at all: its value is not known until link time and there is no way
+; to defer float arithmetic to the linker.
+@promote:
+	lda @kind1
+	cmp #VAL_FLOAT
+	beq @promote2
+	cmp #VAL_ABS
+	bne @promote_err
+	ldxy @val1
+	jsr fp::fromint
+	bcs @promote_ret
+	ldx #FP_SIZE-1
+:	lda fp::val,x
+	sta fp::arg1,x
+	dex
+	bpl :-
+
+@promote2:
+	lda @kind2
+	cmp #VAL_FLOAT
+	beq @promote_ok
+	cmp #VAL_ABS
+	bne @promote_err
+	ldxy @val2
+	jsr fp::fromint
+	bcs @promote_ret
+	ldx #FP_SIZE-1
+:	lda fp::val,x
+	sta fp::arg2,x
+	dex
+	bpl :-
+
+@promote_ok:
+	RETURN_OK
+
+@promote_err:
+	RETURN_ERR ERR_INVALID_EXPRESSION
+
+@promote_ret:
+	rts
+
+;-------------------------------------------------------------------------------
+; DEMOTE
+; Coerces both float operands back down to integers.  Both must be EXACTLY
+; integral. This means "1.5 & 3" is an error rather than a silent 1 & 3.
+@demote:
+	ldx #FP_SIZE-1
+:	lda fp::arg1,x
+	sta fp::val,x
+	dex
+	bpl :-
+	jsr fp::toint
+	bcs @demote_ret
+	stxy @val1
+
+	ldx #FP_SIZE-1
+:	lda fp::arg2,x
+	sta fp::val,x
+	dex
+	bpl :-
+	jsr fp::toint
+	bcs @demote_ret
+	stxy @val2
+
+	lda #VAL_ABS
+	sta @kind1
+	sta @kind2
+	lda #POSTPROC_NONE
+	sta @postproc1
+	sta @postproc2
+	sta @postproc		; post-processing not used for floats
+	RETURN_OK
+
+@demote_ret:
+	rts
+
+;------------------------------------------------------------------------------
+; FLOAT TO INT
+; Coerces the float in fbuff to a 16-bit integer.
+; OUT:
+;   - .XY: the integer value
+;   - .C:  set if the value is not an integer in 0..65535
+@float_to_int:
+	ldx #FP_SIZE-1
+:	lda fbuff,x
+	sta fp::val,x
+	dex
+	bpl :-
+	jmp fp::toint
+
+;-------------------------------------------------------------------------------
+; FINISH RESULT
+; Resolves the final result according to the active float mode.
+; IN:
+;   - @kind, @val1, fbuff: the popped result
+; OUT:
+;   - @kind:           may change between VAL_ABS and VAL_FLOAT
+;   - @val1:           the integer result (integer results only)
+;   - expr::floatval:  the packed result (float results only)
+;   - .C:              set on error
+@finish_result:
+	lda @kind
+	cmp #VAL_FLOAT
+	beq @fr_float
+
+	; an integer (or relocatable) result
+	lda float_mode
+	cmp #FLOAT_MODE_FORCE
+	bne @fr_ok		; nothing to do
+
+	; .DF expects a float; only an absolute value can become one
+	lda @kind
+	cmp #VAL_ABS
+	bne @fr_err
+	ldxy @val1
+	jsr fp::fromint		; int -> float
+	bcs @fr_ret
+	jmp @fr_publish
+
+@fr_float:
+	lda float_mode
+	bne @fr_keep		; KEEP and FORCE both leave it a float
+
+	; default: an expression must reduce to an integer, since that is
+	; all the assembler can emit
+	jsr @float_to_int
+	bcs @fr_ret
+	stxy @val1
+	lda #VAL_ABS
+	sta @kind
+@fr_ok:	clc
+	rts
+
+@fr_keep:
+	ldx #FP_SIZE-1
+:	lda fbuff,x
+	sta fp::val,x
+	dex
+	bpl :-
+
+@fr_publish:
+	; copy to buffer expr::floatval in shared RAM
+	ldx #FP_SIZE-1
+:	lda fp::val,x
+	sta __expr_floatval,x
+	dex
+	bpl :-
+	lda #VAL_FLOAT
+	sta @kind
+	ldxy #$0000
+	stxy @val1		; no meaningful 16-bit value
+	clc
+@fr_ret:
+	rts
+
+@fr_err:
+	RETURN_ERR ERR_INVALID_EXPRESSION
+.endif
 .endproc
+
+;*******************************************************************************
+; FLOAT ENTRY POINTS
+; The routines below are the float half of the evaluator's interface.  They are
+; exported without a thunk in .CODE (ROM1 has no room to spare), so callers in
+; another bank reach them with an explicit CALL/JUMP to FINAL_BANK_EXPR, the
+; same way they reach expr::end_on_ws.
+.if FP_SUPPORTED
+
+;*******************************************************************************
+; EVAL FLOAT / EVAL KEEP
+; Run eval under a non-default float mode, restoring the default afterwards so
+; that a failed evaluation cannot leave the mode set for the next caller.
+;   eval_float: always return a float, promoting an integer result (.DF)
+;   eval_keep:  return a float result as a float, an integer as an integer (.EQ)
+; OUT:
+;  - as expr::eval, with expr::kind saying which of the two came back
+.export __expr_eval_float
+__expr_eval_float:
+	lda #FLOAT_MODE_FORCE
+	skw			; skip the mode below
+
+.export __expr_eval_keep
+__expr_eval_keep:
+	lda #FLOAT_MODE_KEEP
+
+	sta float_mode
+	jsr eval
+	php			; hold the result across the reset
+	pha
+	lda #FLOAT_MODE_COERCE
+	sta float_mode
+	pla
+	plp
+	rts
+
+;*******************************************************************************
+; EVAL BOOL
+; Evaluates for .IF: a float result is reduced to 0 (false) or 1 (true) rather
+; than rejected for not being integral.
+.export __expr_eval_bool
+__expr_eval_bool:
+.proc eval_bool
+	jsr __expr_eval_keep
+	bcs @ret
+	pha
+	lda __expr_kind
+	cmp #VAL_FLOAT
+	bne @integer
+	lda #VAL_ABS
+	sta __expr_kind
+	ldx __expr_floatval	; only the exponent matters, including signed zero
+	ldy #$00
+	stxy __expr_value
+@integer:
+	pla
+	clc
+@ret:
+	rts
+.endproc
+
+;*******************************************************************************
+; FLOAT FORMAT
+; Renders expr::floatval into expr::floatstr.
+.export __expr_float_format
+__expr_float_format:
+format_float:
+	ldx #FP_SIZE-1
+:	lda __expr_floatval,x
+	sta fp::val,x
+	dex
+	bpl :-
+	jmp fp::format
+
+;*******************************************************************************
+; FCONST WRITE
+; Writes the five bytes of the constant named by the .XY handle to the current
+; output file.
+.export __expr_fconst_write
+__expr_fconst_write:
+.proc write_const
+	jsr get_const
+	bcs @ret
+	ldy #$00
+:	lda __expr_floatval,y
+	jsr krn::chrout
+	iny
+	cpy #FP_SIZE
+	bcc :-
+	clc
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; FCONST READ
+; Reads five bytes from the current input file into a new pool entry.
+; OUT:
+;  - .XY: the handle of the new constant
+.export __expr_fconst_read
+__expr_fconst_read:
+.proc read_const
+	ldy #$00
+:	jsr krn::readst
+	beq :+
+	RETURN_ERR ERR_IO_ERROR
+:	jsr krn::chrin
+	sta __expr_floatval,y
+	iny
+	cpy #FP_SIZE
+	bcc :--
+	jmp add_const
+.endproc
+
+;*******************************************************************************
+; ADD CONST
+; Copies expr::floatval into the named-constant pool.
+; OUT:
+;  - .XY: the index of the stored constant
+;  - .C:  set if the pool is full
+.export __expr_fconst_add
+__expr_fconst_add:
+.proc add_const
+@ptr=zp::expr+8
+	ldxy nfconsts
+	cmpw #MAX_FLOAT_CONSTS*FP_SIZE
+	bcs @full
+	jsr const_ptr
+	ldy #$00
+:	lda __expr_floatval,y
+	sta (@ptr),y
+	iny
+	cpy #FP_SIZE
+	bcc :-
+	ldxy nfconsts
+	lda nfconsts
+	clc
+	adc #FP_SIZE
+	sta nfconsts
+	bcc :+
+	inc nfconsts+1
+:
+	RETURN_OK
+
+@full:	RETURN_ERR ERR_TOO_MANY_LABELS
+.endproc
+
+;*******************************************************************************
+; FCONST GET
+; Loads the constant named by the .XY handle into expr::floatval.
+; Shared RAM is the only interface to values owned by this bank.
+.export __expr_fconst_get
+__expr_fconst_get:
+.proc get_const
+@ptr=zp::expr+8
+	cmpw nfconsts
+	bcc :+
+	RETURN_ERR ERR_INVALID_EXPRESSION
+:	jsr const_ptr
+	ldy #FP_SIZE-1
+:	lda (@ptr),y
+	sta __expr_floatval,y
+	dey
+	bpl :-
+	RETURN_OK
+.endproc
+
+.proc const_ptr
+@ptr=zp::expr+8
+	txa
+	clc
+	adc #<fconsts
+	sta @ptr
+	tya
+	adc #>fconsts
+	sta @ptr+1
+	rts
+.endproc
+
+;*******************************************************************************
+; FCONST CLR
+; Forgets every named float constant.
+.export __expr_fconst_clr
+__expr_fconst_clr:
+clr_consts:
+	lda #$00
+	sta nfconsts
+	sta nfconsts+1
+	clc
+	rts
+.else
+
+; Without the FP package only these two do anything: .EQ still evaluates (as an
+; integer), and clearing an empty pool is a no-op.
+.export __expr_eval_keep
+__expr_eval_keep = eval
+
+.export __expr_fconst_clr
+__expr_fconst_clr:
+	clc
+	rts
+
+; The rest are reachable only from code that is itself gated on FP_SUPPORTED.
+; They are defined so that this file still links, and report a bad expression
+; if one ever does get called.
+.export __expr_eval_float
+.export __expr_eval_bool
+.export __expr_fconst_add
+.export __expr_fconst_get
+.export __expr_fconst_read
+.export __expr_fconst_write
+.export __expr_float_format
+__expr_eval_float:
+__expr_eval_bool:
+__expr_fconst_add:
+__expr_fconst_get:
+__expr_fconst_read:
+__expr_fconst_write:
+__expr_float_format:
+	RETURN_ERR ERR_INVALID_EXPRESSION
+
+.endif
 
 ;*******************************************************************************
 ; PARSE
@@ -811,6 +1553,9 @@ __expr_eval_bank:
 	sty @num_operators
 	sty @i
 	sty __expr_rpnlistlen
+.if FP_SUPPORTED
+	sty fliteralsz		; the float literal pool is per-expression
+.endif
 
 	lda (zp::line),y
 	bne :+
@@ -874,8 +1619,37 @@ __expr_eval_bank:
 	ldx @may_be_unary	; if unary logic applies, treat as value (PC)
 	bne @getoperand
 
+:	ldx @may_be_unary
+	beq @binaryop
+	cmp #'<'
+	beq @prefix
+	cmp #'>'
+	beq @prefix
+.if FP_SUPPORTED
+	cmp #'.'
+	jeq @getoperand		; leading-dot literal is unambiguous here
+.endif
+	cmp #'-'
+	bne :+
+	lda #FP_NEG
+	bne @prefix
+:	cmp #'+'
+	bne @binaryop
+	lda #FP_POS
+@prefix:
+	jsr @pushop		; prefix operators associate right-to-left
+	jcs @ret
+	jsr inc_line
+	jmp @l0
+
+@binaryop:
+	ldx @may_be_unary
+	bne :+
+	jsr get_comparison
+	bcc @operator_found
 :	jsr isoperator
 	bne @getoperand
+@operator_found:
 	pha			; save the operator
 	jsr @priority		; get the priority of this operator
 
@@ -883,6 +1657,12 @@ __expr_eval_bank:
 	ldx @num_operators	; any operators to the left?
 	beq @process_ops_done
 	dex
+
+	; the relational operators have priority 0, the same as the '(' sentinel,
+	; so stop here rather than letting @eval consume the parenthesis
+	ldy @operators,x
+	cpy #'('
+	beq @process_ops_done
 
 	; if the operator to the left has >= priority, append it to result
 	cmp @priorities,x
@@ -912,6 +1692,14 @@ __expr_eval_bank:
 	jmp @l0
 
 @getoperand:
+.if FP_SUPPORTED
+	jsr get_function
+	bcs :+
+	jsr @pushop
+	jcs @ret
+	jmp @l0			; the following '(' opens the function argument
+:
+.endif
 	jsr get_operand		; have we found a valid operand?
 	bcs @ret		; no
 
@@ -924,6 +1712,11 @@ __expr_eval_bank:
 
 @done:	ldx @num_operators	; if there are still ops on stack
 	beq @end		; no operators: terminate the RPN list
+	lda @operators-1,x
+	cmp #'('
+	bne :+
+	RETURN_ERR ERR_INVALID_EXPRESSION ; missing ')' or comma in a function
+:
 	jsr @eval		; evaluate each remaining operator
 	bcs @ret		; RPN list full
 	jmp @done
@@ -981,6 +1774,11 @@ __expr_eval_bank:
 
 ;-------------------------------------------------------------------------------
 @priority:
+	cmp #FP_NEG
+	bcc :+
+	lda #$06
+	rts
+:
 	ldy #@num_prios
 :	cmp @priochars-1,y
 	beq @prio_found
@@ -1015,6 +1813,8 @@ __expr_eval_bank:
 
 	; check if operator is unary
 	pha			; save operator
+	cmp #FP_NEG
+	bcs @unary
 	cmp #'<'
 	beq @unary
 	cmp #'>'
@@ -1067,6 +1867,108 @@ __expr_eval_bank:
 	stx @i
 	rts
 .endproc
+
+;*******************************************************************************
+; GET COMPARISON
+; Recognize binary relations. Consume only the first byte of two-byte tokens;
+; the parser's usual inc_line consumes the final byte.
+.proc get_comparison
+	cmp #'<'
+	beq @less
+	cmp #'>'
+	beq @greater
+	cmp #'='
+	beq @equal
+	cmp #'!'
+	beq @unequal
+	sec
+	rts
+@less:
+	ldx #FP_LT
+	bne @optional_equal
+@greater:
+	ldx #FP_GT
+@optional_equal:
+	ldy #$01
+	lda (zp::line),y
+	cmp #'='
+	bne @ok
+	inx
+	jsr inc_line
+@ok:	txa
+	clc
+	rts
+@equal:
+	ldx #FP_EQ
+	bne @required_equal
+@unequal:
+	ldx #FP_NE
+@required_equal:
+	ldy #$01
+	lda (zp::line),y
+	cmp #'='
+	beq @consume
+	ldy #$00
+	lda (zp::line),y
+	sec
+	rts
+@consume:
+	jsr inc_line
+	jmp @ok
+.endproc
+
+;*******************************************************************************
+; GET FUNCTION
+; Recognizes NAME( without reserving bare names. On success advances only
+; over NAME and returns the unary opcode, leaving '(' for the parser.
+.if FP_SUPPORTED
+.proc get_function
+@entry=zp::expr+6
+	ldx #$00
+@next:	stx @entry
+	ldy #$00
+@match:	lda fnames,x
+	beq @endname
+	cmp (zp::line),y
+	bne @skip
+	inx
+	iny
+	bne @match
+@endname:
+	lda (zp::line),y
+	cmp #'('
+	beq @found
+@skip:	ldx @entry
+:	lda fnames,x
+	inx
+	cmp #$00
+	bne :-
+	inx			; skip the opcode
+	lda fnames,x
+	bne @next
+	sec
+	rts
+@found:
+	lda fnames+1,x
+	pha
+	tya
+	clc
+	adc zp::line
+	sta zp::line
+	bcc :+
+	inc zp::line+1
+:	pla
+	clc
+	rts
+fnames:
+	.byte "float",0,FP_FLOAT,"int",0,FP_INT
+	.byte "trunc",0,FP_TRUNC,"round",0,FP_ROUND
+	.byte "floor",0,FP_FLOOR,"ceil",0,FP_CEIL
+	.byte "abs",0,FP_ABS,"sqrt",0,FP_SQRT
+	.byte "sin",0,FP_SIN,"cos",0,FP_COS
+	.byte "log",0,FP_LOG,"exp",0,FP_EXP,0
+.endproc
+.endif
 
 ;*******************************************************************************
 ; GETLABEL
@@ -1199,6 +2101,43 @@ __expr_eval_bank:
 ;   - .C:  set if no operand was able to be parsed
 .proc get_operand
 @lbl=zp::expr
+.if FP_SUPPORTED
+	jsr fp::isfloat
+	bcs @notfloat
+
+	; a float literal is parked in the literal pool and the token carries
+	; its offset, so that TOK_FLOAT stays the same width as every other
+	; operand token in the RPN list
+	lda fliteralsz
+	cmp #MAX_OPERANDS*FP_SIZE
+	bcs @poolfull
+
+	jsr fp::parse
+	bcs @ret
+
+	ldx fliteralsz
+	txa
+	pha			; remember the offset of this literal
+	ldy #$00
+:	lda fp::val,y
+	sta fliterals,x
+	inx
+	iny
+	cpy #FP_SIZE
+	bcc :-
+	stx fliteralsz
+	pla
+	tax			; .X = offset of the literal
+	ldy #$00		; .Y = 0: the pool is smaller than a page
+	lda #TOK_FLOAT
+	RETURN_OK
+
+@poolfull:
+	RETURN_ERR ERR_LINE_TOO_LONG
+
+@notfloat:
+.endif
+	ldy #$00		; isval reads (zp::line),y and fp::isfloat moved .Y
 	jsr isval
 	bcs @label		; not a literal value, try label
 
@@ -1227,6 +2166,10 @@ __expr_eval_bank:
 	stxy @lbl
 	CALLMAIN lbl::getsegment
 	ldxy @lbl
+.if FP_SUPPORTED
+	cmp #SEG_FLOAT
+	beq @floatconst
+.endif
 	cmp #SEG_ABS
 	bne @chkmode
 
@@ -1243,6 +2186,36 @@ __expr_eval_bank:
 	skw
 @abs:	lda #TOK_SYMBOL
 	RETURN_OK
+
+.if FP_SUPPORTED
+@floatconst:
+	; a named float constant: its "address" is an index into fconsts.  Copy
+	; the value into the per-expression literal pool so that it is handled
+	; exactly like a float literal from here on.
+	pla			; cleanup saved mode
+	lda fliteralsz
+	cmp #MAX_OPERANDS*FP_SIZE
+	bcs @poolfull
+	CALLMAIN lbl::getaddr	; .XY = index into fconsts
+	jsr get_const
+	bcs @ret
+	ldx fliteralsz
+	txa
+	pha			; remember the offset of this literal
+	ldy #$00
+:	lda __expr_floatval,y
+	sta fliterals,x
+	inx
+	iny
+	cpy #FP_SIZE
+	bcc :-
+	stx fliteralsz
+	pla
+	tax			; .X = offset of the literal
+	ldy #$00
+	lda #TOK_FLOAT
+	RETURN_OK
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -1411,6 +2384,7 @@ __expr_eval_bank:
 	rts
 
 @ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', '<', '>'
+	.byte '=', '!'
 @numops = *-@ops
 .endproc
 

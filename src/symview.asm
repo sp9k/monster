@@ -10,6 +10,8 @@
 .include "draw.inc"
 .include "edit.inc"
 .include "errors.inc"
+.include "expr.inc"
+.include "fp.inc"
 .include "key.inc"
 .include "keycodes.inc"
 .include "labels.inc"
@@ -50,6 +52,10 @@ sym_line:
 .byte " ", "l:", ESCAPE_VALUE_DEC, 0
 sym_line_no_file:
 .byte ESCAPE_VALUE_DEC, ESCAPE_GOTO, 5, "$", ESCAPE_VALUE, ESCAPE_GOTO, $b, ESCAPE_STRING, 0
+.ifdef vic20
+sym_line_float:
+.byte ESCAPE_VALUE_DEC, ESCAPE_GOTO, 5, ESCAPE_STRING, " = ", ESCAPE_STRING, 0
+.endif
 
 ;*******************************************************************************
 .RODATA
@@ -69,6 +75,17 @@ __symview_enter = enter
 
 BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
+.ifdef vic20
+get_item:	JUMP FINAL_BANK_EXPR, get_item_impl
+print_item:	JUMP FINAL_BANK_EXPR, print_item_impl
+.pushseg
+.segment "EXPR"
+SET_CUR_BANK FINAL_BANK_EXPR
+.else
+get_item   = get_item_impl
+print_item = print_item_impl
+.endif
+
 ;*******************************************************************************
 ; GET ITEM
 ; Returns the label ID at the given index based on the current sortby value.
@@ -82,7 +99,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 ;   - line:     line number that contains the symbol
 ;   - .XY:      ID of the label at the given index (determined by sortby)
 ;   - $100:     buffer containing symbol name
-.proc get_item
+.proc get_item_impl
 @namebuff=$100
 	lda sortby
 	beq @sortalpha
@@ -107,6 +124,21 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	sta r0+1
 	CALLMAIN lbl::getname	; read the symbol name into buffer ($100)
 	ldxy lbl
+.if FP_SUPPORTED
+	CALLMAIN lbl::getsegment
+	cmp #SEG_FLOAT
+	bne @address
+	ldxy lbl
+	CALLMAIN lbl::getaddr
+
+	jsr expr::fconst_get
+	bcs @done
+	lda #$02
+	sta mode
+	rts
+@address:
+	ldxy lbl
+.endif
 	CALLMAIN lbl::addr_and_mode	; get the symbol address
 	stxy addr
 	sta mode
@@ -128,9 +160,28 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 ; call to get_item
 ; IN:
 ;   - .A: the line to draw the item at
-.proc print_item
+.proc print_item_impl
 @row=r0
 	sta @row
+.ifdef vic20
+	lda mode
+	cmp #$02		; float?
+	bne @integer		; if not, format as integer
+
+	; format the value as a float
+	jsr expr::float_format
+	lda #>expr::floatstr
+	pha
+	lda #<expr::floatstr
+	pha
+	lda #>name
+	pha
+	lda #<name
+	pha
+	ldxy #sym_line_float
+	jmp @print
+@integer:
+.endif
 
 	ldxy #sym_line_no_file
 
@@ -181,6 +232,11 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	rts
 .endproc
 
+.ifdef vic20
+.popseg
+SET_CUR_BANK FINAL_BANK_DBGUI
+.endif
+
 ;*******************************************************************************
 ; ENTER
 ; Enters the symbol viewer.
@@ -188,7 +244,11 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 @scroll    = r8
 @row       = tmp
 @selection = tmp+1
+.ifdef vic20
+	jsr scr::savebuf
+.else
 	jsr scr::save
+.endif
 	lda #$00
 	sta sortby
 	sta @selection
@@ -255,7 +315,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	lda sortby
 	eor #$01
 	sta sortby
-	bpl @start		; branch always
+	jmp @start
 
 :	jsr key::isdown
 	beq @down
@@ -339,6 +399,11 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	sbc #$00
 	tay
 	jsr get_item
+	lda mode
+	cmp #$02
+	beq @constant		; floats have no navigable address
 	ldxy addr
 @exit:	jmp dbg::gotoaddr	; go to the line of the symbol definition
+@constant:
+	rts
 .endproc

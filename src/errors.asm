@@ -335,6 +335,10 @@ err_segment_out_of_range:
 ; .byte "segment out of range",0
 .byte $99,$47,$69,$4e,$a6,$cf,$ad,$1b,$79,$9b,$90,$4e,$39,$40
 
+err_not_integral:
+; .byte "non integral value",0
+.byte $73,$ce,$da,$4e,$a1,$47,$90,$4c,$dd,$81,$65,$45,$0
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -417,7 +421,8 @@ err_segment_out_of_range:
 	err_missing_required_key, \
 	err_too_many_objects, \
 	err_duplicate_name, \
-	err_segment_out_of_range
+	err_segment_out_of_range, \
+	err_not_integral
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

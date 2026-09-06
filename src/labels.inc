@@ -6,6 +6,7 @@
 .import __label_by_id
 .import __label_by_addr
 .import __label_clr
+.import __label_count_floats
 .import __label_dump
 .import __label_find
 .import __label_get_addr
@@ -31,6 +32,15 @@
 SEG_UNDEF = $00	; segment is undefined (external)
 SEG_ABS   = $ff	; symbol represents a constant (not tied to a segment)
 
+; A named float constant (.EQ with a float value).  The symbol's ADDR field is
+; an index into the evaluator's float pool rather than a value.  The FLAGS byte
+; stores the segment in 7 bits and pads $7f back to SEG_ABS, so $7e is the
+; highest id available; MAX_SEGMENTS is 64, so it cannot collide with a real one.
+SEG_FLOAT = $7e
+; On disk this distinct tag is followed by a packed five-byte payload.
+; It must never be stored in an in-memory symbol or used as a segment index.
+SEG_FLOAT_PACKED = $7d
+
 SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 
 .define MAX_LABEL_NAME_LEN 32
@@ -45,6 +55,8 @@ SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 	by_id             = __label_by_id
 	by_addr           = __label_by_addr
 	clr               = __label_clr
+	; Direct entry in FINAL_BANK_SYMBOLS (no MAIN trampoline).
+	count_floats      = __label_count_floats
 	dump              = __label_dump
 	load              = __label_load
 	find              = __label_find

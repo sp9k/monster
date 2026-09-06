@@ -125,6 +125,10 @@ ERR_DUPLICATE_NAME       = 78
 ; link-time address errors
 ERR_SEGMENT_OUT_OF_RANGE = 79
 
+;*******************************************************************************
+; expression errors
+ERR_NOT_INTEGRAL         = 80
+
 .import __err_get
 
 .scope err

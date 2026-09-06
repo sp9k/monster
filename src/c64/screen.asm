@@ -127,6 +127,14 @@ __screen_draw_gutter_row:
 
 	IO_DONE
 
+	; fall through to reset the row-color shadows too
+.endproc
+
+;*******************************************************************************
+; CLR ROW COLORS
+; Shared editor entry point; the C64 already resets these shadows after CLR.
+.export __screen_clr_row_colors
+.proc __screen_clr_row_colors
 	; the row color shadows may live under the I/O space, so they must be
 	; written with I/O banked out
 	ldx #SCREEN_HEIGHT-1

@@ -8,7 +8,9 @@ VIC20_ULTIMEM_BANKS_INC = 1
 FINAL_BANK_MAIN            = $01
 FINAL_BANK_DEBUG           = $02
 FINAL_BANK_UDGEDIT         = $03
-FINAL_BANK_EXPR            = $04
+FINAL_BANK_EXPR            = $03
+FINAL_BANK_FP              = FINAL_BANK_EXPR
+
 FINAL_BANK_HELP            = $04
 FINAL_BANK_MACROS          = $05
 FINAL_BANK_LINKER          = $06

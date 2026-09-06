@@ -1814,20 +1814,13 @@ __debug_step:
 ; OUT:
 ;   - .C: set (flags routines that autorun to stop so user can see message)
 .proc print_msg
+@msg = debugtmp+4
+	stxy @msg		; save format string
 .ifdef ultimem
 	jsr trace_done		; if user memory is swapped in, swap it out
 .endif
-	RENDER_STR		; render any escapes/arguments in the message
 	lda __debug_interface
-	beq @gui
-
-@tui:	CALL FINAL_BANK_MONITOR, mon::puts
-	sec
-	rts
-
-@gui:	; record the message in the monitor as well so it is visible there
-	; the next time the monitor is opened
-	CALL FINAL_BANK_MONITOR, mon::log
+	bne @render		; TUI: nothing redraws before the message is used
 
 	jsr unblank		; blanked screen means no keyboard IRQ
 
@@ -1840,6 +1833,20 @@ __debug_step:
 	inc lineset
 :
 	jsr scr::clrcolor
+
+@render:
+	ldxy @msg		; restore format string
+	RENDER_STR
+	lda __debug_interface
+	beq @gui
+
+@tui:	CALL FINAL_BANK_MONITOR, mon::puts
+	sec
+	rts
+
+@gui:	; record the message in the monitor as well so it is visible there too
+	CALL FINAL_BANK_MONITOR, mon::log
+
 	ldxy #mem::linebuffer2	; the rendered message (text::render output)
 	jsr alert::show		; tell the user, and wait for them to acknowledge
 	sec
