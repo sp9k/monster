@@ -10,6 +10,7 @@
 .import __cur_push
 .import __cur_right
 .import __cur_set
+.import __cur_setpos
 .import __cur_setmin
 .import __cur_setmax
 .import __cur_status
@@ -32,6 +33,7 @@ CUR_ON  = 1
 	mode    = __cur_mode
 	move    = __cur_move
 	set     = __cur_set
+	setpos  = __cur_setpos
 	pop     = __cur_pop
 	push    = __cur_push
 	right   = __cur_right

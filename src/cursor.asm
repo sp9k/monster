@@ -98,13 +98,14 @@ maxy: .byte 0
 .endproc
 
 ;*******************************************************************************
-; SET
-; Sets the cursor position (x,y) to the values given
+; SETPOS
+; Sets the cursor position (x,y) to the values given, but leaves the cursor
+; OFF
 ; IN:
 ;  .X: the column to set the cursor to
 ;  .Y: the row to set the cursor to
-.export __cur_set
-.proc __cur_set
+.export __cur_setpos
+.proc __cur_setpos
 @x=zp::util
 @y=zp::util+1
 	cpx maxx
@@ -130,7 +131,18 @@ maxy: .byte 0
 	ldy @y
 	stx zp::curx
 	sty zp::cury
+	rts
+.endproc
 
+;*******************************************************************************
+; SET
+; Sets the cursor position (x,y) to the values given and redraws it
+; IN:
+;  .X: the column to set the cursor to
+;  .Y: the row to set the cursor to
+.export __cur_set
+.proc __cur_set
+	jsr __cur_setpos
 	lda __cur_mode
 	bne :+			; SELECT mode: don't redraw/blink
 	jsr __cur_on		; redraw at new position and reset blink phase

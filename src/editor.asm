@@ -4153,8 +4153,8 @@ goto_buffer:
 @setx:	ldx #$00
 	ldy zp::cury
 	iny
-	jsr cur::set
-	jsr cur::off
+
+	jsr cur::setpos
 
 @clrnew:
 	; clear the newly opened line
