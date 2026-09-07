@@ -28,7 +28,7 @@ reference only.
 
 Below are some examples of valid lines:
 
-````{note}
+````{note} Example
 ```
 LDA #$00
 LOOP   INC BUFFER,X  ; INCREMENT BUFFER+X
@@ -76,7 +76,7 @@ or 0 (false), so they may be used anywhere a value may be.  Their precedence of
 0 is lower than every other operator, meaning arithmetic on either side is always evaluated first.
 For example:
 
-````{note}
+````{note} Example
 ```
 LDA #1+1==2      ; (1+1) == 2
 LDA #LEVEL>=3    ; 1 if the constant LEVEL is 3 or more
@@ -88,7 +88,7 @@ Expressions may also contain parentheses, which are evaluated as you would expec
 but note that if the entire expression is enclosed in parentheses, the
 assembler will interpret this as indirect addressing. For example:
 
-````{note}
+````{note} Example
 ```
 JMP (1+3)   ; jump-indirect to the address in memory address (4)
 JMP 1+3     ; jump-absolute to address 4
@@ -101,7 +101,7 @@ prefixed with a '#' (e.g. `LDA #(2+4)`)
 
 Labels are supported in expressions and will evaluate to their address when assembled.
 
-````{note}
+````{note} Example
 ```
 LDA #<LABEL1
 ```
@@ -110,7 +110,7 @@ LDA #<LABEL1
 Hexadecimal and decimal numbers are supported.  Hexadecimal numbers must be prefixed
 with a '$'.
 
-````{note}
+````{note} Example
 ```
 LDA #(10+$20)
 ```
@@ -145,7 +145,7 @@ count toward the 16 character label limit.
 Local labels are valid until the next non-local label is defined as shown in
 the following example.
 
-````{note}
+````{note} Example
 ```
 PROC0:
 @L0:
@@ -169,7 +169,7 @@ inaccessible. They _can_ be accessed by
 prepending the global label that encapsulates them.  This can be used to
 emulate structural data types e.g.
 
-````{note}
+````{note} Example
 ```
 PLAYER
 @X: .db 0
@@ -191,7 +191,7 @@ to the next _forward_ anonymous label and minuses (-) refer to the
 previous _backward_ anonymous label.
 
 for example
-````{note}
+````{note} Example
 ```
     .ORG $1000
 :   JMP +       ; JMP $1003
@@ -203,7 +203,7 @@ for example
 Using multiple +'s or -'s will count the same number of references before landing
 on the corresponding anonymous label.
 for example:
-````{note}
+````{note} Example
 ```
     JMP +++
 :   nop
@@ -226,7 +226,7 @@ must be declared before the directive.
 
 The following example illustrates why this is necessary:
 
-````{note}
+````{note} Example
 ```
 .REP NUM, I
     ASL
@@ -248,12 +248,14 @@ any number other than 5.
 Below is a list of all available directives along with their usage and
 examples of how to use them.
 
-#### .ALIGN _expression_, <_expression_>
+#### .ALIGN
 
-Pads with 0's (or optionally a provided value) until the PC is aligned (divisible) by that
+**Syntax:** `.ALIGN boundary [, fill]`
+
+**Behavior:** Pads with 0's (or optionally a provided value) until the PC is aligned (divisible) by that
 value.
 
-````{note}
+````{note} Example
 ```
 .ALIGN $100
 CHARS
@@ -263,15 +265,17 @@ HIRAM
 ```
 ````
 
-#### .BSS "name"
+#### .BSS
 
-Activates an absolute "BSS" segment with the given name.  All labels declared are defined as
+**Syntax:** `.BSS "name"`
+
+**Behavior:** Activates an absolute "BSS" segment with the given name.  All labels declared are defined as
 absolute and treated as part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
-BSS segments must only contain 0-value bytes
+**Constraint:** BSS segments must contain only zero-value bytes.
 
-````{note}
+````{note} Example
 ```
 .BSS "DATA"
 curx    .db 0
@@ -279,15 +283,17 @@ cury    .db 0
 ```
 ````
 
-#### .BSSZP "name"
+#### .BSSZP
 
-Activates a zeropage "BSS" segment with the given name.  All labels declared after are defined
+**Syntax:** `.BSSZP "name"`
+
+**Behavior:** Activates a zeropage "BSS" segment with the given name.  All labels declared after are defined
 as zeropage and treated as part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
-BSS segments must only contain 0-value bytes
+**Constraint:** BSS segments must contain only zero-value bytes.
 
-````{note}
+````{note} Example
 ```
 .BSSZP "ZPCODE"
 curx    .db 0
@@ -295,32 +301,41 @@ cury    .db 0
 ```
 ````
 
-#### .DB _expression_, ..., _expression_
-Defines a sequence of bytes from the comma-separated list that follows.
+#### .DB
 
-````{note}
+**Syntax:** `.DB expression [, expression ...]`
+
+**Behavior:** Defines a sequence of bytes from the comma-separated list that follows.
+
+````{note} Example
 ```
 .DB $00, $01, $02 ; $00 $01 $02
 .DB "HI",0        ; $48 $49 $00
 ```
 ````
 
-#### .DW _expression_, ..., _expression_
-Defines a sequence of words from the comma-separated list that follows.
+#### .DW
 
-````{note}
+**Syntax:** `.DW expression [, expression ...]`
+
+**Behavior:** Defines a sequence of words from the comma-separated list that follows.
+
+````{note} Example
 ```
 .DW $00, $01, $02 ; $00 $00 $01 $00 $02 $00
 ```
 ````
 
 #### .ELSE
-Declares an "else" clause for the open "if" one.  If the "if" condition evaluated to false, the
+
+**Syntax:** `.ELSE`
+
+**Behavior:** Declares an "else" clause for the open "if" one.  If the "if" condition evaluated to false, the
 contents of the "else" block are assembled.
 
-See [.IF](#if-expression)
+**Related:** [.IF](#if)
 
-````{note}
+````{note} Example
 ```
 .IF NTSC
     .EQ LINES 261
@@ -331,14 +346,20 @@ See [.IF](#if-expression)
 ````
 
 #### .ENDIF
-Ends a .IF block
 
-See [.IF](#if-expression)
+**Syntax:** `.ENDIF`
+
+**Behavior:** Ends an `.IF` block.
+
+**Related:** [.IF](#if)
 
 #### .ENDMAC
-Closes a macro definition.
 
-````{note}
+**Syntax:** `.ENDMAC`
+
+**Behavior:** Closes a macro definition.
+
+````{note} Example
 ```
 .MAC LDXY A
     LDX <A
@@ -348,9 +369,12 @@ Closes a macro definition.
 ````
 
 #### .ENDREP
-Closes a repeat block.
 
-````{note}
+**Syntax:** `.ENDREP`
+
+**Behavior:** Closes a repeat block.
+
+````{note} Example
 ```
 .REP 10
     ASL
@@ -358,11 +382,13 @@ Closes a repeat block.
 ```
 ````
 
-#### .EQ _name_ _expression_
+#### .EQ
 
-Defines a constant which may be used in expressions
+**Syntax:** `.EQ name expression`
 
-````{note}
+**Behavior:** Defines a constant that may be used in expressions.
+
+````{note} Example
 ```
 .EQ BITMAP $1100
     LDA #$00
@@ -370,13 +396,15 @@ Defines a constant which may be used in expressions
 ```
 ````
 
-#### .EXPORT _name_
+#### .EXPORT
 
-Exports a label for use (import) by another module.  See the linker section of this
+**Syntax:** `.EXPORT name`
+
+**Behavior:** Exports a label for use (import) by another module.  See the linker section of this
 manual for more details.
 
 
-````{note}
+````{note} Example
 ```
 .EXPORT blit
 blit
@@ -384,13 +412,14 @@ blit
 ```
 ````
 
-#### .IF _expression_
+#### .IF
 
-Evaluates the expression
-Conditionally assembles the lines between this directive and its matching
-`.ENDIF`.
+**Syntax:** `.IF expression`
 
-````{note}
+**Behavior:** Evaluates the expression and conditionally assembles the lines
+between this directive and its matching `.ENDIF`.
+
+````{note} Example
 ```
 .IF NTSC
 .EQ CYCLES_PER_LINE 65
@@ -402,18 +431,22 @@ Conditionally assembles the lines between this directive and its matching
 ```
 ````
 
-#### .IFDEF _label_
+#### .IFDEF
 
-Evaluates to TRUE if _label_ is defined.  This is different from .IF because
+**Syntax:** `.IFDEF label`
+
+**Behavior:** Evaluates to TRUE if _label_ is defined.  This is different from .IF because
 _label_ may be defined to be 0 and this will still evaluate to TRUE.
 This can be useful inside macros to determine if a parameter was provided or not.
 
-#### .IMPORT _name_
+#### .IMPORT
 
-Imports a label defined (exported) by another module.  See the linker section of this
+**Syntax:** `.IMPORT name`
+
+**Behavior:** Imports a label defined (exported) by another module.  See the linker section of this
 manual for more details.
 
-````{note}
+````{note} Example
 ```
 .IMPORT blit
 
@@ -423,13 +456,15 @@ manual for more details.
 ```
 ````
 
-#### .IMPORTZP _name_
+#### .IMPORTZP
 
-Imports a zeropage label defined (exported) by another module.  See the linker section of this
+**Syntax:** `.IMPORTZP name`
+
+**Behavior:** Imports a zeropage label defined (exported) by another module.  See the linker section of this
 manual for more details.
 
 
-````{note}
+````{note} Example
 ```
 .IMPORTZP curx
     ldx curx
@@ -438,12 +473,14 @@ manual for more details.
 ```
 ````
 
-#### .INC _filename_
+#### .INC
 
-Includes a file at the line of the directive. The file is loaded line-by-line
+**Syntax:** `.INC "filename"`
+
+**Behavior:** Includes a file at the line of the directive. The file is loaded line-by-line
 from disk and assembled as if the code was copy/pasted in place of the include directive.
 
-````{note}
+````{note} Example
 ```
 .INC "KERNAL.INC"
     LDA #$00
@@ -451,12 +488,14 @@ from disk and assembled as if the code was copy/pasted in place of the include d
 ```
 ````
 
-#### .INCBIN _filename_
+#### .INCBIN
 
-Includes the binary file. The binary contents are stored at the current location
-of the assembly target when this directive is encountered
+**Syntax:** `.INCBIN "filename"`
 
-````{note}
+**Behavior:** Includes the contents of a binary file at the current assembly
+target location.
+
+````{note} Example
 ```
 .EQ BITMAP $1100
     LDX #$07
@@ -471,11 +510,13 @@ SPRITES:
 ```
 ````
 
-#### .MAC _name_ _param 1_, ..., _param n_
+#### .MAC
 
-Defines a macro
+**Syntax:** `.MAC name [parameter, ...]`
 
-````{note}
+**Behavior:** Defines a macro.
+
+````{note} Example
 ```
 .MAC LDXY VAL
     LDX #<VAL
@@ -488,7 +529,7 @@ Defines a macro
 
 Will generate the following code:
 
-````{note}
+````{note} Example
 ```
     LDX #$34
     LDY #$12
@@ -501,11 +542,13 @@ macro and a comma-separated list of the parameters for the macro.
 Macros are invoked with the name of the macro followed by a comma-separated
 list of the parameters.
 
-#### .ORG _expression_
+#### .ORG
 
-Sets the address to assemble code to
+**Syntax:** `.ORG expression`
 
-````{note}
+**Behavior:** Sets the address at which subsequent code is assembled.
+
+````{note} Example
 ```
 .ORG $1000
 ; start up code
@@ -515,22 +558,26 @@ Sets the address to assemble code to
 ```
 ````
 
-#### .RES _expression_
+#### .RES
 
-Fills the number of bytes defined by the evaluated expression with 0's.
+**Syntax:** `.RES expression`
 
-````{note}
+**Behavior:** Fills the number of bytes defined by the evaluated expression with 0's.
+
+````{note} Example
 ```
     .res SCREEN_W * SCREEN_H
 ```
 ````
 
-#### .RORG _expression_
+#### .RORG
 
-Sets the address the code will run at when executed.
+**Syntax:** `.RORG expression`
+
+**Behavior:** Sets the address the code will run at when executed.
 This is useful for code that will be relocated prior to execution.
 
-````{note}
+````{note} Example
 ```
 .ORG $1000
 .RORG $00
@@ -542,16 +589,17 @@ This is useful for code that will be relocated prior to execution.
 ```
 ````
 
-Note that the `.RORG` directive must follow the `.ORG` directive in order to
-avoid the virtual PC being overwritten.
-`.ORG` will set the virtual PC to the same location as the physical PC.
+**Constraint:** `.RORG` must follow `.ORG`; `.ORG` sets the virtual PC to the
+same location as the physical PC.
 
-#### .REP _expression_ [, _iterator name_]
+#### .REP
 
-Assembles the code between this directive and `.ENDREP` for the given number of
+**Syntax:** `.REP count [, iterator]`
+
+**Behavior:** Assembles the code between this directive and `.ENDREP` for the given number of
 times.
 
-````{note}
+````{note} Example
 ```
 .REP 3
     ASL
@@ -561,7 +609,7 @@ times.
 
 Becomes
 
-````{note}
+````{note} Example
 ```
     ASL
     ASL
@@ -572,7 +620,7 @@ Becomes
 An optional parameter can be given that will be assigned the value of
 the current iteration of repetition during assembly.
 
-````{note}
+````{note} Example
 ```
 .REP 5,I
     INC $F0+I
@@ -582,7 +630,7 @@ the current iteration of repetition during assembly.
 
 Becomes
 
-````{note}
+````{note} Example
 ```
     INC $F0
     INC $F1
@@ -594,7 +642,7 @@ Becomes
 
 Nested `.REP` directives are also supported:
 
-````{note}
+````{note} Example
 ```
 .REP 2,I
 .REP 5,J
@@ -608,7 +656,7 @@ Nested `.REP` directives are also supported:
 
 Becomes:
 
-````{note}
+````{note} Example
 ```
     INC $F0
     INC $F1
@@ -625,13 +673,15 @@ Becomes:
 ```
 ````
 
-#### .SEG "name"
+#### .SEG
 
-Activates an absolute segment with the given name.  All labels defined are treated as
+**Syntax:** `.SEG "name"`
+
+**Behavior:** Activates an absolute segment with the given name.  All labels defined are treated as
 absolute and considered to be part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
-````{note}
+````{note} Example
 ```
 .SEG "CODE"
     lda #$00
@@ -639,13 +689,15 @@ linker section of the manual.
 ```
 ````
 
-#### .SEGZP "name"
+#### .SEGZP
 
-Activates a zeropage segment with the given name.  All labels defined are treated as
+**Syntax:** `.SEGZP "name"`
+
+**Behavior:** Activates a zeropage segment with the given name.  All labels defined are treated as
 zeropage and considered to be part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
-````{note}
+````{note} Example
 ```
 .SEGZP "ZPCODE"
 :   asl
@@ -663,7 +715,7 @@ frequently writing.
 
 They may be recursive as in this example:
 
-````{note}
+````{note} Example
 ```
 .MAC LDXY VAL
     LDX VAL
@@ -685,7 +737,7 @@ They may be recursive as in this example:
 You may omit arguments to a macro if your macro knows how to deal with
 less than the maximum number it expects as in this example:
 
-````{note}
+````{note} Example
 ```
 .MAC SAVEBYTES A, B, C
 .IFDEF A

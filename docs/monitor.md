@@ -49,6 +49,11 @@ expression.  Expression parsing breaks at each whitespace, meaning the first arg
 interpreted as `10` the second as `+` (illegal, by the way), and the third as `30`. The correct
 invocation would be `M 10+30`.
 
+```{warning}
+The `a`, `f`, `move`, `p`, and `new` commands change simulated memory
+immediately. They may clobber active program state you are debugging.
+```
+
 | COMMAND | NAME                        | DESCRIPTION                                          |
 |---------|-----------------------------|------------------------------------------------------|
 | `?`     | `EVAL`                      | evaluates the following expression and prints result |
@@ -86,281 +91,348 @@ invocation would be `M 10+30`.
 Arguments shown in square brackets are optional. Most address and value
 arguments may be expressions, such as `label+10`.
 
-#### Evaluate `? expression`
+#### Evaluate
 
-Evaluates the followin expression and prints the result.
+**Syntax:** `? expression`
 
-```{note}
+**Behavior:** Evaluates the following expression and prints the result.
+
+```{note} Example
 `? (2.0*SCREEN_H)`
 ```
 
-#### Assemble `a address instruction`
+#### Assemble
 
-Assembles the instruction at the address given by the expression. After a
+**Syntax:** `a address instruction`
+
+**Behavior:** Assembles the instruction at the address given by the expression. After a
 successful assembly, the monitor prepares another `a` command at the address
 immediately following the new instruction.
 
-```{note}
+```{note} Example
 `a $1000 lda #$00`
 ```
 
-#### List breakpoints `b`
+#### List breakpoints
 
-Lists every active breakpoint, including the ID used by the `br` command.
+**Syntax:** `b`
 
-```{note}
+**Behavior:** Lists every active breakpoint, including the ID used by the `br` command.
+
+```{note} Example
 `b`
 ```
 
-#### Add breakpoint at address `ba address`
+#### Add breakpoint at address
 
-Adds a breakpoint at the given address. If debug information maps the address
+**Syntax:** `ba address`
+
+**Behavior:** Adds a breakpoint at the given address. If debug information maps the address
 to a source line, the breakpoint is associated with that line as well.
 
-```{note}
+```{note} Example
 `ba main+3`
 ```
 
-#### Add breakpoint at line `bl filename line`
+#### Add breakpoint at line
 
-Adds a breakpoint at the given line in a file loaded with the current debug
+**Syntax:** `bl filename line`
+
+**Behavior:** Adds a breakpoint at the given line in a file loaded with the current debug
 information.
 
-```{note}
+```{note} Example
 `bl game.s 120`
 ```
 
-#### Remove breakpoint `br id`
+#### Remove breakpoint
 
-Removes the breakpoint with the given ID. Use `b` to list breakpoint IDs.
+**Syntax:** `br id`
 
-```{note}
+**Behavior:** Removes the breakpoint with the given ID. Use `b` to list breakpoint IDs.
+
+```{note} Example
 `br 2`
 ```
 
-#### Backtrace `bt [offset]`
+#### Backtrace
 
-Displays a rendered view of the call stack, beginning just above the current
+**Syntax:** `bt [offset]`
+
+**Behavior:** Displays a rendered view of the call stack, beginning just above the current
 stack pointer. The optional offset adjusts the starting position and must be
 less than `$80`. Stack contents are inferred, so data stored on the stack may
 appear as an invalid frame.
 
-```{note}
+```{note} Example
 `bt 8`
 ```
 
-#### Compare `c address1 address2 count`
+#### Compare
 
-Compares `count` bytes beginning at the two addresses and displays each pair
+**Syntax:** `c address1 address2 count`
+
+**Behavior:** Compares `count` bytes beginning at the two addresses and displays each pair
 that differs.
 
-```{note}
+```{note} Example
 `c $1000 $2000 $20`
 ```
 
-#### Clear `clear`
+#### Clear
 
-Clears the monitor and returns the cursor to the origin. The
+**Syntax:** `clear`
+
+**Behavior:** Clears the monitor and returns the cursor to the origin. The
 {c64-keys}`C= + L` shortcut performs the same action.
 
-```{note}
+```{note} Example
 `clear`
 ```
 
-#### Disassemble `d [start [end]]`
+#### Disassemble
 
-Disassembles memory beginning at `start-address`. If no end address is given,
+**Syntax:** `d [start [end]]`
+
+**Behavior:** Disassembles memory beginning at `start-address`. If no end address is given,
 the command disassembles at least `$10` bytes. If no start address is given,
 disassembly continues from the monitor's current default address.
 
-```{note}
+```{note} Example
 `d main main+$40`
 ```
 
-#### Dump memory `dump [start [end]]`
+#### Dump memory
 
-Renders the selected memory as assembleable `.db` directives. If no end
+**Syntax:** `dump [start [end]]`
+
+**Behavior:** Renders the selected memory as assembleable `.db` directives. If no end
 address is given, the command dumps `$40` bytes. If no start address is given,
 the dump begins at the monitor's current default address. This command is
 particularly useful with [file redirection](#file-redirection).
 
-```{note}
+```{note} Example
 `dump $1000 $1100 > data.s`
 ```
 
-#### Fill memory `f start end value [, value ...]`
+#### Fill memory
 
-Fills the half-open range `[start-address, end-address)` with the given values.
+**Syntax:** `f start end value [, value ...]`
+
+**Behavior:** Fills the half-open range `[start-address, end-address)` with the given values.
 When more than one value is supplied, the sequence repeats until the range is
 full.
 
-```{note}
+```{note} Example
 `f $1000 $1100 $00, $ff`
 ```
 
-#### Show files `files`
+#### Show files
 
-Lists every source file loaded in the current debug information.
+**Syntax:** `files`
 
-```{note}
+**Behavior:** Lists every source file loaded in the current debug information.
+
+```{note} Example
 `files`
 ```
 
-#### Go `g [address]`
+#### Go
 
-Continues execution without tracing. If an address is supplied, it becomes the
+**Syntax:** `g [address]`
+
+**Behavior:** Continues execution without tracing. If an address is supplied, it becomes the
 new program counter before execution begins.
 
-```{note}
+```{note} Example
 `g main`
 ```
 
-#### Hunt `h start value [, value ...]`
+#### Hunt
 
-Searches from `start-address` through `$ffff` for the first occurrence of the
+**Syntax:** `h start value [, value ...]`
+
+**Behavior:** Searches from `start-address` through `$ffff` for the first occurrence of the
 given sequence and displays its address.
 
-```{note}
+```{note} Example
 `h $1000 $de, $ad, $be, $ef`
 ```
 
-#### Show memory `m [start [end]]`
+#### Show memory
 
-Displays memory beginning at `start-address`. If no end address is given, the
+**Syntax:** `m [start [end]]`
+
+**Behavior:** Displays memory beginning at `start-address`. If no end address is given, the
 command displays `$40` bytes. If no start address is given, display continues
 from the monitor's current default address.
 
-```{note}
+```{note} Example
 `m screen screen+$100`
 ```
 
-#### Move memory `move start end destination`
+#### Move memory
 
-Copies the half-open range `[start-address, end-address)` to `destination`.
+**Syntax:** `move start end destination`
 
-```{note}
+**Behavior:** Copies the half-open range `[start-address, end-address)` to `destination`.
+
+```{note} Example
 `move $1000 $1100 $2000`
 ```
 
-#### Initialize BASIC `new`
+#### Initialize BASIC
 
-Reinitializes user memory by running the BASIC warm-start process.
+**Syntax:** `new`
 
-```{note}
+**Behavior:** Reinitializes user memory by running the BASIC warm-start process.
+
+```{warning}
+`new` resets the current BASIC user-memory state. Save anything you need before
+running it.
+```
+
+```{note} Example
 `new`
 ```
 
-#### Poke memory `p address value`
+#### Poke memory
 
-Writes the given byte value to an address.
+**Syntax:** `p address value`
 
-```{note}
+**Behavior:** Writes the given byte value to an address.
+
+```{note} Example
 `p $900f $08`
 ```
 
-#### Registers `r`
+#### Registers
 
-Displays the current simulated 6502 register values. It also sets the
+**Syntax:** `r`
+
+**Behavior:** Displays the current simulated 6502 register values. It also sets the
 monitor's default address to the current program counter for subsequent `d`,
 `dump`, or `m` commands.
 
-```{note}
+```{note} Example
 `r`
 ```
 
-#### Save memory `s start end filename`
+#### Save memory
 
-Saves the half-open range `[start-address, end-address)` to the given file.
+**Syntax:** `s start end filename`
 
-```{note}
+**Behavior:** Saves the half-open range `[start-address, end-address)` to the given file.
+
+```{note} Example
 `s $1000 $2000 memory.bin`
 ```
 
-#### Step over `n`
+#### Step over
 
-Runs the next instruction and returns to the monitor. A `JSR` and the called
+**Syntax:** `n`
+
+**Behavior:** Runs the next instruction and returns to the monitor. A `JSR` and the called
 subroutine are treated as a single instruction.
 
-```{note}
+```{note} Example
 `n`
 ```
 
-#### Trace `t`
+#### Trace
 
-Continues execution with instruction tracing enabled.
+**Syntax:** `t`
 
-```{note}
+**Behavior:** Continues execution with instruction tracing enabled.
+
+```{note} Example
 `t`
 ```
 
-#### List watches `w`
+#### List watches
 
-Lists every active watch, including the ID used by the `wr` command.
+**Syntax:** `w`
 
-```{note}
+**Behavior:** Lists every active watch, including the ID used by the `wr` command.
+
+```{note} Example
 `w`
 ```
 
-#### Add watch `wa start [end]`
+#### Add watch
 
-Adds a watch that triggers when the selected address or range is either read
+**Syntax:** `wa start [end]`
+
+**Behavior:** Adds a watch that triggers when the selected address or range is either read
 from or written to.
 
-```{note}
+```{note} Example
 `wa player_x player_y`
 ```
 
-#### Add load watch `wal start [end]`
+#### Add load watch
 
-Adds a watch that triggers only when the selected address or range is read.
+**Syntax:** `wal start [end]`
 
-```{note}
+**Behavior:** Adds a watch that triggers only when the selected address or range is read.
+
+```{note} Example
 `wal $1000 $10ff`
 ```
 
-#### Add store watch `was start [end]`
+#### Add store watch
 
-Adds a watch that triggers only when the selected address or range is written
+**Syntax:** `was start [end]`
+
+**Behavior:** Adds a watch that triggers only when the selected address or range is written
 to.
 
-```{note}
+```{note} Example
 `was score score+2`
 ```
 
-#### Remove watch `wr id`
+#### Remove watch
 
-Removes the watch with the given ID. Use `w` to list watch IDs.
+**Syntax:** `wr id`
 
-```{note}
+**Behavior:** Removes the watch with the given ID. Use `w` to list watch IDs.
+
+```{note} Example
 `wr 1`
 ```
 
-#### Quit `x`
+#### Quit
 
-Exits the monitor and returns to the editor or source view. The monitor window
+**Syntax:** `x`
+
+**Behavior:** Exits the monitor and returns to the editor or source view. The monitor window
 remains onscreen until it is closed with {c64-keys}`C= + Q`.  Because that key
 must be pressed while the window has focus, re-enter the monitor
 ({c64-key}`F7` or {c64-keys}`C= + W`) and press it there to close the window.
 
-```{note}
+```{note} Example
 `x`
 ```
 
-#### Step `z`
+#### Step
 
-Runs the next instruction and returns to the monitor, displaying the updated
+**Syntax:** `z`
+
+**Behavior:** Runs the next instruction and returns to the monitor, displaying the updated
 registers and next instruction.
 
-```{note}
+```{note} Example
 `z`
 ```
 
-#### Step out `zo`
+#### Step out
 
-Runs until the current subroutine returns with `RTS`, then displays the updated
+**Syntax:** `zo`
+
+**Behavior:** Runs until the current subroutine returns with `RTS`, then displays the updated
 registers and next instruction.
 
-```{note}
+```{note} Example
 `zo`
 ```
 

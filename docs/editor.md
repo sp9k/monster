@@ -41,6 +41,11 @@ below for more info on modes).
 | {c64-keys}`C= + Minus` | `PREV DRIVE    `| Selects the previous drive (limited to #8)                                                      |
 | {c64-key}`Colon`       | `EX COMMAND    `| Enters "EX" mode (see the EX COMMANDS section below for more on this)                           |
 
+```{warning}
+Closing a source buffer with {c64-keys}`C= + Q` immediately discards any
+unsaved changes in that buffer. The editor does not ask for confirmation.
+```
+
 #### Drive selection
 
 The current drive selection is displayed with a `#` prefix in the status bar.
@@ -137,7 +142,7 @@ The {c64-key}`Colon` key puts the editor in _EX_ mode.  In this mode, a string i
 The format of this string is a _command_ (usually one or two characters) followed by zero or more
 arguments.
 
-```{note}
+```{note} Example
 For example, `:s hello.s` writes a file named "hello.s" to disk.
 ```
 
@@ -158,117 +163,151 @@ The table below details the available commands in _EX_ mode.
 |    `x`    | `SCRATCH           `  | Filename                        | scratches (deletes) the given filename                                                          |
 
 
-#### Assemble file :a [filename]
+#### Assemble file
 
-Assembles the contents of the given file. This is functionally the same as opening
+**Syntax:** `:a filename`
+
+**Behavior:** Assembles the contents of the given file. This is functionally the same as opening
 the given file and assembling it with debug information ({c64-keys}`C= + A`).
 
 Invoking the debugger will invoke it for the last assembled file (not the current
 source buffer) in this scenario.  The debugger cares about the active debug
 information _not_ the active file.
 
-```{note}
-Example: `:a HELLO.S`
+```{note} Example
+`:a HELLO.S`
 ```
 
-#### Export binary :B [filename]
+#### Export binary
 
-Exports the active assembly ({c64-keys}`C= + A`) to the given file as binary.  This means
+**Syntax:** `:B filename`
+
+**Behavior:** Exports the active assembly ({c64-keys}`C= + A`) to the given file as binary.  This means
 no load address is prepended to the file.  This can be useful if you are using
 Monster to create level data or other code loaded by your main program.  It
 can also be used to export things like data tables for use with .INCBIN
 
-```{note}
-Example: `:B DATA.B`
+```{note} Example
+`:B DATA.B`
 ```
 
-#### Export debug file :D [filename]
+#### Export debug file
 
-Exports the loaded assembly, debug information, and symbol table as a debug
+**Syntax:** `:D filename`
+
+**Behavior:** Exports the loaded assembly, debug information, and symbol table as a debug
 (`.D`) file.  You may think of these as debuggable versions of your release
 binaries: a `.D` file can be loaded (`:L`) and debugged without having to
 reassemble/relink it.  This command should be run after a successful assembly
 or link.
 
-```{note}
-Example: `:D HELLO.D`
+```{note} Example
+`:D HELLO.D`
 ```
 
-#### Load debug file :L [filename]
+#### Load debug file
 
-Loads the given debug (`.D`) file.  The symbol table, debug information, and
+**Syntax:** `:L filename`
+
+**Behavior:** Loads the given debug (`.D`) file.  The symbol table, debug information, and
 program data are all loaded into virtual memory so you can begin debugging,
 view symbols, etc. as if you had just assembled the program.
 
-```{note}
-Example: `:L HELLO.D`
+```{note} Example
+`:L HELLO.D`
 ```
 
-#### Edit :e [filename]
+#### Edit
 
-Loads the given filename to a new buffer and activates it.
+**Syntax:** `:e filename`
 
-```{note}
-Example: `:e HELLO.S`
+**Behavior:** Loads the given filename to a new buffer and activates it.
+
+```{note} Example
+`:e HELLO.S`
 ```
 
-#### Assemble to object :o [filename]
+#### Assemble to object
 
-Assembles the current source buffer to an object file with the given name.
+**Syntax:** `:o filename`
+
+**Behavior:** Assembles the current source buffer to an object file with the given name.
 The filename must have a `.o` (or `.O`) extension if you want the linker to
 pick it up at link time.  See the [Linker](linker.md) document for more on
 object files and linking.
 
-```{note}
-Example: `:o HELLO.O`
+```{note} Example
+`:o HELLO.O`
 ```
 
-#### Export .PRG :P [filename]
+#### Export .PRG
 
-Exports the active assembly ({c64-keys}`C= + A`) to the given file as a .PRG file.  This means
+**Syntax:** `:P filename`
+
+**Behavior:** Exports the active assembly ({c64-keys}`C= + A`) to the given file as a .PRG file.  This means
 a load address is prepended to the file prior to export.  This produces a
 standalone executable you can use when you are done working on your program.
 
-```{note}
-Example: `:P GAME.PRG`
+```{note} Example
+`:P GAME.PRG`
 ```
 
-#### Rename :r [buffername]
+#### Rename
 
-Renames the active buffer to the given name.
-```{note}
-Example: `:r TEST2.S`
+**Syntax:** `:r buffername`
+
+**Behavior:** Renames the active buffer to the given name.
+
+```{note} Example
+`:r TEST2.S`
 ```
 
-#### Save :s [filename]
+#### Save
 
-Saves the active buffer to a file with the given name.  If no name is given,
+**Syntax:** `:s [filename]` or `:s@ [filename]`
+
+**Behavior:** Saves the active buffer to a file with the given name.  If no name is given,
 the active buffer's name is used.
 
-```{note}
-Adding an `@` to this command (`s@`) will delete the file before saving. This
-allows you to overwrite the existing file if it exists.
+```{warning}
+The `@` suffix deletes the existing file before writing the replacement. If
+the subsequent save fails, the original file has already been deleted.
 ```
 
-```{note}
-Examples: `:s NEW.S`, `:s@ OLD.S`, and `:S@` (save all).
+```{note} Example
+`:s NEW.S`, `:s@ OLD.S`, and `:S@` (save all).
 ```
 
-#### Save all :S
+#### Save all
 
-Saves all buffers that have been modified since they were last saved.
+**Syntax:** `:S` or `:S@`
+
+**Behavior:** Saves all buffers that have been modified since they were last saved.
 As with the _Save_ command, adding `@` to the command (`S@`) will overwrite
 existing files if they exist.
 
-```{note}
-Example: `:S@`
+```{warning}
+`:S@` applies the delete-then-save operation to every modified buffer. A save
+failure can leave an original file deleted without a completed replacement.
 ```
 
-#### Scratch :x [filename]
+```{note} Example
+`:S@`
+```
 
-Deletes the file of the given name.
-```{note}
-Example: `:x TEST.S`
+#### Scratch
+
+**Syntax:** `:x filename`
+
+**Behavior:** Deletes the file of the given name.
+
+```{warning}
+`:x` scratches the file from disk immediately and does not ask for
+confirmation. Monster provides no undo for this operation.
+```
+
+```{note} Example
+`:x TEST.S`
 ```
 
 ---

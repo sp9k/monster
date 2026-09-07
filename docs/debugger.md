@@ -32,7 +32,13 @@ and color RAM.  This allows the debugger and debugged program
 to operate independently without worrying about writes to one affecting the other.
 
 All debugger commands except for the "GO" command operate on completely virtualized
-state.  When using the GO command it is advised that you  **DO NOT OVERWRITE the BRK/NMI VECTORS ($316-$319)**.
+state.
+
+```{warning}
+Do not overwrite the BRK or NMI vectors at `$0316`–`$0319` when using GO.
+Monster uses these vectors to handle breakpoints and return to the debugger.
+Overwriting them can prevent either operation from working.
+```
 
 The BRK vector is used to return to the debugger when a breakpoint is encountered.
 If your program has its own idea of how to handle breakpoints, it may overwrite the BRK

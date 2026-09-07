@@ -297,6 +297,11 @@ In most cases this will be the desired command (save everything and overwrite) a
 also what will effectively be executed if you confirm "yes" to the prompt you're given
 upon assembly:
 
+```{warning}
+`:S@` deletes each existing file before writing its replacement. If a save
+fails, that file may be left without its original or a complete replacement.
+```
+
 ```
 :S@
 ```
@@ -448,4 +453,3 @@ and need a quick refresher.  To make inspecting this state easier, Monster has a
 last assembly along with their addresses.  {c64-key}`F1` toggles between name and address
 sorting in this view.  Press {c64-key}`RETURN` on a symbol to navigate to its
 definition.
-
