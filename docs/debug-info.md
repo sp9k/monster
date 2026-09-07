@@ -1,11 +1,11 @@
-## DEBUG INFORMATION TECHNICAL DETAILS
+## Debug information technical details
 
 Debug information is stored in a few tables as described below. At a high level, these are:
   - FILE TABLE: maps file IDs to their filenames
   - BLOCKS: stores ranges of addresses and lines for blocks of code
   - LINE PROGRAMS: state machine that resolves addresses and line numbers when executed
 
-### FILE TABLE
+### File table
 The FILE TABLE maps filenames to an implicit ID, which is the index of a given filename in this table.
 
 
@@ -16,7 +16,7 @@ The FILE TABLE maps filenames to an implicit ID, which is the index of a given f
 |   16     | ...                             |
 
 
-### BLOCKS
+### Blocks
 To simplify the storage of chunks of noncontiguous addresses and multi-file programs, mappings are broken down into BLOCKS.
 Each BLOCK header  defines a file id (BLOCKS will always reference one file only), and a range of lines and addresses.
 
@@ -55,7 +55,7 @@ In the assembler, the pseudo-ops that force the creation of a block are:
   - setting the address (`.ORG`)
   - creating/activating a SEGMENT (`.SEG`, `.SEGZP`)
 
-### LINE PROGRAM
+### Line program
 The line program facilitates compact mapping of line numbers to addresses.
 It is a state machine with the following variables:
  - line number
@@ -65,7 +65,7 @@ Commands modify this state in order to produce the address <-> line mapping.
 There are two types of instructions to handle this process: "basic" and "extended".
 Each type is detailed below.
 
-#### BASIC INSTRUCTIONS
+#### BASIC instructions
 
 The most basic operation, which is so common that it requires no special opcode, adds a small
 offset to the current line number AND program counter.  These are both encoded into a single
@@ -76,7 +76,7 @@ byte according to the following layout:
 | line offset | 0-3  | number of lines to advance the "line" count
 | addr offset | 4-7  | number of bytes to advance the PC or address offset
 
-#### EXTENDED INSTRUCTIONS
+#### Extended instructions
 
 For cases when a small offset to either the line or address is not enough (e.g. a macro
 that expands to more than 16 bytes), or generally to handle bigger "jumps" in the line mapping, these instructions are required.
@@ -96,7 +96,7 @@ Below is the list of extended commands and their effects.
 | `END`         |  -        |  $00 | 0           | Marks the end of the program (block)              |
 
 
-### EXAMPLE
+````{note}
 
 To illustrate how the BLOCK and LINE PROGRAM data look in memory, we will examine their
 in-memory form for the following simple program:
@@ -141,7 +141,9 @@ instructions to resolve "sta $900f" and "jmp loop".  Here's what those look like
 | $22   | move line by 2 and address by 2 (we are now at `sta $900f`) |
 | $32   | move line by 2 and address by 3 (we are now at `jmp loop`)  |
 
-### DEBUG INFO GENERATION
+````
+
+### Debug information generation
 
 The flow for generating debug information is:
  1. begin block: a new BLOCK is defined for the current file, line, and address
@@ -150,16 +152,16 @@ The flow for generating debug information is:
 
 ---
 
-### USING DEBUG INFORMATION
+### Using debug information
 Once debug information is generated, its primary function is to map lines to addresses and vice versa.
 
-#### MAPPING ADDRESS TO LINE
+#### Mapping address to line
 
 To map a given address to its corresponding line number, the line program for the block that contains
 its address is executed.  Once the line program reaches a PC value equal to the one that is sought,
 the current line number is returned.
 
-#### MAPPING LINE TO ADDRESS
+#### Mapping line to address
 
 The line to address mapping works just like address to line mapping.  The first block containing the
 file/address range being sought is executed.  When the line program's line number is equal to the one

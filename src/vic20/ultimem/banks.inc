@@ -12,6 +12,7 @@ FINAL_BANK_EXPR            = $03
 FINAL_BANK_FP              = FINAL_BANK_EXPR
 
 FINAL_BANK_HELP            = $04
+FINAL_BANK_MEMCFG          = $04
 FINAL_BANK_MACROS          = $05
 FINAL_BANK_LINKER          = $06
 FINAL_BANK_BUFF            = $07
@@ -44,4 +45,17 @@ VMEM_BLK5_BANK     = 39	; $a000-$c000 ($2000 bytes)
 
 FINAL_BANK_SOURCE0 = 40	; 8 source buffers * 3 blocks each (40-63)
 FINAL_BANK_LOG     = 64
+
+;*******************************************************************************
+; MEMORY CONFIGURATION BLOCKS
+; Bits (per region) of the VIC's address space that the UltiMem can map/unmap
+; for the user's program.  See memcfg.asm.
+MEMCFG_RAM123 = $01	; $0400-$0fff (the "3K" expansion)
+MEMCFG_BLK1   = $02	; $2000-$3fff
+MEMCFG_BLK2   = $04	; $4000-$5fff
+MEMCFG_BLK3   = $08	; $6000-$7fff
+MEMCFG_BLK5   = $10	; $a000-$bfff
+
+MEMCFG_ALL = MEMCFG_RAM123|MEMCFG_BLK1|MEMCFG_BLK2|MEMCFG_BLK3|MEMCFG_BLK5
+MEMCFG_NUM_BLOCKS = 5
 .endif

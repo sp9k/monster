@@ -1,4 +1,4 @@
-## LINKER OVERVIEW
+## Linker overview
 
 The linker is responsible for taking a number of _object_ files and turning them into a
 single executable binary file.  To link a program there are a few prerequisites:
@@ -7,7 +7,7 @@ single executable binary file.  To link a program there are a few prerequisites:
 2. produce a LINK file to describe the desired layout for the linked program
 3. link the program
 
-### BUILDING OBJECT FILES
+### Building object files
 Object files are nothing more than individually assembled fragments.  Anything you assemble ({c64-keys}`C= + A`) can
 be stored to disk in the object format.  This is done with the `:o` Ex command.  The linker will
 specifically look for files that end in `.o` when it goes to link, so be sure to enter a filename
@@ -54,7 +54,7 @@ Effectively, the linked binary will correspond to something like this:
 
 But what physical address will "CODE" and "DATA" actually correspond to?  Enter the `LINK` file.
 
-### LINK FILE FORMAT
+### LINK file format
 The LINK file is responsible for producing the desired layout for the binary program.
 It contains two "blocks" of definitions for the two concepts that define how the linker performs its job of laying out
 the program.
@@ -91,7 +91,7 @@ the SECTIONs that it *loads* and *runs* in are both advanced by the size of the 
 
 
 
-#### EXAMPLE
+````{note}
 
 To illustrate how the `LINK` file functions in practice, let's walk through an example.
 
@@ -134,19 +134,20 @@ reserved for it.
 RAM's `START`, because `FAST` is listed first and reserved $0400-$047f ahead of
 it.
 
+````
 
-#### LIMITS
+#### Limits
 
 | ITEM                                                | LIMIT |
 |-----------------------------------------------------|-------|
 | `MEMORY` sections                                   | 8     |
 | `SEGMENTS` entries / segments per object on C64     | 8     |
-| `SEGMENTS` entries / segments per object on VIC-20  | 64    |
+| `SEGMENTS` entries / segments per object on Vic-20  | 64    |
 | Object files in one link                            | 16    |
 | Imports per object file                             | 128   |
 | Exports per object file                             | 32    |
 
-#### EXAMPLE
+````{note}
 Below is a simple LINK file example to demonstrate its configuration format
 
 Each item (SECTION or SEGMENT) is terminated with a `;` character. Note that this
@@ -171,7 +172,9 @@ SEGMENTS [
 ]
 ```
 
-### SECTION FLAGS
+````
+
+### Section flags
 In the above example, we declared the key "FILL" with the value of "1" for SECTIONA.
 This is called a _section flag_.  The _FILL_ flag tells the linker how to handle unused
 memory within a SECTION.  The table below describes the available flags and their names.
@@ -182,7 +185,7 @@ Note that any nonzero value for these flags will enable them while the zero valu
 |------|--------------------------------------------------------------
 | FILL |  if '1' fills unused memory in the section with 0's
 
-#### ZEROPAGE SECTIONS
+#### Zeropage sections
 
 A SEGMENT declared with `.SEGZP` or `.BSSZP` is an address assignment only: it
 reserves zeropage locations for its symbols and contributes no bytes to the
@@ -202,11 +205,11 @@ SEGMENT: its bytes are part of the image and the program will start there.
 
 ---
 
-### TECHNICAL DETAILS
+### Technical details
 The following sections are probably only interesting to the most hardcore enthusiasts, who care how
 Monster actually implements its linker.
 
-### LINK PROCESS OVERVIEW
+### LINK process overview
 To link multiple object files the linker follows the following procedure:
 * Parse link config file
  * Get SEGMENT base addresses (where to assemble the object code)
@@ -223,7 +226,7 @@ To link multiple object files the linker follows the following procedure:
          * Map symbol indices to their resolved addresses using global symbol table / segment base address
     * Store object code to the current address for each segment
     * Walk relocation table, for each segment, and apply the relocations described using the global symbol table
-    * Load debug info
+    * Load debug information
          * for each block, add base address of SEGMENT for corresponding file
          * append line program data for each object file to get global line program data
 * Validate
@@ -232,7 +235,7 @@ To link multiple object files the linker follows the following procedure:
 
 ----
 
-### OBJECT FILE FORMAT
+### Object file format
 Below is a description of the object file's components.  These are listed in the order they appear in the object file.  These are described in further depth in the rest of this document.
 
 | FIELD          | DESCRIPTION
@@ -243,7 +246,7 @@ Below is a description of the object file's components.  These are listed in the
 | SECTIONS       | .CODE, .REL, and .DEBUGINFO, tables (per SECTION)
 
 
-#### HEADER
+#### Header
 At the beginning of the object file is the _header_, which gives basic details about the object file.  The header simply tells us how many segments and symbols are defined in the object file.
 The linker uses the header in each object file to determine the final layout in pass 1.
 
@@ -254,7 +257,7 @@ The linker uses the header in each object file to determine the final layout in 
 | num imports  |  2   | number of imports in object file
 
 
-#### SEGMENT HEADER
+#### Segment header
 After the header is the SEGMENT header, which describes the SEGMENT usage for the object file.  It details which SEGMENTs are used (by name) and how many bytes each one contains.
 
 For example, given the following assembly code:
@@ -288,7 +291,7 @@ to determine the total amount of space needed for the SEGMENT in the final binar
 The order of the definitions in this header also corresponds to the order of the
 SEGMENT tables written later in the object file (see "SECTIONS" below for more detail on this).
 
-### SYMBOLS
+### Symbols
 Next is the _symbol_ table. This table contains all labels that are used in the object file.
 
 The symbol table has two parts: IMPORTS and EXPORTS, which appear in the order shown in this table:
@@ -307,7 +310,7 @@ the linker from the filename.
 
 The following sections provide a more detailed overview on each block, IMPORTS and EXPORTS, in the symbol table.
 
-#### IMPORTS
+#### Imports
 The IMPORTS block of symbols contains the names of all symbols imported by the object file, the SEGMENT index, and their segment-offset.
 Since IMPORTS are external, we don't know what their index will be when we generate the object code. Instead, relocation entries reference their index
 in this table, which is used to look up their resolved value by name.
@@ -331,7 +334,7 @@ The info field uses the following bitfield format:
 |  size   |   0   | 0=zeropage import ($00-$ff), 1=absolute (>= $100)
 
 
-#### EXPORTS
+#### Exports
 The EXPORTS block defines symbols that are used, or may be used, in other object files.  They tell the linker where to define labels that will be used during linkage.
 
 Before reading the object code, the linker resolves the EXPORTS to their final addresses.
@@ -365,7 +368,7 @@ The address mode for a SYMBOL is determined by its corresponding SEGMENT.
 If a SYMBOL references a zeropage SEGMENT, it will also be defined as "zeropage" (1 byte).
 
 
-### SEGMENTS
+### Segments
 After the symbols comes a list of one or more SEGMENT definitions (the exact number is defined in the OBJ HEADER).
 Each SEGMENT contains a short header that tells us the size of the three sub-tables that comprise the SEGMENT followed by those sub-tables themselves: object, relocation, and debug information.
 
@@ -386,7 +389,7 @@ The _info_ bitfield for the SEGMENT uses the following format:
 
 The following sections will discuss the layout of the data tables that follow the header in each SEGMENT.
 
-#### NOTE: SECTIONS vs. SEGMENTS
+#### Note: sections vs. segments
 At assembly time, every time a `.SEG` directive is encountered, a new _SECTION_ is created.
 This concept disappears once the object code is generated (with the exception of debug
 info, which has its own version of it) when these SECTIONS are collapsed into the SEGMENTS
@@ -416,7 +419,7 @@ This also avoids resorting to SYMBOL-relative relocation records for references 
 For example, referring to the case above, `lda foo` can be handled with a SEGMENT-relative relocation because "foo" is in the same SEGMENT as the instruction referencing it.
 SYMBOL-relative relocations are _only_ required for external symbols.
 
-### RELOCATION TABLES
+### Relocation tables
 For each SEGMENT, the linker contains a table of _relocation info_.
 
 This table is made up of a number of records, each describing how to relocate a byte or word within the SEGMENT.
@@ -459,7 +462,7 @@ the final 8-bit target.  The LSB of this addend is stored in the instruction str
 this special case the MSB is stored in an extra byte at the end of the relocation entry for that record.
 Because of this, records that contain post-processing are 6 bytes instead of 5.
 
-### DEBUG INFO
+### Debug information
 This table stores the program to evaluate line numbers and addresses within the object file as well as references to which source files were used to create the object file.  This information allows the linker to produce a single mega debug file (or .D file) that contains all the information for the linked program, which allows for source level debugging.
 
 |       FIELD       |     SIZE     | DESCRIPTION
@@ -470,4 +473,4 @@ This table stores the program to evaluate line numbers and addresses within the 
 | headers           | 2\*BLOCKSIZE | the BLOCK header data for all blocks
 | line program data |      ...     | the line program data for the object code for all blocks
 
-The debug info format itself (headers and line program data) is described in further detail in [debug-info.md](debug-info.md).
+The debug information format itself (headers and line program data) is described in further detail in [debug information](debug-info.md).

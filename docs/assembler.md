@@ -1,12 +1,12 @@
-## ASSEMBLER OVERVIEW
+## Assembler overview
 
-### SYNTAX
+### Syntax
 The assembler syntax is very similar to any other major assembler.  For basic
 instructions, the canonical 6502 assembly syntax is supported.  That means '$'
 denotes a hex value, '#' an immediate operand, parentheses an indirect address,
 etc.
 
-### FORMAT
+### Format
 The structure of a single assembly line is divided into 3 logical parts:
 
 ```
@@ -28,14 +28,16 @@ reference only.
 
 Below are some examples of valid lines:
 
+````{note}
 ```
 LDA #$00
 LOOP   INC BUFFER,X  ; INCREMENT BUFFER+X
 LDA #$00:LDX #$80:LDY #$10
 LDA #$00:LDXY #$ffff
 ```
+````
 
-### EXPRESSIONS
+### Expressions
 
 Operands are evaluated as expressions.  An expression may be a simple value,
 such as `10` or `$1234`, or a label, in which case it resolves to that value or
@@ -74,20 +76,24 @@ or 0 (false), so they may be used anywhere a value may be.  Their precedence of
 0 is lower than every other operator, meaning arithmetic on either side is always evaluated first.
 For example:
 
+````{note}
 ```
 LDA #1+1==2      ; (1+1) == 2
 LDA #LEVEL>=3    ; 1 if the constant LEVEL is 3 or more
 .IF LEVEL>=3     ; conditional assembly on constant
 ```
+````
 
 Expressions may also contain parentheses, which are evaluated as you would expect,
 but note that if the entire expression is enclosed in parentheses, the
 assembler will interpret this as indirect addressing. For example:
 
+````{note}
 ```
 JMP (1+3)   ; jump-indirect to the address in memory address (4)
 JMP 1+3     ; jump-absolute to address 4
 ```
+````
 
 Immediate addressing and indirect addressing are mutually exclusive, so the assembler
 will allow you to enclose the whole expression in parentheses for immediate expressions
@@ -95,16 +101,20 @@ prefixed with a '#' (e.g. `LDA #(2+4)`)
 
 Labels are supported in expressions and will evaluate to their address when assembled.
 
+````{note}
 ```
 LDA #<LABEL1
 ```
+````
 
 Hexadecimal and decimal numbers are supported.  Hexadecimal numbers must be prefixed
 with a '$'.
 
+````{note}
 ```
 LDA #(10+$20)
 ```
+````
 
 Character literals are also supported. These are represented as a character enclosed within
 single quotes.
@@ -114,12 +124,12 @@ single quotes.
 Character literals must contain exactly one character and always resolve to
 a 1 byte value.
 
-## FORMATTING
+## Formatting
 
 Spacing is not important, but instructions are auto-formatted so that they are TAB indented.
 Labels and directives are, by convention, not indented. The formatter will also take care of this.
 
-## LABELS
+## Labels
 
 Labels begin with either an alpha-character or, in the case of _local_
 labels, a '@' character.  They are limited to 16 characters, but it is advisable to keep them shorter (8 characters or less).
@@ -128,13 +138,14 @@ Long labels are harder to squeeze onto a line.
 They are case-insensitive (`a` and `A` refer to the same label)
 and their definitions may end with a colon (':') but are not required to (`A:` and `A` are both valid label definitions)
 
-### LOCAL LABELS
+### Local labels
 
 Local labels are defined by prefixing the label with a '@' symbol.  This _does_
 count toward the 16 character label limit.
 Local labels are valid until the next non-local label is defined as shown in
 the following example.
 
+````{note}
 ```
 PROC0:
 @L0:
@@ -147,6 +158,7 @@ PROC1:
     BNE L0
     RTS
 ```
+````
 
 Note that the scope of the `@L0` defined under `PROC0` is valid until the next
 non-local label (`PROC1`) at which point the name is recycled and may be used
@@ -157,6 +169,7 @@ inaccessible. They _can_ be accessed by
 prepending the global label that encapsulates them.  This can be used to
 emulate structural data types e.g.
 
+````{note}
 ```
 PLAYER
 @X: .db 0
@@ -165,8 +178,9 @@ PLAYER
 GAME:
     LDA PLAYER@X
 ```
+````
 
-### ANONYMOUS LABELS
+### Anonymous labels
 
 Anonymous labels can be declared with ':'.
 Anonymous labels are useful when you need to do a short branch where
@@ -177,24 +191,28 @@ to the next _forward_ anonymous label and minuses (-) refer to the
 previous _backward_ anonymous label.
 
 for example
+````{note}
 ```
     .ORG $1000
 :   JMP +       ; JMP $1003
 :   JMP -       ; JMP $1003
 :   JMP --      ; JMP $1003
 ```
+````
 
 Using multiple +'s or -'s will count the same number of references before landing
 on the corresponding anonymous label.
 for example:
+````{note}
 ```
     JMP +++
 :   nop
 :   nop
 :   nop         ; will jump here
 ```
+````
 
-## DIRECTIVES
+## Directives
 
 Directives begin with a `.` character and instead of being directly assembled,
 as with an instruction, tell the assembler to generate some special code or data
@@ -208,12 +226,14 @@ must be declared before the directive.
 
 The following example illustrates why this is necessary:
 
+````{note}
 ```
 .REP NUM, I
     ASL
 .ENDREP
 .EQ NUM 5
 ```
+````
 
 Note that `NUM` is not declared until after the `.REP` directive. Because of this
 the assembler does not know how many times to repeat the `ASL`. We could assume
@@ -223,7 +243,7 @@ any number other than 5.
 
 ---
 
-### DIRECTIVES LIST
+### Directives list
 
 Below is a list of all available directives along with their usage and
 examples of how to use them.
@@ -233,6 +253,7 @@ examples of how to use them.
 Pads with 0's (or optionally a provided value) until the PC is aligned (divisible) by that
 value.
 
+````{note}
 ```
 .ALIGN $100
 CHARS
@@ -240,6 +261,7 @@ CHARS
 .ALIGN $1000, $ff
 HIRAM
 ```
+````
 
 #### .BSS "name"
 
@@ -249,11 +271,13 @@ linker section of the manual.
 
 BSS segments must only contain 0-value bytes
 
+````{note}
 ```
 .BSS "DATA"
 curx    .db 0
 cury    .db 0
 ```
+````
 
 #### .BSSZP "name"
 
@@ -263,26 +287,32 @@ linker section of the manual.
 
 BSS segments must only contain 0-value bytes
 
+````{note}
 ```
 .BSSZP "ZPCODE"
 curx    .db 0
 cury    .db 0
 ```
+````
 
 #### .DB _expression_, ..., _expression_
 Defines a sequence of bytes from the comma-separated list that follows.
 
- ```
+````{note}
+```
 .DB $00, $01, $02 ; $00 $01 $02
 .DB "HI",0        ; $48 $49 $00
 ```
+````
 
 #### .DW _expression_, ..., _expression_
 Defines a sequence of words from the comma-separated list that follows.
 
- ```
+````{note}
+```
 .DW $00, $01, $02 ; $00 $00 $01 $00 $02 $00
 ```
+````
 
 #### .ELSE
 Declares an "else" clause for the open "if" one.  If the "if" condition evaluated to false, the
@@ -290,6 +320,7 @@ contents of the "else" block are assembled.
 
 See [.IF](#if-expression)
 
+````{note}
 ```
 .IF NTSC
     .EQ LINES 261
@@ -297,6 +328,7 @@ See [.IF](#if-expression)
     .EQ LINES 312
 .ENDIF
 ```
+````
 
 #### .ENDIF
 Ends a .IF block
@@ -306,31 +338,37 @@ See [.IF](#if-expression)
 #### .ENDMAC
 Closes a macro definition.
 
+````{note}
 ```
 .MAC LDXY A
     LDX <A
     LDY >A
 .ENDMAC
 ```
+````
 
 #### .ENDREP
 Closes a repeat block.
 
+````{note}
 ```
 .REP 10
     ASL
 .ENDREP
 ```
+````
 
 #### .EQ _name_ _expression_
 
 Defines a constant which may be used in expressions
 
+````{note}
 ```
 .EQ BITMAP $1100
     LDA #$00
     STA BITMAP+20
 ```
+````
 
 #### .EXPORT _name_
 
@@ -338,11 +376,13 @@ Exports a label for use (import) by another module.  See the linker section of t
 manual for more details.
 
 
+````{note}
 ```
 .EXPORT blit
 blit
     ...
 ```
+````
 
 #### .IF _expression_
 
@@ -350,6 +390,7 @@ Evaluates the expression
 Conditionally assembles the lines between this directive and its matching
 `.ENDIF`.
 
+````{note}
 ```
 .IF NTSC
 .EQ CYCLES_PER_LINE 65
@@ -359,6 +400,7 @@ Conditionally assembles the lines between this directive and its matching
 .EQ LINES 312
 .ENDIF
 ```
+````
 
 #### .IFDEF _label_
 
@@ -371,6 +413,7 @@ This can be useful inside macros to determine if a parameter was provided or not
 Imports a label defined (exported) by another module.  See the linker section of this
 manual for more details.
 
+````{note}
 ```
 .IMPORT blit
 
@@ -378,6 +421,7 @@ manual for more details.
     ldy #20
     jsr blit
 ```
+````
 
 #### .IMPORTZP _name_
 
@@ -385,29 +429,34 @@ Imports a zeropage label defined (exported) by another module.  See the linker s
 manual for more details.
 
 
+````{note}
 ```
 .IMPORTZP curx
     ldx curx
     ldy #$00
     jsr blit
 ```
+````
 
 #### .INC _filename_
 
 Includes a file at the line of the directive. The file is loaded line-by-line
 from disk and assembled as if the code was copy/pasted in place of the include directive.
 
+````{note}
 ```
 .INC "KERNAL.INC"
     LDA #$00
     JSR CHROUT
 ```
+````
 
 #### .INCBIN _filename_
 
 Includes the binary file. The binary contents are stored at the current location
 of the assembly target when this directive is encountered
 
+````{note}
 ```
 .EQ BITMAP $1100
     LDX #$07
@@ -420,11 +469,13 @@ L0:
 SPRITES:
 .INCBIN "SPRITES.BIN"
 ```
+````
 
 #### .MAC _name_ _param 1_, ..., _param n_
 
 Defines a macro
 
+````{note}
 ```
 .MAC LDXY VAL
     LDX #<VAL
@@ -433,13 +484,16 @@ Defines a macro
 
     LDXY $1234
 ```
+````
 
 Will generate the following code:
 
+````{note}
 ```
     LDX #$34
     LDY #$12
 ```
+````
 
 Macro definitions begin with the `.MAC` directive followed by the name of the
 macro and a comma-separated list of the parameters for the macro.
@@ -451,6 +505,7 @@ list of the parameters.
 
 Sets the address to assemble code to
 
+````{note}
 ```
 .ORG $1000
 ; start up code
@@ -458,20 +513,24 @@ Sets the address to assemble code to
 .ORG $2000
 ; main code
 ```
+````
 
 #### .RES _expression_
 
 Fills the number of bytes defined by the evaluated expression with 0's.
 
+````{note}
 ```
     .res SCREEN_W * SCREEN_H
 ```
+````
 
 #### .RORG _expression_
 
 Sets the address the code will run at when executed.
 This is useful for code that will be relocated prior to execution.
 
+````{note}
 ```
 .ORG $1000
 .RORG $00
@@ -481,6 +540,7 @@ This is useful for code that will be relocated prior to execution.
     LDA #$00
     STA $900F
 ```
+````
 
 Note that the `.RORG` directive must follow the `.ORG` directive in order to
 avoid the virtual PC being overwritten.
@@ -491,31 +551,38 @@ avoid the virtual PC being overwritten.
 Assembles the code between this directive and `.ENDREP` for the given number of
 times.
 
+````{note}
 ```
 .REP 3
     ASL
 .ENDREP
 ```
+````
 
 Becomes
 
+````{note}
 ```
     ASL
     ASL
     ASL
 ```
+````
 
 An optional parameter can be given that will be assigned the value of
 the current iteration of repetition during assembly.
 
+````{note}
 ```
 .REP 5,I
     INC $F0+I
 .ENDREP
 ```
+````
 
 Becomes
 
+````{note}
 ```
     INC $F0
     INC $F1
@@ -523,9 +590,11 @@ Becomes
     INC $F3
     INC $F4
 ```
+````
 
 Nested `.REP` directives are also supported:
 
+````{note}
 ```
 .REP 2,I
 .REP 5,J
@@ -535,9 +604,11 @@ Nested `.REP` directives are also supported:
     ASL
 .ENDREP
 ```
+````
 
 Becomes:
 
+````{note}
 ```
     INC $F0
     INC $F1
@@ -552,6 +623,7 @@ Becomes:
     INC $F9
     ASL
 ```
+````
 
 #### .SEG "name"
 
@@ -559,11 +631,13 @@ Activates an absolute segment with the given name.  All labels defined are treat
 absolute and considered to be part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
+````{note}
 ```
 .SEG "CODE"
     lda #$00
     sta $900f
 ```
+````
 
 #### .SEGZP "name"
 
@@ -571,22 +645,25 @@ Activates a zeropage segment with the given name.  All labels defined are treate
 zeropage and considered to be part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
+````{note}
 ```
 .SEGZP "ZPCODE"
 :   asl
     asl
     bcc :-
 ```
+````
 
 ---
 
-### MACROS
+### Macros
 
 Macros offer a convenient way to abstract patterns that you find yourself
 frequently writing.
 
 They may be recursive as in this example:
 
+````{note}
 ```
 .MAC LDXY VAL
     LDX VAL
@@ -603,10 +680,12 @@ They may be recursive as in this example:
     STXY DST
 .ENDMAC
 ```
+````
 
 You may omit arguments to a macro if your macro knows how to deal with
 less than the maximum number it expects as in this example:
 
+````{note}
 ```
 .MAC SAVEBYTES A, B, C
 .IFDEF A
@@ -623,8 +702,9 @@ less than the maximum number it expects as in this example:
 .ENDIF
 .ENDMAC
 ```
+````
 
-### MACRO LIMITATIONS
+### Macro limitations
 
 There are some limitations on the number of macros and overall size of the
 macros per assembly.  The source for all macros must be less than $5F00 bytes.
@@ -634,14 +714,14 @@ Each macro can be at most 256 lines or $1000 bytes, whichever is lower. This res
 
 Comments are excluded from the internal context buffer, so using them will not count toward the byte limit.
 
-### OTHER LIMITATIONS/GUIDELINES
+### Other limitations/guidelines
 
-#### MEMORY USAGE
+#### Memory usage
 
-The user program may use all available memory from $00 to $7fff. Addresses in the IO range ($9800-$9fff)
-are reserved for the debugger.  The IO range is read-only while debugging.
+The user program may use all available memory from $00 to $7fff. Addresses in the I/O range ($9800-$9fff)
+are reserved for the debugger.  The I/O range is read-only while debugging.
 
-#### USE ANONYMOUS LABELS
+#### Use anonymous labels
 
 Anonymous labels take up no space for the label names, only address.  Using
 them is much more efficient than labels, and so this should be done for short

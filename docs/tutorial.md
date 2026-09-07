@@ -1,4 +1,4 @@
-### TUTORIAL
+### Tutorial
 
 I hope you're feeling excited and inspired by our adventure writing "Hello World" because
 we will now walk through a much more substantial project.  The goal is to build something
@@ -7,7 +7,7 @@ that familiarizes you with the multitude of powerful features Monster provides.
 By the end of this tutorial we will have a smoothly moving character that can run from side to side
 and jump under joystick control.
 
-#### MAIN
+#### Main
 
 This project will span multiple files, but when assembling directly into memory, Monster begins with the
 active source file.  For us, that will be a `main.s` file.  All other files will be _included_ from
@@ -36,7 +36,7 @@ that you include at the top of your "main" assembly file (`main.s` for us).
 To create a new buffer, press {c64-keys}`C= + N`.  This will open a new unnamed buffer.  Press
 {c64-keys}`C= + T` and you should see there are now two buffers: `main.s` and our new unnamed one.
 
-#### MACROS
+#### Macros
 
 Let's call this new file `macros.inc`.  Rename it using the `r` EX COMMAND.
 The `.inc` suffix tells us this is an _include_ file.
@@ -97,19 +97,19 @@ information.
 This is why it's a good idea to start your session by assembling your macros file and to
 include it at the top of your "main" entrypoint file.
 
-#### CUSTOM CHARACTERS
+#### Custom characters
 
 Many sizeable programs will contain a relatively large chunk of data.  Logically it makes sense
 to store this in its own file.
 
 A character set is one popular use case, and this is exactly what we'll be defining.
 Defining an entire character set is quite a lot of work, so we're going to base ours on the
-VIC-20's own character set.
+Vic-20's own character set.
 
 To do this we will dip our toes into one of Monster's powerful utilities: the **MONITOR**.
 Activate the monitor with the {c64-key}`F7` key.  A window will appear in which text commands
 are entered.  The character set on which we wish to base our design lives at address `$8000` in
-the VIC-20's ROM.  Run the following command to take a peek at the memory there:
+the Vic-20's ROM.  Run the following command to take a peek at the memory there:
 
 ```
 m $8000
@@ -123,7 +123,7 @@ to whatever filename follows.
 The other thing to understand is that commands like `dump` take an optional second parameter.
 In this case, it defines the address at which to stop dumping memory.  This ending address is
 exclusive, so `$8400` includes all bytes through `$83ff`.  With these things in mind, we can
-save the whole range from `$8000`-`$83ff` (one of the VIC-20's character sets) to a file for
+save the whole range from `$8000`-`$83ff` (one of the Vic-20's character sets) to a file for
 our own repurposing.
 
 ```
@@ -152,7 +152,7 @@ command again.
 That is enough for now.  We will return to the character set once our program is ready to use
 it—and once we are feeling sufficiently inspired.
 
-#### BUFFER SWITCHING
+#### Buffer switching
 
 At this point we have at least three buffers open (perhaps more if you got curious).  There are
 several ways to move between them and this will be a frequent part of our workflow, so it's
@@ -171,7 +171,7 @@ the most general way to select the buffer you want by name.  If you haven't noti
 the `H`, `J`, `K`, and `L` keys are almost always usable in addition to the cursor keys.  This is
 true in the buffer viewer as well as the UDG editor and others we've yet to explore.
 
-#### IMPLEMENTATION LOGIC
+#### Implementation logic
 
 Okay, time for the exciting stuff: let's work on writing the logic that ties everything together.
 Navigate to the `main.s` buffer.
@@ -282,7 +282,7 @@ Let's take a pause here and familiarize ourselves with the environment a bit mor
 plenty more of our program to write, but it will help if we can iteratively build up to
 the final product.
 
-#### SAVING
+#### Saving
 
 Before we even think about beginning debugging, we should make sure our progress is
 safely stored on disk.
@@ -301,13 +301,13 @@ upon assembly:
 :S@
 ```
 
-#### ASSEMBLY
+#### Assembly
 
 As mentioned earlier, assembly will typically take place from the top-level unit from which
 all others are included (`main.s` in our case).  Navigate to that buffer and press
 {c64-keys}`C= + A` to assemble it.
 
-#### ERRORS
+#### Errors
 
 There's a good chance your first assembly will generate one or more errors.
 If it does, they are displayed in a menu,
@@ -323,14 +323,14 @@ then repeat as needed until it actually does.
 Errors often have a cascading effect, so it's usually best to address the errors that
 occurred first during assembly.
 
-#### LOG
+#### Log
 
 In addition to the error window, the log provides a chronological record of what happened
 during assembly.  It will show you the order in which files were processed, errors
 as they occurred, etc.  When your program is successfully assembled, it will also give you
 details about the final result.
 
-#### DEBUGGING
+#### Debugging
 
 This debug session will be more involved than the "Hello World" one. We will cover breakpoints,
 watches, and the monitor interface (which we've already touched on a bit).
@@ -374,7 +374,7 @@ see a steadily increasing (by `$0c`) array of values: `01`, `0c`, `18`, ...
 If you don't, then try to see what is wrong with the pattern, hunt for any bugs in the initializatoin loop, and
 fix using the usual flow.
 
-#### WINDOW MANAGEMENT
+#### Window management
 
 We introduced the concept of windows earlier with the BUFFER VIEWER. The MEMORY VIEWER is another one.
 A WINDOW is an interactive widget that can be invoked to allow you to do things like
@@ -393,7 +393,7 @@ with {c64-keys}`C= + W` (also re-enters the visible window if the editor is in f
 Finally, all active windows can be hidden with {c64-keys}`C= + H`.  The same key-combination also unhides
 them if they are already hidden.
 
-#### EDITOR TIPS
+#### Editor tips
 
 Before we finish up our program, let's take a moment to hone our editing skills.
 The `main.s` buffer is still small, but it's getting big enough that navigation by individual cursor
@@ -421,7 +421,7 @@ immediately begin writing your new line.
 This should get you started.  See the **EDITOR** chapter for the other navigation commands if
 you still find yourself frustrated at your editing/navigation speed.
 
-#### FINISHING THE PROGRAM
+#### Finishing the program
 
 We're not quite done with initialization just yet. Remember that we wish to use joystick input
 to move the player sprite around the screen.  To do this we need to configure the VIAs (the Vic-20's
@@ -438,7 +438,7 @@ There's a few remaining items to finish up the program.
 3. redraw the sprite at its new position
 
 
-#### SYMBOL VIEWER
+#### Symbol viewer
 
 It is often useful to examine the symbols defined once your program is assembled.  This is
 a great way to get a sense of the program's final layout and make sure things look

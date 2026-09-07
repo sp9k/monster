@@ -1,4 +1,4 @@
-## MONITOR OVERVIEW
+## Monitor overview
 
 The monitor is a text based interface for debugging programs and manipulating
 program state.  It offers the same functionality as the GUI debugger plus a plethora of other commands to
@@ -10,7 +10,7 @@ debugger). Lines are entered and when you wish to execute them, press {c64-key}`
 
 ---
 
-### ACTIVATION
+### Activation
 
 The monitor is activated as a window with the {c64-key}`F7` key.  In this mode the editor (or, while debugging,
 the source view) remains visible above the monitor window.  The window may be resized with {c64-keys}`C= + K`
@@ -27,7 +27,7 @@ assembling a program.
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
 Press {c64-key}`F7` or {c64-key}`F8` to re-enter it.  The monitor window is closed, just as other windows are, with the {c64-keys}`C= + Q` key combination, which must be pressed while the monitor window has focus.
 
-### FILE REDIRECTION
+### File redirection
 The output from a given monitor command can be redirected to file instead of the screen by using the
 redirect (`>`) operator.  When placed at the end of a command, the redirect operator writes all output from
 that command to the following file.
@@ -38,7 +38,7 @@ For example:
 
 Will write the contents of the simulated 6502's registers to the disk file `regs.txt`
 
-### COMMANDS
+### Commands
 
 The table below is a quick reference for the available monitor commands. See
 the corresponding command section for syntax, argument details, and examples.
@@ -86,285 +86,285 @@ invocation would be `M 10+30`.
 Arguments shown in square brackets are optional. Most address and value
 arguments may be expressions, such as `label+10`.
 
-#### EVALUATE `? expression`
+#### Evaluate `? expression`
 
 Evaluates the followin expression and prints the result.
 
-**EXAMPLE:**
-
+```{note}
 `? (2.0*SCREEN_H)`
+```
 
-#### ASSEMBLE `a address instruction`
+#### Assemble `a address instruction`
 
 Assembles the instruction at the address given by the expression. After a
 successful assembly, the monitor prepares another `a` command at the address
 immediately following the new instruction.
 
-**EXAMPLE:**
-
+```{note}
 `a $1000 lda #$00`
+```
 
-#### LIST BREAKPOINTS `b`
+#### List breakpoints `b`
 
 Lists every active breakpoint, including the ID used by the `br` command.
 
-**EXAMPLE:**
-
+```{note}
 `b`
+```
 
-#### ADD BREAKPOINT AT ADDRESS `ba address`
+#### Add breakpoint at address `ba address`
 
 Adds a breakpoint at the given address. If debug information maps the address
 to a source line, the breakpoint is associated with that line as well.
 
-**EXAMPLE:**
-
+```{note}
 `ba main+3`
+```
 
-#### ADD BREAKPOINT AT LINE `bl filename line`
+#### Add breakpoint at line `bl filename line`
 
 Adds a breakpoint at the given line in a file loaded with the current debug
 information.
 
-**EXAMPLE:**
-
+```{note}
 `bl game.s 120`
+```
 
-#### REMOVE BREAKPOINT `br id`
+#### Remove breakpoint `br id`
 
 Removes the breakpoint with the given ID. Use `b` to list breakpoint IDs.
 
-**EXAMPLE:**
-
+```{note}
 `br 2`
+```
 
-#### BACKTRACE `bt [offset]`
+#### Backtrace `bt [offset]`
 
 Displays a rendered view of the call stack, beginning just above the current
 stack pointer. The optional offset adjusts the starting position and must be
 less than `$80`. Stack contents are inferred, so data stored on the stack may
 appear as an invalid frame.
 
-**EXAMPLE:**
-
+```{note}
 `bt 8`
+```
 
-#### COMPARE `c address1 address2 count`
+#### Compare `c address1 address2 count`
 
 Compares `count` bytes beginning at the two addresses and displays each pair
 that differs.
 
-**EXAMPLE:**
-
+```{note}
 `c $1000 $2000 $20`
+```
 
-#### CLEAR `clear`
+#### Clear `clear`
 
 Clears the monitor and returns the cursor to the origin. The
 {c64-keys}`C= + L` shortcut performs the same action.
 
-**EXAMPLE:**
-
+```{note}
 `clear`
+```
 
-#### DISASSEMBLE `d [start [end]]`
+#### Disassemble `d [start [end]]`
 
 Disassembles memory beginning at `start-address`. If no end address is given,
 the command disassembles at least `$10` bytes. If no start address is given,
 disassembly continues from the monitor's current default address.
 
-**EXAMPLE:**
-
+```{note}
 `d main main+$40`
+```
 
-#### DUMP MEMORY `dump [start [end]]`
+#### Dump memory `dump [start [end]]`
 
 Renders the selected memory as assembleable `.db` directives. If no end
 address is given, the command dumps `$40` bytes. If no start address is given,
 the dump begins at the monitor's current default address. This command is
 particularly useful with [file redirection](#file-redirection).
 
-**EXAMPLE:**
-
+```{note}
 `dump $1000 $1100 > data.s`
+```
 
-#### FILL MEMORY `f start end value [, value ...]`
+#### Fill memory `f start end value [, value ...]`
 
 Fills the half-open range `[start-address, end-address)` with the given values.
 When more than one value is supplied, the sequence repeats until the range is
 full.
 
-**EXAMPLE:**
-
+```{note}
 `f $1000 $1100 $00, $ff`
+```
 
-#### SHOW FILES `files`
+#### Show files `files`
 
 Lists every source file loaded in the current debug information.
 
-**EXAMPLE:**
-
+```{note}
 `files`
+```
 
-#### GO `g [address]`
+#### Go `g [address]`
 
 Continues execution without tracing. If an address is supplied, it becomes the
 new program counter before execution begins.
 
-**EXAMPLE:**
-
+```{note}
 `g main`
+```
 
-#### HUNT `h start value [, value ...]`
+#### Hunt `h start value [, value ...]`
 
 Searches from `start-address` through `$ffff` for the first occurrence of the
 given sequence and displays its address.
 
-**EXAMPLE:**
-
+```{note}
 `h $1000 $de, $ad, $be, $ef`
+```
 
-#### SHOW MEMORY `m [start [end]]`
+#### Show memory `m [start [end]]`
 
 Displays memory beginning at `start-address`. If no end address is given, the
 command displays `$40` bytes. If no start address is given, display continues
 from the monitor's current default address.
 
-**EXAMPLE:**
-
+```{note}
 `m screen screen+$100`
+```
 
-#### MOVE MEMORY `move start end destination`
+#### Move memory `move start end destination`
 
 Copies the half-open range `[start-address, end-address)` to `destination`.
 
-**EXAMPLE:**
-
+```{note}
 `move $1000 $1100 $2000`
+```
 
-#### INITIALIZE BASIC `new`
+#### Initialize BASIC `new`
 
 Reinitializes user memory by running the BASIC warm-start process.
 
-**EXAMPLE:**
-
+```{note}
 `new`
+```
 
-#### POKE MEMORY `p address value`
+#### Poke memory `p address value`
 
 Writes the given byte value to an address.
 
-**EXAMPLE:**
-
+```{note}
 `p $900f $08`
+```
 
-#### REGISTERS `r`
+#### Registers `r`
 
 Displays the current simulated 6502 register values. It also sets the
 monitor's default address to the current program counter for subsequent `d`,
 `dump`, or `m` commands.
 
-**EXAMPLE:**
-
+```{note}
 `r`
+```
 
-#### SAVE MEMORY `s start end filename`
+#### Save memory `s start end filename`
 
 Saves the half-open range `[start-address, end-address)` to the given file.
 
-**EXAMPLE:**
-
+```{note}
 `s $1000 $2000 memory.bin`
+```
 
-#### STEP OVER `n`
+#### Step over `n`
 
 Runs the next instruction and returns to the monitor. A `JSR` and the called
 subroutine are treated as a single instruction.
 
-**EXAMPLE:**
-
+```{note}
 `n`
+```
 
-#### TRACE `t`
+#### Trace `t`
 
 Continues execution with instruction tracing enabled.
 
-**EXAMPLE:**
-
+```{note}
 `t`
+```
 
-#### LIST WATCHES `w`
+#### List watches `w`
 
 Lists every active watch, including the ID used by the `wr` command.
 
-**EXAMPLE:**
-
+```{note}
 `w`
+```
 
-#### ADD WATCH `wa start [end]`
+#### Add watch `wa start [end]`
 
 Adds a watch that triggers when the selected address or range is either read
 from or written to.
 
-**EXAMPLE:**
-
+```{note}
 `wa player_x player_y`
+```
 
-#### ADD LOAD WATCH `wal start [end]`
+#### Add load watch `wal start [end]`
 
 Adds a watch that triggers only when the selected address or range is read.
 
-**EXAMPLE:**
-
+```{note}
 `wal $1000 $10ff`
+```
 
-#### ADD STORE WATCH `was start [end]`
+#### Add store watch `was start [end]`
 
 Adds a watch that triggers only when the selected address or range is written
 to.
 
-**EXAMPLE:**
-
+```{note}
 `was score score+2`
+```
 
-#### REMOVE WATCH `wr id`
+#### Remove watch `wr id`
 
 Removes the watch with the given ID. Use `w` to list watch IDs.
 
-**EXAMPLE:**
-
+```{note}
 `wr 1`
+```
 
-#### QUIT `x`
+#### Quit `x`
 
 Exits the monitor and returns to the editor or source view. The monitor window
 remains onscreen until it is closed with {c64-keys}`C= + Q`.  Because that key
 must be pressed while the window has focus, re-enter the monitor
 ({c64-key}`F7` or {c64-keys}`C= + W`) and press it there to close the window.
 
-**EXAMPLE:**
-
+```{note}
 `x`
+```
 
-#### STEP `z`
+#### Step `z`
 
 Runs the next instruction and returns to the monitor, displaying the updated
 registers and next instruction.
 
-**EXAMPLE:**
-
+```{note}
 `z`
+```
 
-#### STEP OUT `zo`
+#### Step out `zo`
 
 Runs until the current subroutine returns with `RTS`, then displays the updated
 registers and next instruction.
 
-**EXAMPLE:**
-
+```{note}
 `zo`
+```
 
-### MONITOR SHORTCUTS
+### Monitor shortcuts
 
 These keys perform monitor or window actions directly; they are not typed at
 the monitor prompt.

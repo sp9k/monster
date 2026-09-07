@@ -24,7 +24,7 @@ K_DEL       = $14	; DELETE
 
 ; EDITOR KEYS
 K_GO_BASIC       = $85	; F1
-;                = $89	; F2
+K_MEM_CONFIG     = $89	; F2
 K_ASM_DEBUG      = $b0	; C= + a (assemble with debug info)
 K_DEBUG          = $ac	; C= + d
 
@@ -103,7 +103,6 @@ K_WIN_CLOSE		= $ab	; C= + q (close the active window)
 
 ;*******************************************************************************
 ; MONITOR KEYS
-K_GO_BASIC_TUI		= $89	; F2
 K_MON_CLEAR		= $b6	; C= + l
 
 ;*******************************************************************************

@@ -194,13 +194,10 @@ __monitor_window:
 	rts
 
 :	cmp #K_SWAP_USERMEM_TUI
-	bne :+
+	bne @done
 	jsr dbg::swapusermem
 	jmp @handled
 
-:	cmp #K_GO_BASIC_TUI
-	bne @done
-	jsr run::go_basic
 @handled:
 	lda #$00
 @done:	rts			; propagate keypress

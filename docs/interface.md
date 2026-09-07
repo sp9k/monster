@@ -1,6 +1,6 @@
-## INTERFACE
+## Interface
 
-### WINDOWS
+### Windows
 
 Within the editor, you can launch several different "windows", interfaces dedicated to a particular task.
 Some of these are opened automatically, such as the error log which appears when assembly fails, while others
@@ -35,7 +35,7 @@ the following keys.
 | `SHRINK  ` | {c64-keys}`C= + J` | Shrinks the active window
 | `MAXIMIZE` | {c64-keys}`C= + Z` | Toggles between full screen (if currently not maximized) or its last un-maximized size (if maximized)
 
-#### FULLSCREEN VIEWERS
+#### Fullscreen viewers
 
 The directory viewer ({c64-key}`Minus`), symbol viewer ({c64-keys}`C= + Y`) and macro viewer
 ({c64-keys}`C= + M`) are _not_ windows.  Each takes over the whole screen while open,

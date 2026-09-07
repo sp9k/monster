@@ -1,4 +1,4 @@
-## EDITOR OVERVIEW
+## Editor overview
 
 The editor provides powerful facilities for loading, saving, and modifying source code.
 Text is displayed in 40 columns to provide a much higher density interface than the Vic-20's native BASIC line editor.
@@ -7,14 +7,14 @@ Navigation will be familiar to vi users.  There are also a variety of commands t
 
 As with all work you do on your Vic-20, if you care about it, save often.
 
-### BUFFERS
+### Buffers
 
 Up to 8 source buffers may be stored in memory at a time, each up to 24KB
 in size. These are accessed via a key chord comprised of {c64-key}`C=` and the number
 key for the corresponding buffer.  You can also navigate to the _previous_
 buffer with {c64-keys}`Ctrl + H` and the _next_ buffer with {c64-keys}`Ctrl + L`.
 
-### COMMAND SHORTCUTS
+### Command shortcuts
 
 Below are the basic commands along with their associated key combinations. These
 commands are available regardless of insertion mode (see the _Editor Modes_ section
@@ -41,13 +41,13 @@ below for more info on modes).
 | {c64-keys}`C= + Minus` | `PREV DRIVE    `| Selects the previous drive (limited to #8)                                                      |
 | {c64-key}`Colon`       | `EX COMMAND    `| Enters "EX" mode (see the EX COMMANDS section below for more on this)                           |
 
-#### DRIVE SELECTION
+#### Drive selection
 
 The current drive selection is displayed with a `#` prefix in the status bar.
 {c64-keys}`C= + Plus` selects the _next_ available drive and {c64-keys}`C= + Minus` selects
 the _previous_ available drive.  The valid device range is 8-15.
 
-#### DIRECTORY VIEWER
+#### Directory viewer
 
 Pressing the {c64-key}`Minus` key in command mode activates the directory viewer.
 
@@ -61,7 +61,7 @@ to the first one.
 Either {c64-key}`RUN/STOP` or {c64-keys}`C= + Q` dismisses the viewer and restores the screen
 you came from.
 
-#### SYMBOL VIEWER
+#### Symbol viewer
 
 The symbol viewer, activated with {c64-keys}`C= + Y`, displays all the labels in the program
 along with their corresponding address.  If no labels are defined, the viewer aborts and reports
@@ -73,14 +73,14 @@ Float constants are shown in decimal/scientific notation.
 |-----------------------|-------------|------------------------------------------------------------------|
 | {c64-key}`K`          | `UP`        | moves the selection up (the list scrolls at the top row)         |
 | {c64-key}`J`          | `DOWN`      | moves the selection down (the list scrolls at the bottom row)    |
-| {c64-key}`RETURN`     | `GOTO`      | goes to the line where the selected symbol is defined (needs debug info from the last assembly) |
+| {c64-key}`RETURN`     | `GOTO`      | goes to the line where the selected symbol is defined (needs debug information from the last assembly) |
 | {c64-key}`F1`         | `SORT`      | toggles the sort order between alphabetical and by address       |
 | {c64-key}`RUN/STOP`   | `EXIT`      | dismisses the viewer and restores the screen you came from       |
 | {c64-keys}`C= + Q`    | `EXIT`      | same as {c64-key}`RUN/STOP`                                      |
 
 The cursor keys work in place of {c64-key}`J` and {c64-key}`K`.
 
-#### MACRO VIEWER
+#### Macro viewer
 
 The macro viewer, activated with {c64-keys}`C= + M`, lists every macro
 that is currently defined and allows you to inspect the body of any of them.
@@ -118,11 +118,12 @@ Note that the viewer is read-only; it is a way to confirm _what_ the assembler
 actually recorded for a macro.  See the [Assembler](assembler.md) document for the
 `.MAC` directive and the limits on macro count and size.
 
-#### FUNCTION (F KEY) COMMANDS
+#### Function (F key) commands
 
 |  KEY          | NAME               |   DESCRIPTION                                                                                |
 |---------------|--------------------|----------------------------------------------------------------------------------------------|
 | {c64-key}`F1` | `RUN           `   | saves Monster's state and transfers control to the last assembly (or enters BASIC if none)   |
+| {c64-key}`F2` | `MEMORY CONFIG `   | selects which expansion blocks the user's program (and BASIC) run with                       |
 | {c64-key}`F3` | `MEMORY VIEWER `   | activates the memory viewer                                                                  |
 | {c64-key}`F4` | `LOG           `   | displays the active log file (if any)                                                        |
 | {c64-key}`F5` | `BREAKPOINTS   `   | activates the breakpoint viewer                                                              |
@@ -130,11 +131,15 @@ actually recorded for a macro.  See the [Assembler](assembler.md) document for t
 | {c64-key}`F7` | `MONITOR       `   | opens the text-based monitor as a window (see the _Monitor_ section)                         |
 | {c64-key}`F8` | `MONITOR (FULL)`   | opens the text-based monitor maximized ({c64-keys}`Shift + F7`)                              |
 
-### EX COMMANDS
+### EX commands
 
 The {c64-key}`Colon` key puts the editor in _EX_ mode.  In this mode, a string is accepted from the user.
 The format of this string is a _command_ (usually one or two characters) followed by zero or more
-arguments.  E.g. `:s hello.s` will _write_ a file named "hello.s" to disk.
+arguments.
+
+```{note}
+For example, `:s hello.s` writes a file named "hello.s" to disk.
+```
 
 The table below details the available commands in _EX_ mode.
 
@@ -142,8 +147,8 @@ The table below details the available commands in _EX_ mode.
 |-----------|-----------------------|---------------------------------|-------------------------------------------------------------------------------------------------|
 |    `a`    | `ASSEMBLE FILE     `  | Filename                        | assembles the given filename                                                                    |
 |    `B`    | `EXPORT BINARY     `  | Filename                        | exports the active assembly to a binary file (no .PRG header)                                   |
-|    `D`    | `EXPORT DEBUG FILE `  | Filename                        | exports the loaded assembly, debug info, and symbol table as a debug (`.D`) file                |
-|    `L`    | `LOAD DEBUG FILE   `  | Filename                        | loads the given debug (`.D`) file (symbol table, debug info, and program data)                  |
+|    `D`    | `EXPORT DEBUG FILE `  | Filename                        | exports the loaded assembly, debug information, and symbol table as a debug (`.D`) file         |
+|    `L`    | `LOAD DEBUG FILE   `  | Filename                        | loads the given debug (`.D`) file (symbol table, debug information, and program data)           |
 |    `e`    | `EDIT              `  | Filename                        | loads the buffer with the contents of the given file                                            |
 |    `o`    | `ASSEMBLE TO OBJECT`  | Filename                        | assembles the current source buffer to an object file with the given filename                   |
 |    `P`    | `EXPORT .PRG       `  | Filename                        | exports the active assembly to a .PRG file                                                      |
@@ -153,7 +158,7 @@ The table below details the available commands in _EX_ mode.
 |    `x`    | `SCRATCH           `  | Filename                        | scratches (deletes) the given filename                                                          |
 
 
-#### ASSEMBLE FILE :a [filename]
+#### Assemble file :a [filename]
 
 Assembles the contents of the given file. This is functionally the same as opening
 the given file and assembling it with debug information ({c64-keys}`C= + A`).
@@ -162,109 +167,119 @@ Invoking the debugger will invoke it for the last assembled file (not the curren
 source buffer) in this scenario.  The debugger cares about the active debug
 information _not_ the active file.
 
-**EXAMPLE:**
-`:a HELLO.S`
+```{note}
+Example: `:a HELLO.S`
+```
 
-#### EXPORT BINARY :B [filename]
+#### Export binary :B [filename]
 
 Exports the active assembly ({c64-keys}`C= + A`) to the given file as binary.  This means
 no load address is prepended to the file.  This can be useful if you are using
 Monster to create level data or other code loaded by your main program.  It
 can also be used to export things like data tables for use with .INCBIN
 
-**EXAMPLE:**
-`:B DATA.B`
+```{note}
+Example: `:B DATA.B`
+```
 
-#### EXPORT DEBUG FILE :D [filename]
+#### Export debug file :D [filename]
 
-Exports the loaded assembly, debug-information, and symbol table as a debug
+Exports the loaded assembly, debug information, and symbol table as a debug
 (`.D`) file.  You may think of these as debuggable versions of your release
 binaries: a `.D` file can be loaded (`:L`) and debugged without having to
 reassemble/relink it.  This command should be run after a successful assembly
 or link.
 
-**EXAMPLE:**
-`:D HELLO.D`
+```{note}
+Example: `:D HELLO.D`
+```
 
-#### LOAD DEBUG FILE :L [filename]
+#### Load debug file :L [filename]
 
 Loads the given debug (`.D`) file.  The symbol table, debug information, and
 program data are all loaded into virtual memory so you can begin debugging,
 view symbols, etc. as if you had just assembled the program.
 
-**EXAMPLE:**
-`:L HELLO.D`
+```{note}
+Example: `:L HELLO.D`
+```
 
-#### EDIT :e [filename]
+#### Edit :e [filename]
 
 Loads the given filename to a new buffer and activates it.
 
-**EXAMPLE:**
-`:e HELLO.S`
+```{note}
+Example: `:e HELLO.S`
+```
 
-#### ASSEMBLE TO OBJECT :o [filename]
+#### Assemble to object :o [filename]
 
 Assembles the current source buffer to an object file with the given name.
 The filename must have a `.o` (or `.O`) extension if you want the linker to
 pick it up at link time.  See the [Linker](linker.md) document for more on
 object files and linking.
 
-**EXAMPLE:**
-`:o HELLO.O`
+```{note}
+Example: `:o HELLO.O`
+```
 
-#### EXPORT .PRG :P [filename]
+#### Export .PRG :P [filename]
 
 Exports the active assembly ({c64-keys}`C= + A`) to the given file as a .PRG file.  This means
 a load address is prepended to the file prior to export.  This produces a
 standalone executable you can use when you are done working on your program.
 
-**EXAMPLE:**
-`:P GAME.PRG`
+```{note}
+Example: `:P GAME.PRG`
+```
 
-#### RENAME :r [buffername]
+#### Rename :r [buffername]
 
 Renames the active buffer to the given name.
-**EXAMPLE:**
-`:r TEST2.S`
+```{note}
+Example: `:r TEST2.S`
+```
 
-#### SAVE :s [filename]
+#### Save :s [filename]
 
 Saves the active buffer to a file with the given name.  If no name is given,
 the active buffer's name is used.
 
-**NOTE**
+```{note}
 Adding an `@` to this command (`s@`) will delete the file before saving. This
 allows you to overwrite the existing file if it exists.
+```
 
-Examples:
-`:s NEW.S`
-`:s@ OLD.S`
-`:S@` (save all)
+```{note}
+Examples: `:s NEW.S`, `:s@ OLD.S`, and `:S@` (save all).
+```
 
-#### SAVE ALL :S
+#### Save all :S
 
 Saves all buffers that have been modified since they were last saved.
 As with the _Save_ command, adding `@` to the command (`S@`) will overwrite
 existing files if they exist.
 
-**EXAMPLE:**
-`:S@`
+```{note}
+Example: `:S@`
+```
 
-#### SCRATCH :x [filename]
+#### Scratch :x [filename]
 
 Deletes the file of the given name.
-**EXAMPLE:**
-`:x TEST.S`
+```{note}
+Example: `:x TEST.S`
+```
 
 ---
 
-## EDITOR MODES
+## Editor modes
 
 The editor is a _modal_ editor, that is, it behaves differently depending on which _mode_ it is
 in.  The modes are all accessed from the default one (called _COMMAND_ mode) and each returns
 to _COMMAND_ mode when the {c64-key}`RUN/STOP` key is pressed.  Below is a list of the modes along with their function and details on how to enter them.
 
-### COMMAND MODE ({c64-key}`RUN/STOP`)
+### Command mode ({c64-key}`RUN/STOP`)
 
 This is the default mode.  The primary function of command mode is to navigate around the
 source code and to enter other modes.
@@ -310,7 +325,7 @@ The following keys are handled in COMMAND mode.
 | {c64-key}`Left-bracket`                    | `PREV BLOCK `| moves to the previous empty line or start of file if there isn't one                    |
 | {c64-key}`Right-bracket`                   | `NEXT BLOCK `| moves to the next empty line or end of file if there isn't one                          |
 
-### INSERT MODE
+### Insert mode
 Entering insert mode allows the user to enter text at the cursor location.  Keystrokes are
 interpreted as their corresponding ASCII character value in this mode, so there are no special
 commands accessed via them.
@@ -318,7 +333,7 @@ commands accessed via them.
 There are various keys that enter INSERT mode from COMMAND: {c64-key}`I`, {c64-key}`A`,
 {c64-keys}`Shift + A`, etc.
 
-### VISUAL MODE
+### Visual mode
 In _VISUAL_ mode (accessed via {c64-key}`V` in _COMMAND_ mode), the user can select
 a block of text which may then be deleted or copied.  Below is the table of supported commands
 while in visual mode. The {c64-key}`RUN/STOP` key will return the user to _COMMAND_ mode.
@@ -328,7 +343,7 @@ while in visual mode. The {c64-key}`RUN/STOP` key will return the user to _COMMA
 | {c64-key}`D` | `DELETE`  | deletes the selected text _and_ copies it to the copy buffer           |
 | {c64-key}`Y` | `YANK  `  | copies the selected text (in VISUAL mode) to the copy buffer           |
 
-### VISUAL LINE MODE
+### Visual line mode
 _VISUAL LINE_, which is entered with the {c64-keys}`Shift + V` key combination from _COMMAND_ mode is similar to _VISUAL_ mode,
 but selections include only entire lines.  Upon entering _VISUAL LINE_ mode, the current row is selected.
 Navigating to rows above or below will select additional lines.  The delete and yank keys behave the same as they do
@@ -336,7 +351,7 @@ in _VISUAL_ mode.
 
 ---
 
-### COPY BUFFER
+### Copy buffer
 When text is deleted (delete line, delete word) or _yanked_, it is stored to a buffer where
 it may be recalled by the paste commands ({c64-key}`P`, paste below and {c64-keys}`Shift + P` paste above).
 When the paste command is executed, the buffer is cleared.
@@ -349,17 +364,17 @@ specially.  If the first or last line will not fit, the paste is aborted.  This 
 how the BACKSPACE and JOIN LINE commands behave, which will error with a beep if the resulting
 line would not fit on screen.
 
-### LINE ENDINGS
+### Line endings
 
 Files are stored with $0d line endings, but files saved with UNIX-style
 line endings ($0a) will be automatically converted when the file is loaded.
 
-### JUMP LISTS
+### Jump lists
 When the user "jumps" to a different position in the source (`gg`, `G`, `goto line`,
 `find`, `[`, and `]`) the editor saves the old position.  To recall the positions
 that were "jumped" from are two commands: _jump-forward_ ({c64-keys}`C= + I`) and _jump-backward_ ({c64-keys}`C= + O`).
 
-### SYNTAX CHECKING
+### Syntax checking
 Lines are checked and formatted according to their contents each time they
 are completed ({c64-key}`RETURN` is pressed).
 While this should reduce the number of errors you encounter when assembling,
@@ -377,7 +392,7 @@ Although labels aren't _required_ to be defined, they are internally tracked
 while editing.  Because their addresses aren't valid til assembly, you cannot
 access them (e.g. in the symbol viewer) until then.
 
-### UDG EDITOR
+### UDG editor
 The UDG (user defined graphics) editor is entered with the {c64-keys}`C= + U` key combination.
 This editor allows you to visually create simple graphics for your programs.  Navigation
 is done with the same vi-like commands used in the main editor and graphics are created using the

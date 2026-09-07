@@ -39,6 +39,7 @@
 .include "log.inc"
 .include "macro.inc"
 .include "macros.inc"
+.include "memcfg.inc"
 .include "memory.inc"
 .include "memview.inc"
 .include "monitor.inc"
@@ -1092,6 +1093,17 @@ main:	jsr key::getch
 	lda #$00
 	sta dbg::interface
 	JUMPMAIN run::go_basic
+.endproc
+
+;*******************************************************************************
+; MEM CONFIG
+; Opens the memory configuration window
+.proc mem_config
+.if .defined(vic20) .and .defined(ultimem)
+	jmp memcfg::edit
+.else
+	rts
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -2703,6 +2715,7 @@ cancel = enter_command
 	.byte K_UDG_EDIT	; C= + U activate udg editor
 	.byte K_QUIT		; RUN/STOP (return to COMMAND mode)
 	.byte K_GO_BASIC	; F1 (enter BASIC)
+	.byte K_MEM_CONFIG	; F2 (edit memory configuration)
 
 	.byte K_NEXT_PAL
 	.byte K_PREV_PAL
@@ -2719,6 +2732,7 @@ cancel = enter_command
 	close_buffer, new_buffer, set_breakpoint, jumpback, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
 	next_buffer, prev_buffer, udgedit, fmt_and_enter_command, go_basic, \
+	mem_config, \
 	gprefs::next_pal, gprefs::prev_pal, toggle_autoformat, toggle_vis_ws
 .linecont -
 

@@ -51,6 +51,8 @@ BRK_HANDLER_TOP  = $8000
 save_sp: .byte 0
 ret:     .word 0
 
+save9002: .byte 0
+
 .CODE
 
 ;*******************************************************************************
@@ -112,15 +114,17 @@ ret:     .word 0
 	jsr $fd52	; restore default I/O vectors
 	jsr $fdf9	; initialize I/O registers
 
-	; check expansion disable flag
-	lda __debug_enable_expansion
-	beq :+
-	jsr $fdca	; set top of RAM to $2000 (emulate unexpanded config)
+	; the RAM test above ran with Monster's RAM config- replace its
+	; pointers with the ones for the user's configuration
+	jsr memcfg::set_basic_ptrs
 
-:	jsr $e55b
+	jsr $e55b
 	jsr $e518	; initialize rest of hardware
 
-	; blank screen so user doesn't see garbage
+	; save $9002 (part of screen address) and blank screen so user doesn't
+	; see garbage
+	lda $9002
+	sta save9002
 	lda #$00
 	sta $9002
 	sta $9003
@@ -185,10 +189,11 @@ ret:     .word 0
 	dex
 	bne :-
 
-	; write the KERNAL's default values for $9002 & $9003
+	; write the values $9002 & $9003 had before the screen was blanked.
+	; $9003 is the KERNAL's constant; only $9002 had to be saved
 	lda #VMEM_IO_BANK
 	sta $9ffe		; in BLK5
-	lda #22|$80
+	lda save9002
 	sta prog9000+$02+($a000-$2000)
 	lda #23<<1
 	sta prog9000+$03+($a000-$2000)
@@ -499,6 +504,8 @@ nmi_handler_size=*-nmi_handler
 trampoline:
 	lda #FINAL_BANK_USER
 	SELECT_BANK_A
+	lda memcfg::reg9ff2	; map only the blocks the user configured
+	sta $9ff2
 	lda #VMEM_RAM123_BANK	; $0000-$2000
 	sta $9ff4
 
@@ -522,8 +529,8 @@ irqhi=*+1
 	lda #$00
 	sta $0315
 
-	lda #$2b
-	sta $9ff1		; make IO 2/3 read only
+	lda memcfg::reg9ff1	; IO 2/3 read only; RAM123 per the config
+	sta $9ff1
 	pla			; restore .A
 	plp			; restore status
 

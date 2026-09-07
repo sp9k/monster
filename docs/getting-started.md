@@ -1,4 +1,4 @@
-# GETTING STARTED
+# Getting started
 This section will walk you through a tutorial to get you up and running with Monster.
 By the end of this section you will have written, assembled, and debugged a complete program.
 
@@ -191,9 +191,9 @@ the other files on your disk.
 
 ---
 
-## GETTING STARTED WITH OBJECT CODE
+## Getting started with object code
 
-### YOUR FIRST OBJECT FILE
+### Your first object file
 
 The following instructions are overkill for any program you’re likely to write as you just get acquainted
 with the Monster environment, but sooner or later you may wish to work on projects that are thousands
