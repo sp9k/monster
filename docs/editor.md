@@ -54,7 +54,7 @@ the _previous_ available drive.  The valid device range is 8-15.
 
 #### Directory viewer
 
-Pressing the {c64-key}`Minus` key in command mode activates the directory viewer.
+Pressing {c64-key}`Minus` in command mode activates the directory viewer.
 
 This tool presents a paginated view of all files on the disk.
 Pressing {c64-key}`RETURN` while the cursor is on the desired file will load
@@ -138,11 +138,11 @@ actually recorded for a macro.  See the [Assembler](assembler.md) document for t
 
 ### EX commands
 
-The {c64-key}`Colon` key puts the editor in _EX_ mode.  In this mode, a string is accepted from the user.
+Pressing {c64-key}`Colon` puts the editor in _EX_ mode.  In this mode, a string is accepted from the user.
 The format of this string is a _command_ (usually one or two characters) followed by zero or more
 arguments.
 
-```{note} Example
+```{example}
 For example, `:s hello.s` writes a file named "hello.s" to disk.
 ```
 
@@ -174,7 +174,7 @@ Invoking the debugger will invoke it for the last assembled file (not the curren
 source buffer) in this scenario.  The debugger cares about the active debug
 information _not_ the active file.
 
-```{note} Example
+```{example}
 `:a HELLO.S`
 ```
 
@@ -187,7 +187,7 @@ no load address is prepended to the file.  This can be useful if you are using
 Monster to create level data or other code loaded by your main program.  It
 can also be used to export things like data tables for use with .INCBIN
 
-```{note} Example
+```{example}
 `:B DATA.B`
 ```
 
@@ -201,7 +201,7 @@ binaries: a `.D` file can be loaded (`:L`) and debugged without having to
 reassemble/relink it.  This command should be run after a successful assembly
 or link.
 
-```{note} Example
+```{example}
 `:D HELLO.D`
 ```
 
@@ -213,7 +213,7 @@ or link.
 program data are all loaded into virtual memory so you can begin debugging,
 view symbols, etc. as if you had just assembled the program.
 
-```{note} Example
+```{example}
 `:L HELLO.D`
 ```
 
@@ -223,7 +223,7 @@ view symbols, etc. as if you had just assembled the program.
 
 **Behavior:** Loads the given filename to a new buffer and activates it.
 
-```{note} Example
+```{example}
 `:e HELLO.S`
 ```
 
@@ -236,7 +236,7 @@ The filename must have a `.o` (or `.O`) extension if you want the linker to
 pick it up at link time.  See the [Linker](linker.md) document for more on
 object files and linking.
 
-```{note} Example
+```{example}
 `:o HELLO.O`
 ```
 
@@ -248,7 +248,7 @@ object files and linking.
 a load address is prepended to the file prior to export.  This produces a
 standalone executable you can use when you are done working on your program.
 
-```{note} Example
+```{example}
 `:P GAME.PRG`
 ```
 
@@ -258,7 +258,7 @@ standalone executable you can use when you are done working on your program.
 
 **Behavior:** Renames the active buffer to the given name.
 
-```{note} Example
+```{example}
 `:r TEST2.S`
 ```
 
@@ -274,7 +274,7 @@ The `@` suffix deletes the existing file before writing the replacement. If
 the subsequent save fails, the original file has already been deleted.
 ```
 
-```{note} Example
+```{example}
 `:s NEW.S`, `:s@ OLD.S`, and `:S@` (save all).
 ```
 
@@ -291,7 +291,7 @@ existing files if they exist.
 failure can leave an original file deleted without a completed replacement.
 ```
 
-```{note} Example
+```{example}
 `:S@`
 ```
 
@@ -306,7 +306,7 @@ failure can leave an original file deleted without a completed replacement.
 confirmation. Monster provides no undo for this operation.
 ```
 
-```{note} Example
+```{example}
 `:x TEST.S`
 ```
 
@@ -316,7 +316,7 @@ confirmation. Monster provides no undo for this operation.
 
 The editor is a _modal_ editor, that is, it behaves differently depending on which _mode_ it is
 in.  The modes are all accessed from the default one (called _COMMAND_ mode) and each returns
-to _COMMAND_ mode when the {c64-key}`RUN/STOP` key is pressed.  Below is a list of the modes along with their function and details on how to enter them.
+to _COMMAND_ mode when {c64-key}`RUN/STOP` is pressed.  Below is a list of the modes along with their function and details on how to enter them.
 
 ### Command mode ({c64-key}`RUN/STOP`)
 
@@ -375,7 +375,7 @@ There are various keys that enter INSERT mode from COMMAND: {c64-key}`I`, {c64-k
 ### Visual mode
 In _VISUAL_ mode (accessed via {c64-key}`V` in _COMMAND_ mode), the user can select
 a block of text which may then be deleted or copied.  Below is the table of supported commands
-while in visual mode. The {c64-key}`RUN/STOP` key will return the user to _COMMAND_ mode.
+while in visual mode. Pressing {c64-key}`RUN/STOP` will return the user to _COMMAND_ mode.
 
 |  KEY         | NAME      | DESCRIPTION                                                            |
 |--------------|-----------|------------------------------------------------------------------------|
@@ -383,7 +383,7 @@ while in visual mode. The {c64-key}`RUN/STOP` key will return the user to _COMMA
 | {c64-key}`Y` | `YANK  `  | copies the selected text (in VISUAL mode) to the copy buffer           |
 
 ### Visual line mode
-_VISUAL LINE_, which is entered with the {c64-keys}`Shift + V` key combination from _COMMAND_ mode is similar to _VISUAL_ mode,
+_VISUAL LINE_, which is entered by pressing {c64-keys}`Shift + V` from _COMMAND_ mode, is similar to _VISUAL_ mode,
 but selections include only entire lines.  Upon entering _VISUAL LINE_ mode, the current row is selected.
 Navigating to rows above or below will select additional lines.  The delete and yank keys behave the same as they do
 in _VISUAL_ mode.
@@ -432,7 +432,7 @@ while editing.  Because their addresses aren't valid til assembly, you cannot
 access them (e.g. in the symbol viewer) until then.
 
 ### UDG editor
-The UDG (user defined graphics) editor is entered with the {c64-keys}`C= + U` key combination.
+Press {c64-keys}`C= + U` to enter the UDG (user defined graphics) editor.
 This editor allows you to visually create simple graphics for your programs.  Navigation
 is done with the same vi-like commands used in the main editor and graphics are created using the
 following commands:

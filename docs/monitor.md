@@ -12,7 +12,7 @@ debugger). Lines are entered and when you wish to execute them, press {c64-key}`
 
 ### Activation
 
-The monitor is activated as a window with the {c64-key}`F7` key.  In this mode the editor (or, while debugging,
+Press {c64-key}`F7` to activate the monitor as a window.  In this mode the editor (or, while debugging,
 the source view) remains visible above the monitor window.  The window may be resized with {c64-keys}`C= + K`
 (grow) and {c64-keys}`C= + J` (shrink).  These keys work both while the monitor is active and from the editor
 while the window is open.
@@ -25,7 +25,7 @@ cold start procedure executes, which is what you will see in the monitor if ente
 assembling a program.
 
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
-Press {c64-key}`F7` or {c64-key}`F8` to re-enter it.  The monitor window is closed, just as other windows are, with the {c64-keys}`C= + Q` key combination, which must be pressed while the monitor window has focus.
+Press {c64-key}`F7` or {c64-key}`F8` to re-enter it.  Press {c64-keys}`C= + Q` while the monitor window has focus to close it, just like other windows.
 
 ### File redirection
 The output from a given monitor command can be redirected to file instead of the screen by using the
@@ -97,7 +97,7 @@ arguments may be expressions, such as `label+10`.
 
 **Behavior:** Evaluates the following expression and prints the result.
 
-```{note} Example
+```{example}
 `? (2.0*SCREEN_H)`
 ```
 
@@ -109,7 +109,7 @@ arguments may be expressions, such as `label+10`.
 successful assembly, the monitor prepares another `a` command at the address
 immediately following the new instruction.
 
-```{note} Example
+```{example}
 `a $1000 lda #$00`
 ```
 
@@ -119,7 +119,7 @@ immediately following the new instruction.
 
 **Behavior:** Lists every active breakpoint, including the ID used by the `br` command.
 
-```{note} Example
+```{example}
 `b`
 ```
 
@@ -130,7 +130,7 @@ immediately following the new instruction.
 **Behavior:** Adds a breakpoint at the given address. If debug information maps the address
 to a source line, the breakpoint is associated with that line as well.
 
-```{note} Example
+```{example}
 `ba main+3`
 ```
 
@@ -141,7 +141,7 @@ to a source line, the breakpoint is associated with that line as well.
 **Behavior:** Adds a breakpoint at the given line in a file loaded with the current debug
 information.
 
-```{note} Example
+```{example}
 `bl game.s 120`
 ```
 
@@ -151,7 +151,7 @@ information.
 
 **Behavior:** Removes the breakpoint with the given ID. Use `b` to list breakpoint IDs.
 
-```{note} Example
+```{example}
 `br 2`
 ```
 
@@ -164,7 +164,7 @@ stack pointer. The optional offset adjusts the starting position and must be
 less than `$80`. Stack contents are inferred, so data stored on the stack may
 appear as an invalid frame.
 
-```{note} Example
+```{example}
 `bt 8`
 ```
 
@@ -175,7 +175,7 @@ appear as an invalid frame.
 **Behavior:** Compares `count` bytes beginning at the two addresses and displays each pair
 that differs.
 
-```{note} Example
+```{example}
 `c $1000 $2000 $20`
 ```
 
@@ -184,9 +184,9 @@ that differs.
 **Syntax:** `clear`
 
 **Behavior:** Clears the monitor and returns the cursor to the origin. The
-{c64-keys}`C= + L` shortcut performs the same action.
+Pressing {c64-keys}`C= + L` performs the same action.
 
-```{note} Example
+```{example}
 `clear`
 ```
 
@@ -198,7 +198,7 @@ that differs.
 the command disassembles at least `$10` bytes. If no start address is given,
 disassembly continues from the monitor's current default address.
 
-```{note} Example
+```{example}
 `d main main+$40`
 ```
 
@@ -211,7 +211,7 @@ address is given, the command dumps `$40` bytes. If no start address is given,
 the dump begins at the monitor's current default address. This command is
 particularly useful with [file redirection](#file-redirection).
 
-```{note} Example
+```{example}
 `dump $1000 $1100 > data.s`
 ```
 
@@ -223,7 +223,7 @@ particularly useful with [file redirection](#file-redirection).
 When more than one value is supplied, the sequence repeats until the range is
 full.
 
-```{note} Example
+```{example}
 `f $1000 $1100 $00, $ff`
 ```
 
@@ -233,7 +233,7 @@ full.
 
 **Behavior:** Lists every source file loaded in the current debug information.
 
-```{note} Example
+```{example}
 `files`
 ```
 
@@ -244,7 +244,7 @@ full.
 **Behavior:** Continues execution without tracing. If an address is supplied, it becomes the
 new program counter before execution begins.
 
-```{note} Example
+```{example}
 `g main`
 ```
 
@@ -255,7 +255,7 @@ new program counter before execution begins.
 **Behavior:** Searches from `start-address` through `$ffff` for the first occurrence of the
 given sequence and displays its address.
 
-```{note} Example
+```{example}
 `h $1000 $de, $ad, $be, $ef`
 ```
 
@@ -267,7 +267,7 @@ given sequence and displays its address.
 command displays `$40` bytes. If no start address is given, display continues
 from the monitor's current default address.
 
-```{note} Example
+```{example}
 `m screen screen+$100`
 ```
 
@@ -277,7 +277,7 @@ from the monitor's current default address.
 
 **Behavior:** Copies the half-open range `[start-address, end-address)` to `destination`.
 
-```{note} Example
+```{example}
 `move $1000 $1100 $2000`
 ```
 
@@ -292,7 +292,7 @@ from the monitor's current default address.
 running it.
 ```
 
-```{note} Example
+```{example}
 `new`
 ```
 
@@ -302,7 +302,7 @@ running it.
 
 **Behavior:** Writes the given byte value to an address.
 
-```{note} Example
+```{example}
 `p $900f $08`
 ```
 
@@ -314,7 +314,7 @@ running it.
 monitor's default address to the current program counter for subsequent `d`,
 `dump`, or `m` commands.
 
-```{note} Example
+```{example}
 `r`
 ```
 
@@ -324,7 +324,7 @@ monitor's default address to the current program counter for subsequent `d`,
 
 **Behavior:** Saves the half-open range `[start-address, end-address)` to the given file.
 
-```{note} Example
+```{example}
 `s $1000 $2000 memory.bin`
 ```
 
@@ -335,7 +335,7 @@ monitor's default address to the current program counter for subsequent `d`,
 **Behavior:** Runs the next instruction and returns to the monitor. A `JSR` and the called
 subroutine are treated as a single instruction.
 
-```{note} Example
+```{example}
 `n`
 ```
 
@@ -345,7 +345,7 @@ subroutine are treated as a single instruction.
 
 **Behavior:** Continues execution with instruction tracing enabled.
 
-```{note} Example
+```{example}
 `t`
 ```
 
@@ -355,7 +355,7 @@ subroutine are treated as a single instruction.
 
 **Behavior:** Lists every active watch, including the ID used by the `wr` command.
 
-```{note} Example
+```{example}
 `w`
 ```
 
@@ -366,7 +366,7 @@ subroutine are treated as a single instruction.
 **Behavior:** Adds a watch that triggers when the selected address or range is either read
 from or written to.
 
-```{note} Example
+```{example}
 `wa player_x player_y`
 ```
 
@@ -376,7 +376,7 @@ from or written to.
 
 **Behavior:** Adds a watch that triggers only when the selected address or range is read.
 
-```{note} Example
+```{example}
 `wal $1000 $10ff`
 ```
 
@@ -387,7 +387,7 @@ from or written to.
 **Behavior:** Adds a watch that triggers only when the selected address or range is written
 to.
 
-```{note} Example
+```{example}
 `was score score+2`
 ```
 
@@ -397,7 +397,7 @@ to.
 
 **Behavior:** Removes the watch with the given ID. Use `w` to list watch IDs.
 
-```{note} Example
+```{example}
 `wr 1`
 ```
 
@@ -410,7 +410,7 @@ remains onscreen until it is closed with {c64-keys}`C= + Q`.  Because that key
 must be pressed while the window has focus, re-enter the monitor
 ({c64-key}`F7` or {c64-keys}`C= + W`) and press it there to close the window.
 
-```{note} Example
+```{example}
 `x`
 ```
 
@@ -421,7 +421,7 @@ must be pressed while the window has focus, re-enter the monitor
 **Behavior:** Runs the next instruction and returns to the monitor, displaying the updated
 registers and next instruction.
 
-```{note} Example
+```{example}
 `z`
 ```
 
@@ -432,7 +432,7 @@ registers and next instruction.
 **Behavior:** Runs until the current subroutine returns with `RTS`, then displays the updated
 registers and next instruction.
 
-```{note} Example
+```{example}
 `zo`
 ```
 

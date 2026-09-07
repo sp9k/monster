@@ -28,7 +28,7 @@ reference only.
 
 Below are some examples of valid lines:
 
-````{note} Example
+````{example}
 ```
 LDA #$00
 LOOP   INC BUFFER,X  ; INCREMENT BUFFER+X
@@ -76,7 +76,7 @@ or 0 (false), so they may be used anywhere a value may be.  Their precedence of
 0 is lower than every other operator, meaning arithmetic on either side is always evaluated first.
 For example:
 
-````{note} Example
+````{example}
 ```
 LDA #1+1==2      ; (1+1) == 2
 LDA #LEVEL>=3    ; 1 if the constant LEVEL is 3 or more
@@ -88,7 +88,7 @@ Expressions may also contain parentheses, which are evaluated as you would expec
 but note that if the entire expression is enclosed in parentheses, the
 assembler will interpret this as indirect addressing. For example:
 
-````{note} Example
+````{example}
 ```
 JMP (1+3)   ; jump-indirect to the address in memory address (4)
 JMP 1+3     ; jump-absolute to address 4
@@ -101,7 +101,7 @@ prefixed with a '#' (e.g. `LDA #(2+4)`)
 
 Labels are supported in expressions and will evaluate to their address when assembled.
 
-````{note} Example
+````{example}
 ```
 LDA #<LABEL1
 ```
@@ -110,7 +110,7 @@ LDA #<LABEL1
 Hexadecimal and decimal numbers are supported.  Hexadecimal numbers must be prefixed
 with a '$'.
 
-````{note} Example
+````{example}
 ```
 LDA #(10+$20)
 ```
@@ -145,7 +145,7 @@ count toward the 16 character label limit.
 Local labels are valid until the next non-local label is defined as shown in
 the following example.
 
-````{note} Example
+````{example}
 ```
 PROC0:
 @L0:
@@ -169,7 +169,7 @@ inaccessible. They _can_ be accessed by
 prepending the global label that encapsulates them.  This can be used to
 emulate structural data types e.g.
 
-````{note} Example
+````{example}
 ```
 PLAYER
 @X: .db 0
@@ -191,7 +191,7 @@ to the next _forward_ anonymous label and minuses (-) refer to the
 previous _backward_ anonymous label.
 
 for example
-````{note} Example
+````{example}
 ```
     .ORG $1000
 :   JMP +       ; JMP $1003
@@ -203,7 +203,7 @@ for example
 Using multiple +'s or -'s will count the same number of references before landing
 on the corresponding anonymous label.
 for example:
-````{note} Example
+````{example}
 ```
     JMP +++
 :   nop
@@ -226,7 +226,7 @@ must be declared before the directive.
 
 The following example illustrates why this is necessary:
 
-````{note} Example
+````{example}
 ```
 .REP NUM, I
     ASL
@@ -255,7 +255,7 @@ examples of how to use them.
 **Behavior:** Pads with 0's (or optionally a provided value) until the PC is aligned (divisible) by that
 value.
 
-````{note} Example
+````{example}
 ```
 .ALIGN $100
 CHARS
@@ -275,7 +275,7 @@ linker section of the manual.
 
 **Constraint:** BSS segments must contain only zero-value bytes.
 
-````{note} Example
+````{example}
 ```
 .BSS "DATA"
 curx    .db 0
@@ -293,7 +293,7 @@ linker section of the manual.
 
 **Constraint:** BSS segments must contain only zero-value bytes.
 
-````{note} Example
+````{example}
 ```
 .BSSZP "ZPCODE"
 curx    .db 0
@@ -307,7 +307,7 @@ cury    .db 0
 
 **Behavior:** Defines a sequence of bytes from the comma-separated list that follows.
 
-````{note} Example
+````{example}
 ```
 .DB $00, $01, $02 ; $00 $01 $02
 .DB "HI",0        ; $48 $49 $00
@@ -320,7 +320,7 @@ cury    .db 0
 
 **Behavior:** Defines a sequence of words from the comma-separated list that follows.
 
-````{note} Example
+````{example}
 ```
 .DW $00, $01, $02 ; $00 $00 $01 $00 $02 $00
 ```
@@ -335,7 +335,7 @@ contents of the "else" block are assembled.
 
 **Related:** [.IF](#if)
 
-````{note} Example
+````{example}
 ```
 .IF NTSC
     .EQ LINES 261
@@ -359,7 +359,7 @@ contents of the "else" block are assembled.
 
 **Behavior:** Closes a macro definition.
 
-````{note} Example
+````{example}
 ```
 .MAC LDXY A
     LDX <A
@@ -374,7 +374,7 @@ contents of the "else" block are assembled.
 
 **Behavior:** Closes a repeat block.
 
-````{note} Example
+````{example}
 ```
 .REP 10
     ASL
@@ -388,7 +388,7 @@ contents of the "else" block are assembled.
 
 **Behavior:** Defines a constant that may be used in expressions.
 
-````{note} Example
+````{example}
 ```
 .EQ BITMAP $1100
     LDA #$00
@@ -404,7 +404,7 @@ contents of the "else" block are assembled.
 manual for more details.
 
 
-````{note} Example
+````{example}
 ```
 .EXPORT blit
 blit
@@ -419,7 +419,7 @@ blit
 **Behavior:** Evaluates the expression and conditionally assembles the lines
 between this directive and its matching `.ENDIF`.
 
-````{note} Example
+````{example}
 ```
 .IF NTSC
 .EQ CYCLES_PER_LINE 65
@@ -446,7 +446,7 @@ This can be useful inside macros to determine if a parameter was provided or not
 **Behavior:** Imports a label defined (exported) by another module.  See the linker section of this
 manual for more details.
 
-````{note} Example
+````{example}
 ```
 .IMPORT blit
 
@@ -464,7 +464,7 @@ manual for more details.
 manual for more details.
 
 
-````{note} Example
+````{example}
 ```
 .IMPORTZP curx
     ldx curx
@@ -480,7 +480,7 @@ manual for more details.
 **Behavior:** Includes a file at the line of the directive. The file is loaded line-by-line
 from disk and assembled as if the code was copy/pasted in place of the include directive.
 
-````{note} Example
+````{example}
 ```
 .INC "KERNAL.INC"
     LDA #$00
@@ -495,7 +495,7 @@ from disk and assembled as if the code was copy/pasted in place of the include d
 **Behavior:** Includes the contents of a binary file at the current assembly
 target location.
 
-````{note} Example
+````{example}
 ```
 .EQ BITMAP $1100
     LDX #$07
@@ -516,7 +516,7 @@ SPRITES:
 
 **Behavior:** Defines a macro.
 
-````{note} Example
+````{example}
 ```
 .MAC LDXY VAL
     LDX #<VAL
@@ -529,7 +529,7 @@ SPRITES:
 
 Will generate the following code:
 
-````{note} Example
+````{example}
 ```
     LDX #$34
     LDY #$12
@@ -548,7 +548,7 @@ list of the parameters.
 
 **Behavior:** Sets the address at which subsequent code is assembled.
 
-````{note} Example
+````{example}
 ```
 .ORG $1000
 ; start up code
@@ -564,7 +564,7 @@ list of the parameters.
 
 **Behavior:** Fills the number of bytes defined by the evaluated expression with 0's.
 
-````{note} Example
+````{example}
 ```
     .res SCREEN_W * SCREEN_H
 ```
@@ -577,7 +577,7 @@ list of the parameters.
 **Behavior:** Sets the address the code will run at when executed.
 This is useful for code that will be relocated prior to execution.
 
-````{note} Example
+````{example}
 ```
 .ORG $1000
 .RORG $00
@@ -599,7 +599,7 @@ same location as the physical PC.
 **Behavior:** Assembles the code between this directive and `.ENDREP` for the given number of
 times.
 
-````{note} Example
+````{example}
 ```
 .REP 3
     ASL
@@ -609,7 +609,7 @@ times.
 
 Becomes
 
-````{note} Example
+````{example}
 ```
     ASL
     ASL
@@ -620,7 +620,7 @@ Becomes
 An optional parameter can be given that will be assigned the value of
 the current iteration of repetition during assembly.
 
-````{note} Example
+````{example}
 ```
 .REP 5,I
     INC $F0+I
@@ -630,7 +630,7 @@ the current iteration of repetition during assembly.
 
 Becomes
 
-````{note} Example
+````{example}
 ```
     INC $F0
     INC $F1
@@ -642,7 +642,7 @@ Becomes
 
 Nested `.REP` directives are also supported:
 
-````{note} Example
+````{example}
 ```
 .REP 2,I
 .REP 5,J
@@ -656,7 +656,7 @@ Nested `.REP` directives are also supported:
 
 Becomes:
 
-````{note} Example
+````{example}
 ```
     INC $F0
     INC $F1
@@ -681,7 +681,7 @@ Becomes:
 absolute and considered to be part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
-````{note} Example
+````{example}
 ```
 .SEG "CODE"
     lda #$00
@@ -697,7 +697,7 @@ linker section of the manual.
 zeropage and considered to be part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
-````{note} Example
+````{example}
 ```
 .SEGZP "ZPCODE"
 :   asl
@@ -715,7 +715,7 @@ frequently writing.
 
 They may be recursive as in this example:
 
-````{note} Example
+````{example}
 ```
 .MAC LDXY VAL
     LDX VAL
@@ -737,7 +737,7 @@ They may be recursive as in this example:
 You may omit arguments to a macro if your macro knows how to deal with
 less than the maximum number it expects as in this example:
 
-````{note} Example
+````{example}
 ```
 .MAC SAVEBYTES A, B, C
 .IFDEF A

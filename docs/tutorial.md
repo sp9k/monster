@@ -107,7 +107,7 @@ Defining an entire character set is quite a lot of work, so we're going to base 
 Vic-20's own character set.
 
 To do this we will dip our toes into one of Monster's powerful utilities: the **MONITOR**.
-Activate the monitor with the {c64-key}`F7` key.  A window will appear in which text commands
+Press {c64-key}`F7` to activate the monitor.  A window will appear in which text commands
 are entered.  The character set on which we wish to base our design lives at address `$8000` in
 the Vic-20's ROM.  Run the following command to take a peek at the memory there:
 
@@ -386,7 +386,7 @@ A WINDOW is an interactive widget that can be invoked to allow you to do things 
 view breakpoints ({c64-key}`F5`), watches ({c64-key}`F6`), enter the monitor ({c64-key}`F7`), etc.
 
 While these behave totally differently than the BUFFER VIEWER, they all share some common functionality.
-To control the window's geometry you can use the {c64-keys}`C= + J`/{c64-keys}`C= + K` keys to resize (shrink/grow),
+To control the window's geometry, press {c64-keys}`C= + J`/{c64-keys}`C= + K` to resize (shrink/grow),
 or {c64-keys}`C= + Z` to _maximize_/_unmaximize_
 {c64-keys}`C= + Q` closes the active window, and {c64-key}`RUN/STOP` leaves the selected window (without
 closing it) and refocuses the editor.
@@ -395,7 +395,7 @@ Note that multiple windows may be open at once.  If the MEMORY VIEWER is active,
 the BREAKPOINT VIEWER without closing it.  If multiple windows are active, you can cycle through them
 with {c64-keys}`C= + W` (also re-enters the visible window if the editor is in focus).
 
-Finally, all active windows can be hidden with {c64-keys}`C= + H`.  The same key-combination also unhides
+Finally, all active windows can be hidden with {c64-keys}`C= + H`.  Pressing {c64-keys}`C= + H` again also unhides
 them if they are already hidden.
 
 #### Editor tips
@@ -415,7 +415,7 @@ Press {c64-key}`/` to open a FIND prompt.  At the prompt, enter the string to lo
 press {c64-key}`RETURN`.  Press {c64-key}`N` to navigate to the next occurrence of the string
 (assuming one is found) or {c64-keys}`SHIFT + N` to navigate to the _previous_ one.
 
-The {c64-key}`[` and {c64-key}`]` keys navigate to the previous and next empty lines, respectively.
+Press {c64-key}`[` and {c64-key}`]` to navigate to the previous and next empty lines, respectively.
 Empty lines therefore make useful logical divisions in your source.
 
 Finally, a common practice will be inserting new lines above or below the current line.

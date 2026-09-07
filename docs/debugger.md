@@ -102,7 +102,7 @@ intact.
 
 Next to the registers, under the CLK label, is a 24-bit counter that displays the
 number of cycles executed by the instructions that have been STEP'd into.
-The stopwatch can be reset to 0 with the {c64-keys}`C= + R` key combination.
+Press {c64-keys}`C= + R` to reset the stopwatch to 0.
 
 Note that the number of cycles is displayed in decimal unlike the rest of the
 information in the debug view, which is displayed in hexadecimal.
@@ -161,7 +161,7 @@ the stack pointer to underflow.
 #### Trace ({c64-key}`T`)
 
 Trace executes the program as a series of STEPs until the user indicates we
-should halt the trace by pressing the {c64-key}`RESTORE` key.
+should halt the trace by pressing {c64-key}`RESTORE`.
 
 The trace command renders the current state of the screen and color memory in addition to
 the current VIC register values so that you can visually watch your program execute
@@ -193,7 +193,7 @@ function keys.  Each shows information about the machine or debug state.
 Each viewer also contains an editor, which is activated with the keys enumerated
 below next to their corresponding editor.
 
-Pressing the {c64-key}`RUN/STOP` key will return the user from the auxiliary editor to the
+Pressing {c64-key}`RUN/STOP` will return the user from the auxiliary editor to the
 source code editor; the view stays open below it.  To close the active view outright,
 press {c64-keys}`C= + Q` while it has focus.  {c64-key}`F1` closes every open view at once to
 maximize the source editor's screen size.
@@ -272,7 +272,7 @@ The following keys are supported within the watch viewer:
 
 #### Add watch ({c64-keys}`C= + W`)
 
-While in the watch editor, the {c64-keys}`C= + W` key combination prompts the user for an
+While in the watch editor, pressing {c64-keys}`C= + W` prompts the user for an
 address or address range to watch.  These are given as expressions, so you may
 provide, for example `myval+3` to set a watch at the address of the label myval plus 3.
 To set a watch for an address range, simply provide two expressions, separated by a comma,
@@ -312,10 +312,9 @@ that, for example, you can set a breakpoint on `LDA #$00` or a macro that expand
 to such an instruction, but setting one on `.DB $00` has no effect.
 
 ### Toggle breakpoint ({c64-keys}`C= + B`)
-During normal editing, breakpoints may be set and removed with the
-{c64-keys}`C= + B` key combination.
+During normal editing, press {c64-keys}`C= + B` to set or remove a breakpoint.
 
-Pressing the same key combination will also _remove_ a breakpoint
+Pressing {c64-keys}`C= + B` again will also _remove_ a breakpoint
 if it is pressed while on a line that already has one.
 
 NOTE: breakpoints can only be added to buffers that have been named.
