@@ -414,6 +414,8 @@ nop_handler:
 ;	sta $911e	; disable all NMI's
 ;	sta $911d
 
+	RESTORE_IO
+
 	tsx
 	stx sim::reg_sp
 
@@ -465,7 +467,7 @@ nop_handler:
 	ldxy sim::pc
 	jmp dbg::start
 
-@edit:	jmp edit::init
+@edit:	jmp edit::run
 .endproc
 
 .segment "NMI_HANDLER"

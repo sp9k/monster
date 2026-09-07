@@ -4,6 +4,7 @@
 ; a user's programs
 ;*******************************************************************************
 
+.include "../debug.inc"
 .include "../expansion.inc"
 .include "../fastcopy.inc"
 .include "../nmi.inc"
@@ -239,6 +240,7 @@ ret:     .word 0
 	sta $911e
 
 	jsr irq::off
+	sei
 
 	; write jsr $fe39 (init timer) to the pre-run buffer
 	lda #$20
@@ -406,6 +408,8 @@ ret:     .word 0
 ;	sta $911e	; disable all NMI's
 ;	sta $911d
 
+	RESTORE_IO
+
 	tsx
 	stx sim::reg_sp
 
@@ -457,7 +461,7 @@ ret:     .word 0
 	ldxy sim::pc
 	jmp dbg::start
 
-@edit:	jmp edit::init
+@edit: jmp edit::run
 .endproc
 
 ;*******************************************************************************

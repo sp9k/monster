@@ -14,6 +14,7 @@
 .include "../debuginfo.inc"
 .include "../draw.inc"
 .include "../edit.inc"
+.include "../file.inc"
 .include "../irq.inc"
 .include "../io.inc"
 .include "../kernal.inc"
@@ -359,6 +360,7 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 	; load default preferences
 	; jsr gprefs::load
 
+	jsr file::init_drive	; INITIALIZE the drive
 	jmp edit::init
 .else
 	.import testsuite

@@ -8,6 +8,7 @@
 .include "../fastcopy.inc"
 .include "../prefs.inc"
 .include "../settings.inc"
+.include "../debug.inc"
 .include "../../debug.inc"
 .include "../../edit.inc"
 .include "../../guis.inc"
@@ -170,6 +171,7 @@ TRAMPOLINE_ADDR = TRAMPOLINE+13
 	sta $911e
 
 	jsr irq::off
+	sei
 
 	; write jsr $fe39 (init timer) to the pre-run buffer
 	lda #$20
@@ -412,6 +414,8 @@ go_pre_run:
 ;	sta $911e	; disable all NMI's
 ;	sta $911d
 
+	RESTORE_IO
+
 	tsx
 	stx sim::reg_sp
 
@@ -463,7 +467,7 @@ go_pre_run:
 	ldxy sim::pc
 	jmp dbg::start
 
-@edit:	jmp edit::init
+@edit:	jmp edit::run
 .endproc
 
 ;*******************************************************************************

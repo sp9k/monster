@@ -521,8 +521,9 @@ ctrltab:
 
 ;*******************************************************************************
 ; IRQ OFF
-; Turns off the interrupt until reenabled.  Disables all VIA generated interrupts
-; and replaces the IRQ ($0314) with the KERNAL's default one
+; Disables all VIA generated interrupts and replaces the IRQ ($0314) with the
+; a no-op handler.
+; NOTE: interrupts are still enabled upon return (only the sources are disabled)
 ; CLOBBERS:
 ;  - .A
 ;  - $0314-$0315

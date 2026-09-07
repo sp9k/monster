@@ -1116,6 +1116,13 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .proc __src_rewind
 @l0:	jsr __src_prev
 	bcc @l0
+
+	; reset cursors (x/line)
+	lda #$01
+	sta line
+	lda #$00
+	sta line+1
+	sta srcx
 	rts
 .endproc
 

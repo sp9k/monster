@@ -9,6 +9,7 @@
 .include "../debuginfo.inc"
 .include "../draw.inc"
 .include "../edit.inc"
+.include "../file.inc"
 .include "../irq.inc"
 .include "../labels.inc"
 .include "../macros.inc"
@@ -335,4 +336,5 @@ start:
 	dex
 	bpl :-
 
+	jsr file::init_drive	; INITIALIZE the drive
 	jmp edit::init

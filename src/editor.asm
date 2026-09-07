@@ -246,7 +246,6 @@ guitogglehide = gui::togglehide
 
 	; reset assembly state
 	jsr asm::reset
-	jsr file::init_drive
 	jsr scr::unblank
 
 	; fall through to edit_run
@@ -272,6 +271,7 @@ guitogglehide = gui::togglehide
 	sta cur::mode
 
 	jsr edit		; initialize size/mode/etc.
+	jsr refresh
 
 	jsr text::update
 	jsr draw_status_bar
