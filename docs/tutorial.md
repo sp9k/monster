@@ -438,10 +438,140 @@ This is as simple as our VIC initialization was.
 
 There's a few remaining items to finish up the program.
 
-1. read input from the joystick
-2. apply the input to the "player" sprite position
-3. redraw the sprite at its new position
+1. redraw the sprite at its new position
+2. read input from the joystick
+3. apply the input to the "player" sprite position
 
+Let's start with #1 so that we can see our sprite at all before we worry about moving it.
+
+#### Sprite Rendering
+
+There are various ways to render a sprite.  For this tutorial we will use a rather crude
+approach, but you may experiment with optimiztions to speed it up.
+
+The concept is this: the Vic-20 has only rough 8x8 character positions in hardware.
+In software, however, we can leverage the bitmap that we have already configured to move a sprite
+smoothly (pixel-by-pixel).  To do this, we shift the sprite data by the number of pixels that it
+is offset from the nearest character boundary (0-7).  At the character boundary, we move it to the
+next 8-pixel wide cell.
+
+We will use a multicolor sprite, which has 2 bits per pixel.  This means each step of motion
+requires two shifts, but we will accomplish this by just making sure our "spritex" position is
+always a multiple of 2.
+
+The spillover that is shifted _out_ of the character "sprite" will be rotated into the next character
+to the right.
+
+Okay, here's the code to do the sprite shift.
+
+```
+drawspr
+    ldx #7
+@l0 lda #$00
+    sta sprite+8,x
+    lda spritex
+    and #$07
+    tay
+
+    lda spritedat,x
+:   lsr
+    ror sprite+8,x
+    sta sprite,x
+    dey
+    bne -
+
+    dex
+    bpl @l0
+```
+
+We've now copied the sprite to two buffers: `spritedat` and `spritedat2`.  The latter is the
+shifted data from the the sprite character.  All that's left to get the sprite on screen
+is to copy this buffer onto our software-defined bitmap.  You may have wondered why we haven't
+considered the sprite's y-position at all.  Remember that our bitmap is organized in linear
+columns of pixels.  To draw to any arbitrary y-position we just need to offset our write
+to the correct column by the sprite's y-position.
+
+To make the addressing even easier we will define a pair of tables using the `.REP` directive:
+```
+columnslo
+.rep i,20
+    .byte <($1000+(i*$c0))
+.endrep
+
+columnshi
+.rep i,20
+    .byte >($1000+(i*$c0))
+.endrep
+```
+
+We could also use a word-sized table, but splitting the table into two parallel tables for the least
+and most significant bytes will make addressing easier.  This is a common technique.
+
+Now, picking up where we left off our draw procedure.  We will first use our column tables to get the
+addresses for the two columns to blit to (x/8 and x/8+1).
+
+Once we have our column addresses the only thing to do is to perform the blit from our buffered shifted
+sprite data.
+
+```
+.eq @col $f0
+
+    ; get column address (x/8)
+    lda spritex
+    lsr
+    lsr
+    lsr
+    tax
+    lda columnslo,x
+    sta @col
+    lda columnshi,x
+    sta @col+1
+    lda columnslo+1,x
+    sta @col2
+    lda columnshi+1,x
+    sta @col2+1
+
+    ldy #7
+@blit
+    lda sprite,y
+    sta (@col),y
+    lda sprite+8,y
+    sta (@col2),y
+    dey
+    bpl @blit
+
+    rts
+```
+
+That's it!
+
+We should verify that this works as expected before continuing, so let's add a call to `drawspr`
+to our main loop.  For now, we'll just call it again and again.
+
+```
+main
+    jsr drawspr
+    jmp main
+```
+
+We also need to define all the new sprite we are drawing and its associated state
+
+```
+spritedat
+.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff
+sprite
+    .res 8
+spritex
+    .byte 0
+```
+
+Save your work and assemble.  Fix any bugs/typos and continue on to debugging.  Step/trace however you
+like and hopefully you should see the new sprite visible on screen by the time we get through one iteration
+of the main loop.
+
+Beautiful work.  Now it's time to actually move the sprite.
+
+#### Reading the joystick
 
 #### Symbol viewer
 
