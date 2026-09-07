@@ -3990,7 +3990,7 @@ goto_buffer:
 
 	pla			; restore indent hint
 	clc
-@ret:	rts
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -4048,7 +4048,7 @@ goto_buffer:
 	pla			; clean stack
 	pla
 	txa
-	pha			; hold the hint over scroll_line
+	pha			; save the hint over scroll_line
 	jsr scroll_line
 	pla			; restore the indent hint
 
@@ -4061,7 +4061,7 @@ goto_buffer:
 ; IN:
 ;   - .A: indent hint; 1=next line should be indented, 0=not
 .proc start_next_line
-	pha			; set indent flag
+	pha			; save indent flag
 
 	; redraw the cleared status line.
 	jsr ui::update_statusline
@@ -4079,7 +4079,13 @@ goto_buffer:
 @start_with_tab:
 	jsr src::after_cursor
 	cmp #$09
-	beq @indentdone		; already indented, skip
+	bne @insert_tab
+	; Reuse the TAB, move both cursors after it
+	jsr src::right
+	jsr cur::right
+	jmp @indentdone
+
+@insert_tab:
 	lda #$09		; TAB
 
 @putch: jsr text::putch
