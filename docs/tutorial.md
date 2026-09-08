@@ -431,10 +431,38 @@ you still find yourself frustrated at your editing/navigation speed.
 We're not quite done with initialization just yet. Remember that we wish to use joystick input
 to move the player sprite around the screen.  To do this we need to configure the VIAs (the Vic-20's
 chips responsible for handling keyboard/joystick input, among other duties) to read the joystick.
-This is as simple as our VIC initialization was.
+This is almost as simple as our VIC initialization was.
+
+The lines to the joystick are not wired to a single port.  UP, DOWN, LEFT and FIRE are wired
+to port A (`$9111`) on VIA #1.  However, the RIGHT direction is wired to bit 7 of VIA #2 port B (`$9120`).
+
+The switches read active low, so a 0 bit means that the switch is closed in the direction being
+pushed/pressed.
+
+| Direction | Register | Bit       |
+|-----------|----------|-----------|
+| up        | `$9111`  | 2 (`$04`) |
+| down      | `$9111`  | 3 (`$08`) |
+| left      | `$9111`  | 4 (`$10`) |
+| fire      | `$9111`  | 5 (`$20`) |
+| right     | `$9120`  | 7 (`$80`) |
+
+Only the VIA #1 lines need to be configured up front.  We do that by clearing bits 2-5 of the
+data direction register at `$9113` to mark those pins as _inputs_.  Note that we mask the
+existing value instead of simply storing one: bit 7 of this port is the serial bus ATN line
+(an output), and we would break disk access if we clobbered it.
 
 ```
+    ; VIA1 PA2-PA5 (up/down/left/fire) -> inputs
+    lda $9113
+    and #$c3      ; %11000011: clear bits 2-5, leave the rest alone
+    sta $9113
 ```
+
+There is deliberately nothing here for the "right" switch.  VIA #2's port B is the keyboard
+column drive, so its data direction register (`$9122`) is set to all-outputs by the KERNAL.
+We will borrow bit 7 of it for a few cycles at a time when we read the joystick, then hand it
+straight back.
 
 There's a few remaining items to finish up the program.
 
@@ -572,6 +600,144 @@ of the main loop.
 Beautiful work.  Now it's time to actually move the sprite.
 
 #### Reading the joystick
+
+We configured VIA #1 back in our `init` routine, so four of the five switches are ready to read.
+We can define constants for each direction to make our code a bit more legible.
+
+```
+.eq JOYUP    $04
+.eq JOYDOWN  $08
+.eq JOYLEFT  $10
+.eq JOYFIRE  $20
+.eq JOYRIGHT $80
+```
+
+Now to perform the read itself.  Recalling that 4 of the 5 joystick lines are wired to VIA #1, let's
+first poll it to see if any of those are pressed.
+
+We will `EOR` the value by `$ff` so that the active low values become 1 and then mask all irrelevant
+data from the port register by doing an `AND` with all the "don't care" bits set to `0`.
+
+```
+readjoy
+    lda $9111      ; up/down/left/fire
+    eor #$ff       ; active low -> active high
+    and #$3c       ; keep only bits 2-5
+    sta joy
+```
+
+That leaves "right".  As we noted earlier, it shares a pin with the keyboard column drive, so we
+briefly make PB7 an input, sample it, and then restore the port to all-outputs.
+
+Our program doesn't need the keyboard, so you could leave simply keep PB7 as an input
+forever, but this approach allows you to extend the program with keyboard input later if you wish.
+
+```
+    lda #$7f
+    sta $9122      ; PB7=input
+    lda $9120      ; sample
+    ldx #$ff
+    stx $9122      ; PB7=output (restore keyboard)
+
+    eor #$ff       ; active low -> active high
+    and #JOYRIGHT
+    ora joy
+    sta joy
+    rts
+```
+
+Now our `joy` variable contains the current state of each switch in the joystick, 1 bit
+per switch.
+
+| 7   | 6   |  5  | 4   | 3   | 2   | 1   |  0  |
+|-----|-----|-----|-----|-----|-----|-----|-----|
+|right|     |fire |left |down | up  |     |     |
+
+
+```{note}
+The KERNAL's interrupt handler scans the keyboard sixty times a second and assumes it owns
+`$9122`.  If your program leaves interrupts enabled, wrap the two writes above in `sei`/`cli` so
+that a scan can't land in the middle of them.
+```
+
+With the switches in `joy`, moving the player is just a matter of nudging its position.  Recall
+that `spritex` must stay even (our multicolor sprite is shifted two pixels at a time), so we
+step it by two.  Each move is guarded so that the sprite can't wander off the edges of the
+bitmap: a column is `$c0` bytes tall and we have 20 of them.
+
+```
+movespr
+    lda joy
+    and #JOYLEFT
+    beq +
+    lda spritex
+    beq +          ; already at the left edge
+    dec spritex
+    dec spritex
+
+:   lda joy
+    and #JOYRIGHT
+    beq +
+    lda spritex
+    cmp #(20*8)-8
+    beq +
+    inc spritex
+    inc spritex
+
+:   lda joy
+    and #JOYUP
+    beq +
+    lda spritey
+    beq +
+    dec spritey
+
+:   lda joy
+    and #JOYDOWN
+    beq +
+    lda spritey
+    cmp #$c0-8
+    beq +
+    inc spritey
+
+:   rts
+```
+
+And the new state that these routines need:
+
+```
+joy
+    .byte 0
+spritey
+    .byte 0
+```
+
+Finally, wire it all into the main loop:
+
+```
+main
+    jsr readjoy
+    jsr movespr
+    jsr drawspr
+    jmp main
+```
+
+Assemble and run once more.
+
+The sprite should now follow the joystick left and right.  So close! But you'll notice
+one thing immediately: the spirte smears as it moves, leaving a trail of itself wherever it goes.
+This is because `drawspr` only ever _draws_ the sprite — we never erase the sprite at its previous position.
+
+Simple enough to fix.
+
+There are two popular approaches to erasing a sprite
+
+1. saving a "backup" of the data that the sprite is drawing over.
+2. `EOR`ing the sprite with itself
+
+The `EOR` approach is simpler, but it relies on the background being empty.  If it's not, it will be
+cleared wherever the sprite goes.  If you have overlapping sprites, you will similarly face corruption.
+But for our purposes (1 sprite, blank background) it is perfect.  And it hardly requires any new code.
+All we have to do is slightly modify the code that stores the sprite data to the screen:
 
 #### Symbol viewer
 
