@@ -62,6 +62,15 @@ This tool presents a paginated view of all files on the disk.
 Pressing {c64-key}`RETURN` while the cursor is on the desired file will load
 that file into a new buffer and switch to that buffer.
 
+```{figure} screenshots/directory.png
+:alt: The directory viewer showing a list of source files
+:align: center
+:width: 75%
+:class: screenshot
+
+The directory viewer lists the files on the current disk. The highlighted row is the current selection.
+```
+
 While in the directory viewer, pressing {c64-key}`G` navigates to the last file in the directory and {c64-sequence}`GG` goes
 to the first one.
 
@@ -72,9 +81,17 @@ you came from.
 
 The symbol viewer, activated with {c64-keys}`C= + Y`, displays all the labels in the program
 along with their corresponding address.  If no labels are defined, the viewer aborts and reports
-`NO LABELS` in the status bar.
+`NO LABELS` in the status bar. Float constants are shown in decimal/scientific notation.
 
-Float constants are shown in decimal/scientific notation.
+
+```{figure} screenshots/symview.png
+:alt: The symbol viewer listing symbol values, names, source files, and line numbers, sorted by name
+:align: center
+:width: 75%
+:class: screenshot
+
+The symbol viewer shows each symbol's value and definition location. Here the symbols are sorted by name
+```
 
 | KEY                   | NAME        | DESCRIPTION                                                      |
 |-----------------------|-------------|------------------------------------------------------------------|

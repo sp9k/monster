@@ -32,10 +32,10 @@ Below are some examples of valid lines:
 
 ````{example}
 ```
-LDA #$00
-LOOP   INC BUFFER,X  ; INCREMENT BUFFER+X
-LDA #$00:LDX #$80:LDY #$10
-LDA #$00:LDXY #$ffff
+lda #$00
+LOOP   inc BUFFER,X  ; INCREMENT BUFFER+X
+lda #$00:ldx #$80:ldy #$10
+lda #$00:ldxy #$ffff
 ```
 ````
 
@@ -80,9 +80,9 @@ For example:
 
 ````{example}
 ```
-LDA #1+1==2      ; (1+1) == 2
-LDA #LEVEL>=3    ; 1 if the constant LEVEL is 3 or more
-.IF LEVEL>=3     ; conditional assembly on constant
+lda #1+1==2      ; (1+1) == 2
+lda #LEVEL>=3    ; 1 if the constant LEVEL is 3 or more
+.if LEVEL>=3     ; conditional assembly on constant
 ```
 ````
 
@@ -92,8 +92,8 @@ assembler will interpret this as indirect addressing. For example:
 
 ````{example}
 ```
-JMP (1+3)   ; jump-indirect to the address in memory address (4)
-JMP 1+3     ; jump-absolute to address 4
+jmp (1+3)   ; jump-indirect to the address in memory address (4)
+jmp 1+3     ; jump-absolute to address 4
 ```
 ````
 
@@ -105,7 +105,7 @@ Labels are supported in expressions and will evaluate to their address when asse
 
 ````{example}
 ```
-LDA #<LABEL1
+lda #<LABEL1
 ```
 ````
 
@@ -114,7 +114,7 @@ with a '$'.
 
 ````{example}
 ```
-LDA #(10+$20)
+lda #(10+$20)
 ```
 ````
 
@@ -151,14 +151,14 @@ the following example.
 ```
 PROC0:
 @L0:
-    DEX
-    BNE L0
-    RTS
+    dex
+    bne L0
+    rts
 PROC1:
 @L0:
-    DEY
-    BNE L0
-    RTS
+    dey
+    bne L0
+    rts
 ```
 ````
 
@@ -178,7 +178,7 @@ PLAYER
 @Y: .db 0
 
 GAME:
-    LDA PLAYER@X
+    lda PLAYER@X
 ```
 ````
 
@@ -195,10 +195,10 @@ previous _backward_ anonymous label.
 for example
 ````{example}
 ```
-    .ORG $1000
-:   JMP +       ; JMP $1003
-:   JMP -       ; JMP $1003
-:   JMP --      ; JMP $1003
+    .org $1000
+:   jmp +       ; JMP $1003
+:   jmp -       ; JMP $1003
+:   jmp --      ; JMP $1003
 ```
 ````
 
@@ -207,7 +207,7 @@ on the corresponding anonymous label.
 for example:
 ````{example}
 ```
-    JMP +++
+    jmp +++
 :   nop
 :   nop
 :   nop         ; will jump here
@@ -230,10 +230,10 @@ The following example illustrates why this is necessary:
 
 ````{example}
 ```
-.REP NUM, I
-    ASL
-.ENDREP
-.EQ NUM 5
+.rep NUM, I
+    asl
+.endrep
+.eq NUM 5
 ```
 ````
 
@@ -259,10 +259,10 @@ value.
 
 ````{example}
 ```
-.ALIGN $100
+.align $100
 CHARS
 
-.ALIGN $1000, $ff
+.align $1000, $ff
 HIRAM
 ```
 ````
@@ -279,7 +279,7 @@ linker section of the manual.
 
 ````{example}
 ```
-.BSS "DATA"
+.bss "DATA"
 curx    .db 0
 cury    .db 0
 ```
@@ -297,7 +297,7 @@ linker section of the manual.
 
 ````{example}
 ```
-.BSSZP "ZPCODE"
+.bsszp "ZPCODE"
 curx    .db 0
 cury    .db 0
 ```
@@ -311,8 +311,8 @@ cury    .db 0
 
 ````{example}
 ```
-.DB $00, $01, $02 ; $00 $01 $02
-.DB "HI",0        ; $48 $49 $00
+.db $00, $01, $02 ; $00 $01 $02
+.db "HI",0        ; $48 $49 $00
 ```
 ````
 
@@ -324,7 +324,7 @@ cury    .db 0
 
 ````{example}
 ```
-.DW $00, $01, $02 ; $00 $00 $01 $00 $02 $00
+.dw $00, $01, $02 ; $00 $00 $01 $00 $02 $00
 ```
 ````
 
@@ -339,11 +339,11 @@ contents of the "else" block are assembled.
 
 ````{example}
 ```
-.IF NTSC
-    .EQ LINES 261
-.ELSE
-    .EQ LINES 312
-.ENDIF
+.if NTSC
+    .eq LINES 261
+.else
+    .eq LINES 312
+.endif
 ```
 ````
 
@@ -363,10 +363,10 @@ contents of the "else" block are assembled.
 
 ````{example}
 ```
-.MAC LDXY A
-    LDX <A
-    LDY >A
-.ENDMAC
+.mac ldxy A
+    ldx <A
+    ldy >A
+.endmac
 ```
 ````
 
@@ -378,9 +378,9 @@ contents of the "else" block are assembled.
 
 ````{example}
 ```
-.REP 10
-    ASL
-.ENDREP
+.rep 10
+    asl
+.endrep
 ```
 ````
 
@@ -392,9 +392,9 @@ contents of the "else" block are assembled.
 
 ````{example}
 ```
-.EQ BITMAP $1100
-    LDA #$00
-    STA BITMAP+20
+.eq BITMAP $1100
+    lda #$00
+    sta BITMAP+20
 ```
 ````
 
@@ -408,7 +408,7 @@ manual for more details.
 
 ````{example}
 ```
-.EXPORT blit
+.export blit
 blit
     ...
 ```
@@ -423,13 +423,13 @@ between this directive and its matching `.ENDIF`.
 
 ````{example}
 ```
-.IF NTSC
-.EQ CYCLES_PER_LINE 65
-.EQ LINES 261
-.ELSE
-.EQ CYCLES_PER_LINE 71
-.EQ LINES 312
-.ENDIF
+.if NTSC
+.eq CYCLES_PER_LINE 65
+.eq LINES 261
+.else
+.eq CYCLES_PER_LINE 71
+.eq LINES 312
+.endif
 ```
 ````
 
@@ -450,7 +450,7 @@ manual for more details.
 
 ````{example}
 ```
-.IMPORT blit
+.import blit
 
     ldx #10
     ldy #20
@@ -468,7 +468,7 @@ manual for more details.
 
 ````{example}
 ```
-.IMPORTZP curx
+.importzp curx
     ldx curx
     ldy #$00
     jsr blit
@@ -484,9 +484,9 @@ from disk and assembled as if the code was copy/pasted in place of the include d
 
 ````{example}
 ```
-.INC "KERNAL.INC"
-    LDA #$00
-    JSR CHROUT
+.inc "KERNAL.INC"
+    lda #$00
+    jsr CHROUT
 ```
 ````
 
@@ -499,16 +499,16 @@ target location.
 
 ````{example}
 ```
-.EQ BITMAP $1100
-    LDX #$07
+.eq BITMAP $1100
+    ldx #$07
 L0:
-    LDA SPRITES,X
-    STA BITMAP,X
-    DEX
-    BPL L0
+    lda SPRITES,X
+    sta BITMAP,X
+    dex
+    bpl L0
 
 SPRITES:
-.INCBIN "SPRITES.BIN"
+.incbin "SPRITES.BIN"
 ```
 ````
 
@@ -520,12 +520,12 @@ SPRITES:
 
 ````{example}
 ```
-.MAC LDXY VAL
-    LDX #<VAL
-    LDY #>VAL
-.ENDMAC
+.mac ldxy VAL
+    ldx #<VAL
+    ldy #>VAL
+.endmac
 
-    LDXY $1234
+    ldxy $1234
 ```
 ````
 
@@ -533,8 +533,8 @@ Will generate the following code:
 
 ````{example}
 ```
-    LDX #$34
-    LDY #$12
+    ldx #$34
+    ldy #$12
 ```
 ````
 
@@ -552,10 +552,10 @@ list of the parameters.
 
 ````{example}
 ```
-.ORG $1000
+.org $1000
 ; start up code
 
-.ORG $2000
+.org $2000
 ; main code
 ```
 ````
@@ -581,13 +581,13 @@ This is useful for code that will be relocated prior to execution.
 
 ````{example}
 ```
-.ORG $1000
-.RORG $00
+.org $1000
+.rorg $00
     ; some tight loop
-    LDA #$01
-    STA *+3
-    LDA #$00
-    STA $900F
+    lda #$01
+    sta *+3
+    lda #$00
+    sta $900F
 ```
 ````
 
@@ -603,9 +603,9 @@ times.
 
 ````{example}
 ```
-.REP 3
-    ASL
-.ENDREP
+.rep 3
+    asl
+.endrep
 ```
 ````
 
@@ -613,9 +613,9 @@ Becomes
 
 ````{example}
 ```
-    ASL
-    ASL
-    ASL
+    asl
+    asl
+    asl
 ```
 ````
 
@@ -624,9 +624,9 @@ the current iteration of repetition during assembly.
 
 ````{example}
 ```
-.REP 5,I
-    INC $F0+I
-.ENDREP
+.rep 5,I
+    inc $F0+I
+.endrep
 ```
 ````
 
@@ -634,11 +634,11 @@ Becomes
 
 ````{example}
 ```
-    INC $F0
-    INC $F1
-    INC $F2
-    INC $F3
-    INC $F4
+    inc $F0
+    inc $F1
+    inc $F2
+    inc $F3
+    inc $F4
 ```
 ````
 
@@ -646,13 +646,13 @@ Nested `.REP` directives are also supported:
 
 ````{example}
 ```
-.REP 2,I
-.REP 5,J
-        INC $F0+I*5+J
+.rep 2,I
+.rep 5,J
+        inc $F0+I*5+J
 @skip:
-.ENDREP
-    ASL
-.ENDREP
+.endrep
+    asl
+.endrep
 ```
 ````
 
@@ -660,18 +660,18 @@ Becomes:
 
 ````{example}
 ```
-    INC $F0
-    INC $F1
-    INC $F2
-    INC $F3
-    INC $F4
-    ASL
-    INC $F5
-    INC $F6
-    INC $F7
-    INC $F8
-    INC $F9
-    ASL
+    inc $F0
+    inc $F1
+    inc $F2
+    inc $F3
+    inc $F4
+    asl
+    inc $F5
+    inc $F6
+    inc $F7
+    inc $F8
+    inc $F9
+    asl
 ```
 ````
 
@@ -685,7 +685,7 @@ linker section of the manual.
 
 ````{example}
 ```
-.SEG "CODE"
+.seg "CODE"
     lda #$00
     sta $900f
 ```
@@ -701,7 +701,7 @@ linker section of the manual.
 
 ````{example}
 ```
-.SEGZP "ZPCODE"
+.segzp "ZPCODE"
 :   asl
     asl
     bcc :-
@@ -719,20 +719,20 @@ They may be recursive as in this example:
 
 ````{example}
 ```
-.MAC LDXY VAL
-    LDX VAL
-    LDY VAL+1
-.ENDMAC
+.mac ldxy VAL
+    ldx VAL
+    ldy VAL+1
+.endmac
 
-.MAC STXY ADDR
-    STX ADDR
-    STY ADDR+1
-.ENDMAC
+.mac stxy ADDR
+    stx ADDR
+    sty ADDR+1
+.endmac
 
-.MAC SET DST, SRC
-    LDXY SRC
-    STXY DST
-.ENDMAC
+.mac SET DST, SRC
+    ldxy SRC
+    stxy DST
+.endmac
 ```
 ````
 
@@ -741,20 +741,20 @@ less than the maximum number it expects as in this example:
 
 ````{example}
 ```
-.MAC SAVEBYTES A, B, C
-.IFDEF A
-    LDA A
-    PHA
-.ENDIF
-.IFDEF B
-    LDA B
-    PHA
-.ENDIF
-.IFDEF C
-    LDA C
-    PHA
-.ENDIF
-.ENDMAC
+.mac SAVEBYTES A, B, C
+.ifdef A
+    lda A
+    pha
+.endif
+.ifdef B
+    lda B
+    pha
+.endif
+.ifdef C
+    lda C
+    pha
+.endif
+.endmac
 ```
 ````
 

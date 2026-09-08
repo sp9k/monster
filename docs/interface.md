@@ -29,6 +29,15 @@ old errors), and entering or quitting the debugger closes every open window.
 Some windows, in particular the memory viewer/editor and the text-based monitor, are resizable; this is done with
 the following keys.
 
+```{figure} screenshots/editor-multi-wins.png
+:alt: The editor with the buffer, monitor, and memory windows open simultaneously
+:align: center
+:width: 75%
+:class: screenshot
+
+Several windows may remain open at once as shown here with the buffer, monitor, and memory windows
+```
+
 | COMMAND    |  KEY               |  DESCRIPTION
 |------------|--------------------|-----------------------------------------------------------------------------------------------------
 | `GROW    ` | {c64-keys}`C= + K` | Enlarges the active window

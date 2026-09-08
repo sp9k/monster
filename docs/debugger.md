@@ -206,6 +206,15 @@ viewer is updated upon reentry to the debugger (if active).
 Memory values may be updated by navigating to the value the user wishes to
 change and overwriting it with a new hex value. The change occurs immediately.
 
+```{figure} screenshots/memviewer.png
+:alt: The memory viewer open at address $1800 below the debugger source view
+:align: center
+:width: 75%
+:class: screenshot
+
+The memory viewer shows hexadecimal values and their character representations
+```
+
 In addition to hexadecimal keys to edit memory values, the following commands
 are supported within the memory viewer:
 
