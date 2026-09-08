@@ -348,7 +348,9 @@ ctrltab:
 	sbc $9128	; add signed overflow value from timer
 	cmp #$0a
 	bcc @s0
-	rts
+
+	; out of range; give up on this row
+	jmp @main
 
 @s0:	sta @s1+1
 @s1:	bcc @s1
