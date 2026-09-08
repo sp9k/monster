@@ -2909,6 +2909,20 @@ cancel = enter_command
 .endproc
 
 ;*******************************************************************************
+; CLAMP CURSOR
+; Moves the cursor onto a row that exists in the editor based on its
+; current height
+.proc clamp_cursor
+	lda zp::cury
+	cmp height
+	bcc @done	; cursor is in the editor's range
+	beq @done	; the last row (height) is a valid position
+	lda height
+	sta zp::cury
+@done:	rts
+.endproc
+
+;*******************************************************************************
 ; CLOSE_BUFFER
 ; Frees the current source buffer and moves to the previous buffer (if there
 ; is one) or a new source.
@@ -2925,9 +2939,11 @@ cancel = enter_command
 	jsr brkpt::delinbuff
 @close:	lda src::activebuff
 	jsr src::close
-	bcc refresh_buffers
+	bcs :+
+	jsr clamp_cursor	; the buffer we moved to may be off-screen
+	jmp refresh_buffers
 
-	; if there was no buffer to switch to, reset cursor and clear screen
+:	; if there was no buffer to switch to, reset cursor and clear screen
 	; (create a new empty buffer)
 	; fall through to home_refresh
 .endproc
@@ -3146,6 +3162,7 @@ edit_set_breakpoint:
 	txa
 	jsr src::setbuff
 	bcs @done
+	jsr clamp_cursor	; the buffer may have been left off-screen
 	jmp refresh
 @done:	rts
 .endproc
@@ -3253,6 +3270,7 @@ buffer8: lda #$07
 goto_buffer:
 	jsr src::setbuff
 	bcs @done		; if we can't set the buffer, exit
+	jsr clamp_cursor	; the buffer may have been left off-screen
 	jmp refresh
 @done:	rts
 
@@ -3912,6 +3930,7 @@ goto_buffer:
 	beq @ok			; buffer already active; quit
 
 	jsr src::setbuff	; switch to the new buffer
+	jsr clamp_cursor	; the buffer may have been left off-screen
 
 	jsr refresh
 	RETURN_OK

@@ -181,10 +181,10 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	bne :+
 	jsr getset_addr
 	jsr setbounds		; restore the cursor's bounds
+	jsr refresh		; redraw at the new address
 	ldy wintop
 	ldx #COL_START
-	jsr cur::set		; move back to home row/col
-	jsr refresh		; redraw at the new address
+	jsr cur::set		; move back to home row/col (draws the cursor)
 	jmp @edit
 
 :	cmp #K_QUIT
@@ -282,8 +282,8 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 @replace_val:
 	jsr @set_nybble	; replace the nybble under cursor
+	jsr refresh	; redraw the contents (before the cursor is drawn)
 	jsr @next_x	; advance the cursor (if we can)
-	jsr refresh
 	jmp @edit
 
 ;--------------------------------------
