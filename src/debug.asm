@@ -254,6 +254,18 @@ blank   = scr::blank
 	dex			; .X = $ff
 	txs			; initialize stack to $1ff
 
+	; clear any existing colors in the debugger UI area
+	ldx #DEBUG_MESSAGE_LINE
+@resetrow:
+	txa
+	pha
+	jsr draw::resetline
+	pla
+	tax
+	inx
+	cpx #SCREEN_HEIGHT
+	bcc @resetrow
+
 	; highlight message row
 	ldx #DEBUG_MESSAGE_LINE
 	jsr draw::hiline

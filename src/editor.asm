@@ -5330,7 +5330,7 @@ goto_buffer:
 @notfound:
 	jsr beep::short
 @abort:	jsr src::popgoto
-	jmp @done
+	jmp unblank
 
 @found:	jsr src::currline	; get the line we're moving to
 	stxy @target
@@ -5412,6 +5412,7 @@ goto_buffer:
 	; move to the line containing the search word
 @move:	jsr src::popgoto	; restore old source position
 	jsr add_jump_point	; add a jump point
+	jsr unblank
 	ldxy @target
 	jsr edit_gotoline	; go to the new line
 
@@ -5433,7 +5434,7 @@ goto_buffer:
 :	jsr src::next
 	dec @cnt
 	bne :-
-@done:	jmp unblank
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -6300,6 +6301,10 @@ unblank = scr::unblank
 ; This is used for, for example, numbers, 'y', and other keys that are not
 ; immediately handled
 .proc buffer_key
+	pha
+	jsr text::clrinfo
+	jsr ui::update_statusline
+	pla
 	pha
 	ldx #$00
 	sta mem::statusline+KEYBUFFER_COL,x
