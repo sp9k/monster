@@ -1163,17 +1163,6 @@ __debug_step:
 .endproc
 
 ;*******************************************************************************
-; ACTIVATE MONITOR
-; Activates the text user interface debugger (monitor) as a maximized window
-.proc activate_monitor
-	jsr bsp::save_debug_state
-	ldxy #mon::window
-	jsr gui::select
-	jsr gui::maximize
-	jmp gui::enter
-.endproc
-
-;*******************************************************************************
 ; ACTIVATE MONITOR WIN
 ; Activates the monitor as a window at its last height, leaving the source
 ; view visible above it
@@ -2188,7 +2177,6 @@ commands:
 	.byte K_RESET_STOPWATCH
 	.byte K_EDIT_STATE
 	.byte K_GOTO_BREAK
-	.byte K_MONITOR
 	.byte K_MONITOR_WIN
 	.byte K_TOGGLE_INFO
 num_commands=*-commands
@@ -2198,7 +2186,7 @@ num_commands=*-commands
 	__debug_go, jump, __debug_stepout_limited, __debug_step_out, \
 	__debug_trace, edit_source, edit_mem, edit_breakpoints, \
 	__debug_edit_watches, __debug_swap_user_mem, reset_stopwatch, \
-	edit_state_vec, goto_pc, activate_monitor, activate_monitor_win, \
+	edit_state_vec, goto_pc, activate_monitor_win, \
 	toggle_extended_info
 .linecont -
 command_vectorslo: .lobytes command_vectors

@@ -11,7 +11,7 @@ K_PREV_BUFF    = $08	; Ctrl + h
 K_NEXT_BUFF    = $0c	; Ctrl + l
 K_NEW_BUFF     = $aa	; C=   + n
 K_CLOSE_BUFF   = $ab	; C=   + q
-K_SHOW_BUFFERS = $a3	; C=   + t
+K_SHOW_BUFFERS = $86	; F3
 
 K_UDG_EDIT         = $b8	; C= + u
 K_UDG_TOGGLE_MODE  = $6d	; m
@@ -30,7 +30,6 @@ K_DEBUG          = $ac	; C= + d
 
 K_LINK           = $b6  ; C= + l (link)
 K_MONITOR_WIN    = $88	; F7
-K_MONITOR        = $8c	; F8 (SHIFT + F7)
 
 K_NEXT_PAL       = $db	; SHIFT + +
 K_PREV_PAL       = $dd  ; SHIFT + -
@@ -70,7 +69,7 @@ K_NEXT_ERR       = $b1  ; C= + e
 ;*******************************************************************************
 ; DEBUGGER KEYS
 K_SRCVIEW		= $85	; F1
-K_MEMVIEW		= $86	; F3
+K_MEMVIEW		= $8c	; F8 (SHIFT + F7)
 K_BRKVIEW		= $87	; F5
 K_WATCHVIEW		= $8b	; F6
 K_SWAP_USERMEM		= $20	; SPACE

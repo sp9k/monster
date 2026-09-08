@@ -371,16 +371,6 @@ main:	jsr key::getch
 .endproc
 
 ;*******************************************************************************
-; MONITOR
-; Opens (or re-activates) the monitor as a maximized window
-.proc monitor
-	ldxy #mon::window
-	CALLMAIN gui::select
-	CALLMAIN gui::maximize
-	; fall through to monitor_win
-.endproc
-
-;*******************************************************************************
 ; MONITOR WIN
 ; Opens (or re-activates) the monitor as a window at the bottom of the
 ; screen, leaving the editor visible above it.
@@ -6387,7 +6377,6 @@ ro_commands:
 	.byte K_NEXT_DRIVE	; next drive
 	.byte K_PREV_DRIVE	; prev drive
 	.byte K_GETCMD		; get command
-	.byte K_MONITOR		; enter console
 	.byte K_MONITOR_WIN	; enter console in a window
 	.byte K_WIN_GROW	; grow the active window
 	.byte K_WIN_SHRINK	; shrink the active window
@@ -6410,7 +6399,7 @@ numcommands=*-commands
 	home_line, ccdel, ccright, goto_end, goto_start, find_next, find_prev, \
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
-	command_find, next_drive, prev_drive, get_command, monitor, \
+	command_find, next_drive, prev_drive, get_command, \
 	monitor_win, guigrow, guishrink, maximize_win, next_err, \
 	help::show, guitogglehide
 .linecont -

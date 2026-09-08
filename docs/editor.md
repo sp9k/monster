@@ -34,11 +34,11 @@ below for more info on modes).
 | {c64-keys}`C= + Y`     | `SHOW SYMBOLS  `| lists the symbol table for the assembled program                                                |
 | {c64-keys}`C= + M`     | `SHOW MACROS   `| lists the macros that are defined and allows viewing their definitions                          |
 | {c64-keys}`C= + E`     | `NEXT ERROR    `| if there are errors from the last assembly, navigates to the next one                           |
-| {c64-keys}`C= + T`     | `SHOW BUFFERS  `| displays a list of the currently open buffers                                                   |
+| {c64-key}`F3`          | `SHOW BUFFERS  `| displays a list of the currently open buffers                                                   |
 | {c64-keys}`C= + L`     | `LINK          `| links the object files in the project using the LINK file on disk                               |
-| {c64-key}`F3`          | `MEMVIEW       `| opens the memory viewer/editor (same as while debugging; {c64-key}`RUN/STOP` returns to the editor, {c64-keys}`C= + Q` closes the window) |
-| {c64-key}`F5`          | `BRKVIEW       `| opens the breakpoint viewer/editor (same as while debugging)                                    |
-| {c64-key}`F6`          | `WATCHVIEW     `| opens the watch viewer/editor (same as while debugging)                                         |
+| {c64-key}`F8`          | `MEMVIEW       `| opens the memory viewer/editor                                                                  |
+| {c64-key}`F5`          | `BRKVIEW       `| opens the breakpoint viewer/editor                                                              |
+| {c64-key}`F6`          | `WATCHVIEW     `| opens the watch viewer/editor                                                                   |
 | {c64-keys}`C= + Plus`  | `NEXT DRIVE    `| Selects the next drive (limited to #15)                                                         |
 | {c64-keys}`C= + Minus` | `PREV DRIVE    `| Selects the previous drive (limited to #8)                                                      |
 | {c64-key}`Colon`       | `EX COMMAND    `| Enters "EX" mode (see the EX COMMANDS section below for more on this)                           |
@@ -131,12 +131,12 @@ actually recorded for a macro.  See the [Assembler](assembler.md) document for t
 |---------------|--------------------|----------------------------------------------------------------------------------------------|
 | {c64-key}`F1` | `RUN           `   | saves Monster's state and transfers control to the last assembly (or enters BASIC if none)   |
 | {c64-key}`F2` | `MEMORY CONFIG `   | selects which expansion blocks the user's program (and BASIC) run with                       |
-| {c64-key}`F3` | `MEMORY VIEWER `   | activates the memory viewer                                                                  |
+| {c64-key}`F3` | `BUFFERS       `   | displays a list of the currently open buffers                                                |
 | {c64-key}`F4` | `LOG           `   | displays the active log file (if any)                                                        |
 | {c64-key}`F5` | `BREAKPOINTS   `   | activates the breakpoint viewer                                                              |
-| {c64-key}`F6` | `SHOW PROJECT  `   | displays the current project configuration                                                   |
+| {c64-key}`F6` | `WATCHES       `   | activates the watch viewer                                                                   |
 | {c64-key}`F7` | `MONITOR       `   | opens the text-based monitor as a window (see the _Monitor_ section)                         |
-| {c64-key}`F8` | `MONITOR (FULL)`   | opens the text-based monitor maximized ({c64-keys}`Shift + F7`)                              |
+| {c64-key}`F8` | `MEMORY VIEWER `   | activates the memory viewer                                                                  |
 
 ### EX commands
 

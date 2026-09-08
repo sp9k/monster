@@ -75,11 +75,10 @@ respective Key in the table below.
 |-----------------------|-----------------|-----------------------------------------------------------------------------------------|
 | {c64-key}`F1`         | SOURCE VIEW     | maximizes the screen area for viewing the source code                                   |
 | {c64-key}`F2`         | REGISTER EDITOR | enters the register editor                                                              |
-| {c64-key}`F3`         | MEM VIEW        | activates the memory window, which takes control until {c64-key}`RUN/STOP` is pressed    |
 | {c64-key}`F5`         | BREAK VIEW      | displays the breakpoints that have been set and allows them to be enabled/disabled      |
 | {c64-key}`F6`         | WATCH VIEW      | displays the watches that have been set (see the _Watch Viewer_ section)                |
 | {c64-key}`F7`         | MONITOR         | opens the text-based monitor as a window over the debug view                            |
-| {c64-key}`F8`         | MONITOR (FULL)  | opens the text-based monitor maximized ({c64-keys}`Shift + F7`)                         |
+| {c64-key}`F8`         | MEM VIEW        | activates the memory window, which takes control until {c64-key}`RUN/STOP` is pressed    |
 | {c64-key}`S`          | STEP OVER       | steps to the next instruction. If it is a JSR, continues AFTER the target subroutine    |
 | {c64-key}`Y`          | STEP OUT        | steps until the next RTS instruction                                                    |
 | {c64-key}`Z`          | STEP            | steps to the next instruction.                                                          |
@@ -200,7 +199,7 @@ source code editor; the view stays open below it.  To close the active view outr
 press {c64-keys}`C= + Q` while it has focus.  {c64-key}`F1` closes every open view at once to
 maximize the source editor's screen size.
 
-### Memory viewer ({c64-key}`F3`)
+### Memory viewer ({c64-key}`F8`)
 
 The memory viewer displays the contents of RAM at a given address.  The memory
 viewer is updated upon reentry to the debugger (if active).
@@ -324,7 +323,7 @@ NOTE: breakpoints can only be added to buffers that have been named.
 ---
 
 ## Watches
-Watches are set within the memory editor ({c64-key}`F3`). When the cursor is over the
+Watches are set within the memory editor ({c64-key}`F8`). When the cursor is over the
 desired byte to watch, then press {c64-keys}`C= + W` to add a watch to the address of the
 byte under the cursor.  A beep will confirm that the watch
 was added.

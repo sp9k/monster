@@ -13,7 +13,7 @@ This project will span multiple files, but when assembling directly into memory,
 active source file.  For us, that will be a `main.s` file.  All other files will be _included_ from
 this one (more on that when we get to it).
 
-If you still have buffers open from your past work, close them with {c64-keys}`C= + Q` until only one remains.  Press {c64-keys}`C= + T` to
+If you still have buffers open from your past work, close them with {c64-keys}`C= + Q` until only one remains.  Press {c64-key}`F3` to
 enter the **BUFFERS VIEWER**.  This will pop open a _window_ which allows you to view all open buffers and
 select one to navigate to.  Confirm in this view that we have only one buffer open.
 
@@ -34,7 +34,7 @@ capabilities a bit.  A good organizational practice for this is to have a single
 that you include at the top of your "main" assembly file (`main.s` for us).
 
 To create a new buffer, press {c64-keys}`C= + N`.  This will open a new unnamed buffer.  Press
-{c64-keys}`C= + T` and you should see there are now two buffers: `main.s` and our new unnamed one.
+{c64-key}`F3` and you should see there are now two buffers: `main.s` and our new unnamed one.
 
 #### Macros
 
@@ -166,7 +166,7 @@ more importantly, it is a handle for quick navigation to it.  If your `main.s` b
 for example, you can jump straight to it, no matter which buffer you're currently on, by
 pressing {c64-keys}`CTRL + 1`.
 
-The last way is one we've already seen: the buffer viewer ({c64-keys}`C= + T`).  This is
+The last way is one we've already seen: the buffer viewer ({c64-key}`F3`).  This is
 the most general way to select the buffer you want by name.  If you haven't noticed by now,
 the `H`, `J`, `K`, and `L` keys are almost always usable in addition to the cursor keys.  This is
 true in the buffer viewer as well as the UDG editor and others we've yet to explore.
@@ -369,7 +369,7 @@ And it's quite a lot of iterations this time.  Repeated stepping would be tediou
 breakpoint after the screen initialization loop and see if the outcome is as we expect.
 
 The easiest way to inspect the output here is a tool we've yet to invoke: the MEMORY VIEWER (activated
-with {c64-key}`F3`).  The memory viewer is similar to the monitor's `m` command, but it allows us to easily
+with {c64-key}`F8`).  The memory viewer is similar to the monitor's `m` command, but it allows us to easily
 scroll around through memory as we please using the usual motion keys (h/j/k/l).
 
 Once activated, set the address to our screen matrix by pressing {c64-key}`Up-Arrow` and then entering `1000` and

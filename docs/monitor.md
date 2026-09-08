@@ -17,7 +17,7 @@ the source view) remains visible above the monitor window.  The window may be re
 (grow) and {c64-keys}`C= + J` (shrink).  These keys work both while the monitor is active and from the editor
 while the window is open.
 
-Pressing {c64-key}`F8` ({c64-keys}`Shift + F7`) opens the monitor _maximized_ (fullscreen) instead.
+Press {c64-keys}`C= + Z` while the monitor has focus to maximize it or restore its previous size.
 
 The monitor can be activated from the editor both during normal editing and while debugging.
 The default state of the virtual machine when you boot is the state of the Vic right after its normal
@@ -25,7 +25,7 @@ cold start procedure executes, which is what you will see in the monitor if ente
 assembling a program.
 
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
-Press {c64-key}`F7` or {c64-key}`F8` to re-enter it.  Press {c64-keys}`C= + Q` while the monitor window has focus to close it, just like other windows.
+Press {c64-key}`F7` to re-enter it.  Press {c64-keys}`C= + Q` while the monitor window has focus to close it, just like other windows.
 
 ### File redirection
 The output from a given monitor command can be redirected to file instead of the screen by using the
