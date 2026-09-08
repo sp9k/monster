@@ -737,7 +737,25 @@ There are two popular approaches to erasing a sprite
 The `EOR` approach is simpler, but it relies on the background being empty.  If it's not, it will be
 cleared wherever the sprite goes.  If you have overlapping sprites, you will similarly face corruption.
 But for our purposes (1 sprite, blank background) it is perfect.  And it hardly requires any new code.
-All we have to do is slightly modify the code that stores the sprite data to the screen:
+All we have to do is slightly modify the code that stores the sprite data to the screen.  Go back to
+your `blit` loop and add an `eor (@col),y` between the sprite data loads and the bitmap writes.
+
+```
+@blit
+    lda sprite,y
+    eor (@col),y	; new
+    sta (@col),y
+    lda sprite+8,y
+    eor (@col2),y	; new
+    sta (@col2),y
+    dey
+    bpl @blit
+
+```
+
+Reassemble and give this updated code another go in the debugger.
+
+When you free run the program, you should now see the sprite moving around cleanly on the screen.
 
 #### Symbol viewer
 
@@ -749,3 +767,13 @@ and need a quick refresher.  To make inspecting this state easier, Monster has a
 last assembly along with their addresses.  {c64-key}`F1` toggles between name and address
 sorting in this view.  Press {c64-key}`RETURN` on a symbol to navigate to its
 definition.
+
+#### Where to go from here
+
+What we've built here is a great starting point for further experimentation.
+Try changing the sprite data or adding sound effects when the sprite jumps (you can use the
+appendicies in this manual to understand how to do this).
+
+The rest of the manual serves as a reference as you continue to advance.  It is worth
+giving a first pass read, but the best way to learn is to keep exersizing your abilities
+by using Monster.  Have fun!
