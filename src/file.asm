@@ -613,7 +613,9 @@ ENDOSPROC
 ;  - .C: set if the drive returns an error
 .proc fgeterr
 	jsr io::readerr
-	txa
+	bcc :+
+	ldx #DOS_ERR_UNKNOWN	; drive didn't provide code; use generic error
+:	txa
 	cpx #20
 	bcc @ret		; err < 20 -> no error
 

@@ -57,13 +57,13 @@ CH_R_ARROW	    = 135
 ; RENDER STR
 ; Renders the format string in .XY (with any variadic args on the stack).
 ; On banked builds (vic20, c64 cart) cross-bank calls push extra data onto the
-; stack, so the "render_ind" variant must be used to skip it; on the C64 disk
-; build CALLMAIN is a plain JSR and render_ind would misalign the stack args.
+; stack, so the "render_ind" variant must be used to skip it.  Same-bank calls
+; use a plain JSR and use "render".
 .macro RENDER_STR
-.if .defined(vic20) .or (.defined(c64) .and .defined(CART))
-	CALLMAIN text::render_ind
-.else
+.if ::CUR_BANK = ::FINAL_BANK_MAIN
 	CALLMAIN text::render
+.else
+	CALLMAIN text::render_ind
 .endif
 .endmacro
 

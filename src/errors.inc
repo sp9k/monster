@@ -129,6 +129,14 @@ ERR_SEGMENT_OUT_OF_RANGE = 79
 ; expression errors
 ERR_NOT_INTEGRAL         = 80
 
+;*******************************************************************************
+; DOS STATUS CODES
+; Stands in for the code the drive reports in its error message when that
+; message can't be read (e.g. the drive never answered).  It is outside the
+; range of any real DOS code, so io::readerr's callers may map it like any
+; other status.
+DOS_ERR_UNKNOWN = $fe
+
 .import __err_get
 
 .scope err

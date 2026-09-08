@@ -30,6 +30,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ; Reads the drive's error into mem::drive_err (0-terminated)
 ; OUT:
 ;  - .X:             the error code
+;  - .C:             set if the drive's code could not be read
 ;  - mem::drive_err: the drive error message
 .proc readerr
 @ch=rf
@@ -90,9 +91,13 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ;*******************************************************************************
 ; SETERR
 ; Sets the drive error to the given string.
-; This is used to write messages to the drive error buffer directly.
+; This is used to write messages to the drive error buffer directly when the
+; drive itself couldn't be queried
 ; IN:
 ;   - .XY: the address of the 0-terminated string to write to the error buffer
+; OUT:
+;   - .A: ERR_DRIVE_DID_NOT_RESPOND
+;   - .C: set
 .proc seterr
 @err=r0
 	stxy @err
@@ -107,6 +112,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	lda #$00
 	sta mem::drive_err,y		; truncate 0-terminate message
 
-@done:	sec
+@done:	lda #ERR_DRIVE_DID_NOT_RESPOND
+	sec
 	rts
 .endproc

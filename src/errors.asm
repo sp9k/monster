@@ -22,8 +22,9 @@
 
 .segment "ERRORS"
 ;*******************************************************************************
-err_no_err:
-	.byte 0
+err_unknown_err:
+	;.byte "unknown error",0
+	.byte $ab,$8b,$73,$d7,$76,$c5,$94,$8f,$90,$0
 
 err_stack_underflow:
 	;.byte "stack underflow",0
@@ -342,7 +343,7 @@ err_not_integral:
 ;*******************************************************************************
 .linecont +
 .define errors \
-	err_no_err, \
+	err_unknown_err, \
 	err_stack_underflow, \
 	err_stack_overflow, \
 	err_line_too_long, \
@@ -428,8 +429,6 @@ errorslo: .lobytes errors
 errorshi: .hibytes errors
 NUM_ERRORS=*-errorshi
 
-err_unknown_err: .byte $aa,$ce,$7d,$ce,$d9,$52,$93,$d2,$0
-
 .CODE
 ;*******************************************************************************
 ; GET
@@ -449,10 +448,7 @@ err_unknown_err: .byte $aa,$ce,$7d,$ce,$d9,$52,$93,$d2,$0
 	tax
 	cpx #NUM_ERRORS
 	bcc :+
-	ldx #<err_unknown_err
-	ldy #>err_unknown_err
-	bne @uncompress		; branch always
-
+	ldx #$00		; no such error; report it as the unknown one
 :
 .ifdef ultimem
 @err=r0
@@ -484,7 +480,6 @@ err_unknown_err: .byte $aa,$ce,$7d,$ce,$d9,$52,$93,$d2,$0
 	tax
 .endif
 
-@uncompress:
 .ifdef c64
 	jsr str::uncompress
 	lda __ram_mem01

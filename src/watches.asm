@@ -32,6 +32,10 @@
 .include "vmem.inc"
 .include "zeropage.inc"
 
+.ifdef vic20
+CUR_BANK .set FINAL_BANK_MAIN
+.endif
+
 ;*******************************************************************************
 ; CONSTANTS
 HEIGHT = WATCHVIEW_STOP-WATCHVIEW_START-1

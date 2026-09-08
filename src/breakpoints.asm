@@ -28,6 +28,11 @@
 .include "ui.inc"
 .include "zeropage.inc"
 
+.ifdef vic20
+; This module runs in MAIN; allow CALL/JUMP to use direct MAIN calls.
+CUR_BANK .set FINAL_BANK_MAIN
+.endif
+
 ;*******************************************************************************
 ; CONSTANTS
 HEIGHT             = BRKVIEW_STOP-BRKVIEW_START-1

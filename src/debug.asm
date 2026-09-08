@@ -46,6 +46,7 @@
 
 .ifdef vic20
 	.include "vic20/fastcopy.inc"
+CUR_BANK .set FINAL_BANK_MAIN
 .endif
 
 .import __DEBUGGER_LOAD__

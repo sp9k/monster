@@ -26,6 +26,10 @@
 .include "text.inc"
 .include "zeropage.inc"
 
+.ifdef vic20
+CUR_BANK .set FINAL_BANK_MAIN
+.endif
+
 ;*******************************************************************************
 ; CONSTANTS
 MAX_ERRORS = 8

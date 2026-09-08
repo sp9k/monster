@@ -66,6 +66,7 @@
 
 .ifdef vic20
 .include "vic20/udgedit.inc"
+CUR_BANK .set FINAL_BANK_MAIN
 .endif
 
 .ifdef c64
@@ -971,6 +972,7 @@ main:	jsr key::getch
 @done:	pla			; restore original buffer
 	jsr src::setbuff	; restore buffer
 	jsr src::popgoto	; restore source pos
+	CALLMAIN gui::refresh	; draw BUFFERS from the buffer we started on
 
 @retok: RETURN_OK
 .endproc
@@ -3370,7 +3372,25 @@ goto_buffer:
 ; file, only the buffer.
 ; IN:
 ;  - .XY: the command parameter (the name to give to the buffer)
+; OUT:
+;  - .C: set on error
+;  - .A: the error code (on error)
 .proc command_rename
+	jsr rename_buffer
+	bcs @done
+	JUMPMAIN gui::refresh
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; RENAME BUFFER
+; Renames the current source buffer to the given name. Does NOT save the
+; file, only the buffer.
+; IN:
+;  - .XY: the name to give to the buffer
+; OUT:
+;  - .C: set on error (.A: the error code)
+.proc rename_buffer
 @file=zp::editortmp
 	; check if the name is already taken in the active debug info mapping
 	stxy @file
@@ -3812,7 +3832,7 @@ goto_buffer:
 
 	; open the file, write the source to it, and close the file
 @open:	ldxy @file
-	jsr command_rename	; first, rename the buffer to our filename
+	jsr rename_buffer	; first, rename the buffer to our filename
 	ldxy @file
 	jsr file::open_w	; OPEN file for writing
 	bcs @err
@@ -3839,6 +3859,7 @@ goto_buffer:
 @ok:	lda #$00
 	jsr src::setflags	; clear flags on the source buffer
 	jsr unblank
+	CALLMAIN gui::refresh	; the buffer is no longer DIRTY; update BUFFERS
 	ldxy #strings::saved	; confirm that the file was written
 	jmp text::info
 
@@ -6218,9 +6239,9 @@ unblank = scr::unblank
 .proc init_log
 @name=r0
 	jsr log::new
-	bcc :+
-@err:	rts
-:	jsr log::banner
+	bcs :-			; -> RTS
+
+	jsr log::banner
 	ldxy #strings::pass1
 	RENDER_STR
 	jsr log::out
