@@ -454,7 +454,10 @@ __expr_eval_bank:
 
 @unresolved:
 	; if we're here, the expression is unresolved (so far)
-	; in pass 1, that's fine - return and assume we will figure it out
+	; while verifying or in pass 1, that's fine - return and assume we will
+	; figure it out
+	ldx zp::verify
+	bne @dummy
 	ldx zp::pass
 	cpx #$02
 	bne @dummy		; pass 1 -> proceed with dummy
