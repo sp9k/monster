@@ -44,6 +44,9 @@ FRAME_CYCLES_INT = 65*525	; 34125; NTSC interlaced (2 262.5-line fields)
 
 ;*******************************************************************************
 ; SIMUATOR REGISTER STATE
+.PUSHSEG
+.segment "BSS_NOINIT"
+
 .export __sim_register_state
 .export __sim_pc
 .export __sim_reg_a
@@ -59,6 +62,7 @@ __sim_reg_x:  .byte 0
 __sim_reg_y:  .byte 0
 __sim_reg_sp: .byte 0
 __sim_reg_p:  .byte 0
+.POPSEG
 
 ; if !0, a relative branch will be taken next STEP
 .export __sim_branch_taken

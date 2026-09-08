@@ -98,6 +98,12 @@ nop_handler:
 	ldx #<PROGRAM_STACK_START
 	stx sim::reg_sp
 
+	lda #$00
+	sta sim::reg_a
+	sta sim::reg_x
+	sta sim::reg_y
+	sta sim::reg_p
+
 	lda #$34
 	sta $01		; done with KERNAL
 

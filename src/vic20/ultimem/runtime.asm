@@ -136,6 +136,12 @@ save9002: .byte 0
 	ldx #<PROGRAM_STACK_START
 	stx sim::reg_sp
 
+	lda #$00
+	sta sim::reg_a
+	sta sim::reg_x
+	sta sim::reg_y
+	sta sim::reg_p
+
 	; initialize debug BRK/NMI vectors
 	ldx #DBGVECS_SIZE-1
 :	lda DBGVECS,x

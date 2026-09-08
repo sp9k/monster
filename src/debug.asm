@@ -121,8 +121,11 @@ breakpoints_active: .byte 0	; if !0 breakpoints are installed
 
 ; storage for the user NMI and BRK vectors in cases where they
 ; are replaced with special debug ones
+.PUSHSEG
+.segment "BSS_NOINIT"
 .export progvecs
 progvecs: .res DBGVECS_SIZE
+.POPSEG
 
 show_extended_state: .byte 0	; if !0, show extra info about machine state
 

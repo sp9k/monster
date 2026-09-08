@@ -91,29 +91,6 @@ cart_start:
 	sta $9002
 	sta $9003
 
-	; clear row colors
-	lda #DEFAULT_900F
-	ldx #24-1
-:	lda #DEFAULT_900F
-	sta mem::rowcolors,x
-	lda #COLOR_NORMAL
-	sta mem::rowcolors_idx,x
-	lda #$00
-	sta mem::breakpoint_rows,x
-.ifdef hard8x8
-	sta mem::highlight_rows,x	; clear current-line marker flags
-.endif
-	dex
-	bpl :-
-
-.ifdef hard8x8
-	lda #$00
-	sta mem::blink_active		; disable gutter blink
-	sta mem::blink_phase
-	lda #60
-	sta mem::blink_cnt
-.endif
-
 .ifdef ultimem
 	jmp ultim::init
 .endif
@@ -216,29 +193,6 @@ cart_start:
 	sta $028a	; repeat all characters
 	sta $0291	; don't swap charset on C= + SHIFT
 
-	; clear row colors
-	lda #DEFAULT_900F
-	ldx #24-1
-:	lda #DEFAULT_900F
-	sta mem::rowcolors,x
-	lda #COLOR_NORMAL
-	sta mem::rowcolors_idx,x
-	lda #$00
-	sta mem::breakpoint_rows,x
-.ifdef hard8x8
-	sta mem::highlight_rows,x	; clear current-line marker flags
-.endif
-	dex
-	bpl :-
-
-.ifdef hard8x8
-	lda #$00
-	sta mem::blink_active		; disable gutter blink
-	sta mem::blink_phase
-	lda #60
-	sta mem::blink_cnt
-.endif
-
 	jmp lowinit
 .endproc
 .endif
@@ -272,6 +226,30 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 	sta zp::bankjmpaddr	; write the JMP instruction
 
 	sei
+
+	; clear row colors
+	lda #DEFAULT_900F
+	ldx #24-1
+:	lda #DEFAULT_900F
+	sta mem::rowcolors,x
+	lda #COLOR_NORMAL
+	sta mem::rowcolors_idx,x
+	lda #$00
+	sta mem::breakpoint_rows,x
+
+.ifdef hard8x8
+	sta mem::highlight_rows,x	; clear current-line marker flags
+.endif
+	dex
+	bpl :-
+
+.ifdef hard8x8
+	lda #$00
+	sta mem::blink_active		; disable gutter blink
+	sta mem::blink_phase
+	lda #60
+	sta mem::blink_cnt
+.endif
 
 .ifdef CART
 @detect_reset:
@@ -314,14 +292,19 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 	pla
 	and #$df		; make case insensitive
 	cmp #$59		; Y
-	beq :+
+	beq @restore
 	cmp #$4e		; N
 	bne @recover
 
-:	; blank screen (again)
+	; blank screen (again) to hide the BASIC coldstart in run::clr
 	lda #00
 	sta $9002
 	sta $9003
+	jmp @init
+
+@restore:
+	jsr scr::clrcolor
+	jmp @enter
 .endif
 
 @init:	jsr src::init

@@ -99,6 +99,16 @@
 	sta $9ffd
 	sta $9fff
 
+	; Map BLK1/2/3 to the MAIN bank's ROM
+	lda #$01
+	sta $9ff8	; BLK1 = ROM bank 1
+	lda #$02
+	sta $9ffa	; BLK2 = ROM bank 2
+	lda #$03
+	sta $9ffc	; BLK3 = ROM bank 3
+	lda #$55	; enable ROM in BLK 1, 2, and 3
+	sta $9ff2
+
 	lda #num_relocs
 	sta @cnt
 	ldxy #relocs
@@ -166,10 +176,6 @@
 	ldx r0+1
 	cpx #>(__BSS_LOAD__+__BSS_SIZE__)
 	bne @zerobss
-
-	; enable ROM in BLK 1, 2, and 3
-	lda #$55
-	sta $9ff2
 
 	sei
 	lda #$7f

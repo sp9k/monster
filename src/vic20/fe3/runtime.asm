@@ -102,6 +102,12 @@ TRAMPOLINE_ADDR = TRAMPOLINE+13
 	ldx #<PROGRAM_STACK_START
 	stx sim::reg_sp
 
+	lda #$00
+	sta sim::reg_a
+	sta sim::reg_x
+	sta sim::reg_y
+	sta sim::reg_p
+
 	ldxy #@save_done	; need to pass return address
 	jmp dbg::save_user_zp
 
