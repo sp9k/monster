@@ -634,6 +634,9 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ;*******************************************************************************
 ; OPEN DIR
 ; Opens the directory "file" for loading
+; OUT:
+;  - .A: the file handle of the opened directory
+;  - .C: set on error
 .proc open_dir
 	ldxy #strings::dir
 	jsr file::exists
@@ -641,8 +644,10 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	ldxy #strings::dir
 	jsr file::open_r_prg
 	bcs :+
+	pha			; save the file handle
 	tax
 	jsr krn::chkin
+	pla			; restore the file handle to return
 	clc			; ok
 :	rts
 .endproc

@@ -84,6 +84,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 @done:	; close the command channel (file 15)
 	lda #15			; filenumber 15 (command channel)
 	jsr krn::close		; CLOSE 15
+	jsr krn::clrchn		; UNTALK & restore default I/O
 	ldxy #mem::drive_err
 	jmp atoi
 .endproc

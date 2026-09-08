@@ -402,11 +402,9 @@ ENDOSPROC
 	lda #>@p_w
 	sta r0+1
 	jsr str::cat	; filename + ",p,w"
-	bcc :+
+	bcc openr	; continue to OPEN the file
 	rts		; filename too long
 
-	; fall through to openr
-:
 @p_w:	.byte ",p,w",0
 .endproc
 
@@ -546,7 +544,8 @@ ENDOSPROC
 ; IN:
 ;  - .A: the file handle to close
 OSPROC fclose
-	jmp krn::close		; CLOSE
+	jsr krn::close		; CLOSE
+	jmp krn::clrchn		; UNTALK/UNLISTEN, restore default I/O
 ENDOSPROC
 
 ;*******************************************************************************
