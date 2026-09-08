@@ -266,7 +266,7 @@ blank   = scr::blank
 	cpx #SCREEN_HEIGHT
 	bcc @resetrow
 
-	; highlight message row
+	; highlight message row and bottom row (register values)
 	ldx #DEBUG_MESSAGE_LINE
 	jsr draw::hiline
 
@@ -287,8 +287,9 @@ blank   = scr::blank
 	jsr draw::hiline
 	ldx #REGISTERS_LINE+2
 	jsr draw::hiline
-	ldx #SCREEN_HEIGHT-1
-	jsr draw::resetline
+.else
+	ldx #REGISTERS_LINE+1
+	jsr draw::hiline
 .endif
 
 	jmp return_to_debugger		; enter the debugger

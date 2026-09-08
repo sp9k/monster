@@ -5153,31 +5153,10 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
-; COMMAND_FIND
-; Gets a string from the user and searches (forward) for it in the source file
-.proc command_find
-@str=r0
-	ldxy #@prompt_find
-	jsr readinput
-	bcc :+
-	rts			; no input; abort
-
-:	; copy (.XY) to the find buffer
-	stxy @str
-	ldy #$00
-:	lda (@str),y
-	sta mem::findbuff,y
-	beq @cont
-	iny
-	bne :-
-
-@cont:	; fall through to find_next
-
-.PUSHSEG
-.segment "EDITCODE"	; dereferenced by readinput in the banked context
-@prompt_find: .byte "find",0
-.POPSEG
-.endproc
+; flag parameters for FIND's search direction/behavior
+FIND_BWD      = $00	; search backward
+FIND_FWD      = $01	; search forward
+FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 
 ;*******************************************************************************
 ; NEXT BANNER
@@ -5213,10 +5192,31 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
-; flag parameters for FIND's search direction/behavior
-FIND_BWD      = $00	; search backward
-FIND_FWD      = $01	; search forward
-FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
+; COMMAND_FIND
+; Gets a string from the user and searches (forward) for it in the source file
+.proc command_find
+@str=r0
+	ldxy #@prompt_find
+	jsr readinput
+	bcc :+
+	rts			; no input; abort
+
+:	; copy (.XY) to the find buffer
+	stxy @str
+	ldy #$00
+:	lda (@str),y
+	sta mem::findbuff,y
+	beq @cont
+	iny
+	bne :-
+
+@cont:	; fall through to find_next
+
+.PUSHSEG
+.segment "EDITCODE"	; dereferenced by readinput in the banked context
+@prompt_find: .byte "find",0
+.POPSEG
+.endproc
 
 ;*******************************************************************************
 ; FIND NEXT
