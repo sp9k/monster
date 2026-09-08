@@ -1,3 +1,5 @@
+# Editor
+
 ## Editor overview
 
 The editor provides powerful facilities for loading, saving, and modifying source code.
@@ -458,4 +460,10 @@ UDG editor with the character defined by these directives.
 :class: screenshot
 
 The UDG editor activated on a row of .db directives
+```
+
+```{toctree}
+:maxdepth: 2
+
+interface
 ```

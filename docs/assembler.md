@@ -1,3 +1,5 @@
+# Assembler
+
 ## Assembler overview
 
 ### Syntax
@@ -779,3 +781,9 @@ Anonymous labels take up no space for the label names, only address.  Using
 them is much more efficient than labels, and so this should be done for short
 branches that don't require much description.  Using too many labels, in the
 extreme case, can push your program over the symbol limit.
+
+```{toctree}
+:maxdepth: 2
+
+floating-point
+```

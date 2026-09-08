@@ -474,3 +474,9 @@ This table stores the program to evaluate line numbers and addresses within the 
 | line program data |      ...     | the line program data for the object code for all blocks
 
 The debug information format itself (headers and line program data) is described in further detail in [debug information](debug-info.md).
+
+```{toctree}
+:maxdepth: 2
+
+debug-info
+```

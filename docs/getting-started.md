@@ -216,3 +216,9 @@ The linker needs to know where to place the code inside this file.  Enter the `L
 
 Jump ahead to the LINKER section of this document for more details on this.  For now, just create a new file,
 enter the following inside it, and save it (`:s LINK`).  Now you’re ready to produce your first linked program.
+
+```{toctree}
+:maxdepth: 2
+
+tutorial
+```

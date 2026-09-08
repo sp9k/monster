@@ -1,3 +1,5 @@
+# Debugger
+
 ## Debugger overview
 
 ---
@@ -64,7 +66,7 @@ the free-run that crashed the system was initiated.
 
 ---
 
-### Debug commands
+## Debug commands
 
 The following commands are supported by the debugger and are accessed by their
 respective Key in the table below.
@@ -90,7 +92,7 @@ respective Key in the table below.
 | {c64-key}`SPACE`      | SHOW FRAME      | Displays the current state of the user program                                          |
 | {c64-key}`Up-arrow`   | GOTO BREAK      | navigates to the address that the debugger is currently paused at                       |
 
-### Register editor ({c64-key}`F2`)
+## Register editor ({c64-key}`F2`)
 
 Pressing {c64-key}`F2` moves the cursor to the register contents and allows the user to enter
 new values for them.  Pressing {c64-key}`RETURN` will confirm the new register values
@@ -98,7 +100,7 @@ and update them to those values immediately.
 Pressing {c64-key}`RUN/STOP` will abort this process and leave the old register values
 intact.
 
-### Stopwatch
+## Stopwatch
 
 Next to the registers, under the CLK label, is a 24-bit counter that displays the
 number of cycles executed by the instructions that have been STEP'd into.
@@ -109,7 +111,7 @@ information in the debug view, which is displayed in hexadecimal.
 
 ---
 
-### Stepping through code
+## Stepping through code
 
 There are a variety of ways to execute the program that allow us to gather
 quite a lot of information about the instructions we executed.  The debugger
@@ -137,19 +139,19 @@ it: the memory viewer, the monitor, watches and the simulator all show the beam
 position at `$9004`, and no store to that address can change what a read of it
 returns.
 
-#### Step into ({c64-key}`Z`)
+### Step into ({c64-key}`Z`)
 
 Stepping _into_ code will return to the debugger
 after the next instruction (the one currently highlighted if we have debug
 information) is executed.
 
-#### Step over ({c64-key}`S`)
+### Step over ({c64-key}`S`)
 
 Step _over_ behaves the same as step _into_, but if the next
 instruction is a subroutine call (`JSR`), execution continues until the
 instruction _after_ the `JSR` (after the subroutine returns).
 
-#### Step out ({c64-key}`Y`)
+### Step out ({c64-key}`Y`)
 
 The step out command traces the program until the current subroutine returns
 (via an RTS instruction).  The RTI instruction also returns execution to the debugger.
@@ -158,7 +160,7 @@ By default this command will abort if the stack pointer is at its max value (whe
 another `RTS` would underflow). Pressing {c64-keys}`Shift + Y` overrides this and will allow
 the stack pointer to underflow.
 
-#### Trace ({c64-key}`T`)
+### Trace ({c64-key}`T`)
 
 Trace executes the program as a series of STEPs until the user indicates we
 should halt the trace by pressing {c64-key}`RESTORE`.
@@ -167,7 +169,7 @@ The trace command renders the current state of the screen and color memory in ad
 the current VIC register values so that you can visually watch your program execute
 during a trace if it has a visual component.
 
-### Free run (go) ({c64-keys}`C= + G`)
+## Free run (go) ({c64-keys}`C= + G`)
 
 The `GO` command begins execution and returns to the debugger only when a
 breakpoint is encountered or when {c64-key}`RUN/STOP` is pressed.  Unlike any of the step/trace
@@ -177,7 +179,7 @@ cases.  A nearly finished game, for example, will require the user to give over
 control to the program in order to play that game.
 That said, take caution when using this command and **expect to lose any unsaved state**
 
-#### Notes on memory swapping
+### Notes on memory swapping
 
 If we aren't stepping/tracing code (as with the _go_ command) we give full control to
 the user program.  We cannot know what memory will be affected once we

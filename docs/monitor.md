@@ -1,4 +1,4 @@
-## Monitor overview
+## Monitor
 
 The monitor is a text based interface for debugging programs and manipulating
 program state.  It offers the same functionality as the GUI debugger plus a plethora of other commands to
