@@ -6,6 +6,7 @@ VIC20_ULTIMEM_BANKS_INC = 1
 ;*******************************************************************************
 ;VIRTUAL BANK IDs
 FINAL_BANK_MAIN            = $01
+FINAL_BANK_EDIT            = FINAL_BANK_MAIN
 FINAL_BANK_DEBUG           = $02
 FINAL_BANK_UDGEDIT         = $03
 FINAL_BANK_EXPR            = $03

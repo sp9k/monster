@@ -807,6 +807,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 
 	; shift breakpoints and errors
 	jsr edit::currentfile	; .A=file id, .XY=current line
+	bcs @done		; no file ID: nothing is mapped to this buffer
 	sta r0			; file ID (preserved across both shifts)
 	txa
 	pha			; save line (LSB)
@@ -822,6 +823,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	tax			; restore line (LSB)
 	lda #$01
 	jmp errlog::shift_errorsu
+@done:	rts
 .endproc
 
 ;*******************************************************************************

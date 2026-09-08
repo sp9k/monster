@@ -411,7 +411,9 @@ getline:
 @fileid=r4
 	; edit::currentfile lives in MIDRAM (unreadable from this banked context)
 	CALLMAIN edit::currentfile
-	sta @fileid
+	bcc :+
+	lda #$ff		; no file ID: use placeholder id
+:	sta @fileid
 
 	ldxy #$ffff
 	stxy @min

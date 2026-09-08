@@ -1476,7 +1476,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 	lda #$01
 	sta activeobj
-	sta zp::label_fileid
 
 ;-------------------------------------------------------------------------------
 ; PASS1
@@ -1536,7 +1535,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	incw @objfile		; move to the next filename
 
 	inc activeobj
-	inc zp::label_fileid
 	jmp @pass1		; if not, repeat for next obj file
 ;-------------------------------------------------------------------------------
 
@@ -1565,7 +1563,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	stxy @objfile
 	lda #$01
 	sta activeobj
-	sta zp::label_fileid
 
 ;-------------------------------------------------------------------------------
 ; PASS2
@@ -1599,7 +1596,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	inc @objfile+1
 
 :	inc activeobj
-	inc zp::label_fileid
 
 	ldy #$01
 	lda (@objfile),y	; are we done? (0 at end of file list)

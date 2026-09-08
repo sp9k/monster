@@ -1568,6 +1568,9 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;*******************************************************************************
 ; SET LOCATION
 ; Stores definition metadata for the already loaded symbol.
+; IN:
+;   - label_fileid: file ID of the symbol
+;   - label_lineno: line number for the symbol
 .proc set_location
 	ldy #LABEL_FILE
 	lda zp::label_fileid

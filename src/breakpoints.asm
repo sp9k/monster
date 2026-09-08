@@ -190,9 +190,11 @@ BANKED_CODE "DBGUI"
 
 ;*******************************************************************************
 ; ANY IN BUFF
-; Checks if the provided source buffer ID has any breakpoints mapped to it.
+; Checks if the provided debug file ID has any breakpoints mapped to it.
+; This is the *debug info* file ID (edit::buffer_fileid), not a source buffer
+; index; the two numberings are unrelated.
 ; IN:
-;   - .A: the buffer ID to check
+;   - .A: the debug file ID to check
 ; OUT:
 ;   - .X: index of first breakpoint found that matches the given ID (if any)
 ;   - .C: set if the buffer is mapped to at least 1 breakpoint
@@ -213,9 +215,10 @@ BANKED_CODE "DBGUI"
 
 ;*******************************************************************************
 ; DELETE IN BUFF
-; Deletes all breakpoints in the buffer of the given ID
+; Deletes all breakpoints in the file of the given debug file ID
+; (edit::buffer_fileid), not a source buffer index.
 ; IN:
-;   - .A: id of buffer to delete breakpoints in
+;   - .A: the debug file ID to delete the breakpoints of
 .proc delete_in_buff
 @id=r0
 	sta @id

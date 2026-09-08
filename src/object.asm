@@ -568,6 +568,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	sta zp::label_value+1
 	sta zp::label_lineno		; an import is not a source definition
 	sta zp::label_lineno+1
+	lda #$ff			; and so has no file
+	sta zp::label_fileid
 
 	CALLMAIN lbl::add
 	bcs @ret			; not found -> err
@@ -1736,6 +1738,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	sty zp::label_value+1
 	sty zp::label_lineno	; imports have no definition location
 	sty zp::label_lineno+1
+	lda #$ff		; and so have no file
+	sta zp::label_fileid
 :	jsr krn::chrin
 	sta @namebuff,y
 	beq @cont
@@ -1926,8 +1930,11 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	jsr @getb
 	sta zp::label_lineno+1
 	ora zp::label_lineno
-	beq @done		; no definition: the file ID is unused
-	lda zp::label_fileid
+	bne @map
+	lda #$ff		; no definition location: no file either
+	sta zp::label_fileid
+	bne @done		; branch always
+@map:	lda zp::label_fileid
 	CALL FINAL_BANK_DEBUG, dbgi::globalfile
 	bcs @ret
 	sta zp::label_fileid

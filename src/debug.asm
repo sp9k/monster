@@ -650,8 +650,8 @@ blank   = scr::blank
 ; JUMP
 ; Runs the user program at the line the cursor is currently on
 .proc jump
-	ldxy sim::pc
 	jsr edit::currentfile	; get current line # (.XY) and file ID (.A)
+	bcs @done		; no file ID: nothing is mapped to this buffer
 	jsr dbgi::line2addr
 	bcs @done		; couldn't resolve address -> RTS
 	stxy sim::pc

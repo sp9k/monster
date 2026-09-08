@@ -9,6 +9,7 @@ FINAL_BANK_ROM0	= $00		; ROM address $000000
 ; This is the default bank while the editor has control of the CPU
 ; MAIN bank ($01)
 FINAL_BANK_MAIN    = $a0|1	; where the editor/assembler/etc code is stored
+FINAL_BANK_EDIT    = FINAL_BANK_MAIN
 
 ;*******************************************************************************
 ; USER bank ($02)

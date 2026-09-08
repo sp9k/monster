@@ -306,6 +306,7 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	; edit::currentfile lives in MIDRAM: on the cart build this callback can
 	; run from a banked context (e.g. the log writing to the LOG buffer)
 	CALLMAIN edit::currentfile	; .A=file id, .XY=current line
+	bcs @done		; no file ID: nothing is mapped to this buffer
 	inx
 	bne :+
 	iny
@@ -324,6 +325,7 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	tax			; restore line+1 (LSB)
 	lda #$01
 	jmp errlog::shift_errorsd
+@done:	rts
 .endproc
 
 ;*******************************************************************************

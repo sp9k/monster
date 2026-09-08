@@ -516,11 +516,10 @@ data: .res BUFFER_SIZE
 	; TODO:
 	; update debug info: find all line programs in the current file with
 	; start lines greater than the current line and increment those
-	jsr __src_get_filename
-	jsr dbgi::getfileid
 
 	; shift breakpoints and errors, line to shift is current line+1
-	jsr edit::currentfile
+	jsr edit::currentfile	; .A=file id, .XY=current line
+	bcs @done		; no file ID: nothing is mapped to this buffer
 	inx
 	bne :+
 	iny
@@ -539,6 +538,7 @@ data: .res BUFFER_SIZE
 	tax			; restore line+1 (LSB)
 	lda #$01
 	jmp errlog::shift_errorsd
+@done:	rts
 .endproc
 
 .ifdef ultimem

@@ -666,7 +666,7 @@ main:	jsr key::getch
 	bcc :+
 	rts
 
-:	jsr edit_current_file
+:	jsr src::currline	; .XY = the line the cursor is on
 	txa
 	sec
 	sbc zp::cury
@@ -2930,8 +2930,10 @@ cancel = enter_command
 	; if we're on the special LOG buffer, toggle it off
 	jmp show_log
 
-:	jsr brkpt::delinbuff
-	lda src::activebuff
+:	jsr buffer_fileid	; get debug file ID for the buffer
+	bcs @close		; unnamed buffer; it can't have breakpoints
+	jsr brkpt::delinbuff
+@close:	lda src::activebuff
 	jsr src::close
 	bcc refresh_buffers
 
@@ -3313,13 +3315,17 @@ goto_buffer:
 	adc #$01	; display buffer ID as 1-based
 	pha
 
-	; check if the buffer contains breakpoints
-	lda src::activebuff
+	; check if the buffer this row is for contains breakpoints
+	lda @offset
+	CALL FINAL_BANK_EDIT, buffer_fileid	; get file ID for buffer
+
+	bcs @nobrk		; unnamed buffer -> can't have breakpoints
 	jsr brkpt::anyinbuff
-	lda #' '
-	bcc :+
+	bcc @nobrk		; no breakpoints in this buffer
 	lda #BREAKPOINT_CHAR
-:	pha
+	bne @brk		; branch always
+@nobrk:	lda #' '
+@brk:	pha
 
 	; print the buffer name at its corresponding row
 	ldxy #@buffer_line
@@ -3342,12 +3348,8 @@ goto_buffer:
 	sec
 	sbc #'1'
 @gotobuff:
-.if .defined(CART) .and .defined(c64)
 	; this handler runs in the MAIN context (called by the window manager)
 	CALL FINAL_BANK_EDIT, goto_buffer
-.else
-	jsr goto_buffer
-.endif
 
 	; update saved cursor to new position in opened buffer
 	; move up as needed
@@ -5084,13 +5086,15 @@ goto_buffer:
 
 	; if there's a breakpoint on this line, draw it
 	jsr edit_current_file
+	bcs @nobrk		; no file ID -> nothing is mapped to this line
 	jsr brkpt::getbyline
-	ldy #$00
 	bcs @nobrk
 	adc #$01		; 1 = inactive, 2 = active
 	tay
+	bne @row		; branch always (1 or 2)
 
-@nobrk: pla			; restore the row
+@nobrk:	ldy #$00
+@row:	pla			; restore the row
 	tax
 	pha			; save row to draw
 	tya
@@ -5098,6 +5102,7 @@ goto_buffer:
 
 	; if there's an error on this line, color the row
 	jsr edit_current_file		; .A=file ID, .XY=line #
+	bcs @noerr			; no file ID -> no error on this line
 	jsr errlog::getbyline
 	bcs @noerr			; no error on this line
 	pla
@@ -6175,8 +6180,6 @@ goto_buffer:
 	lda __edit_highlight_en
 	beq @done		; highlight disabled
 
-	; get filename (r0 = id)
-	lda src::activebuff
 	ldxy __edit_highlight_line
 	jsr edit_src2screen
 	bcs @done		; off screen
@@ -6212,6 +6215,21 @@ unblank = scr::unblank
 .endproc
 
 ;*******************************************************************************
+; BUFFER FILE ID
+; Returns the debug file ID that the given source buffer's name is mapped to.
+; IN:
+;  - .A: the buffer to get the debug file ID of
+; OUT:
+;  - .A: the debug file ID of the buffer
+;  - .C: set if the buffer is unnamed or its name isn't mapped to an ID
+.proc buffer_fileid
+	jsr src::filename
+	bcs :+				; failed to get filename
+	CALLMAIN dbgi::getfileid	; .A = id of the file
+:	rts
+.endproc
+
+;*******************************************************************************
 ; CURRENT FILE ID
 ; Returns the debug file ID of the active source buffer as well as the current
 ; line we are on in that buffer
@@ -6221,10 +6239,8 @@ unblank = scr::unblank
 ;  - .C: set if there is no debug file ID for the active buffer
 .proc edit_current_file
 	lda src::activebuff
-	jsr src::filename
-	bcs :+			; failed to get filename -> return
-	CALLMAIN dbgi::getfileid	; .A = id of the file
-	bcs :+
+	jsr buffer_fileid
+	bcs :+			; no ID for this buffer -> return
 	jsr src::currline
 	clc
 :	rts
