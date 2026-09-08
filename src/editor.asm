@@ -2931,7 +2931,7 @@ cancel = enter_command
 :	jsr brkpt::delinbuff
 	lda src::activebuff
 	jsr src::close
-	bcc refresh
+	bcc refresh_buffers
 
 	; if there was no buffer to switch to, reset cursor and clear screen
 	; (create a new empty buffer)
@@ -2945,7 +2945,16 @@ cancel = enter_command
 	lda #$00
 	sta zp::curx
 	sta zp::cury
-	beq refresh	; refresh the new buffer (branch always)
+
+	; fall through to refresh_buffers
+.endproc
+
+;*******************************************************************************
+; REFRESH BUFFERS
+; Redraws both the GUI (if any) and the editor
+.proc refresh_buffers
+	CALLMAIN gui::refresh
+	jmp refresh
 .endproc
 
 ;*******************************************************************************
@@ -3932,7 +3941,7 @@ goto_buffer:
 	sta zp::cury		; reset cursor
 	jsr src::setflags	; clear flags on the source buffer
 
-	jsr refresh
+	jsr refresh_buffers
 	jsr text::clrinfo
 	jsr cancel
 @ok:	RETURN_OK
