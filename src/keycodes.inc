@@ -66,6 +66,9 @@ K_EDIT_STATE     = $89	; F2
 K_SWAP_WINS      = $b3	; C= + w
 K_NEXT_ERR       = $b1  ; C= + e
 
+K_NEXT_BANNER    = $ea	; CTRL + ; (next ";;;" comment banner)
+K_PREV_BANNER    = $eb	; CTRL + : (previous ";;;" comment banner)
+
 ;*******************************************************************************
 ; DEBUGGER KEYS
 K_SRCVIEW		= $85	; F1

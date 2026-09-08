@@ -4148,10 +4148,6 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
-; PART 2 of editor code + data
-.segment "EDITCODE"
-
-;*******************************************************************************
 ; SCROLL LINE
 ; Updates the cursor and scrolls lines below the one we're on
 ; The linebuffer is also updated to contain the contents of the new line
@@ -4204,6 +4200,10 @@ goto_buffer:
 	lda zp::cury
 	jmp scr::clrline
 .endproc
+
+;*******************************************************************************
+; PART 2 of editor code + data
+.segment "EDITCODE"
 
 ;*******************************************************************************
 ; CLRERROR
@@ -5180,10 +5180,49 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; NEXT BANNER
+; Navigates to the next comment banner (";;;")
+.proc next_banner
+	jsr set_banner_search
+	lda #FIND_FWD|FIND_NEXTLINE	; don't match the line we're already on
+	jmp find
+.endproc
+
+;*******************************************************************************
+; PREV BANNER
+; Navigates to the previous comment banner (";;;")
+.proc prev_banner
+	jsr set_banner_search
+	jsr find_prev
+	bcs :+
+	jmp home
+:	rts
+.endproc
+
+;*******************************************************************************
+; SET BANNER SEARCH
+; Loads the find buffer with the comment banner marker (";;;")
+.proc set_banner_search
+	lda #';'
+	sta mem::findbuff
+	sta mem::findbuff+1
+	sta mem::findbuff+2
+	lda #$00
+	sta mem::findbuff+3
+	rts
+.endproc
+
+;*******************************************************************************
+; flag parameters for FIND's search direction/behavior
+FIND_BWD      = $00	; search backward
+FIND_FWD      = $01	; search forward
+FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
+
+;*******************************************************************************
 ; FIND NEXT
 ; Navigates to the next match for the last FIND command
 .proc find_next
-	lda #$01	; flag search FORWRAD
+	lda #FIND_FWD	; flag search FORWARD
 
 	skw
 	; fall through to FIND (skip find_prev)
@@ -5193,7 +5232,7 @@ goto_buffer:
 ; FIND PREV
 ; Navigates to the previous match for the last FIND command
 .proc find_prev
-	lda #$00	; flag search BACKWARD
+	lda #FIND_BWD	; flag search BACKWARD
 
 	; fall through to FIND
 .endproc
@@ -5204,6 +5243,9 @@ goto_buffer:
 ; found
 ; IN:
 ;  - .XY: the text to find (0-terminated)
+;  - .A:  the FIND_ flags to search with
+; OUT:
+;  - .C: set if no match was found (the cursor is left where it was)
 .proc find
 @string=zp::str0
 @seekptr=zp::str2
@@ -5219,6 +5261,7 @@ goto_buffer:
 	jsr str::len
 	sta @len
 	bne :+
+	sec
 	rts		; if 0-length string, don't search
 
 :	ldxy #strings::null
@@ -5227,9 +5270,14 @@ goto_buffer:
 	jsr run::install_sigint	; reset SIGINT flag
 	jsr src::pushp		; save source position
 
+	; if we were asked to start search after current line, move to end of it
+	bit @forward
+	bpl :+
+	jsr src::lineend
+
 	; set the index to begin storing characters at:
 	; 0 if searching forward, MAX_SEARCH_LEN-1 if searching backward
-	lda @forward
+:	lda @forward
 	bne :+
 	lda #MAX_SEARCH_LEN-1
 	skw
@@ -5330,7 +5378,9 @@ goto_buffer:
 @notfound:
 	jsr beep::short
 @abort:	jsr src::popgoto
-	jmp unblank
+	jsr unblank
+	sec
+	rts
 
 @found:	jsr src::currline	; get the line we're moving to
 	stxy @target
@@ -5434,7 +5484,7 @@ goto_buffer:
 :	jsr src::next
 	dec @cnt
 	bne :-
-@done:	rts
+@done:	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -6408,6 +6458,8 @@ ro_commands:
 	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
 	.byte K_WIN_HIDE	; toggle rendering of the windows
+	.byte K_NEXT_BANNER	; CTRL + ; (go to next ";;;" comment banner)
+	.byte K_PREV_BANNER	; CTRL + : (go to previous ";;;" comment banner)
 numcommands=*-commands
 
 ; command tables for COMMAND mode key commands
@@ -6425,7 +6477,7 @@ numcommands=*-commands
 	command_move_scr, \
 	command_find, next_drive, prev_drive, get_command, \
 	monitor_win, guigrow, guishrink, maximize_win, next_err, \
-	help::show, guitogglehide
+	help::show, guitogglehide, next_banner, prev_banner
 .linecont -
 
 command_vecs_lo: .lobytes cmd_vecs

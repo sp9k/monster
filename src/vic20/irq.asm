@@ -322,11 +322,11 @@ ctrltab:
 	.byte $ff,$ff,$ff,$ff			; 9 + pound DEL
 	.byte $ff,$ff,$ff,$ff,$09,$ff,$ff,$ff	; larrow W R Y I(TAB) P * RETURN
 	.byte $ff,$ff,$ff,$ff,$ff,K_NEXT_BUFF	; CTRL A D G J L
-	.byte $ff,$ff				; ; CRSR-R
+	.byte K_NEXT_BANNER,$ff			; ; CRSR-R
 	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; STOP SHIFT X V N , / CRSR-D
 	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; SPACE Z C B M . SHIFT F1
 	.byte $ff,$ff,$ff,K_PREV_BUFF		; C= S F H
-	.byte $ff,$ff,$ff,$ff			; K : = F3
+	.byte $ff,K_PREV_BANNER,$ff,$ff		; K : = F3
 	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; Q E T U O @ uarrow F5
 	.byte K_GOTO_BUFF2,K_GOTO_BUFF4,K_GOTO_BUFF6,K_GOTO_BUFF8
 	.byte $ff,$ff,$ff,$ff			; 0 - HOME F7

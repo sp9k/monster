@@ -382,6 +382,8 @@ The following keys are handled in COMMAND mode.
 | {c64-keys}`Shift + I`                      | `INSERT LINE`| enters insert mode and moves to the first character in the current line                 |
 | {c64-key}`Left-bracket`                    | `PREV BLOCK `| moves to the previous empty line or start of file if there isn't one                    |
 | {c64-key}`Right-bracket`                   | `NEXT BLOCK `| moves to the next empty line or end of file if there isn't one                          |
+| {c64-key}`Ctrl + :`                        | `PREV BANNER`| moves to the previous comment banner - `;;;;;;;...`                                     |
+| {c64-key}`Ctrl + ;`                        | `NEXT BANNER`| moves to the next comment banner - `;;;;;;;...`                                         |
 
 ### Insert mode
 Entering insert mode allows the user to enter text at the cursor location.  Keystrokes are
