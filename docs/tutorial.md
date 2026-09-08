@@ -522,13 +522,13 @@ to the correct column by the sprite's y-position.
 To make the addressing even easier we will define a pair of tables using the `.REP` directive:
 ```
 columnslo
-.rep i,20
-    .byte <($1000+(i*$c0))
+.rep 20,i
+    .db <($1000+(i*$c0))
 .endrep
 
 columnshi
-.rep i,20
-    .byte >($1000+(i*$c0))
+.rep 20,i
+    .db >($1000+(i*$c0))
 .endrep
 ```
 
@@ -586,11 +586,11 @@ We also need to define all the new sprite we are drawing and its associated stat
 
 ```
 spritedat
-.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff
+.db $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff
 sprite
     .res 8
 spritex
-    .byte 0
+    .db 0
 ```
 
 Save your work and assemble.  Fix any bugs/typos and continue on to debugging.  Step/trace however you
@@ -706,9 +706,9 @@ And the new state that these routines need:
 
 ```
 joy
-    .byte 0
+    .db 0
 spritey
-    .byte 0
+    .db 0
 ```
 
 Finally, wire it all into the main loop:

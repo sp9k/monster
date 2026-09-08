@@ -839,6 +839,7 @@ __gui_refresh:
 	sta __gui_cursave_x
 	lda zp::cury
 	sta __gui_cursave_y
+	jsr cur::off
 	lda #$00
 	sta hidden	; giving a window focus turns rendering back on
 	lda #$01
@@ -875,7 +876,8 @@ __gui_refresh:
 	sta zp::cury
 	; reload the editor's line: resizes during the session may have moved
 	; the cursor, and the window's input shared the linebuffer
-	jmp edit::refreshline
+	jsr edit::refreshline
+	jmp cur::on
 
 @cycle:	jsr rotate
 	jmp @loop

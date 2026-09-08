@@ -499,6 +499,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #$00
 	sta closereq
 	sta __monitor_windowed	; the window is closing
+	CALLMAIN key::flush
 	lda #GUI_RET_CLOSE
 	jmp @leave
 
