@@ -1128,10 +1128,13 @@ BANKED_CODE "ASMBANK"
 	stxy operand	; save the operand to store later
 	sta operandsz	; save size of the operand
 
-	; in pass 1, force immediate label evaluations to 1 byte
+	; if verifying or in pass 1, force immediate label evaluations to 1 byte
+	lda zp::verify
+	bne @force_imm
 	lda zp::pass
 	cmp #$02
 	beq @cont
+@force_imm:
 	lda immediate
 	beq @cont
 	lda #$01
@@ -2411,6 +2414,8 @@ CUR_BANK .set FP_CALLER_BANK
 	jsr line::process_ws
 	jsr eval_expr
 	bcs @err
+	lda zp::verify
+	bne @done		; syntax is enough while editing; values may be stale
 	jsr require_const	; the count must not vary between passes
 	bcc :+
 @err:	rts
