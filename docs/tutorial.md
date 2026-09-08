@@ -201,6 +201,9 @@ colors.
 
     lda #$08       ; black/black (no rvs)
     sta $900f
+
+    lda #$cc
+    sta $9005	   ; scr+chars @ $1000
 ```
 
 Great, now we need to configure the screen matrix.

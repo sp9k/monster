@@ -863,6 +863,7 @@ __gui_refresh:
 	sta zp::curx
 	lda __gui_cursave_y
 	sta zp::cury
+	jsr key::flush
 	jmp @loop
 
 @quit:	; GUI_RET_QUIT: return focus to the editor
@@ -877,6 +878,7 @@ __gui_refresh:
 	; reload the editor's line: resizes during the session may have moved
 	; the cursor, and the window's input shared the linebuffer
 	jsr edit::refreshline
+	jsr key::flush
 	jmp cur::on
 
 @cycle:	jsr rotate
