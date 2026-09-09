@@ -315,28 +315,6 @@ num_chars = (*-charmap)/8
 ; Generates the charaddrlo and charaddrhi tables
 .export __text_init
 .proc __text_init
-@addr=r0
-.ifdef fe3
-	ldxy #charmap
-	stxy @addr
-
-	ldx #$00
-@l0:	lda @addr
-	sta charaddrlo,x
-	lda @addr+1
-	sta charaddrhi,x
-
-	lda @addr
-	clc
-	adc #$08
-	sta @addr
-	bcc :+
-	inc @addr+1
-
-:	inx
-	cpx #num_chars
-	bne @l0
-.endif
 	rts
 .endproc
 

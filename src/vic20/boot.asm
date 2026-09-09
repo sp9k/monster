@@ -110,7 +110,6 @@ cart_start:
 	sta zp::curtmr
 
 .ifdef CART
-	jsr fe3::init1
 	jmp enter
 .else
 ; DISK init code; load the application from file
@@ -174,10 +173,6 @@ cart_start:
 	ldx r0+1
 	cpx #>(__BSS_LOAD__+__BSS_SIZE__)
 	bne @zerobss
-
-.ifdef fe3
-	jsr fe3::init0
-.endif
 
 	; perform the machine-specific initialization
 	jsr vic20::init
