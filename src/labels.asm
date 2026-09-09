@@ -81,6 +81,7 @@ LIST_NEXT   = 2
 .include "fp.inc"
 .include "kernal.inc"
 .include "limits.inc"
+.include "object.inc"
 .include "ram.inc"
 .include "macros.inc"
 .include "target.inc"
@@ -291,6 +292,8 @@ __label_num: .word 0		; total number of labels
 .export __label_numanon
 __label_numanon:
 numanon: .word 0		; total number of anonymous labels
+.export __label_anon_cursor
+__label_anon_cursor: .word 0	; next source-order anonymous label in object pass 2
 
 scopesp: .byte 0		; offset of next free scope (0 = no scope)
 labelvars_size=*-labelvars
@@ -781,6 +784,12 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	adc @src+1
 	sta @src+1
 
+	lda asm::mode
+	beq :+
+	ldxy @src
+	stxy @dst
+	jmp @finish		; object labels retain source order across fragments
+:
 	jsr seek_anon
 	stxy @dst
 	cmpw @src
@@ -918,8 +927,24 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 @fcnt=r2
 @addr=r4
 @seek=r6
-	stxy @addr
 	sta @fcnt
+	lda asm::mode
+	beq @direct
+
+	; assembling to object code
+	lda @fcnt
+	sec
+	sbc #$01
+	clc
+	adc __label_anon_cursor
+	tax
+	lda __label_anon_cursor+1
+	adc #$00
+	tay
+	jmp object_anon_value
+
+@direct:
+	stxy @addr
 
 	ldxy #anon_addrs
 	stxy @seek
@@ -947,7 +972,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 	; MSB is >= base and LSB is >= base address
 @f:	dec @fcnt		; is this the nth label yet?
-	beq get_anon_retval	; if our count is 0, yes, end
+	jeq get_anon_retval	; if our count is 0, yes, end
 	bne @next		; if count is not 0, continue
 
 @next:	lda @seek
@@ -985,8 +1010,21 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 @bcnt=r8
 @addr=r4
 @seek=r6
-	stxy @addr
 	sta @bcnt
+	lda asm::mode
+	beq @direct
+
+	lda __label_anon_cursor
+	sec
+	sbc @bcnt
+	tax
+	lda __label_anon_cursor+1
+	sbc #$00
+	tay
+	jmp object_anon_value
+
+@direct:
+	stxy @addr
 
 	; get address to start looking backwards from
 	jsr seek_anon
@@ -1014,7 +1052,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 	; MSB is >= base and LSB is >= base address
 @b:	dec @bcnt		; is this the nth label yet?
-	beq get_anon_retval	; if our count is 0, yes, end
+	jeq get_anon_retval	; if our count is 0, yes, end
 	bne @next		; if count is not 0, continue
 
 @chklsb:
@@ -1041,13 +1079,67 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .endproc
 
 ;*******************************************************************************
-; GET ANON RETVAL
-; Space saving helper to get the return address from r6
+; ANON VALUE
+; Resolve an anonymous label by source position, not address (for object code
+; generation)
 ; IN:
-;   - r6: address of value to return
+;   - .XY: index of the anonymous label to find the address of
 ; OUT:
-;  - .XY: the nth anonymous label whose address is < than the given address
-;  - .C:  clear to indicate success
+;   - .XY: the resolved address for the requested anonymous label
+.proc object_anon_value
+@index = r0
+@entry = r6
+	cmpw numanon
+	bcs @missing
+	stxy @index
+
+	txa
+	asl
+	sta @entry
+	tya
+	rol
+	sta @entry+1
+
+	lda @entry
+	clc
+	adc #<anon_addrs
+	sta @entry
+	lda @entry+1
+	adc #>anon_addrs
+	sta @entry+1
+
+	ldy #$00
+	LOADB_Y @entry
+	sta expr::value
+
+	iny
+	LOADB_Y @entry
+	sta expr::value+1
+
+	; get the fragment of the anonymous label
+	ldxy @index
+	CALL FINAL_BANK_LINKER, obj::anon_fragment
+	sta expr::segment
+
+	cmp #SEG_ABS
+	beq @absolute
+	lda #VAL_REL
+	skw
+@absolute:
+	lda #VAL_ABS
+	sta expr::kind
+
+	lda #$00
+	sta expr::postproc
+	ldxy expr::value
+	lda #$02
+	clc
+	rts
+
+@missing:
+	RETURN_ERR ERR_LABEL_UNDEFINED
+.endproc
+
 .proc get_anon_retval
 @seek=r6
 	ldy #$00

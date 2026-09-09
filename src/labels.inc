@@ -24,6 +24,7 @@
 .import __label_address
 .import __label_num
 .import __label_numanon
+.import __label_anon_cursor
 .import __label_popscope
 .import __label_set
 .import __label_set_addr
@@ -47,6 +48,7 @@ SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 .define MAX_LABEL_NAME_LEN 32
 
 .scope lbl
+	anon_cursor       = __label_anon_cursor
 	add               = __label_add
 	addanon           = __label_addanon
 	addrmode          = __label_addrmode

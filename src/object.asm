@@ -4,30 +4,50 @@
 ;
 ; OBJECT FILE FORMAT:
 ; FILENAMES[]                ; zero-terminated names, empty name ends the list
-; NUM SEGMENTS    [1 byte]   ; number of segments in object file
+; NUM FRAGMENTS   [1 byte]   ; number of object-local fragments
 ; NUM_EXPORTS     [1 byte]   ; number of symbols exported in object file
 ; NUM_IMPORTS     [2 bytes]  ; number of symbols imported by object file
 ; NUM_LOCALS      [2 bytes]  ; number of LOCAL symbols in object file
-; SEGMENT HEADERS            ; headers for each SEGMENT
-;  NAME  [$0:$7] ; segment name or $0000 for ABSOLUTE (.org derived segments)
-;  ALIGN [$8:$9] ; offset of data (RELATIVE) or aboslute position (ABSOLUTE)
-;  MODE  [$a]    ; address mode (0=rel zeropage, 1=rel absolute, $ff=absolute)
-;  SIZE  [$b:$c] ; bytes used in segment
+; FRAGMENT HEADERS           ; 16 bytes per fragment, in layout order
+;  NAME   [$0:$7]            ; named SEGMENT, or zeroes for absolute .ORG code
+;  ORIGIN [$8:$9]            ; 0 for REL code, literal address for ABS code
+;  TYPE   [$a]               ; TYPE_SEGZP/SEG/BSS/BSSZP/ABS (see below)
+;  SIZE   [$b:$c]            ; raw bytes in fragment; excludes alignment padding
+;  ALIGN  [$d:$e]            ; boundary preceding this fragment; 0=no constraint
+;  FILL   [$f]               ; fill byte for this boundary
 ; IMPORTS[]
 ;   NAME[...]
 ;   MODE[1]
 ; EXPORTS[]
 ;   NAME[...]
-;   SEGMENT ID[1]
+;   FRAGMENT ID[1]
 ;   RELATIVE ADDR[2]
 ;   FILE ID[1], LINE[2]    ; index in FILENAMES, one-based source line (0=unknown)
 ; LOCALS[]
 ;   NAME[...]
-;   SEGMENT ID[1]
+;   FRAGMENT ID[1]
 ;   RELATIVE ADDR[2]
 ;   FILE ID[1], LINE[2]    ; floats use SEG_FLOAT_PACKED + five bytes before these
-; SEGMENT TABLES:
-;   OBJCODE
+; FRAGMENT TABLES:
+;   TYPE[1]
+;   CODE SIZE[2]
+;   RELOCATION SIZE[2] (non-BSS only)
+;   OBJCODE[]          (non-BSS only)
+;   RELOCATIONS[]      (non BSS only)
+;   Foreach relocation:
+;     FLAGS[1]
+;     SITE OFFSET[2]
+;     TARGET[2]
+;     FLAGS:
+;       bit 0:    word
+;       bit 1:    fragment (else import)
+;       bits 2-3: byte selection
+;       bit 4:    PC-relative branch
+;       bit 5:    fragment difference
+;   If FLAGS & $3c: ADDEND HIGH[1]; if FLAGS & $20: NEGATIVE FRAGMENT[1].
+;   The low addend is in OBJCODE; word operands also carry its high byte.
+;   Branches subtract the final RUN address immediately after the operand.
+;   A fragment target of SEG_ABS means a zero base (literal branch target).
 ; DEBUGINFO
 ;   FILENAMES               ; its own local-ID table for the debug block headers
 ;   HEADERS
@@ -47,6 +67,7 @@
 .include "limits.inc"
 .include "linker.inc"
 .include "macros.inc"
+.include "math.inc"
 .include "ram.inc"
 .include "target.inc"
 .include "text.inc"
@@ -61,7 +82,7 @@
 ; max number of memory sections per OBJ file.
 ; Must be >= MAX_SEGMENTS (limits.inc): every SEGMENT has at least one
 ; SECTION and the per-object segment tables are sized by MAX_SECTIONS
-MAX_SECTIONS         = MAX_SEGMENTS
+MAX_SECTIONS         = MAX_FRAGMENTS
 MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
 
 MAX_SYMBOL_INDEXES = $200	; max number of symbols that may be referenced
@@ -163,6 +184,8 @@ sections_starthi:  .res MAX_SECTIONS
 ; sections_start* always holds the PHYSICAL address of the section's code.
 sections_baselo:   .res MAX_SECTIONS
 sections_basehi:   .res MAX_SECTIONS
+sections_anonlo:   .res MAX_SECTIONS
+sections_anonhi:   .res MAX_SECTIONS
 __obj_sections_sizelo:
 sections_sizelo:   .res MAX_SECTIONS
 __obj_sections_sizehi:
@@ -173,6 +196,21 @@ __obj_segments_sizehi:
 segments_sizehi:   .res MAX_SECTIONS
 .export segments_type
 segments_type:     .res MAX_SECTIONS
+
+; Each object-local SEGMENT is a FRAGMENT of a named linker SEGMENT.
+; .ALIGN starts a new fragment; its boundary/fill are resolved by the linker.
+.export __obj_segments_alignlo
+__obj_segments_alignlo:
+segments_alignlo:  .res MAX_SECTIONS
+.export __obj_segments_alignhi
+__obj_segments_alignhi:
+segments_alignhi:  .res MAX_SECTIONS
+
+__obj_segments_fill: .res MAX_SECTIONS
+.export __obj_segments_fill, __obj_fragment_ids
+__obj_fragment_ids: .res MAX_SECTIONS
+
+force_fragment: .byte 0
 
 __obj_segments:
 segments: .res MAX_SEGMENT_NAME_LEN*MAX_SECTIONS ; name of target SEG
@@ -199,8 +237,8 @@ sections_relocstartlo: .res MAX_SECTIONS
 sections_relocstarthi: .res MAX_SECTIONS
 sections_relocsizelo:  .res MAX_SECTIONS
 sections_relocsizehi:  .res MAX_SECTIONS
-segments_relocsizelo:  .res MAX_SEGMENTS
-segments_relocsizehi:  .res MAX_SEGMENTS
+segments_relocsizelo:  .res MAX_FRAGMENTS
+segments_relocsizehi:  .res MAX_FRAGMENTS
 
 ;*******************************************************************************
 ; EXPORTS
@@ -215,6 +253,7 @@ export_label_idshi: .res MAX_EXPORTS	; MSB of label ID for exports
 .export __obj_init
 .export __obj_add_reloc
 .export __obj_close_section
+.export __obj_split_fragment
 
 ; the cart builds run this code banked, so entry must go through a far-call
 .if .defined(vic20) .or .defined(CART)
@@ -250,14 +289,18 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	sta numlocals
 	sta numlocals+1
 	sta num_reloctables_mapped
+	sta force_fragment
 
 	; clear arrays
-	ldx #MAX_SEGMENTS
+	ldx #MAX_FRAGMENTS
 @clrsizes:
 	sta segments_sizelo-1,x
 	sta segments_sizehi-1,x
 	sta sections_sizelo-1,x
 	sta sections_sizehi-1,x
+	sta segments_alignlo-1,x
+	sta segments_alignhi-1,x
+	sta __obj_segments_fill-1,x
 	dex
 	bne @clrsizes
 
@@ -283,7 +326,7 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 
 	; make sure there is room for another SEGMENT
 	lda numsegments
-	cmp #MAX_SEGMENTS
+	cmp #MAX_FRAGMENTS
 	bcc :+
 	;sec
 	lda #ERR_TOO_MANY_SEGMENTS
@@ -327,6 +370,57 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	clc			; ok
 
 	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; SPLIT FRAGMENT
+; Close the current section and create another FRAGMENT with the same name/type
+; IN:
+;  - .XY: constant alignment
+;  - .A = fill byte
+__obj_split_fragment:
+.proc split_fragment
+@name = r0
+@align = r6
+@fill  = r8
+	stxy @align
+	sta @fill
+	lda asm::segment
+	jsr __obj_get_segment_name_by_id
+	stxy @name
+
+	ldy #$00
+:	lda (@name),y
+	sta $100,y
+	iny
+	cpy #MAX_SEGMENT_NAME_LEN
+	bne :-
+
+	; close current local SEGMENT/FRAGMENT and start a new one
+	jsr close_section
+	lda #$01
+	sta force_fragment
+	lda asm::segtype
+	jsr __obj_add_section
+
+	; turn force_fragment back off
+	ldx #$00
+	stx force_fragment
+	bcs @ret
+
+	; set the alignment for the new FRAGMENT
+	tax
+	lda @align
+	sta segments_alignlo-1,x
+	lda @align+1
+	sta segments_alignhi-1,x
+	lda @fill
+	sta __obj_segments_fill-1,x
+	txa			; X still holds the new fragment ID
+
+	ldxy #$0000
+	clc
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -383,6 +477,10 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	rts
 
 :	sta @info
+	lda lbl::numanon
+	sta sections_anonlo,x
+	lda lbl::numanon+1
+	sta sections_anonhi,x
 	lda zp::asmresult
 	sta sections_startlo,x	; set obj section start LSB
 	lda zp::asmresult+1
@@ -391,6 +489,9 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	lda @info
 	cmp #TYPE_ABS
 	beq @abs		; if ABS, continue to create a new segment
+
+	lda force_fragment
+	bne @add		; .ALIGN always opens a new fragment
 
 	; is there already a SEGMENT by this name?
 	ldxy #@name
@@ -608,10 +709,15 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 
 	lda expr::kind
 	cmp #VAL_REL
+	beq :+
+	cmp #VAL_DIFF
 	jne @ok		; expression doesn't require relocation
+	lda @sz
+	ora #$20
+	sta @sz
 
-	ldxy reloctop
-	cmpw #(reloc_tables_end-6)	; room for the largest (6 byte) record?
+:	ldxy reloctop
+	cmpw #(reloc_tables_end-7)	; full addend and negative fragment, if present
 	bcc :+				; below max -> ok
 	beq :+				; at max -> still fits
 	RETURN_ERR ERR_OOM
@@ -630,6 +736,8 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 ; size       0   size of target value to modify 0=1 byte, 1=2 bytes
 ; mode       1   type of relocation: 1=section-relative, 0=symbol-relative
 ; postproc  2-3  post-processing (0=NONE, 1=LSB, 2=MSB)
+; pcrel      4   subtract the RUN address after the branch operand
+; difference 5   subtract another fragment's RUN base
 @encode_size:
 	lda expr::postproc
 	asl
@@ -706,20 +814,28 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	lda #$00		; MSB (always 0 for now)
 	STOREB_Y @rel		; write local symbol-id MSB
 
-@done:  ; if post-processing is used, write the MSB of the addend
-	; (the LSB is stored in the object code at the target offset)
-	lda expr::postproc
-	beq @advance		; no post-processing -> 5 byte record
-	ldy #$05
+@done:	ldy #$05
+	; byte postprocessing and branches retain the addend's high byte.
+	lda @sz
+	and #$30
+	ora expr::postproc
+	beq @difference
 	lda expr::value+1	; MSB of the evaluated expression
 	STOREB_Y @rel
+	iny
+@difference:
+	lda @sz
+	and #$20
+	beq @advance
+	lda expr::symbol	; negative fragment of a deferred difference
+	STOREB_Y @rel
+	iny
 
 @advance:
 	; update reloctop
-	lda expr::postproc
-	cmp #$01		; set .C if post-processing is used
-	lda #$05
-	adc reloctop		; +5 (no post-proc), +6 (post-proc)
+	tya
+	clc
+	adc reloctop
 	sta reloctop
 	bcc @ok
 	inc reloctop+1
@@ -1076,6 +1192,15 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	lda __obj_segments_sizehi,x
 	jsr krn::chrout
 
+	; write the alignment the SEGMENT's code requires (2 bytes)
+	lda segments_alignlo,x
+	jsr krn::chrout
+	lda segments_alignhi,x
+	jsr krn::chrout
+
+	lda __obj_segments_fill,x
+	jsr krn::chrout
+
 	; next SEGMENT
 	inc @i
 	lda @i
@@ -1305,164 +1430,265 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 ; OUT:
 ;   - .C: set if there is no remaining relocation to apply for the section
 .proc apply_relocation
-@symbol_id=r0
-@symbol_addr=r0
-@tmp=r0
-@addrmode=r2
-@pc=r4
-@rec=r7
-@sz=re
-@seg_base=zp::tmp10
-	tax				; .X=id (index)
+@negative_base = r0
+; The loader has finished with its per-table scratch before calling here.
+; KERNAL input, checked_run_base, lbl::getaddr and vmem preserve r2-rf and
+; tmp10/tmp11; r0/r1 remain available to callees and the subtraction below.
+@record    = r2             ; r2-r6: flags, offset, target
+@remaining = r7             ; r7-r8
+@length    = r9
+@local     = ra
+@siteaddr  = rb             ; rb-rc
+@runsite   = rd             ; rd-re
+@addendhi  = rf
+@value     = zp::tmp10      ; tmp10-tmp11
+	sta @local
+	tax
 	lda segments_relocsizelo,x
-	sta @sz
+	sta @remaining
 	lda segments_relocsizehi,x
-	sta @sz+1
-	iszero @sz
-	bne :+
-	RETURN_OK
-
-:	inx				; get 1-based section
-	txa
-	jsr get_segment_base
-	stxy @seg_base
-
-@relocate:
-	; read a record from the RELOCATION table
-	ldy #$00
-:	jsr krn::chrin	; read a byte
-	sta @rec,y
+	sta @remaining+1
+@next:	lda @remaining
+	ora @remaining+1
+	jeq @done
+	lda @remaining+1
+	bne @read
+	lda @remaining
+	cmp #$05
+	jcc @bad
+@read:	ldy #$00
+:	jsr krn::chrin
+	sta @record,y
 	iny
-	cpy #$05	; sizeof(relocation_record)
+	cpy #$05
 	bne :-
-
-	; get the address mode (size of the target to update)
-	lda @rec	; get the info byte
-	and #$01	; mask size bit
-	sta @addrmode	; and save address mode for later
-
-	; check if we are using a symbol or another section as the base
-	; address for the relocation
-	lda @rec	; get the info byte again
-	and #$02	; mask type bit
-	bne @seg	; 1 = segment, 0 = symbol
-
-@sym:	; apply (global) symbol based relocation
-	; symbols are fully resolved by the time we apply relocation, so
-	; just look up the address in the IMPORTS look up table
-	lda @rec+3		; get symbol LSB
-	sta @symbol_id
-	lda @rec+4		; get symbol MSB
-	sta @symbol_id+1
-
-	; look up the address that we resolved for this symbol id (index)
-	ldx @symbol_id
+	sty @length
+	lda #$00
+	sta @addendhi
+	lda @record
+	and #$3c
+	beq @base
+	jsr krn::chrin
+	sta @addendhi
+	inc @length
+@base:	lda @record
+	and #$02
+	beq @symbol
+	lda @record+3
+	jsr checked_run_base
+	jcs @bad
+	jmp @resolved
+@symbol:
+	ldx @record+3
+	cpx numimports
+	jcs @bad
 	ldy import_label_idshi,x
 	lda import_label_idslo,x
 	tax
-	CALLMAIN lbl::getaddr	; get address for LABEL
-	jmp @add_offset		; continue to calculate target address
-
-@seg:	; apply segment (local symbol) based relocation
-	lda @rec+3		; 3 = index to SEGMENT ID
-
-	; get the address the SEGMENT will run at
-	jsr get_segment_run_base
-
-@add_offset:
-	stxy @tmp		; save resolved symbol/section value
-
-	; get the address of the byte/word to apply relocation to
-	lda @seg_base		; current section base address (LSB)
-	clc
-	adc @rec+1		; add LSB of offset
-	sta @pc
-	lda @seg_base+1		; current section base address (MSB)
-	adc @rec+2		; add MSB of offset
-	sta @pc+1
-
-@apply_addend:
-	ldy #$00
-	lda @addrmode		; get address mode
-	beq @zp			; if 0 -> apply zeropage relocation
-
-@abs:	ldxy @pc
-	jsr vmem_load		; load LSB of addend
-	clc
-	adc @tmp
-	php			; save carry from LSB addition
-	ldxy @pc
-	jsr vmem_store		; store updated value
-
-	incw @pc
-	ldxy @pc
-	jsr vmem_load		; load MSB of addend
-	plp			; restore carry from LSB addition
-	adc @tmp+1
-	ldxy @pc
-	jsr vmem_store		; store MSB of relocated operand
-	jmp @nopostproc_done
-
-@zp:	ldxy @pc
-	jsr vmem_load		; load addend
-	clc
-	adc @tmp
-	sta @tmp
-
-	lda @rec		; read INFO byte again
-	and #$0c		; is any postproc needed (bit 2 or 3 set)?
-	bne @postproc		; if so, continue to apply it
-
-@nopostproc:
-	; no post-processing, just add 1 byte addend and we're done
-	lda @tmp
-	jsr vmem_store		; store relocated value
-@nopostproc_done:
-	; update sz (sz -= 5)
-	lda @sz
+	CALLMAIN lbl::getaddr
+@resolved:
+	stxy @value
+	lda @record
+	and #$20
+	beq @site
+	jsr krn::chrin
+	inc @length
+	jsr checked_run_base
+	jcs @bad
+	stxy @negative_base
+	lda @value
 	sec
-	sbc #$05
-	sta @sz
-	bcs @next
-	dec @sz+1
-	bcc @next		; branch always
+	sbc @negative_base
+	sta @value
+	lda @value+1
+	sbc @negative_base+1
+	sta @value+1
+@site:	ldx @local
+	lda segments_startlo,x
+	clc
+	adc @record+1
+	sta @siteaddr
+	lda segments_starthi,x
+	adc @record+2
+	sta @siteaddr+1
+	jcs @bad
+	lda segments_runlo,x
+	clc
+	adc @record+1
+	sta @runsite
+	lda segments_runhi,x
+	adc @record+2
+	sta @runsite+1
+	jcs @bad
+	; Fetch both addend bytes before adding, so no call can disturb carry.
+	lda @record
+	and #$01
+	beq @add
+	ldxy @siteaddr
+	inx
+	bne :+
+	iny
+:	jsr vmem_load
+	sta @addendhi
+@add:	ldxy @siteaddr
+	jsr vmem_load
+	clc
+	adc @value
+	sta @value
+	lda @addendhi
+	adc @value+1
+	sta @value+1
 
-@postproc:
-	php			; save carry from LSB addition
-	jsr krn::chrin		; read another byte to get the MSB of addend
-	plp			; restore .C
-	adc @tmp+1		; add with operand MSB
-	sta @tmp+1
+	lda @record
+	and #$10
+	beq @store
 
-	; update sz (sz -= 6)
-	lda @sz
+	; PC after the branch is one byte after its operand's RUN address
+	incw @runsite
+	lda @value
 	sec
-	sbc #$06
-	sta @sz
-	bcs :+
-	dec @sz+1
+	sbc @runsite
+	sta @value
+	lda @value+1
+	sbc @runsite+1
+	beq @forward
+	cmp #$ff
+	bne @range
+	lda @value
+	bpl @range
+	jmp @storebyte
 
-:	lda @rec		; get info again
-	and #$0c		; mask postproc bits (2, 3)
-	cmp #POSTPROC_LSB<<2	; are we taking LSB?
-	beq @postproc_lsb
+@forward:
+	lda @value
+	bmi @range
+	jmp @storebyte
 
-@postproc_msb:
-	lda @tmp+1				; get the MSB (post-proc)
-	ldxy @pc
-	jsr vmem_store		; store relocated value
+@store:	lda @record
+	and #$0c
+	cmp #POSTPROC_MSB<<2
+	beq @msb
+	cmp #POSTPROC_LSB<<2
+	beq @selected
+	lda @record
+	and #$01
+	bne @word
+	lda @value+1
+	bne @byte_range
+	beq @storebyte
+
+@word:	ldxy @siteaddr
+	inx
+	bne :+
+	iny
+:	lda @value+1
+	jsr vmem_store
+
+@storebyte:
+	lda @value
+	jmp @write
+@msb:	lda @value+1
+	sta @value
+
+@selected:
+	lda #$00		; selected byte is 0-extended in a word operand
+	sta @value+1
+	lda @record
+	lsr
+	bcs @word
+	bcc @storebyte
+
+@write:	ldxy @siteaddr
+	jsr vmem_store
+	lda @remaining
+	sec
+	sbc @length
+	sta @remaining
+	lda @remaining+1
+	sbc #$00
+	sta @remaining+1
+	jcc @bad
 	jmp @next
-
-@postproc_lsb:
-	lda @tmp				; get the LSB ldxy @pc
-	ldxy @pc
-	jsr vmem_store		; and store
-	jmp @next
-
-@next:	iszero @sz
-	jne @relocate
-
 @done:	RETURN_OK
+@range:	RETURN_ERR ERR_BRANCH_OUT_OF_RANGE
+
+@byte_range:
+	RETURN_ERR ERR_OVERSIZED_OPERAND
+@bad:	RETURN_ERR ERR_UNKNOWN_SEGMENT
+.endproc
+
+;*******************************************************************************
+; GET SEGMENT RUN BASE
+; IN:
+;  - .A: 1-based object local FRAGMENT ID
+; OUT:
+;  - .XY: final RUN address for base of FRAGMENT
+.proc get_segment_run_base
+.export __obj_get_fragment_run
+__obj_get_fragment_run:
+	tax
+	ldy segments_runhi-1,x
+	lda segments_runlo-1,x
+	tax
+	rts
+.endproc
+
+;*******************************************************************************
+; CHECKED RUN BASE
+; Translates the provided object-local FRAGMENT ID to its final RUN address
+; IN:
+;   - .A: fragment ID
+; OUT:
+;   - .XY: base of the SEGMENT
+;   - .C:  set on invalid fragment ID
+.proc checked_run_base
+	cmp #SEG_ABS
+	bne :+
+	ldxy #$0000		; absolute branch target (no extra offset)
+	clc
+	rts
+
+:	cmp #$01
+	bcc @bad
+	cmp numsegments
+	beq @ok
+	bcs @bad
+
+@ok:	jsr get_segment_run_base	; get FRAGMENT base address
+	clc
+	rts
+
+@bad:	sec
+	rts
+.endproc
+
+;*******************************************************************************
+; ANON FRAGMENT
+; IN:
+;  - .XY: "index" of the anonymous label
+; OUT:
+;  -  .A: FRAGMENT ID of the anonymous label or SEG_ABS if not part of one
+.export __obj_anon_fragment
+.proc __obj_anon_fragment
+@index = r0
+	stxy @index
+	ldx numsections
+@find:	dex
+	lda @index
+	cmp sections_anonlo,x
+	lda @index+1
+	sbc sections_anonhi,x
+	bcc @find
+	lda __obj_segment_ids,x
+	tax
+	lda segments_type-1,x
+	cmp #TYPE_ABS
+	beq @absolute
+	txa
+	rts
+
+@absolute:
+	lda #SEG_ABS
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1519,7 +1745,7 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	; validate the SEGMENT count
 	lda numsegments
 	jeq @segments_done	; no SEGMENTS -> done
-	cmp #MAX_SEGMENTS+1
+	cmp #MAX_FRAGMENTS+1
 	bcc @segments_ok
 	RETURN_ERR ERR_TOO_MANY_SEGMENTS
 
@@ -1556,6 +1782,14 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	jsr krn::chrin
 	sta __obj_segments_sizehi,y
 
+	; get the alignment the SEGMENT's code requires
+	jsr krn::chrin
+	sta segments_alignlo,y
+	jsr krn::chrin
+	sta segments_alignhi,y
+	jsr krn::chrin
+	sta __obj_segments_fill,y
+
 	; if ABS segment, directly set the SEGMENT start address
 	ldy #$00
 	lda (@name),y			; is name empty?
@@ -1566,7 +1800,7 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	; look up the linker's id for this SEGMENT and map it
 	ldxy @name
 	jsr link::segid_by_name
-	bcs @ret
+	jcs @ret
 	ldy @i
 	sta __obj_segment_ids,y		; store GLOBAL id for this SEGMENT
 
@@ -1576,49 +1810,28 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	jsr link::set_segtype		; set type for the segment
 	bcs @ret			; if conflicts with existing seg -> rts
 
-	; Resolve the RUN base first: the file's LOCAL offset is still in
-	; segments_start at this point and is consumed by the LOAD add below.
-	ldy @i
-	lda __obj_segment_ids,y		; restore global segment id
-	jsr link::segrunaddr_by_id
-	tya
-	pha
-	ldy @i
-	txa
-	clc
-	adc segments_startlo,y		; add offset
-	sta segments_runlo,y		; store LSB of SEGMENT RUN base
-	pla
-	adc segments_starthi,y
-	sta segments_runhi,y		; store MSB of SEGMENT RUN base
-
-	; get the current GLOBAL LOAD offset for the SEGMENT
-	ldy @i
-	lda __obj_segment_ids,y		; restore global segment id
-	jsr link::segaddr_by_id
-	bcs @ret
-
-	; add the LOCAL offset to the current GLOBAL base of the SEGMENT
-	tya
-	pha
-	ldy @i
-	txa
-	clc
-	adc segments_startlo,y		; add offset
-	sta segments_startlo,y		; store LSB of SEGMENT base
-	pla
-	adc segments_starthi,y		; get MSB of SEGMENT base
-	sta segments_starthi,y		; store MSB of SEGMENT base
-	jmp @next
+	jmp @fragment
 
 @abs:	ldy @i
 	lda #SEG_ABS
-	sta __obj_segment_ids,y		; store ABS id for SEGMENT
+	sta __obj_segment_ids,y
 
-	; ABS SEGMENTs run at the literal address they load to
-	lda segments_startlo,y
+@fragment:
+	ldy @i
+	lda __obj_segment_ids,y
+	ldx @i
+	jsr link::fragment		; register (pass 1) / locate (pass 2)
+	bcs @ret
+	ldy @i
+	sta __obj_fragment_ids,y
+	tax
+	lda link::fragment_loadlo-1,x
+	sta segments_startlo,y
+	lda link::fragment_loadhi-1,x
+	sta segments_starthi,y
+	lda link::fragment_runlo-1,x
 	sta segments_runlo,y
-	lda segments_starthi,y
+	lda link::fragment_runhi-1,x
 	sta segments_runhi,y
 
 @next:	; move name pointer to next location
@@ -1878,7 +2091,7 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	; In particular, SEG_FLOAT is a transient pool handle, not an index.
 	cmp #$01
 	bcc @badsegment
-	cmp #MAX_SEGMENTS+1
+	cmp #MAX_FRAGMENTS+1
 	bcs @badsegment
 	cmp numsegments
 	bcc :+
@@ -1890,10 +2103,12 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	lda segments_type-1,x
 	jsr type_to_mode
 	sta zp::label_mode			; set address mode for label
-	lda __obj_segment_ids-1,x		; get GLOBAL segment id
-	sta zp::label_segmentid			; and store with the symbol
-	jsr link::segsize_by_id			; get this obj's offset in seg
-	stxy @offset
+	lda __obj_fragment_ids-1,x		; global fragment til
+						; layout resolves it
+	sta zp::label_segmentid
+	lda #$00
+	sta @offset
+	sta @offset+1
 
 @value:	; store the segment-relative value (obj offset in seg + offset)
 	jsr krn::chrin				; get LSB of symbol offset
@@ -1964,24 +2179,6 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	tax
 	ldy segments_starthi-1,x
 	lda segments_startlo-1,x
-	tax
-	rts
-.endproc
-
-;*******************************************************************************
-; GET SEGMENT RUN BASE
-; Returns the base address the given SEGMENT's code is relocated for
-; NOTE: all indexing in this procedure is relative to table-1 because segment
-; id's are 1-based.
-; IN:
-;   - .A: ID of the SEGMENT to get the current RUN base address of
-; OUT:
-;   - .XY: the RUN base address of the section
-.proc get_segment_run_base
-	; segments_run[segment_id]
-	tax
-	ldy segments_runhi-1,x
-	lda segments_runlo-1,x
 	tax
 	rts
 .endproc
@@ -2093,6 +2290,9 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 	jeq @dbginfo		; no segments; continue to the debug info
 
 @load_segment:
+	ldx seg_idx
+	lda __obj_fragment_ids,x
+	jsr link::pad_fragment
 	jsr krn::chrin			; eat "info" byte for SEGMENT
 	pha
 
@@ -2274,38 +2474,38 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 @name=zp::str0
 @other=zp::str2
 @cnt=r0
+@latest=r1
 	stxy @name
 	ldxy #segments
 	stxy @other
-
 	lda #$00
 	sta @cnt
+	sta @latest
 	cmp numsegments
-	beq @notfound
-
-@l0:	lda #MAX_SEGMENT_NAME_LEN
-	jsr strcmp
-	beq @found
-	lda @other
+	beq @end
+@loop:	jsr strcmp
+	bne @next
+	lda @cnt
+	clc
+	adc #$01
+	sta @latest
+@next:	lda @other
 	clc
 	adc #MAX_SEGMENT_NAME_LEN
 	sta @other
 	bcc :+
 	inc @other+1
-:	ldx @cnt
-	inx
-	stx @cnt
-	cpx numsegments
-	bcc @l0
-@notfound:
-	ldxy @other
-	;sec
-	rts
-
-@found: lda @cnt
+:	inc @cnt
+	lda @cnt
+	cmp numsegments
+	bcc @loop
+@end:	ldxy @other
+	lda @latest
+	beq @missing
 	clc
-	adc #$01		; get 1-based id
-	;clc
+	rts
+@missing:
+	sec
 	rts
 .endproc
 

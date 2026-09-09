@@ -52,6 +52,7 @@ PC_SYMBOL_ID   = $ffff	; magic value for '*' (in eval result)
 VAL_ABS   = 0
 VAL_REL   = 1
 VAL_FLOAT = 2
+VAL_DIFF  = 3
 
 ;*******************************************************************************
 ; How the evaluator finishes a result.  By default an expression must reduce to
@@ -236,8 +237,8 @@ __expr_eval_bank:
 .proc __expr_eval_list
 @i           = zp::expr
 @sp          = zp::expr+1
-@val1        = zp::expr+2
-@val2        = zp::expr+4
+@val1        = m::dividend
+@val2        = m::divisor
 @result_size = zp::expr+6
 @kind1       = r4
 @segment1    = r5
@@ -304,6 +305,14 @@ __expr_eval_bank:
 	jmp @ok			; -> done
 
 @rel_result:
+	ldxy @symbol
+	stxy __expr_symbol
+	lda @kind
+	cmp #VAL_DIFF
+	bne :+
+	lda #$02
+	jmp @rel_done
+:
 	lda @segment
 	sta __expr_segment
 	cmp asm::segment	; is the result in a different segment?
@@ -875,14 +884,10 @@ __expr_eval_bank:
 	bcc :+
 	RETURN_ERR ERR_CANNOT_REDUCE
 
-:	ldxy @val2
-	stxy r2
-	ldxy @val1
-	stxy r0
-	jsr m::div16
+:	jsr m::div16		; operands already occupy the division slots
 	bcc :+
 	RETURN_ERR ERR_DIVIDE_BY_ZERO
-:	ldxy r0
+:	ldxy @val1		; quotient replaces the first operand
 	jmp @pushval
 
 @chkand:
@@ -1035,7 +1040,7 @@ __expr_eval_bank:
 	; A=ABS, B=REL, result is REL with b's symbol and segment
 	; (the shared vars hold A's metadata from the last pop, so ALL of
 	; kind/segment/symbol must be replaced with B's)
-	lda #VAL_REL
+	lda @kind2
 	sta @kind
 	lda @segment2
 	sta @segment
@@ -1059,6 +1064,8 @@ __expr_eval_bank:
 	sta @segment
 	lda @symbol1
 	sta @symbol
+	lda @symbol1+1
+	sta @symbol+1
 :	RETURN_OK
 
 ;--------------------------------------
@@ -1072,8 +1079,8 @@ __expr_eval_bank:
 
 @sub_a_abs:
 	lda @kind2
-	cmp #VAL_REL
-	bne :+
+	cmp #VAL_ABS
+	beq :+
 	; if val1 is ABS, val2 must be too
 	sec
 	rts			; return err
@@ -1084,13 +1091,13 @@ __expr_eval_bank:
 
 @sub_a_rel:
 	lda @kind2
-	cmp #VAL_REL
-	beq @sub_a_rel_b_rel
+	cmp #VAL_ABS
+	bne @sub_a_rel_b_rel
 
 	; A=REL, B=ABS, result is REL with A's symbol/segment
 	; (the shared vars already hold A's segment/symbol from the last pop;
 	; .A holds @kind2 (VAL_ABS) here, so the kind must be set explicitly)
-	lda #VAL_REL
+	lda @kind1
 	sta @kind		; kind = REL
 	lda @segment1
 	sta @segment
@@ -1101,6 +1108,12 @@ __expr_eval_bank:
 	RETURN_OK
 
 @sub_a_rel_b_rel:
+	lda @kind1
+	cmp #VAL_REL
+	bne @bad_difference
+	lda @kind2
+	cmp #VAL_REL
+	bne @bad_difference
 	; a post-processed ('<'/'>') value cannot take part in a symbol
 	; difference
 	lda @postproc
@@ -1114,22 +1127,39 @@ __expr_eval_bank:
 	; reduce (pass 2 revalidates with both symbols resolved)
 	lda @segment1
 	cmp #SEG_UNDEF
-	beq :+
+	beq @unresolved_difference
 	lda @segment2
 	cmp #SEG_UNDEF
-	beq :+
+	beq @unresolved_difference
 
 	; the difference of two symbols reduces to a constant if and only if
 	; they are in the same segment (the segment base cancels out)
 	lda @segment1
 	cmp @segment2
 	beq :+		; same segment -> reduce to ABS constant
-	sec		; different segments -> cannot reduce
-	rts
+
+	; keep IDs for both FRAGMENT bases, final value fully resolved by linker
+	; @symbol contains the id of the FRAGMENT that will be subtracted
+	sta @segment
+	lda @segment2
+	sta @symbol
+	lda #$00
+	sta @symbol+1	; fragment IDs are always <$100
+	lda #VAL_DIFF
+	sta @kind
+	RETURN_OK
 
 :	lda #VAL_ABS
 	sta @kind	; set kind to absolute
 	RETURN_OK	; and we're done
+
+@unresolved_difference:
+	lda zp::pass
+	cmp #$01
+	beq :-		; pass 1 forward reference; revalidate on pass 2
+@bad_difference:
+	sec
+	rts
 
 ;--------------------------------------
 ; REDUCE OPERATION OTHER

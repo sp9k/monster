@@ -180,7 +180,7 @@ more importantly, it is a handle for quick navigation to it.  If your `main.s` b
 for example, you can jump straight to it, no matter which buffer you're currently on, by
 pressing {c64-keys}`CTRL + 1`.
 
-The last way is one we've already seen: the buffer viewer ({c64-key}`F3`).  This is
+The last way is one we've already seen: the buffer viewer.  This is
 the most general way to select the buffer you want by name.  If you haven't noticed by now,
 the `H`, `J`, `K`, and `L` keys are almost always usable in addition to the cursor keys.  This is
 true in the buffer viewer as well as the UDG editor and others we've yet to explore.
@@ -431,8 +431,8 @@ fix using the usual flow.
 #### Window management
 
 We introduced the concept of windows earlier with the BUFFER VIEWER. The MEMORY VIEWER is another one.
-A WINDOW is an interactive widget that can be invoked to allow you to do things like
-view breakpoints ({c64-key}`F5`), watches ({c64-key}`F6`), enter the monitor ({c64-key}`F7`), etc.
+A WINDOW is an interactive widget that can be invoked to allow you to view breakpoints
+and watches, enter the monitor, and perform similar tasks.
 
 While these behave totally differently than the BUFFER VIEWER, they all share some common functionality.
 To control the window's geometry, press {c64-keys}`C= + J`/{c64-keys}`C= + K` to resize (shrink/grow),
@@ -444,7 +444,7 @@ Note that multiple windows may be open at once.  If the MEMORY VIEWER is active,
 the BREAKPOINT VIEWER without closing it.  If multiple windows are active, you can cycle through them
 with {c64-keys}`C= + W` (also re-enters the visible window if the editor is in focus).
 
-Finally, all active windows can be hidden with {c64-keys}`C= + H`.  Pressing {c64-keys}`C= + H` again also unhides
+Finally, all active windows can be hidden with {c64-keys}`C= + H`.  Repeating the command also unhides
 them if they are already hidden.
 
 #### Editor tips

@@ -24,6 +24,7 @@
 VAL_ABS   = 0
 VAL_REL   = 1
 VAL_FLOAT = 2
+VAL_DIFF  = 3	; positive fragment - negative fragment + constant
 
 POSTPROC_NONE = 0
 POSTPROC_LSB  = 1

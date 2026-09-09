@@ -4,6 +4,15 @@
 ; LINKER
 .define MAX_OBJS 16		; max number of object files in a link
 
+; fragment IDs use the symbol table's seven-bit segment field; independent of
+; named SEGMENTs
+.define MAX_LINK_FRAGMENTS 124
+.ifdef vic20
+.define MAX_FRAGMENTS 124
+.else
+.define MAX_FRAGMENTS 32
+.endif
+
 .ifdef vic20
 	.define MAX_LABELS 640		; max number of named labels
 	.define MAX_ANON   1776		; max number of anonymous labels

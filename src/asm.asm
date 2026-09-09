@@ -736,6 +736,8 @@ BANKED_CODE "ASMBANK"
 @pass2: lda ifdefidx		; snapshot the number of .IFDEF results
 	sta ifdefcnt		; recorded during pass 1...
 	lda #$00
+	sta lbl::anon_cursor
+	sta lbl::anon_cursor+1
 	sta ifdefidx		; ...and replay them from the start
 	jsr resetpc		; reset PC
 	jmp ctx::init		; re-init the context
@@ -1016,6 +1018,10 @@ BANKED_CODE "ASMBANK"
 	rts			; return error (too many anonymous labels?)
 
 @validate_anon:
+	lda __asm_mode
+	beq :+
+	incw lbl::anon_cursor
+:
 	; make sure the anonymous label was correctly assigned in pass 1
 	lda #$01
 	CALLMAIN lbl::get_banon
@@ -1053,7 +1059,7 @@ BANKED_CODE "ASMBANK"
 @name_done:
 	ldxy zp::line
 	jsr assemble_with_ctx	; assemble the rest of the line
-	bcs @ret0		; return error
+	jcs @ret0		; return error
 	cmp #ASM_LABEL
 	bne @retlabel
 
@@ -1252,7 +1258,7 @@ BANKED_CODE "ASMBANK"
 	ldx #ABS	; force ABS for JMP
 	inc operandsz
 :	cpx #ABS
-	bne @err 	; only ABS supported for JMP XXXX
+	jne @err 	; only ABS supported for JMP XXXX
 	lda #$4c
 	sta opcode
 	jne @noerr	; branch always
@@ -1276,22 +1282,58 @@ BANKED_CODE "ASMBANK"
 	ldx #ABS	; force ABS for JMP
 	inc operandsz
 :	cpx #ABS
-	bne @err	; only ABS supported for JSR
-	beq @noerr
+	jne @err	; only ABS supported for JSR
+	jeq @noerr
 
 @chkbra:
 	; check if opcode was a branch
 	and #$1f
 	cmp #$10
-	bne @verifyimm
+	jne @verifyimm
 
 @rel_branch:
 	cpx #ZEROPAGE
 	beq :+
-	cpx #ABS	; only ABS/ZP supported for branches
-	bne @err
+	cpx #ABS
+	jne @err
+:
+	lda __asm_mode
+	beq @fixed_branch
+	lda expr::kind
+	cmp #VAL_ABS
+	bne @deferred_branch
+	lda __asm_segmentid
+	cmp #SEG_ABS
+	beq @fixed_branch
+	; An absolute target still needs a relocated branch site.
+	lda #SEG_ABS
+	sta expr::segment
+	lda #VAL_REL
+	sta expr::kind
 
-:	; convert operand to relative address (operand - (zp::virtualpc+2))
+@deferred_branch:
+	; A relocatable branch's target and site can be in different fragments
+	lda expr::postproc
+	jne @err
+	ldy #$01
+	lda operand
+	jsr writeb
+	jcs @opdone
+
+	lda #$10		; PC-relative relocation: byte operand + addend
+	ldy #$01
+	jsr write_reloc
+
+	jcs @opdone
+	lda #$01
+	sta operandsz
+	lda opcode
+	ldy #$00
+	jsr writeb
+	jcc @store_done
+	rts
+@fixed_branch:
+	; convert operand to relative address (operand - (zp::virtualpc+2))
 	lda zp::virtualpc
 	clc
 	adc #$02
@@ -1336,8 +1378,7 @@ BANKED_CODE "ASMBANK"
 @err:	RETURN_ERR ERR_ILLEGAL_ADDRMODE
 
 @store_offset:
-	; Relative branches must be in the same section as their target, so
-	; write the byte directly (no relocation)
+	; Both site and target are absolute: write the final displacement.
 	lda #$01
 	sta operandsz	; force operand size to 1 for branches
 	tay		; .Y = 1 (offset to operand)
@@ -1608,6 +1649,12 @@ BANKED_CODE "ASMBANK"
 
 @pass1:	; if pass 1, return success with dummy value
 	jsr line::process_word
+	lda #VAL_REL
+	sta expr::kind
+	lda __asm_segmentid
+	sta expr::segment
+	lda #$00
+	sta expr::postproc
 	ldxy zp::virtualpc	; TODO: dummy address
 	lda #2
 	RETURN_OK
@@ -1736,7 +1783,15 @@ BANKED_CODE "ASMBANK"
 
 ;-------------------------------------------------------------------------------
 @abs:   lda immediate
-	bne @oversized	; error- immediate abs illegal (operand too large)
+	beq @nonimmediate
+	lda expr::kind
+	cmp #VAL_DIFF
+	bne @oversized		; other word-sized immediates are illegal
+	lda #$01		; defer a fragment difference's byte range
+				; for the linker
+	sta operandsz
+	bne @imm
+@nonimmediate:
 	lda indirect_hint
 	beq :+
 	lda indexed
@@ -2243,6 +2298,11 @@ BANKED_CODE "ASMBANK"
 	jsr line::process_ws
 	jsr eval_expr
 	bcs @notval
+	lda expr::kind
+	cmp #VAL_DIFF
+	beq @ok		; the final byte range is checked by the linker
+	lda expr::postproc
+	bne @ok		; byte selection is applied after adding fragment base
 	cpy #$00
 	beq @ok
 	RETURN_ERR ERR_OVERSIZED_OPERAND
@@ -3287,126 +3347,7 @@ include_entry:
 ; to set the pad value.  If not provided, 0 is used.
 ; EXAMPLE:
 ;   .align $100, $ff
-.proc directive_align
-@align = r0
-@fill  = r2
-@cnt   = r3
-	; get the first parameter (the alignment)
-	jsr line::process_ws
-	jsr eval_expr
-	bcc :+
-	rts			; return the error
-:	stxy @align
-
-	; when verifying, the expression is validated; skip all side effects
-	lda zp::verify
-	beq :+
-	lda #ASM_DIRECTIVE
-	RETURN_OK
-
-:	; an alignment of 0 is invalid
-	iszero @align
-	bne :+
-	RETURN_ERR ERR_SYNTAX_ERROR
-
-:	; get the optional second parameter (the fill value; default 0)
-	lda #$00
-	sta @fill
-	jsr line::process_ws	; .A = next character
-	jsr islineterminator
-	beq @pad		; end of line -> use the default fill
-	cmp #','
-	bne @badchar		; only a ',' may follow the alignment
-	jsr line::incptr
-
-	lda @align		; save the alignment across the eval
-	pha
-	lda @align+1
-	pha
-	jsr eval_expr		; get the fill value
-	bcc @fillok
-
-	; clean the stack and return the error from eval
-	tax
-	pla
-	pla
-	txa
-	;sec
-	rts
-
-@fillok:
-	pla			; restore the alignment
-	sta @align+1
-	pla
-	sta @align
-
-	tya			; fill value must fit in a single byte
-	beq :+
-	RETURN_ERR ERR_OVERSIZED_OPERAND
-:	stx @fill
-
-	; nothing else may follow the fill value (except a comment)
-	jsr line::process_ws
-	jsr islineterminator
-	beq @pad
-
-@badchar:
-	RETURN_ERR ERR_UNEXPECTED_CHAR
-
-@pad:	; get the pad count: (align - (PC MOD align)) MOD align
-	; NOTE: in object mode the PC (and so the alignment) is relative to
-	; the base of the active SEGMENT
-	; compute PC MOD align by repeated subtraction
-	lda zp::virtualpc
-	sta @cnt
-	lda zp::virtualpc+1
-	sta @cnt+1
-@mod:	lda @cnt+1
-	cmp @align+1
-	bcc @moddone		; remainder < align -> done
-	bne @sub		; remainder MSB > align MSB -> subtract
-	lda @cnt
-	cmp @align
-	bcc @moddone		; remainder < align -> done
-@sub:	lda @cnt
-	sec
-	sbc @align
-	sta @cnt
-	lda @cnt+1
-	sbc @align+1
-	sta @cnt+1
-	jmp @mod
-
-@moddone:
-	; if the remainder is 0, the PC is already aligned
-	iszero @cnt
-	beq @done
-
-	; pad count = align - remainder
-	lda @align
-	sec
-	sbc @cnt
-	sta @cnt
-	lda @align+1
-	sbc @cnt+1
-	sta @cnt+1
-
-	; write the pad bytes
-@fillloop:
-	iszero @cnt
-	beq @done
-	lda @fill
-	ldy #$00
-	jsr writeb		; write the fill byte
-	bcs @ret		; return error (e.g. no origin)
-	jsr incpc
-	decw @cnt
-	jmp @fillloop
-
-@done:	lda #ASM_DIRECTIVE
-	clc			; ok
-@ret:	rts
-.endproc
+directive_align: JUMP FINAL_BANK_EXPR, align_impl
 
 ;*******************************************************************************
 ; DISASSEMBLE
@@ -4184,7 +4125,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 
 ;*******************************************************************************
 ; DEFINECONST
-; Hanldes the .EQ directive
+; Handles the .EQ directive
 ; Effective on 1st pass only
 .proc defineconst
 @segid=r4		; SEG_ABS, or SEG_FLOAT for a named float constant
@@ -4236,7 +4177,9 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	sec
 @err:	rts
 
-@isint:	lda #SEG_ABS
+@isint:	jsr require_const
+	bcs @cleanup_err
+	lda #SEG_ABS
 @setval:
 	sta @segid
 	stxy zp::label_value
@@ -4463,13 +4406,9 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 ; WRITE RELOC
 ; If assembling to object code, writes the relocation information
 ; IN:
-;   - .A:                       size of the value to relocate (1 or 2)
-;   - .Y:                       offset from zp::asmresult to apply relocation
-;   - expr::require_relocation: !0 if we should use symbol as base address
-;   - expr::contains_global:    !0 if symbol should be used as relocation base
-;   - expr::global_id:          symbol ID to relocate relative to (if relevant)
-;   - expr::global_op:          operation to apply the relocation with
-;   - expr::global_postproc:    postprocessing to apply to global (if relevant)
+;   - .A:       0=byte, 1=word, $10=PC-relative branch
+;   - .Y:       offset from zp::asmresult to apply relocation
+;   - expr::*:  evaluated kind, fragment/symbol, addend and byte selection
 .proc write_reloc
 	ldx zp::verify
 	bne :--				; verifying -> ok (no relocation)
@@ -4766,3 +4705,168 @@ __asm_disassemble  = disassemble
 __asm_is_opcode    = isopcode
 __asm_type_to_mode = type2mode
 .endif
+
+;*******************************************************************************
+; ALIGN IMPLEMENTATION
+; Keep the directive together in the expression bank; the main VIC-20 code
+; bank has no room for it. Calls back to assembler helpers name their bank.
+.segment "EXPR"
+CUR_BANK .set FINAL_BANK_EXPR
+.proc align_impl
+; No instruction operand is live during a directive. Expression evaluation
+; preserves this assembler-owned slot, unlike the general scratch registers.
+@align = operand
+@fill  = r2
+@cnt   = r3
+	; get the first parameter (the alignment)
+	CALLMAIN line::process_ws
+	CALL FINAL_BANK_ASM, eval_expr
+	bcc :+
+	rts			; return the error
+:	stxy @align
+
+	; when verifying, the expression is validated; skip all side effects
+	lda zp::verify
+	beq :+
+	lda #ASM_DIRECTIVE
+	RETURN_OK
+
+:	CALL FINAL_BANK_ASM, require_const
+	jcs @ret
+	; an alignment of 0 is invalid
+	iszero @align
+	bne :+
+	RETURN_ERR ERR_SYNTAX_ERROR
+
+:	; get the optional second parameter (the fill value; default 0)
+	lda #$00
+	sta @fill
+	CALLMAIN line::process_ws	; .A = next character
+	CALL FINAL_BANK_ASM, islineterminator
+	beq @pad		; end of line -> use the default fill
+	cmp #','
+	bne @badchar		; only a ',' may follow the alignment
+	CALLMAIN line::incptr
+
+	CALL FINAL_BANK_ASM, eval_expr		; get the fill value
+	jcs @ret
+	CALL FINAL_BANK_ASM, require_const
+	jcs @ret
+
+	tya			; fill value must fit in a single byte
+	beq :+
+	RETURN_ERR ERR_OVERSIZED_OPERAND
+:	stx @fill
+
+	; nothing else may follow the fill value (except a comment)
+	CALLMAIN line::process_ws
+	CALL FINAL_BANK_ASM, islineterminator
+	beq @pad
+
+@badchar:
+	RETURN_ERR ERR_UNEXPECTED_CHAR
+
+@pad:	lda __asm_mode
+	beq @absolute
+	lda __asm_segmentid
+	beq @absolute
+	cmp #SEG_ABS
+	jne @fragment
+
+@absolute:
+	; get the pad count: (align - (PC MOD align)) MOD align
+	; compute PC MOD align by repeated subtraction
+	lda zp::virtualpc
+	sta @cnt
+	lda zp::virtualpc+1
+	sta @cnt+1
+@mod:	lda @cnt+1
+	cmp @align+1
+	bcc @moddone		; remainder < align -> done
+	bne @sub		; remainder MSB > align MSB -> subtract
+	lda @cnt
+	cmp @align
+	bcc @moddone		; remainder < align -> done
+@sub:	lda @cnt
+	sec
+	sbc @align
+	sta @cnt
+	lda @cnt+1
+	sbc @align+1
+	sta @cnt+1
+	jmp @mod
+
+@moddone:
+	; if the remainder is 0, the PC is already aligned
+	iszero @cnt
+	beq @done
+
+	; pad count = align - remainder
+	lda @align
+	sec
+	sbc @cnt
+	sta @cnt
+	lda @align+1
+	sbc @cnt+1
+	sta @cnt+1
+
+	; write the pad bytes
+@fillloop:
+	iszero @cnt
+	beq @done
+	lda @fill
+	ldy #$00
+	CALL FINAL_BANK_ASM, writeb		; write the fill byte
+	bcs @ret		; return error (e.g. no origin)
+	CALL FINAL_BANK_ASM, incpc
+	decw @cnt
+	jmp @fillloop
+
+@done:	lda #ASM_DIRECTIVE
+	clc
+@ret:	rts
+
+;-------------------------------------------------------------------------------
+@fragment:
+	lda @fill
+	beq @boundary
+	lda __asm_segtype
+	cmp #TYPE_BSS
+	beq @bssfill
+	cmp #TYPE_BSSZP
+	bne @boundary
+
+@bssfill:
+	RETURN_ERR ERR_DATA_IN_BSS
+
+@boundary:
+	; close the debug block
+	lda zp::gendebuginfo
+	beq @split
+	CALL FINAL_BANK_ASM, pass1
+	beq @split
+	ldxy zp::virtualpc
+	CALLMAIN dbgi::endblock
+
+@split:	; create a new fragment in the current segment
+	ldxy @align
+	lda @fill
+	CALL FINAL_BANK_LINKER, obj::split_fragment
+	bcs @ret
+	sta __asm_segmentid
+	stxy zp::virtualpc
+
+	lda zp::gendebuginfo
+	beq @done
+	CALL FINAL_BANK_ASM, pass1
+	beq @done
+
+	lda __asm_segmentid
+	CALLMAIN dbgi::set_seg_id
+	ldxy __asm_linenum
+	stxy dbgi::srcline
+	ldxy zp::virtualpc
+	CALLMAIN dbgi::newblock
+	bcs @ret
+	jmp @done
+.endproc

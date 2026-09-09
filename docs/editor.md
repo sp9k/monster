@@ -116,9 +116,9 @@ The symbol viewer shows each symbol's value and definition location. Here the sy
 | {c64-key}`RETURN`     | `GOTO`      | goes to the line where the selected symbol is defined (needs debug information from the last assembly) |
 | {c64-key}`F1`         | `SORT`      | toggles the sort order between alphabetical and by address       |
 | {c64-key}`RUN/STOP`   | `EXIT`      | dismisses the viewer and restores the screen you came from       |
-| {c64-keys}`C= + Q`    | `EXIT`      | same as {c64-key}`RUN/STOP`                                      |
+| {c64-keys}`C= + Q`    | `EXIT`      | same as the RUN/STOP shortcut                                    |
 
-The cursor keys work in place of {c64-key}`J` and {c64-key}`K`.
+The cursor keys work in place of the `DOWN` and `UP` commands.
 
 #### Macro viewer
 
@@ -145,7 +145,7 @@ The viewer has two modes:
 defined macro, in the order of their definition.  The highlighted row is the
 current selection.
 
-**DEFINITION**: entered by pressing {c64-key}`RETURN` on the selected macro.  The
+**DEFINITION**: selecting a macro opens its definition.  The
 screen is cleared and the top row shows the macro's name followed by its parameter
 names; the rows below it are the lines of the macro's body as defined.
 
@@ -362,7 +362,7 @@ The editor is a _modal_ editor, that is, it behaves differently depending on whi
 in.  The modes are all accessed from the default one (called _COMMAND_ mode) and each returns
 to _COMMAND_ mode when {c64-key}`RUN/STOP` is pressed.  Below is a list of the modes along with their function and details on how to enter them.
 
-### Command mode ({c64-key}`RUN/STOP`)
+### Command mode
 
 This is the default mode.  The primary function of command mode is to navigate around the
 source code and to enter other modes.
@@ -372,7 +372,7 @@ The following keys are handled in COMMAND mode.
 |  KEY                                       | NAME         | DESCRIPTION                                                                             |
 |--------------------------------------------|--------------|-----------------------------------------------------------------------------------------|
 | {c64-key}`HOME`                            | `HOME       `| moves the cursor to column 0                                                            |
-| {c64-key}`Colon` + _n_                     | `GOTO LINE  `| at the EX prompt ({c64-key}`Colon`), enter a line number to move the cursor to it       |
+| {c64-key}`Colon` + _n_                     | `GOTO LINE  `| at the EX prompt, enter a line number to move the cursor to it                          |
 | {c64-key}`Ctrl` + {c64-key}`1`–{c64-key}`8`| `GOTO BUFFER`| opens the buffer corresponding to the number key that is pressed                        |
 | {c64-keys}`Ctrl + H`                       | `PREV BUFFER`| opens the buffer before the active one (if there is one)                                |
 | {c64-keys}`Ctrl + L`                       | `NEXT BUFFER`| opens the buffer after the active one (if there is one)                                 |

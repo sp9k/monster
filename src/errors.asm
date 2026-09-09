@@ -340,6 +340,10 @@ err_not_integral:
 ; .byte "non integral value",0
 .byte $73,$ce,$da,$4e,$a1,$47,$90,$4c,$dd,$81,$65,$45,$0
 
+err_invalid_alignment:
+; .byte "invalid alignment",0
+.byte $4b,$96,$b,$9,$26,$c1,$62,$47,$73,$45,$75,$0
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -423,7 +427,8 @@ err_not_integral:
 	err_too_many_objects, \
 	err_duplicate_name, \
 	err_segment_out_of_range, \
-	err_not_integral
+	err_not_integral, \
+	err_invalid_alignment
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

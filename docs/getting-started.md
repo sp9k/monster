@@ -136,13 +136,13 @@ and some other information.
 
 Press {c64-key}`Z` and the debugger will step into the program by one instruction.
 You should now be at the next line of your program.  Do this until you get to jsr $ffd2.
-Press {c64-key}`Z` one more time and you will notice that the debugger no longer shows you a line number.
+Step once more and you will notice that the debugger no longer shows you a line number.
 That is because $ffd2 is not part of your program, so it has no line or even file to map to.
 Because of that, the debugger will instead show you the address and instruction that it is executing.
 
 Since we trust that Commodore did a good job writing this KERNAL routine (no need to debug it),
 we can simply press {c64-key}`Y` to step out of this routine and back to our program.
-If you stepped into several subroutines within $ffd2, you may need to press {c64-key}`Y` a couple times
+If you stepped into several subroutines within $ffd2, you may need to repeat the command a couple times
 to get back to your program.
 Once the debugger has completed stepping out of the subroutine, it should place you at your
 next line after the subroutine call: `inx`.
@@ -156,7 +156,7 @@ on the `INX` after tracing all the KERNAL instructions in ROM.
 Press {c64-key}`SPACE` now and the screen will swap to a view that looks much like your Vic-20’s
 BASIC startup screen.  This is the current state of your program’s memory, also called virtual memory.
 This is a common flow for debugging visual programs: step through your program until you've
-reached a place you want to visibly observe, press {c64-key}`SPACE` to see if it matches your expectations,
+reached a place you want to visibly observe, switch to the program screen to see if it matches your expectations,
 and repeat.
 
 Take a close look at the display and you should see that we have just printed a character to the screen by calling `$FFD2`.
@@ -164,7 +164,7 @@ Let’s run our program to finish displaying the message.  To do this, press {c6
 
 You should be back on the BASIC screen with your full message on display now.
 
-Note that the **GO** ({c64-keys}`C= + G`) command runs the program free of debugger intervention.
+Note that the **GO** command runs the program free of debugger intervention.
 Use it with caution as your program, likely in an unstable state, may leave the processor in
 an unrecoverable state and you will be forced to reset the machine if it does.
 
@@ -178,7 +178,7 @@ To exit the debugger, press {c64-keys}`C= + X` and confirm your intention to qui
 Assuming you have a disk drive attached, we may now wish to save our work that we have so proudly completed.  You may have noticed a `*` indicator near your buffer name in the status bar.  This
 means you have edited the buffer since it was last written.
 
-Enter Ex Command mode once again ({c64-key}`Colon`) and type:
+Enter Ex Command mode once again and type:
 
 `:s hello.s`
 

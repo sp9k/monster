@@ -16,11 +16,11 @@ commands.
 | `CLOSE   ` | {c64-keys}`C= + Q` | Closes the active window.  Focus moves to the next open window, or back to the editor if it was the last one
 | `HIDE    ` | {c64-keys}`C= + H` | Toggles the display of windows entirely
 
-Note that {c64-key}`RUN/STOP` only gives focus back to the editor; the window remains open above the
-status row.  To restore the fullscreen editor, either close the window with {c64-keys}`C= + Q` or hide the window
-area entirely with {c64-keys}`C= + H`.
+Note that `EXIT` only gives focus back to the editor; the window remains open above the
+status row.  To restore the fullscreen editor, either use `CLOSE` or hide the window
+area entirely with `HIDE`.
 
-{c64-keys}`C= + Q` closes whatever has focus: it closes the active window when a window is focused,
+`CLOSE` acts on whatever has focus: it closes the active window when a window is focused,
 and the current source buffer when the editor is focused (see the _EDITOR_ section).
 
 Some windows are also closed for you: the error log is closed by the next assembly (which clears the
@@ -50,6 +50,6 @@ The directory viewer ({c64-key}`Minus`), symbol viewer ({c64-keys}`C= + Y`) and 
 ({c64-keys}`C= + M`) are _not_ windows.  Each takes over the whole screen while open,
 and they cannot be resized, hidden, or cycled through with the window keys above.
 
-They can still be cloed with {c64-keys}`C= + Q`. {c64-key}`RUN/STOP` also quits these viewers in most cases.
-The one excepiton being the macro viewer.  In it, {c64-key}`RUN/STOP` first returns from a macro definition to
-the macro list, while {c64-keys}`C= + Q` closes the viewer outright from either mode.
+They can still be closed with `CLOSE`. `EXIT` also quits these viewers in most cases.
+The one exception is the macro viewer.  In it, `EXIT` first returns from a macro definition to
+the macro list, while `CLOSE` closes the viewer outright from either mode.

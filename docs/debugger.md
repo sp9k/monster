@@ -78,7 +78,7 @@ respective Key in the table below.
 | {c64-key}`F5`         | BREAK VIEW      | displays the breakpoints that have been set and allows them to be enabled/disabled      |
 | {c64-key}`F6`         | WATCH VIEW      | displays the watches that have been set (see the _Watch Viewer_ section)                |
 | {c64-key}`F7`         | MONITOR         | opens the text-based monitor as a window over the debug view                            |
-| {c64-key}`F8`         | MEM VIEW        | activates the memory window, which takes control until {c64-key}`RUN/STOP` is pressed    |
+| {c64-key}`F8`         | MEM VIEW        | activates the memory window, which takes control until the user exits it                 |
 | {c64-key}`S`          | STEP OVER       | steps to the next instruction. If it is a JSR, continues AFTER the target subroutine    |
 | {c64-key}`Y`          | STEP OUT        | steps until the next RTS instruction                                                    |
 | {c64-key}`Z`          | STEP            | steps to the next instruction.                                                          |
@@ -87,13 +87,13 @@ respective Key in the table below.
 | {c64-keys}`C= + P`    | JUMP TO         | sets the PC to the address corresponding to the line the cursor is on                   |
 | {c64-keys}`C= + R`    | RESET STOPWATCH | resets the value of the stopwatch to 0                                                  |
 | {c64-keys}`C= + X`    | QUIT DEBUGGER   | Prompts the user for confirmation then quits the debugger upon receiving it             |
-| {c64-key}`RUN/STOP`   | SOURCE VIEW     | closes every open window and gives the whole screen back to the source view (same as {c64-key}`F1`) |
+| {c64-key}`RUN/STOP`   | SOURCE VIEW     | closes every open window and gives the whole screen back to the source view (also available with F1) |
 | {c64-key}`SPACE`      | SHOW FRAME      | Displays the current state of the user program                                          |
 | {c64-key}`Up-arrow`   | GOTO BREAK      | navigates to the address that the debugger is currently paused at                       |
 
-## Register editor ({c64-key}`F2`)
+## Register editor
 
-Pressing {c64-key}`F2` moves the cursor to the register contents and allows the user to enter
+The register editor moves the cursor to the register contents and allows the user to enter
 new values for them.  Pressing {c64-key}`RETURN` will confirm the new register values
 and update them to those values immediately.
 Pressing {c64-key}`RUN/STOP` will abort this process and leave the old register values
@@ -138,19 +138,19 @@ it: the memory viewer, the monitor, watches and the simulator all show the beam
 position at `$9004`, and no store to that address can change what a read of it
 returns.
 
-### Step into ({c64-key}`Z`)
+### Step into
 
 Stepping _into_ code will return to the debugger
 after the next instruction (the one currently highlighted if we have debug
 information) is executed.
 
-### Step over ({c64-key}`S`)
+### Step over
 
 Step _over_ behaves the same as step _into_, but if the next
 instruction is a subroutine call (`JSR`), execution continues until the
 instruction _after_ the `JSR` (after the subroutine returns).
 
-### Step out ({c64-key}`Y`)
+### Step out
 
 The step out command traces the program until the current subroutine returns
 (via an RTS instruction).  The RTI instruction also returns execution to the debugger.
@@ -159,7 +159,7 @@ By default this command will abort if the stack pointer is at its max value (whe
 another `RTS` would underflow). Pressing {c64-keys}`Shift + Y` overrides this and will allow
 the stack pointer to underflow.
 
-### Trace ({c64-key}`T`)
+### Trace
 
 Trace executes the program as a series of STEPs until the user indicates we
 should halt the trace by pressing {c64-key}`RESTORE`.
@@ -168,7 +168,7 @@ The trace command renders the current state of the screen and color memory in ad
 the current VIC register values so that you can visually watch your program execute
 during a trace if it has a visual component.
 
-## Free run (go) ({c64-keys}`C= + G`)
+## Free run (go)
 
 The `GO` command begins execution and returns to the debugger only when a
 breakpoint is encountered or when {c64-key}`RUN/STOP` is pressed.  Unlike any of the step/trace
@@ -199,7 +199,7 @@ source code editor; the view stays open below it.  To close the active view outr
 press {c64-keys}`C= + Q` while it has focus.  {c64-key}`F1` closes every open view at once to
 maximize the source editor's screen size.
 
-### Memory viewer ({c64-key}`F8`)
+### Memory viewer
 
 The memory viewer displays the contents of RAM at a given address.  The memory
 viewer is updated upon reentry to the debugger (if active).
@@ -226,14 +226,14 @@ are supported within the memory viewer:
 | {c64-keys}`C= + Q`    | CLOSE     | Closes the memory viewer                         |
 | {c64-key}`Up-arrow`   | SET ADDR  | Sets the viewer's address to the given value     |
 
-#### Set watch ({c64-keys}`C= + W`)
+#### Set watch
 
 The `SET WATCH` command activates a watch at the address of the cursor.  The watch created
 is a `LOAD/STORE` watch meaning it will trigger whether the selected byte is written to or
 read from. See the _Watch Viewer_ section for more information on watches and how to use
 their more advanced functionality.
 
-#### Find value ({c64-key}`Slash`)
+#### Find value
 
 Prompts the user for an 8 or 16 bit value (determined by the number of
 characters provided) and looks for that value in memory.
@@ -244,13 +244,13 @@ Note that when seeking for a 16 bit value, the value is searched in little-endia
 format.  If the input for the search is given as `$1234` the result will be
 the first occurrence of the byte value `$34` followed by `$12`.
 
-#### Set address ({c64-key}`Up-arrow`)
+#### Set address
 
 Moves the cursor to the address of the viewer, then prompts the user for a new
 value to set the memory viewer to.  Pressing {c64-key}`RETURN` confirms the new address
 and {c64-key}`RUN/STOP` cancels and returns the user to the editor without changing the address
 
-### Breakpoint viewer ({c64-key}`F5`)
+### Breakpoint viewer
 
 The breakpoint viewer displays all the breakpoints that have been set by the
 user.  A circle is displayed next to those that are currently active.
@@ -261,7 +261,7 @@ Note that breakpoints correspond to the debug information generated with
 the {c64-key}`F4` command.  If the line numbers change after this information is generated,
 breakpoints are unlikely to behave in expected ways.
 
-### Watch viewer ({c64-key}`F6`)
+### Watch viewer
 
 The watch viewer displays all watches that have been set in the memory
 viewer.  The current value of a watch is shown along with its previous
@@ -280,17 +280,17 @@ The following keys are supported within the watch viewer:
 | {c64-key}`RUN/STOP`   | EXIT       | Returns to the debugger (the view stays open)           |
 | {c64-keys}`C= + Q`    | CLOSE      | Closes the watch viewer                                 |
 
-#### Add watch ({c64-keys}`C= + W`)
+#### Add watch
 
-While in the watch editor, pressing {c64-keys}`C= + W` prompts the user for an
+While in the watch editor, `ADD WATCH` prompts the user for an
 address or address range to watch.  These are given as expressions, so you may
 provide, for example `myval+3` to set a watch at the address of the label myval plus 3.
 To set a watch for an address range, simply provide two expressions, separated by a comma,
 at the prompt.  If the expression(s) are invalid, no watch is added.
 
-#### Edit watch ({c64-key}`RETURN`)
+#### Edit watch
 
-Pressing {c64-key}`RETURN` will invoke the _memory editor_ at the location of the watch
+`SELECT/EDIT` invokes the _memory editor_ at the location of the watch
 that was selected.  Returning from the memory editor will return the user
 back to the watch editor.
 
@@ -321,23 +321,22 @@ it by toggling the breakpoint off _or_ by deleting the entire line.
 that, for example, you can set a breakpoint on `LDA #$00` or a macro that expands
 to such an instruction, but setting one on `.DB $00` has no effect.
 
-### Toggle breakpoint ({c64-keys}`C= + B`)
+### Toggle breakpoint
 During normal editing, press {c64-keys}`C= + B` to set or remove a breakpoint.
 
-Pressing {c64-keys}`C= + B` again will also _remove_ a breakpoint
-if it is pressed while on a line that already has one.
+Repeating the command on a line that already has a breakpoint will _remove_ it.
 
 NOTE: breakpoints can only be added to buffers that have been named.
 
 ---
 
 ## Watches
-Watches are set within the memory editor ({c64-key}`F8`). When the cursor is over the
+Watches are set within the memory editor. When the cursor is over the
 desired byte to watch, then press {c64-keys}`C= + W` to add a watch to the address of the
 byte under the cursor.  A beep will confirm that the watch
 was added.
 
-The watch editor ({c64-key}`F6`) shows all active watches. This window displays the old
+The watch editor shows all active watches. This window displays the old
 value of a watch and what it was changed to when it is updated.
 
 When a value is changed the watch view is activated to alert the user to the

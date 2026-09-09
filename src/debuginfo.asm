@@ -1575,7 +1575,7 @@ get_filename = get_filename_addr
 .proc __debuginfo_load
 @header    = r0
 @freeptr   = r0
-@offset    = r0
+@offset    = r2		; name lookups use r0/r1, leaving this pair intact
 @block_i   = zp::tmp10
 @nblocks   = zp::tmp11
 @relocate  = zp::tmp12
@@ -1664,6 +1664,10 @@ get_filename = get_filename_addr
 	cmp #SEG_ABS
 	beq @relocate_done
 
+	; get the address of the object-local fragment we're dealing with
+	CALL FINAL_BANK_LINKER, obj::fragment_run
+	stxy @offset
+	lda seg_id
 	; look up global SEGMENT id and replace the LOCAL one with it
 	CALL FINAL_BANK_LINKER, obj::get_segment_name_by_id
 	bcc :+
@@ -1672,10 +1676,6 @@ get_filename = get_filename_addr
 	bcc :+
 	RETURN_ERR ERR_UNKNOWN_SEGMENT	; segment name not in the link config
 :	sta seg_id
-
-	; look up the address offset for this SEGMENT
-	CALL FINAL_BANK_LINKER, link::segaddr_by_id
-	stxy @offset
 
 	; add the offset for the SEGMENT to the value from the header
 	lda blockstart

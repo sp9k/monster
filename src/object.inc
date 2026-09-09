@@ -2,6 +2,13 @@
 .import __obj_add_import
 .import __obj_add_reloc
 .import __obj_add_section
+.import __obj_split_fragment
+.import __obj_fragment_ids
+.import __obj_segments_alignlo
+.import __obj_segments_alignhi
+.import __obj_segments_fill
+.import __obj_get_fragment_run
+.import __obj_anon_fragment
 .import __obj_close_section
 .import __obj_dump
 .import __obj_filename
@@ -28,6 +35,13 @@
 	add_import             = __obj_add_import
 	addreloc               = __obj_add_reloc
 	add_section            = __obj_add_section
+	split_fragment         = __obj_split_fragment
+	fragment_ids           = __obj_fragment_ids
+	alignlo                = __obj_segments_alignlo
+	alignhi                = __obj_segments_alignhi
+	fill                   = __obj_segments_fill
+	fragment_run           = __obj_get_fragment_run
+	anon_fragment          = __obj_anon_fragment
 	close_section          = __obj_close_section
 	dump                   = __obj_dump
 	filename               = __obj_filename

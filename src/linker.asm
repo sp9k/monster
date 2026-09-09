@@ -17,6 +17,7 @@
 .include "line.inc"
 .include "log.inc"
 .include "macros.inc"
+.include "math.inc"
 .include "memory.inc"
 .include "object.inc"
 .include "string.inc"
@@ -91,6 +92,7 @@ activeobj:         .byte 0	; the current OBJECT (id) being linked
 objerr:            .byte 0	; error code from linking an object
 parsed_properties: .byte 0	; properties seen in the current LINK definition
 absolute_end:      .word 0	; next free entry in absolute_ranges
+linkpass:          .byte 0	; 1 while pass 1 is running, 2 during pass 2
 
 ;*******************************************************************************
 ; OBJECT STATE
@@ -98,6 +100,25 @@ absolute_end:      .word 0	; next free entry in absolute_ranges
 numsymbols:  .byte 0
 
 .segment "LINKER_BSS"
+
+; Fragments are collected in object/header order before layout.  Their IDs
+; temporarily occupy labels' segment fields until resolve_symbols runs.
+num_fragments: .res 1
+object_fragbase: .res MAX_OBJS
+fragment_segment: .res MAX_LINK_FRAGMENTS
+fragment_sizelo: .res MAX_LINK_FRAGMENTS
+fragment_sizehi: .res MAX_LINK_FRAGMENTS
+fragment_alignlo: .res MAX_LINK_FRAGMENTS
+fragment_alignhi: .res MAX_LINK_FRAGMENTS
+fragment_fill: .res MAX_LINK_FRAGMENTS
+fragment_padlo: .res MAX_LINK_FRAGMENTS
+fragment_padhi: .res MAX_LINK_FRAGMENTS
+.export __link_fragment_loadlo, __link_fragment_loadhi
+.export __link_fragment_runlo, __link_fragment_runhi
+__link_fragment_loadlo: .res MAX_LINK_FRAGMENTS
+__link_fragment_loadhi: .res MAX_LINK_FRAGMENTS
+__link_fragment_runlo: .res MAX_LINK_FRAGMENTS
+__link_fragment_runhi: .res MAX_LINK_FRAGMENTS
 
 ;*******************************************************************************
 ; SECTIONS
@@ -143,6 +164,13 @@ segments_sizelo: .res MAX_SEGMENTS
 segments_sizehi: .res MAX_SEGMENTS
 segments_type:   .res MAX_SEGMENTS
 
+; The alignment required of each SEGMENT: the LINK file's ALIGN property
+; combined (see lcm16) with the alignment every object file asks of the SEGMENT
+; through its .ALIGN directives.  0 or 1 means the SEGMENT is unaligned.
+; Alignments need not be powers of 2, so rounding goes through align_up.
+segments_alignlo: .res MAX_SEGMENTS
+segments_alignhi: .res MAX_SEGMENTS
+
 ; pointers for the current LOAD address of each SEGMENT during linking.
 ; This is where the SEGMENT's bytes are placed in the output image.
 segments_addrlo: .res MAX_SEGMENTS
@@ -168,40 +196,21 @@ absolute_ranges_end = *
 .export segments_flags
 .export segments_sizelo
 .export segments_sizehi
+.export segments_alignlo
+.export segments_alignhi
 .export segment_names
 
 ;*******************************************************************************
 ; OBJECT CODE overview
-; Object code is stored in a simple block format as follows
-;  - the 1st block contains all IMPORTs required to link the file
-;  - the 2nd contains all EXPORTs exported by the file (and their offsets)
-;  - the 3rd contains the SEGMENTs used and the # of bytes each uses
-;  - the 4th contains the relocatable data
-; Example:
-;  IMP LAB1
-;  IMP LAB2
-;  EXP my_proc  CODE+$1000
-;  EXP my_proc2 SETUP+$20
+; See object.asm for the byte-level format. Headers describe ordered
+; object-local fragments of named SEGMENTs, followed by symbols, code,
+; relocation tables and debugger line programs.
 ;
-;  CODE $1032
-;  DATA $0062
-;
-;  | Obj Code Def        | Description                               |
-;  |-----------------------------------------------------------------|
-;  | SEG CODE            | Switches to the CODE segment              |
-;  | b $01 $33 $44       | defines bytes at CODE+0, CODE+1, CODE+2   |
-;  | b $ad               | defines a byte at CODE+3                  |
-;  | w LAB+3             | defines WORD with the value of LAB        |
-;
-; The value of segments (e.g. CODE) will change after each compilation unit
-; is linked.
-; After each file is linked, they are updated by the number of bytes produced
-; for that segment by that unit.
-; So if our unit has $200 bytes of code/data in its CODE segment, the
-; hypothetical next unit will start assembling its CODE segment at CODE+$200
-;
-; Exports are calculated during linkage according to the current offset +
-; SEGMENT values
+; Pass 1 collects fragment sizes and alignment constraints. Layout assigns
+; each fragment fixed LOAD/RUN bases, including padding, then resolves symbols
+; as fragment RUN base + offset. Pass 2 emits padding/code and relocates each
+; operand at its containing fragment's fixed address. Neither symbols nor
+; branches assume that offsets in different fragments share a displacement.
 ;*******************************************************************************
 
 ;*******************************************************************************
@@ -264,6 +273,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda #$00
 	sta numsegments
 	sta numsections
+	lda #$01
+	sta activeobj
+	sta linkpass
 	ldxy #absolute_ranges
 	stxy absolute_end
 
@@ -710,6 +722,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 @name=r0
 @val=r2
 @cnt=r4
+@alignval=r6
 @keybuff=$100
 @valbuff=$100
 	lda #$00
@@ -896,69 +909,43 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_OK
 
 ;-------------------------------------------------------------------------------
+; handler for the "align" key in SEGMENT
+@alignvec:
+	ldxy #@valbuff
+	jsr parse_num			; get the requested alignment
+	bcs @badalign			; not a number -> error
+
+	stxy @alignval
+	lda @alignval
+	ora @alignval+1
+	beq @badalign			; ALIGN=0 is not an alignment
+
+	; the SEGMENT is aligned to at least this; the .ALIGN directives in the
+	; objects that use it may raise it further (see link::require_align)
+	ldx numsegments
+	lda @alignval
+	sta segments_alignlo,x
+	lda @alignval+1
+	sta segments_alignhi,x
+	RETURN_OK
+
+@badalign:
+	RETURN_ERR ERR_INVALID_ALIGNMENT
+
+;-------------------------------------------------------------------------------
 ; keys table
-@numkeys=2
+@numkeys=3
 @keys:
-@load: .byte "load",0
-@run:  .byte "run",0
+@load:  .byte "load",0
+@run:   .byte "run",0
+@align: .byte "align",0
 
 ;-------------------------------------------------------------------------------
 ; keys table handler vectors
-.define seg_cmds @loadvec, @runvec
+.define seg_cmds @loadvec, @runvec, @alignvec
 @cmdslo: .lobytes seg_cmds
 @cmdshi: .hibytes seg_cmds
 
-.endproc
-
-;*******************************************************************************
-; FILE ID FROM SCOPE
-; Parses the object file ID (index in objfiles) from the given symbol's scope.
-; E.g. "FOO@LABEL" will return the index for the file "FOO"
-; IN:
-;   - .XY: the symbol to match
-; OUT:
-;   - .A: the file ID for the symbol (from its scope)
-.proc file_id_from_scope
-@sym=zp::str0
-@objs=zp::str2
-@i=r0
-	stxy @sym
-
-	ldxy #__link_objfiles
-	stxy @objs
-
-	; get the length of the namespace to search for
-	ldy #$00
-	sty @i			; init index
-
-@l0:	lda (@sym),y
-	cmp #'@'		; scope separator
-	beq @find
-	iny
-	bne @l0
-
-@find:	jsr strcmp_to_dot	; search
-	beq @done		; if match -> we're done
-
-	; move @obj pointer to next filename
-	ldy #$00
-@l1:	lda (@objs),y
-	beq @next
-	iny
-	bne @l1			; branch always
-
-@next:	inc @i			; increment id counter
-	tya
-	sec			; +1 (move OVER the terminator)
-	adc @objs
-	sta @objs
-	bcc @l1
-	inc @objs+1
-	bne @l1
-
-@done:	inc @i			; get 1 based id
-	lda @i
-	rts
 .endproc
 
 ;*******************************************************************************
@@ -1032,12 +1019,13 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	txa
 	ldx @seg
 	clc
-	adc segments_runaddrlo-1,x
+	adc __link_fragment_runlo-1,x
 	sta zp::label_value
 	tya
-	adc segments_runaddrhi-1,x
+	adc __link_fragment_runhi-1,x
 	sta zp::label_value+1
-	lda @seg
+	ldx @seg
+	lda fragment_segment-1,x
 	sta zp::label_segmentid
 	lda @mode
 	sta zp::label_mode
@@ -1064,107 +1052,362 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ; OUT:
 ;   - .C: set on error
 .proc calc_seg_origins
-@secid=r0
-@segid=r1
-@secoff=r2
-	lda #$00
-	cmp numsegments
-	jeq @done
-	cmp numsections
-	jeq @done
+@fill_start = r2
+@cursorlo = zp::asmtmp
+@cursorhi = @cursorlo+MAX_SECTIONS
+@value   = r0
+@padding = r4
+@load    = r6
+@run     = r8
+@seg     = ra
+@frag    = rb
+@fill    = rd
+	ldx numsections
+	jeq @ok
 
-	sta @secid
-
-; iterate over all SECTIONS
-@l0:	; init offset to the START location of the SECTION
-	ldx @secid
+@init:	dex
 	lda sections_startlo,x
-	sta @secoff
+	sta @cursorlo,x
 	lda sections_starthi,x
-	sta @secoff+1
-
-	lda #$01
-	sta @segid
+	sta @cursorhi,x
+	cpx #$00
+	bne @init
+	stx @seg
 
 ;-------------------------------------------------------------------------------
-; iterate over all SEGMENTS to find the ones that occupy this SECTION.
-; A SEGMENT occupies the SECTION it loads to (where its bytes are written) and
-; the SECTION it runs in (where it is relocated for); these are packed with a
-; single shared offset so the two layouts cannot be placed on top of each other
-@l1:	ldy @segid
-	dey			; SEGMENT ids are 1-based
+; set LOAD and RUN addresses for SEGMENT by looking up current cursor values
+@segment:
+	ldx @seg
+	cpx numsegments
+	jcs @validate
+	ldy segments_run,x
+	lda @cursorlo,y
+	sta @run
+	lda @cursorhi,y
+	sta @run+1
+	ldy segments_load,x
+	lda @cursorlo,y
+	sta @load
+	lda @cursorhi,y
+	sta @load+1
 
-	lda segments_load,y
-	cmp @secid
-	beq @load		; SEGMENT's bytes load here
-	lda segments_run,y
-	cmp @secid
-	beq @run		; SEGMENT runs here, but loads elsewhere
-	bne @nextseg		; SEGMENT doesn't occupy this SECTION at all
+;-------------------------------------------------------------------------------
+; apply ALIGNment for the segment (if it has any)
+	lda segments_alignlo,x
+	sta m::arg
+	lda segments_alignhi,x
+	sta m::arg+1
+	ldxy @run
+	CALL FINAL_BANK_EXPR, m::align_up
+	jcs @overflow
+	stxy @run
+	ldxy @load
+	CALL FINAL_BANK_EXPR, m::align_up
+	jcs @overflow
+	stxy @value			; set stop address for fill
+	lda #$00
+	sta @fill			; init fill value to 0
+	ldx @seg
+	lda segments_type,x
+	cmp #TYPE_SEGZP
+	beq @setbase			; don't fill ZP segments
+	cmp #TYPE_BSSZP
+	beq @setbase			; don't fill BSS segments
+	ldxy @load
+	stxy @fill_start
+	jsr fill_span			; fill from [@fill_start, @value)
 
-@load:	; segment.addr = segment.addr + secoff
-	lda segments_addrlo,y
+;-------------------------------------------------------------------------------
+@setbase:
+	ldxy @value
+	stxy @load
+	ldx @seg
+	lda @load
+	sta segments_addrlo,x
+	lda @load+1
+	sta segments_addrhi,x
+	lda @run
+	sta segments_runaddrlo,x
+	lda @run+1
+	sta segments_runaddrhi,x
+	lda #$00
+	sta @frag
+
+;-------------------------------------------------------------------------------
+@fragment:
+	ldx @frag
+	cpx num_fragments
+	jcs @finish
+	lda fragment_segment,x
+	sec
+	sbc #$01
+	cmp @seg
+	jne @next
+
+	; apply fragment-level alignment (.align directives in the obj code)
+	lda fragment_alignlo,x
+	sta m::arg
+	lda fragment_alignhi,x
+	sta m::arg+1
+	ldxy @run
+	CALL FINAL_BANK_EXPR, m::align_up
+	jcs @overflow
+	stxy @value
+	txa
+	sec
+	sbc @run
+	sta @padding
+
+	tya
+	sbc @run+1
+	sta @padding+1
+	ldxy @value
+	stxy @run
+	lda @load
 	clc
-	adc @secoff
-	sta segments_addrlo,y
-	lda segments_addrhi,y
-	adc @secoff+1
-	sta segments_addrhi,y
+	adc @padding
+	sta @load
 
-	; a SEGMENT whose RUN SECTION is its LOAD SECTION (the default) is
-	; placed once and gets the same address in both layouts
-	lda segments_run,y
-	cmp @secid
-	bne @advance
+	lda @load+1
+	adc @padding+1
+	sta @load+1
+	jcs @overflow
+	ldx @frag
+	lda @padding
+	sta fragment_padlo,x
+	lda @padding+1
+	sta fragment_padhi,x
 
-@run:	; segment.runaddr = segment.runaddr + secoff
-	lda segments_runaddrlo,y
-	clc
-	adc @secoff
-	sta segments_runaddrlo,y
-	lda segments_runaddrhi,y
-	adc @secoff+1
-	sta segments_runaddrhi,y
+	lda @load
+	sta __link_fragment_loadlo,x
+	lda @load+1
+	sta __link_fragment_loadhi,x
+	lda @run
+	sta __link_fragment_runlo,x
+	lda @run+1
+	sta __link_fragment_runhi,x
 
-@advance:
-	; secoff += segment.size
-	lda @secoff
-	clc
-	adc segments_sizelo,y
-	sta @secoff
-	lda @secoff+1
-	adc segments_sizehi,y
-	sta @secoff+1
-	bcs @outofrange		; SECTION's SEGMENTs run past $ffff
+	lda fragment_sizelo,x
+	sta @value
+	lda fragment_sizehi,x
+	sta @value+1
 
-@nextseg:
-	lda @segid
-	cmp numsegments
-	beq @nextsec
+	jsr advance_layout
+	jcs @overflow
 
-	inc @segid
-	bne @l1			; repeat for all SEGMENTS
+@next:	inc @frag
+	jmp @fragment
 
-@nextsec:
-	ldx @secid
+;-------------------------------------------------------------------------------
+@finish:
+	ldx @seg
+	lda @run
+	sec
+	sbc segments_runaddrlo,x
+	sta segments_sizelo,x
+	lda @run+1
+	sbc segments_runaddrhi,x
+	sta segments_sizehi,x
+	ldy segments_load,x
+	lda @load
+	sta @cursorlo,y
+	lda @load+1
+	sta @cursorhi,y
+	ldy segments_run,x
+	lda @run
+	sta @cursorlo,y
+	lda @run+1
+	sta @cursorhi,y
+	inc @seg
+	jmp @segment
+
+;-------------------------------------------------------------------------------
+@validate:
+	ldx #$00
+@check:	cpx numsections
+	beq @ok
 	lda sections_stoplo,x
-	cmp @secoff
+	cmp @cursorlo,x
 	lda sections_stophi,x
-	sbc @secoff+1
-	bcc @toosmall		; stop < secoff -> the SEGMENTs don't fit
-
-	inc @secid		; move to next SECTION
-	lda @secid
-	cmp numsections
-	bcc @l0
-
-@done:	RETURN_OK
-
-@toosmall:
-	RETURN_ERR ERR_SECTION_TOO_SMALL
-
-@outofrange:
+	sbc @cursorhi,x
+	bcc @small
+	inx
+	bne @check
+@ok:	RETURN_OK
+@small:	RETURN_ERR ERR_SECTION_TOO_SMALL
+@overflow:
 	RETURN_ERR ERR_SEGMENT_OUT_OF_RANGE
+.endproc
+
+;*******************************************************************************
+; ADVANCE LAYOUT
+; Adds the given value to the LOAD and RUN cursors.
+; IN:
+;   - r0/r1: the amount to add to LOAD and RUN cursors
+.proc advance_layout
+@size = r0
+@load = r6
+@run  = r8
+	lda @load
+	clc
+	adc @size
+	sta @load
+	lda @load+1
+	adc @size+1
+	sta @load+1
+	bcs @ret
+	lda @run
+	clc
+	adc @size
+	sta @run
+	lda @run+1
+	adc @size+1
+	sta @run+1
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; FILL SPAN
+; Fill [r2, r0) with rd, preserving absolute objects
+.proc fill_span
+@stop   = r0
+@cursor = r2
+@fill   = rd
+
+@loop:	lda @cursor
+	cmp @stop
+	lda @cursor+1
+	sbc @stop+1
+	bcs @done
+	jsr skip_absolute
+	bcs @loop
+	lda @fill
+	ldxy @cursor
+	CALLMAIN vmem::store
+	incw @cursor
+	jmp @loop
+
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; FRAGMENT
+; Looks up the global FRAGMENT ID for the given local FRAGMENT
+; IN:
+;   - .A = named segment ($ff for ABS)
+;   - .X = object-local fragment index.
+; OUT:
+;   - .A: global fragment ID
+.pushseg
+; The linker ROM bank cannot hold this helper as well. Keep only this
+; registration/lookup routine resident; callers still select the linker bank
+; for its tables.
+.segment "DATA"
+.export __link_fragment
+.proc __link_fragment
+@parent = re
+@local  = rf
+	sta @parent
+	stx @local
+	lda linkpass
+	cmp #$02
+	beq @lookup
+	cpx #$00
+	bne @append
+	ldy activeobj
+	lda num_fragments
+	sta object_fragbase-1,y
+
+@append:
+	ldy num_fragments
+	cpy #MAX_LINK_FRAGMENTS
+	bcs @full
+	lda @parent
+	sta fragment_segment,y
+	lda obj::segments_sizelo,x
+	sta fragment_sizelo,y
+	lda obj::segments_sizehi,x
+	sta fragment_sizehi,y
+	lda obj::alignlo,x
+	sta fragment_alignlo,y
+	lda obj::alignhi,x
+	sta fragment_alignhi,y
+	lda obj::fill,x
+	sta fragment_fill,y
+	lda #$00
+	sta fragment_padlo,y
+	sta fragment_padhi,y
+	sta __link_fragment_loadlo,y
+	sta __link_fragment_loadhi,y
+	sta __link_fragment_runlo,y
+	sta __link_fragment_runhi,y
+	lda @parent
+	cmp #SEG_ABS
+	bne @added
+	lda obj::segments_startlo,x
+	sta __link_fragment_loadlo,y
+	sta __link_fragment_runlo,y
+	lda obj::segments_starthi,x
+	sta __link_fragment_loadhi,y
+	sta __link_fragment_runhi,y
+@added:	inc num_fragments
+	lda num_fragments
+	clc
+	rts
+@lookup:
+	ldy activeobj
+	lda object_fragbase-1,y
+	clc
+	adc @local
+	cmp num_fragments
+	bcs @full
+	tay
+	lda fragment_segment,y
+	cmp @parent
+	bne @full
+	tya
+	clc
+	adc #$01
+	clc
+	rts
+@full:	RETURN_ERR ERR_TOO_MANY_SEGMENTS
+.endproc
+.popseg
+
+;*******************************************************************************
+; PAD FRAGMENT
+; Write the alignment bytes immediately preceding the given global fragment
+.export __link_pad_fragment
+.proc __link_pad_fragment
+@start = r2
+@stop = r0
+@fill = rd
+	tax
+	lda fragment_segment-1,x
+	cmp #SEG_ABS
+	beq @done
+	tay
+
+	lda segments_type-1,y
+	cmp #TYPE_SEGZP
+	beq @done
+	cmp #TYPE_BSSZP
+	beq @done
+
+	lda __link_fragment_loadlo-1,x
+	sta @stop
+	sec
+	sbc fragment_padlo-1,x
+	sta @start
+	lda __link_fragment_loadhi-1,x
+	sta @stop+1
+	sbc fragment_padhi-1,x
+	sta @start+1
+	lda fragment_fill-1,x
+	sta @fill
+	jsr fill_span
+
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1469,6 +1712,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	CALLMAIN dbgi::init
 
 	jsr init_segments
+	lda #$00
+	sta num_fragments
 
 	; init obj pointer to start of object list
 	ldxy #__link_objfiles
@@ -1476,6 +1721,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 	lda #$01
 	sta activeobj
+	sta linkpass		; the object headers are read for pass 1
 
 ;-------------------------------------------------------------------------------
 ; PASS1
@@ -1539,6 +1785,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ;-------------------------------------------------------------------------------
 
 @pass1done:
+	; Layout reuses the now-dead @objfile pointer's scratch window.
 	jsr calc_seg_origins
 	jcs log_error
 	jsr validate_segments
@@ -1563,6 +1810,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	stxy @objfile
 	lda #$01
 	sta activeobj
+	lda #$02
+	sta linkpass		; the headers are read again for pass 2
 
 ;-------------------------------------------------------------------------------
 ; PASS2
@@ -1574,10 +1823,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	ldxy @objfile
 	jsr link_object		; link the object file
 	bcs log_error		; if .C set, return with error
-
-	; move the segment pointers past this object's contributions so the
-	; next object's code is placed after this object's
-	jsr advance_segments
 
 	jsr log_newl
 
@@ -1605,11 +1850,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 ;-------------------------------------------------------------------------------
 @pass2done:
-	; restore the SEGMENT addresses to their origins (they were advanced
-	; past each object's code during pass 2)
-	jsr init_segments
-	jsr calc_seg_origins
-
+	; Fragment and segment origins remain fixed throughout pass 2.
 	; calculate ORIGIN and TOP of linked program
 	jsr segmin
 	stxy asm::origin
@@ -1685,19 +1926,17 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 ;*******************************************************************************
 ; UPDATE SEGMENTS
-; Add SEGMENT usage in the object file that was just read to running sum for
-; each global SEGMENT and record absolute SEGMENT ranges.
+; Record absolute ranges. Relative usage is retained by link::fragment.
 ; OUT:
 ;   - .C: set if absolute SEGMENTs overlap or cannot be recorded
 .proc update_segments
-	; add usage in object file to running sum for each SEGMENT
 	ldx #$00
 	cpx obj::numsegments
 	beq @done
 
 :	ldy obj::segment_ids,x		; get GLOBAL SEGMENT id from local one
 	cpy #SEG_ABS			; ABS segments have no global SEGMENT
-	bne @relative
+	bne @next
 
 	; Preserve the local index while the absolute range is recorded.
 	txa
@@ -1708,16 +1947,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	tax
 	lda objerr
 	bcs @ret
-	jmp @next
-
-@relative:
-	lda obj::segments_sizelo,x
-	clc
-	adc segments_sizelo-1,y
-	sta segments_sizelo-1,y
-	lda obj::segments_sizehi,x
-	adc segments_sizehi-1,y
-	sta segments_sizehi-1,y
 
 @next:	inx
 	cpx obj::numsegments
@@ -1819,41 +2048,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_ERR ERR_TOO_MANY_SEGMENTS
 @outofrange:
 	RETURN_ERR ERR_SEGMENT_OUT_OF_RANGE
-.endproc
-
-;*******************************************************************************
-; ADVANCE SEGMENTS
-; Advances the address of each SEGMENT by the usage of the object file that
-; was just linked so that the next object file's contribution begins where
-; this one's ended.  This is the pass 2 counterpart of update_segments.
-.proc advance_segments
-	ldx #$00
-	cpx obj::numsegments
-	beq @done
-
-:	ldy obj::segment_ids,x		; get GLOBAL SEGMENT id from local one
-	cpy #SEG_ABS			; ABS segments have no global SEGMENT
-	beq @next			; if ABS, skip it
-	lda obj::segments_sizelo,x
-	clc
-	adc segments_addrlo-1,y
-	sta segments_addrlo-1,y
-	lda obj::segments_sizehi,x
-	adc segments_addrhi-1,y
-	sta segments_addrhi-1,y
-
-	lda obj::segments_sizelo,x
-	clc
-	adc segments_runaddrlo-1,y
-	sta segments_runaddrlo-1,y
-	lda obj::segments_sizehi,x
-	adc segments_runaddrhi-1,y
-	sta segments_runaddrhi-1,y
-
-@next:	inx
-	cpx obj::numsegments
-	bne :-
-@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2025,22 +2219,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_OK
 .endproc
 
-;*******************************************************************************
-; SEGADDR FOR FILE BY NAME
-; Returns the (current) base address for the given SEGMENT by its name
-; IN:
-;   - .XY:     the segment name to get the base address of
-;   - objfile: the file to find the section's base address for
-; OUT:
-;   - .XY: the base address for the requested segment within objfile
-.export __link_segaddr_by_name
-.proc __link_segaddr_by_name
-	jsr get_segment_by_name		; get id of the SEGMENT
-	bcc @ok
-	rts
 
-@ok:	; fall through
-.endproc
 
 ;*******************************************************************************
 ; SEGADDR BY ID
@@ -2064,42 +2243,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_OK
 .endproc
 
-;*******************************************************************************
-; SEGRUNADDR BY ID
-; Returns the (current) RUN base address for the given SEGMENT id.  This is the
-; address the SEGMENT's code is relocated for; it matches the LOAD base unless
-; the SEGMENT declares a RUN SECTION distinct from its LOAD SECTION.
-; IN:
-;   - .A: global (linker) segment id to get the RUN base address of
-; OUT:
-;   - .XY: the RUN base address for the requested segment
-.export __link_segrunaddr_by_id
-.proc __link_segrunaddr_by_id
-	tay
-	ldx segments_runaddrlo-1,y
-	lda segments_runaddrhi-1,y
-	tay
-	RETURN_OK
-.endproc
 
-;*******************************************************************************
-; SEGSIZE BY ID
-; Returns the accumulated size of the given SEGMENT.
-; During pass 1 this is the sum of the given SEGMENT's usage by the object
-; files processed so far, which is the offset within the SEGMENT at which the
-; object file being processed will begin.
-; IN:
-;   - .A: global (linker) segment id to get the accumulated size of
-; OUT:
-;   - .XY: the accumulated size of the segment
-.export __link_segsize_by_id
-.proc __link_segsize_by_id
-	tay
-	ldx segments_sizelo-1,y
-	lda segments_sizehi-1,y
-	tay
-	RETURN_OK
-.endproc
 
 ;*******************************************************************************
 ; SET SEGMENT TYPE
@@ -2279,6 +2423,34 @@ __link_get_segment_by_name:
 .endproc
 
 ;*******************************************************************************
+; PARSE NUM
+; Parses the number in the given 0-terminated buffer.  The number may be given
+; in decimal or, with a '$' prefix, in hexadecimal.
+; Unlike parse_val, this reads a value that has already been copied out of the
+; LINK file (see the SEGMENT key handlers, which are given their value in a
+; buffer) and so leaves zp::line alone.
+; IN:
+;   - .XY: the buffer holding the number to parse
+; OUT:
+;   - .XY: the value that was parsed
+;   - .C:  set if the buffer does not hold a valid number
+.proc parse_num
+@buff=r0
+	stxy @buff
+	ldy #$00
+	lda (@buff),y
+	cmp #'$'
+	beq @hex
+
+@dec:	ldxy @buff
+	JUMPMAIN atoi
+
+@hex:	incw @buff		; move over the '$'
+	ldxy @buff
+	JUMPMAIN util::parsehex
+.endproc
+
+;*******************************************************************************
 ; COMPARE LINE
 ; Compares the strings in (zp::line) and (.XY) up to a length of .A
 .proc cmpline
@@ -2309,34 +2481,6 @@ __link_get_segment_by_name:
 	bne @l0
 
 :	lda (zp::str2),y	; make sure strings terminate at same index
-@ret:	rts
-.endproc
-
-;*******************************************************************************
-; STRCMP TO DOT
-; Compares the strings in (zp::str0) and (zp::str2) up to a length of .A
-; For str2 a '.' is considered a terminator
-; IN:
-;  zp::str0: one of the strings to compare
-;  zp::str2: the other string to compare
-; OUT:
-;  .Z: set if the strings are equal
-.proc strcmp_to_dot
-	ldy #$00
-@l0:	lda (zp::str0),y
-	beq :+
-	cmp #'@'
-	beq :+
-	jsr is_ws
-	beq :+
-	cmp (zp::str2),y
-	bne @ret
-	iny
-	bne @l0
-
-:	lda (zp::str2),y	; make sure strings terminate at same index
-	beq @ret		; terminates at 0 -> ok
-	cmp #'.'		; terminates at '.'?
 @ret:	rts
 .endproc
 
@@ -2390,60 +2534,6 @@ __link_get_segment_by_name:
 	beq :+
 	cmp #' '
 :	rts
-.endproc
-
-;*******************************************************************************
-; IS NULL SPACE COMMA CLOSINGPAREN
-; IN:
-;  - .A: the character to test
-; OUT:
-;  - .Z: set if the char in .A is: 0,$0d,' ', ',', or ')'
-.proc is_null_return_space_comma_closingparen_newline
-	cmp #$00
-	beq @done
-	jsr is_ws
-	beq @done
-	cmp #','
-	beq @done
-	cmp #')'
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; IS OPERATOR
-; IN:
-;  - .A: the character to test
-; OUT:
-;  - .Z: set if the char in .A is an operator ('+', '-', etc.)
-.proc isoperator
-@xsave=zp::util+2
-	stx @xsave
-	ldx #@numops-1
-:	cmp @ops,x
-	beq @end
-	dex
-	bpl :-
-@end:	php
-	ldx @xsave
-	plp
-	rts
-@ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.'
-@numops = *-@ops
-.endproc
-
-;*******************************************************************************
-; ISSEPARATOR
-; IN:
-;  - .A: the character to test
-; OUT:
-;  - .Z: set if the char in .A is any separator
-.proc isseparator
-	cmp #':'
-	beq @yes
-	jsr is_null_return_space_comma_closingparen_newline
-	bne :+
-@yes:	rts
-:	jmp isoperator
 .endproc
 
 ;*******************************************************************************

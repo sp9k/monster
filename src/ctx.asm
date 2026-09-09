@@ -262,10 +262,10 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 ;  - .XY:            the address of the line returned
 ;  - .A:             the # of bytes read (0 if EOF)
 ;  - .C:             set on error
-;  - mem::ctxbuffer: the line read from the context
+;  - mem::asmbuffer: the line read from the context
 ;  - asm::linenum:   line number that the line corresponds to
 .proc getline
-@out=mem::ctxbuffer
+@out=mem::asmbuffer
 	; read until a newline or EOF
 	ldy #$00
 	sty @out	; init buffer to empty
@@ -288,7 +288,7 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	sta @out,y
 	beq @done
 	iny
-	cpy #LINESIZE
+	cpy #MAX_LINE_LEN+1
 	bcc @read
 	RETURN_ERR ERR_LINE_TOO_LONG
 

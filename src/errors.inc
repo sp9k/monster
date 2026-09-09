@@ -130,6 +130,10 @@ ERR_SEGMENT_OUT_OF_RANGE = 79
 ERR_NOT_INTEGRAL         = 80
 
 ;*******************************************************************************
+; LINK file ALIGN errors
+ERR_INVALID_ALIGNMENT    = 81
+
+;*******************************************************************************
 ; DOS STATUS CODES
 ; Stands in for the code the drive reports in its error message when that
 ; message can't be read (e.g. the drive never answered).  It is outside the

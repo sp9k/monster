@@ -66,7 +66,8 @@ The linker loads this file before beginning the link process and uses it to init
 
 Every `MEMORY` section must define both `START` and `END`. Note that the `END` address is exclusive.
 Every `SEGMENTS` entry must define `LOAD`. `RUN` is optional and defaults to the
-same memory section as `LOAD`. `FILL` is also optional and defaults to disabled.
+same memory section as `LOAD`. `ALIGN` is optional and defaults to no alignment.
+`FILL` is also optional and defaults to disabled.
 Names must be unique within each block.
 
 #### LOAD vs RUN
@@ -89,6 +90,37 @@ section's `START`, and each subsequent one begins where the previous ended.
 If a SEGMENT defins both a `LOAD` and a `RUN` SECTION, it occupies each.  That is,
 the SECTIONs that it *loads* and *runs* in are both advanced by the size of the SEGMENT.
 
+#### ALIGN
+
+The `ALIGN` property tells the linker to begin a SEGMENT on an address boundary instead of
+wherever the previous SEGMENT ended.  Its value is the size of the
+boundary, (in decimal or, with a `$` prefix, in hexadecimal). Any value in the range [1,$ffff]
+is allowed.
+
+To achieve the alignment, the linker *pads* the binary (fills it with 0's) until it arrives on the
+next address evenly divisible by the requested boundary.
+
+Given the `SEGMENTS` block
+
+```
+SEGMENTS [
+    CODE:
+        LOAD=ROM;
+    TABLE:
+        LOAD=ROM
+        ALIGN=$100;
+]
+```
+
+and a `ROM` SECTION starting at $2000, $18 bytes of `CODE` places `TABLE` at
+$2100 rather than $2018, and $2018-$20ff is padding (0) in the linked binary.
+
+Alignment like this may be desirable for timing sensitive code, where you want
+to make sure a table stays within a single page to avoid the cycle penalty for crossing one.
+
+Note that while padding logically applies to `RUN` sections as well as `LOAD` ones, the
+`LOAD` one is the only one that causes the linker to emit padding bytes (remember that `RUN`
+sections just represent the execution region at runtime).
 
 
 ````{note}
@@ -222,12 +254,12 @@ To link multiple object files the linker follows the following procedure:
 * Fully resolve global symbols and build the global symbol table
 * Pass 2: link objects (per object file)
     * Build object-local context
-         * Get base address of each SECTION from global SEGMENT base + object's SEGMENT offset
+         * Get each fragment's fixed LOAD and RUN base from pass-1 layout
          * Map symbol indices to their resolved addresses using global symbol table / segment base address
     * Store object code to the current address for each segment
     * Walk relocation table, for each segment, and apply the relocations described using the global symbol table
     * Load debug information
-         * for each block, add base address of SEGMENT for corresponding file
+         * for each block, add its object-local fragment's RUN base
          * append line program data for each object file to get global line program data
 * Validate
   * make sure segments don't overlap
@@ -252,9 +284,13 @@ The linker uses the header in each object file to determine the final layout in 
 
 | FIELD        | SIZE |  DESCRIPTION
 |--------------|------|--------------------------------------------------
-| num segments |  1   | number of SEGMENTS used
+| num segments |  1   | number of object-local fragments (names can repeat)
 | num exports  |  1   | number of exports in object file
 | num imports  |  2   | number of imports in object file
+| num locals   |  2   | number of local symbols in object file
+
+A zero-terminated filename list (terminated by an empty name) precedes these
+counts. Symbol records use this list for their source-definition locations.
 
 
 #### Segment header
@@ -282,11 +318,17 @@ The format of this header in the object code is as follows:
 
 | FIELD | SIZE |  DESCRIPTION
 |-------|------|--------------------------------------------------
-| name  |   8  | SEGMENT name (where to write SECTION to)
-| size  |   2  | size in bytes
+| name  |   8  | named SEGMENT; repeated names identify separate fragments
+| origin |  2  | literal address for absolute code, zero otherwise
+| type  |   1  | SEGZP=1, SEG=2, BSS=3, BSSZP=4, absolute=$ff
+| size  |   2  | raw fragment size, excluding alignment padding
+| alignment | 2 | boundary before this fragment, zero for no constraint
+| fill  |   1  | byte used for this boundary's padding
 
-At link time, the linker sums the _size_ field for the SEGMENTs in each object file
-to determine the total amount of space needed for the SEGMENT in the final binary.
+At link time, the linker lays out fragments in object/header order within each
+named SEGMENT, inserting padding before each fragment as needed. Sizes plus
+padding determine the named SEGMENT's final size. Symbol segment IDs and
+offsets identify an object-local fragment, not merely a named SEGMENT.
 
 The order of the definitions in this header also corresponds to the order of the
 SEGMENT tables written later in the object file (see "SECTIONS" below for more detail on this).
@@ -432,7 +474,8 @@ The following table describes the relocation record format in detail.
 | info              |  1   | bitfield of information about the relocation entry
 | offset            |  2   | offset from SEGMENT to relocate
 | symbol/segment id |  2   | the symbol index in the symbol table (for symbol-relative relocation) or segment for segment-relative
-| addend MSB*       |  1   | explicit MSB for addend (only when applying post-processing)
+| addend MSB*       |  1   | explicit MSB for post-processing, PC-relative branches, or differences
+| negative fragment* | 1  | fragment whose RUN base is subtracted for a difference
 
 \* see details below for when this field is included
 
@@ -441,13 +484,20 @@ The following table describes the relocation record format in detail.
 | FIELD      | BIT(S) | DESCRIPTION
 |------------|--------|---------------------------------------------------------------------
 | size       |   0    | size of target value to modify 0=1 byte, 1=2 bytes
-| mode       |   1    | what to relocate relative to: 0=segment relative, 1=symbol relative
+| mode       |   1    | base: 0=imported symbol, 1=object-local fragment
 | postproc   |  2-3   | post-processing to apply after adding addend (0=NONE, 1=LSB, 2=MSB)
+| PC-relative | 4    | subtract the RUN address after the branch operand; check signed byte range
+| difference | 5     | subtract the negative fragment's RUN base before adding the addend
 
 To apply the relocation table for a SEGMENT, we walk the table, go to the address of that SEGMENT's
 base + the offset for each table entry, and depending on the value of "mode" in the "info" field:
- - 0 (segment relative) -look up SEGMENT base address and add addend to it
- - 1 (symbol relative) - look up the symbol address and add addend to it
+
+ - 0 (symbol relative): look up the imported symbol's final address.
+ - 1 (fragment relative): look up the fragment's RUN base ($ff denotes a zero base for an absolute branch target).
+
+Subtract the negative fragment base if present, then add the addend. The site
+offset is relative to the containing fragment's LOAD base when patching bytes
+and its RUN base when calculating a branch displacement.
 
 Finally, we apply post-processing (bits 2-3) in the info byte, if necessary.
 
@@ -455,12 +505,14 @@ The "addend" is the value stored in the object code as the operand for the instr
 relocating.
 
 The addend is generally the same size as the target value to be relocated.
-The one exception is relocation entries that contain post-processing.  For these,
+For relocation entries that contain post-processing or a PC-relative branch,
 the intermediate value may be greater than $ff, so we need to encode a full 16-bit addend for the
 1 byte target.  For example: `LDA #<(LABEL + 500)` requires a 16-bit addend (500) to calculate
 the final 8-bit target.  The LSB of this addend is stored in the instruction stream, but in
 this special case the MSB is stored in an extra byte at the end of the relocation entry for that record.
-Because of this, records that contain post-processing are 6 bytes instead of 5.
+Records with post-processing or PC-relative branches are 6 bytes instead of 5.
+Difference records always include the explicit high byte and the negative
+fragment ID, making them 7 bytes, including when the target is a word.
 
 ### Debug information
 This table stores the program to evaluate line numbers and addresses within the object file as well as references to which source files were used to create the object file.  This information allows the linker to produce a single mega debug file (or .D file) that contains all the information for the linked program, which allows for source level debugging.
