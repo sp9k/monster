@@ -377,7 +377,9 @@ COLMEM_ADDR=$9400
 	lda dbg::breakpoint_flags,x
 	beq :+
 	ldy #$2a			; breakpoint ON
-:	sty strings::breakpoints_line
+:	tya
+	ldy #$00
+	sta (@format_str),y
 
 	; push the breakpoint ID
 	lda @offset

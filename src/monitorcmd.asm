@@ -1193,6 +1193,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda sim::reg_sp
 	sec			; +1
 	adc @offset
+	bcs @ok			; start is past $01ff -> nothing to trace
 	sta @sp
 	lda #>$0100		; MSB of stack base
 	sta @sp+1
@@ -1265,6 +1266,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	pha
 
 	ldxy #@backtrace_msg
+	RENDER_STR		; render the message (consumes the pushed args)
 	jmp mon::puts
 
 @nosym:	; no symbols exist; push placeholders for the name and offset

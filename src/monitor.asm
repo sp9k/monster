@@ -953,8 +953,10 @@ rowshi:
 @done:	RETURN_OK
 
 @err:	; display error
+	pha			; save the error code (consumed by RENDER_STR)
 	jsr unblank		; re-enable the IRQ (disabled for file IO)
 	ldxy #strings::file_open_failed
+	RENDER_STR		; render the message (consumes the pushed error code)
 	jsr __monitor_puts
 	sec
 	rts

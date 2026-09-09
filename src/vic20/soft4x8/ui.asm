@@ -579,7 +579,9 @@ VIA_T2CH = $9		; T2 counter hi
 	lda dbg::breakpoint_flags,x
 	beq :+
 	dey				; ldy #BREAKPOINT_CHAR
-:	sty strings::breakpoints_line
+:	tya
+	ldy #$00
+	sta (@format_str),y
 
 	; push the breakpoint ID
 	lda @offset
