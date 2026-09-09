@@ -1091,6 +1091,7 @@ BANKED_CODE "ASMBANK"
 	cmp #'('
 	bne @evalexpr
 	jsr is_indirect
+	bcs @unexpected_char	; unbalanced parens, e.g. a missing ')'
 	bne @evalexpr
 	inc indirect_hint	; might be dealing with indirect opcode
 
@@ -1946,6 +1947,7 @@ BANKED_CODE "ASMBANK"
 ;   - zp::line: the operand to check
 ; OUT:
 ;   - .Z: set if the operand IS indirect (completely enclosed in a parens)
+;   - .C: set if the operand's parentheses are unbalanced
 .proc is_indirect
 @cnt=r0
 @len=r1
@@ -1958,7 +1960,7 @@ BANKED_CODE "ASMBANK"
 @l0:	; check if opening paren is closed before end of line
 	lda (zp::line),y
 	jsr islineterminator_or_separator
-	beq @no		; at the effective end of line and unbalanced
+	beq @unbalanced	; at the effective end of line and unbalanced
 	cmp #'('
 	bne :+
 	inc @cnt
@@ -1986,7 +1988,13 @@ BANKED_CODE "ASMBANK"
 	bne @l1		; skip whitespace and keep looking
 
 @no:	lda #$ff
-@yes:	rts
+@yes:	clc		; parens are balanced
+	rts
+
+@unbalanced:
+	lda #$ff	; .Z clear: not indirect
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************

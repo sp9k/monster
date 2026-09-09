@@ -23,11 +23,15 @@ We'll touch more on the concept of these "windows" when we start debugging.
 
 Now rename the buffer by entering EX COMMAND mode ({c64-key}`:`) and typing `r main.s` at the prompt.
 
-Let's set the origin of this program to `$1000`.
+Let's set the origin of this program to `$2000`.
 
 ```
-	.org $1000
+	.org $2000
 ```
+
+`$2000` is outside of the range visible to the VIC, so it is a good location for code on
+a program targetting an expanded RAM configuration.  Our program will use almost all of the memory
+from `$1000`-`$2000`, so this is important.
 
 Since this program will be a bit more substantial, we will want to leverage Monster's macro
 capabilities a bit.  A good organizational practice for this is to have a single "macros" file
@@ -96,6 +100,16 @@ information.
 
 This is why it's a good idea to start your session by assembling your macros file and to
 include it at the top of your "main" entrypoint file.
+
+Add that include near the top of `main.s`, immediately after the `.org` directive:
+
+```
+    .inc "macros.inc"
+```
+
+The `.inc` directive assembles the contents of the target file directly.  Macros must
+be defined before their first use, so that is a compelling reason for including your
+macro definitions this way.
 
 #### Custom characters
 
@@ -226,37 +240,47 @@ values in each row sequentially align with the ones on the row above, e.g.
 2 5 8
 ```
 
-We will accomplish this with a nested loop that initializes the screen matrix column-by-column.
-We don't explicitly track the row counter, but when we have fully initialized the screen the
-`@addr` update will leave the most significant byte of that pointer at `$20`, which we can use
-as our signal to stop.
+We will accomplish this with a nested loop that initializes the screen matrix row-by-row.
 
 ```
 init
     .eq @addr $f0
 
     ; set @addr to matrix origin ($1000)
-    ldxy #$1000
+    ldxy $1000
     stxy @addr
 
-@l0 ldx #0        ; row counter
-:   txa
-    sta (@addr),y
-    inx
-    cpx #20
+    ldx #$0f	; screen code
+@l0 ldy #0
+    txa
+:   sta (@addr),y
+    clc
+    adc #$0c
+    iny
+    cpy #20
     bne -
 
-    ; next column
+    ; next row
     lda @addr
     clc
-    adc #$c0
+    adc #20
     sta @addr
     bcc +
     inc @addr+1
-:   lda @addr+1
-    cmp #$20
+:   inx
+    cpx #12+$0f
     bne @l0
 ```
+
+`X` contains the screen code in this loop.  Note that it starts at `$10`.  This is because
+the data for the first `$0f` screen codes overlaps our matrix and, thus, is unusable
+for storing the bitmap data.  We need 20*12 (240) bytes for our matrix, and, at 16 bytes per
+(double height) character, that means our first usable code in the bitmap space is 240/16 = 15 (`$0f`).
+
+For each column we write, we are updating the screen code by `$0c`.  This is simply the
+number of rows in our matrix.  Striding by this amount and incrementing our base value per
+row gives us a neat arrangement of 1,2,3,4 in the vertical/columnar direction, which is precisely
+what we want for easy addressing.
 
 The matrix should now be established.  It lives at address `$1000` and references a custom
 character set from `$1100-$1fff` (our "bitmap").  At this point, the contents of the bitmap
@@ -266,9 +290,10 @@ display.  Let's fix that by clearing the bitmap:
 ```
 clr
 .eq @bm $f0
-    ldxy #$1100
+    ldxy $1100
     stxy @bm
 
+    lda #$00
     ldy #$00
     ldx #$20-$11    ; # of pages to clear
 :   sta (@bm),y
@@ -278,6 +303,27 @@ clr
     dex
     bne -
 ```
+
+To clear the full bitmap, we must clear all pages from `$1100`-`$2000`.  `X` is our "page counter",
+so we initialize it with the difference of the high bytes of those two addresses.  `A` is zero
+to clear every pixel (a 0 means the pixel is unset).
+
+The color memory also needs to be initialized. Color memory corresponds to the screen matrix, and the position
+of it depends on the position of the screen matrix.  With the matrix at address `$1000`, the color
+memory is located at `$9400`.
+
+We will clear each cell to white (`$01`).
+
+```
+    lda #$01
+clrcolor
+    sta $9400,x
+    dex
+    bne clrcolor
+```
+
+Color memory also follows the double height character flag, so initializing a single page will handle
+the entire screen.
 
 We've already built a few logical chunks of code.  It's always a good idea to test as you
 go so that you're not left trying to hunt down a bug in hundreds of lines of untested code.
@@ -377,7 +423,7 @@ scroll around through memory as we please using the usual motion keys (h/j/k/l).
 
 Once activated, set the address to our screen matrix by pressing {c64-key}`Up-Arrow` and then entering `1000` and
 {c64-key}`RETURN`.  The viewer will refresh with the contents at address `$1000` and _hopefully_ you will
-see a steadily increasing (by `$0c`) array of values: `01`, `0c`, `18`, ...
+see a steadily increasing (by `$0c`) array of values: `10`, `1c`, `28`, ...
 
 If you don't, then try to see what is wrong with the pattern, hunt for any bugs in the initializatoin loop, and
 fix using the usual flow.
@@ -489,9 +535,8 @@ smoothly (pixel-by-pixel).  To do this, we shift the sprite data by the number o
 is offset from the nearest character boundary (0-7).  At the character boundary, we move it to the
 next 8-pixel wide cell.
 
-We will use a multicolor sprite, which has 2 bits per pixel.  This means each step of motion
-requires two shifts, but we will accomplish this by just making sure our "spritex" position is
-always a multiple of 2.
+We will move the sprite one bitmap bit at a time.  Its `spritex` position therefore also tells
+us how many places to shift it within the current character cell.
 
 The spillover that is shifted _out_ of the character "sprite" will be rotated into the next character
 to the right.
@@ -503,23 +548,30 @@ drawspr
     ldx #7
 @l0 lda #$00
     sta sprite+8,x
+    lda spritedat,x
+    sta sprite,x
     lda spritex
     and #$07
     tay
+    beq @cont
 
     lda spritedat,x
 :   lsr
     ror sprite+8,x
-    sta sprite,x
     dey
     bne -
+    sta sprite,x
 
+@cont
     dex
     bpl @l0
 ```
 
-We've now copied the sprite to two buffers: `spritedat` and `spritedat2`.  The latter is the
-shifted data from the the sprite character.  All that's left to get the sprite on screen
+Here `sprite` contains 16 bits of data.  `sprite` contains the left half and `sprite+8` the right
+one.  When `spritex` evenly divides by 8, we skip the shift altogether (this is the `beq @cont` after
+we initialize the `sprite` data for the row).
+
+We've now copied the shifted sprite into a 16-byte buffer.  All that's left to get the sprite on screen
 is to copy this buffer onto our software-defined bitmap.  You may have wondered why we haven't
 considered the sprite's y-position at all.  Remember that our bitmap is organized in linear
 columns of pixels.  To draw to any arbitrary y-position we just need to offset our write
@@ -529,12 +581,12 @@ To make the addressing even easier we will define a pair of tables using the `.R
 ```
 columnslo
 .rep 20,i
-    .db <($1000+(i*$c0))
+    .db <($1100+(i*$c0))
 .endrep
 
 columnshi
 .rep 20,i
-    .db >($1000+(i*$c0))
+    .db >($1100+(i*$c0))
 .endrep
 ```
 
@@ -549,6 +601,7 @@ sprite data.
 
 ```
 .eq @col $f0
+.eq @col2 $f2
 
     ; get column address (x/8)
     lda spritex
@@ -565,19 +618,24 @@ sprite data.
     lda columnshi+1,x
     sta @col2+1
 
-    ldy #7
+    ldy spritey
+    ldx #7
 @blit
-    lda sprite,y
+    lda sprite,x
     sta (@col),y
-    lda sprite+8,y
+    lda sprite+8,x
     sta (@col2),y
     dey
+    dex
     bpl @blit
 
     rts
 ```
 
-That's it!
+We prefer to use `Y` here as the destination offset in the bitmap because it allows
+us to use indirect y-indexed addressing.  The `X` register is often less versatile when
+this sort of addressing is needed, so we use it as a basic counter for the number of rows
+being "blitted".
 
 We should verify that this works as expected before continuing, so let's add a call to `drawspr`
 to our main loop.  For now, we'll just call it again and again.
@@ -594,10 +652,17 @@ We also need to define all the new sprite we are drawing and its associated stat
 spritedat
 .db $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff
 sprite
-    .res 8
+    .res 16
 spritex
     .db 0
+spritey
+    .db 120
 ```
+
+As we mentioned earlier, `sprite` is 16 bytes (double the size of the sprite data). `sprite+8`
+contains the overflow when the sprite is _shifted_ to the right.
+
+`spritey` is initialized here as `120`.  This is an arbitrary value near the bottom of the bitmap.
 
 Save your work and assemble.  Fix any bugs/typos and continue on to debugging.  Step/trace however you
 like and hopefully you should see the new sprite visible on screen by the time we get through one iteration
@@ -639,11 +704,13 @@ Our program doesn't need the keyboard, so you could leave simply keep PB7 as an 
 forever, but this approach allows you to extend the program with keyboard input later if you wish.
 
 ```
+    sei
     lda #$7f
     sta $9122      ; PB7=input
     lda $9120      ; sample
     ldx #$ff
     stx $9122      ; PB7=output (restore keyboard)
+    cli
 
     eor #$ff       ; active low -> active high
     and #JOYRIGHT
@@ -660,16 +727,17 @@ per switch.
 |right|     |fire |left |down | up  |     |     |
 
 
-```{note}
-The KERNAL's interrupt handler scans the keyboard sixty times a second and assumes it owns
-`$9122`.  If your program leaves interrupts enabled, wrap the two writes above in `sei`/`cli` so
-that a scan can't land in the middle of them.
-```
+Note that we disabled interrupts when sampling the joystick.  The KERNAL
+IRQ is still enabled in our program, and it uses the VIA for keyboard input.
+Without this, the KERNAL may read bad data, thinking the VIA's are still in the state
+it left them.  We restore `$9122` to the KERNAL's usual value to keep things in
+the state it expects.
 
-With the switches in `joy`, moving the player is just a matter of nudging its position.  Recall
-that `spritex` must stay even (our multicolor sprite is shifted two pixels at a time), so we
-step it by two.  Each move is guarded so that the sprite can't wander off the edges of the
-bitmap: a column is `$c0` bytes tall and we have 20 of them.
+
+With the switches in `joy`, moving the player is just a matter of looking at this variable
+and applying the appropriate `INC` or `DEC`.
+
+We will also clamp the sprite position to prevent it from leaving the bitmap range.
 
 ```
 movespr
@@ -679,7 +747,6 @@ movespr
     lda spritex
     beq +          ; already at the left edge
     dec spritex
-    dec spritex
 
 :   lda joy
     and #JOYRIGHT
@@ -687,7 +754,6 @@ movespr
     lda spritex
     cmp #(20*8)-8
     beq +
-    inc spritex
     inc spritex
 
 :   lda joy
@@ -713,24 +779,33 @@ And the new state that these routines need:
 ```
 joy
     .db 0
-spritey
-    .db 0
 ```
 
-Finally, wire it all into the main loop:
+Finally, wire it all into the main loop.  Draw the initial sprite once, then wait for a
+stable raster position before erasing the old image (by polling `$9004`), updating its position,
+and redrawing it:
 
 ```
+    jsr drawspr
 main
+    lda #$60
+:   cmp $9004
+    bne -
+    jsr drawspr     ; erase
     jsr readjoy
     jsr movespr
-    jsr drawspr
+    jsr drawspr     ; redraw
     jmp main
 ```
 
+Polling `$9004` is a common, basic way to introduce a predictable delay and make sure updates occur
+in an area of the display that will not cause "tearing", visible artifacts as the sprite is erased
+and redrawn.
+
 Assemble and run once more.
 
-The sprite should now follow the joystick left and right.  So close! But you'll notice
-one thing immediately: the spirte smears as it moves, leaving a trail of itself wherever it goes.
+The sprite should now follow the joystick.  So close! But you'll notice one thing immediately:
+the sprite smears as it moves, leaving a trail of itself wherever it goes.
 This is because `drawspr` only ever _draws_ the sprite — we never erase the sprite at its previous position.
 
 Simple enough to fix.
@@ -748,13 +823,14 @@ your `blit` loop and add an `eor (@col),y` between the sprite data loads and the
 
 ```
 @blit
-    lda sprite,y
+    lda sprite,x
     eor (@col),y	; new
     sta (@col),y
-    lda sprite+8,y
+    lda sprite+8,x
     eor (@col2),y	; new
     sta (@col2),y
     dey
+    dex
     bpl @blit
 
 ```

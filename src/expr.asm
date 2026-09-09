@@ -1717,9 +1717,22 @@ __expr_float_format:
 	beq @end		; no operators: terminate the RPN list
 	lda @operators-1,x
 	cmp #'('
-	bne :+
+	bne @evalrem
+
+	; Unclosed '(' is legal for (zp,x) addressing- Assume this is the
+	; case if the paren is the last operator left and we stopped on a ','
+	; Anything else is a missing ')' or comma in a function
+	cpx #$01
+	bne @noclose
+	ldy #$00
+	lda (zp::line),y
+	cmp #','
+	beq @end		; "(zp,x)" -> drop the paren and terminate
+
+@noclose:
 	RETURN_ERR ERR_INVALID_EXPRESSION ; missing ')' or comma in a function
-:
+
+@evalrem:
 	jsr @eval		; evaluate each remaining operator
 	bcs @ret		; RPN list full
 	jmp @done
