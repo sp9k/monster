@@ -468,7 +468,7 @@ Press {c64-key}`[` and {c64-key}`]` to navigate to the previous and next empty l
 Empty lines therefore make useful logical divisions in your source.
 
 Banner comments are also common practice to separate logical blocks of procedures or data.  Monster
-also allows to easily navigate to these with {c64-key}`Ctrl + :` (previous banner) and {c64-key}`Ctrl + ;` (next banner).
+also allows to easily navigate to these with {c64-keys}`Ctrl + :` (previous banner) and {c64-keys}`Ctrl + ;` (next banner).
 
 Finally, a common practice will be inserting new lines above or below the current line.
 From COMMAND mode you can do this by pressing {c64-key}`O` (to insert a line _below_) or {c64-keys}`SHIFT + O`

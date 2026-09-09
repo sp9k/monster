@@ -39,6 +39,7 @@ below for more info on modes).
 | {c64-key}`F8`          | `MEMVIEW       `| opens the memory viewer/editor                                                                  |
 | {c64-key}`F5`          | `BRKVIEW       `| opens the breakpoint viewer/editor                                                              |
 | {c64-key}`F6`          | `WATCHVIEW     `| opens the watch viewer/editor                                                                   |
+| {c64-keys}`Shift + Slash` | `HELP          `| displays memory ranges and current resource usage                                            |
 | {c64-keys}`C= + Plus`  | `NEXT DRIVE    `| Selects the next drive (limited to #15)                                                         |
 | {c64-keys}`C= + Minus` | `PREV DRIVE    `| Selects the previous drive (limited to #8)                                                      |
 | {c64-key}`Colon`       | `EX COMMAND    `| Enters "EX" mode (see the EX COMMANDS section below for more on this)                           |
@@ -46,6 +47,21 @@ below for more info on modes).
 ```{warning}
 Closing a source buffer with {c64-keys}`C= + Q` immediately discards any
 unsaved changes in that buffer. The editor does not ask for confirmation.
+```
+
+#### Help
+
+Press {c64-keys}`Shift + Slash` (`?`) to display the assembled program and debugger memory ranges,
+along with the current usage and limits (e.g. current and maximum number of labels used). Press any key to
+return to the editor.
+
+```{figure} screenshots/help.png
+:alt: The help overlay showing memory ranges and assembler resource usage
+:align: center
+:width: 75%
+:class: screenshot
+
+The help overlay summarizes memory allocation and assembler resource usage
 ```
 
 #### Drive selection
@@ -391,8 +407,8 @@ The following keys are handled in COMMAND mode.
 | {c64-keys}`Shift + I`                      | `INSERT LINE`| enters insert mode and moves to the first character in the current line                 |
 | {c64-key}`Left-bracket`                    | `PREV BLOCK `| moves to the previous empty line or start of file if there isn't one                    |
 | {c64-key}`Right-bracket`                   | `NEXT BLOCK `| moves to the next empty line or end of file if there isn't one                          |
-| {c64-key}`Ctrl + :`                        | `PREV BANNER`| moves to the previous comment banner - `;;;;;;;...`                                     |
-| {c64-key}`Ctrl + ;`                        | `NEXT BANNER`| moves to the next comment banner - `;;;;;;;...`                                         |
+| {c64-keys}`Ctrl + :`                       | `PREV BANNER`| moves to the previous comment banner - `;;;;;;;...`                                     |
+| {c64-keys}`Ctrl + ;`                       | `NEXT BANNER`| moves to the next comment banner - `;;;;;;;...`                                         |
 
 ### Insert mode
 Entering insert mode allows the user to enter text at the cursor location.  Keystrokes are
