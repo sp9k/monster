@@ -472,10 +472,26 @@ main:	jsr key::getch
 ; IN:
 ;  - .XY: the filename of the file to assemble
 .proc command_assemble_file
-@filename=zp::editortmp
-	stxy @filename
+@name=r0
+@filename=mem::filename
+	; copy filename ($100 and zp::editortmp are clobbered by save prompt)
+	stxy @name
 
-	ldxy #strings::assembling
+	ldy #$00
+@l0:	lda (@name),y
+	sta @filename,y
+	beq @cont
+	iny
+	cpy #16			; max filename len in CBM DOS
+	bne @l0
+	lda #$00
+	sta @filename,y		; terminate
+
+@cont:	jsr prompt_saveall
+	bcc :+
+	rts			; aborted
+
+:	ldxy #strings::assembling
 	jsr blank
 
 	jsr clear_errors	; close errlog (if open)
@@ -491,7 +507,7 @@ main:	jsr key::getch
 	jsr asm::startpass
 
 	; do the first pass of assembly
-	ldxy @filename
+	ldxy #@filename
 	jsr asm::include	; assemble the file (pass 1)
 	bcs @logerr
 
@@ -510,7 +526,7 @@ main:	jsr key::getch
 	jsr log_pass2
 	lda #$02
 	jsr asm::startpass
-	ldxy @filename
+	ldxy #@filename
 	jsr asm::include	; assemble the file (pass 2)
 	bcs @logerr
 

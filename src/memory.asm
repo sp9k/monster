@@ -67,7 +67,7 @@ __mem_breakpoint_rows: .res SCREEN_HEIGHT
 .endif
 
 .export __mem_filename
-__mem_filename: .res 16	; buffer for output file
+__mem_filename: .res 17	; buffer for a filename (16 chars + terminator)
 
 .export __mem_findbuff
 __mem_findbuff: .res MAX_SEARCH_LEN+1	; +1 for terminating 0
