@@ -3024,17 +3024,8 @@ edit_refresh:
 	beq @l0
 
 @clr:	; clear the rest of the lines (including highlights)
-	ldx zp::cury
-	cpx height
-	inx
-	bcs @done
-	lda #$00
-	sta mem::breakpoint_rows,x	; clear breakpoint render flags
-	stx zp::cury
-	jsr draw::resetline
-	lda zp::cury
-	jsr scr::clrline		; clear the bitmap data for this row
-	jmp @clr
+	inc zp::cury
+	jsr clear_rows
 
 @done:	ldx status_row
 	lda #COLOR_RVS
@@ -4195,10 +4186,43 @@ goto_buffer:
 
 @clrnew:
 	; clear the newly opened line
-	ldx zp::cury
-	jsr draw::resetline
 	lda zp::cury
-	jmp scr::clrline
+	jmp clear_row
+.endproc
+
+;*******************************************************************************
+; CLEAR ROW
+; Clears the given row: its characters, its color (and gutter), and its
+; breakpoint marker
+; IN:
+;  - .A: the row to clear
+.proc clear_row
+	pha
+	tax
+	lda #$00
+	sta mem::breakpoint_rows,x	; clear the breakpoint render flag
+	jsr draw::resetline		; reset the color (and/or gutter)
+	pla
+	jmp scr::clrline		; clear the row
+.endproc
+
+;*******************************************************************************
+; CLEAR ROWS
+; Clears every row from the cursor's row to the last row of the editor
+; window.  Does nothing if the cursor is already below the last row.
+; IN:
+;   - zp::cury: first row to clear
+; OUT:
+;   - zp::cury: last row that was cleared + 1
+.proc clear_rows
+@l0:	lda zp::cury
+	cmp height
+	beq @clr
+	bcs @done		; below the editor window -> nothing to clear
+@clr:	jsr clear_row
+	inc zp::cury
+	bne @l0			; branch always
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -5001,12 +5025,19 @@ goto_buffer:
 	tax
 	ldy #$00
 	jsr src::downn		; move to the line that we're bringing up
-	bcs @done		; no new line to get
+	bcs @clr		; no new line to get -> erase the bottom row
 
 	jsr src::home
 	jsr src::get
 	lda height
 	jsr draw_src_line	; draw the new line that was scrolled up
+	jmp @done
+
+@clr:	; there is no line to scroll in; the bottom row still holds the stale
+	; copy of the line that was scrolled up out of it
+	lda height
+	jsr clear_row
+
 @done:	jsr src::popgoto	; restore source position
 	jmp refresh_line	; restore buffer
 .endproc
@@ -5794,19 +5825,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	sta @rowsave
 
 	; clear rows [cury, height] inclusive
-@clrloop:
-	ldx zp::cury
-	lda #$00
-	sta mem::breakpoint_rows,x	; clear breakpoint render flag
-	jsr draw::resetline		; reset the color for the row
-	lda zp::cury
-	jsr scr::clrline		; clear the bitmap data for the row
-
-	inc zp::cury
-	lda zp::cury
-	cmp height
-	bcc @clrloop
-	beq @clrloop
+	jsr clear_rows
 
 	lda @rowsave
 	sta zp::cury

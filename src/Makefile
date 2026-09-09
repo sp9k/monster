@@ -76,6 +76,10 @@ TEST_INCS=$(wildcard tests/*.inc)
 TEST_TXTS=$(wildcard tests/*.txt)
 TEST_FILES=$(TESTS) $(TEST_INCS) $(TEST_TXTS) tests/link
 
+# sources for the .INC cycle/depth tests; kept off the main test disk so that
+# assembling everything on it doesn't trip the deliberate errors
+CYCLIC_TESTS=$(wildcard tests/cyclic/*.s)
+
 all: test.d81
 
 cart: $(CART_IMAGE)
@@ -128,6 +132,10 @@ test-disk: $(TEST_FILES)
 test.d81: $(BOOT_DEP) $(TESTS) $(TEST_INCS) $(TEST_TXTS)
 	$(C1541) -format test,1 d81 test.d81 -attach test.d81 $(BOOT_WRITE) $(addprefix -write , $(TEST_FILES))
 
+# manual test disk for .INC cycle detection; see tests/cyclic/README.txt
+cyclic.d81: $(CYCLIC_TESTS)
+	$(C1541) -format cyclic,1 d81 cyclic.d81 -attach cyclic.d81 $(addprefix -write , $(CYCLIC_TESTS))
+
 start-disk-jiffy64: test.d81
 	$(X64) -default +warp -kernal JiffyDOS_C64.bin -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384  -moncommands moncommands -8 test.d81
 
@@ -135,6 +143,6 @@ start-cart-c64: monster.crt test-disk
 	$(X64) -default -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384 -cartcrt monster.crt -moncommands moncommands -8 test.d81
 
 clean:
-	rm -f *.prg *.o test.d81 monster.d81
+	rm -f *.prg *.o test.d81 cyclic.d81 monster.d81
 	rm -f $(CART_IMAGE) $(TEST_IMAGE)
 	rm -f vic20/*.o vic20/ultimem/*.o vic20/hard8x8/*.o vic20/soft4x8/*.o c64/*.o

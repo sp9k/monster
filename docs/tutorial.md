@@ -839,6 +839,137 @@ Reassemble and give this updated code another go in the debugger.
 
 When you free run the program, you should now see the sprite moving around cleanly on the screen.
 
+#### Cycling through the character set
+
+The solid block was a fun start to prove out our sprite renderer works, but
+what about our character set we worked so hard to rip and edit?  Next we will allow the user
+of our program to access our character set by programatically chaning the sprite data
+that is rendered.
+
+To accomplish this, let's replace the hardcoded `spritedat` with a character ID and include the
+entire character set at the end of `main.s`:
+
+```
+spriteid
+    .db 0
+swaptmr
+    .db 0
+
+sprite
+    .res 16
+spritex
+    .db 0
+joy
+    .db 0
+spritey
+    .db 120
+
+chars
+    .inc "chars.s"
+```
+
+The `chars` label represents the address of our character set.
+If you wish, you may also put the `chars` label inside the `chars.s` file.
+
+`spriteid` will represent the cell from our character set that we'll render.  It will
+be the basis for the multiplication we do to calculate the actual data for the "sprite" at
+runtime.
+
+`swaptmr` will help us slow down the fire button reads.  Without some kind of delay, the
+fire button would be polled far too quickly by our program and it would be a chaotic
+experience cycling through the character set.
+
+Next, replace the first half of `drawspr` with code that finds the selected character and
+shifts its eight rows into the existing 16-byte sprite buffer:
+
+```
+drawspr
+.eq @spr $f0
+.eq @next $f2
+    ; get sprite data from id
+    lda #$00
+    sta @spr+1
+    lda spriteid
+    asl
+    rol @spr+1
+    asl
+    rol @spr+1
+    asl
+    rol @spr+1
+    adc #<chars
+    sta @spr
+    lda #>chars
+    adc @spr+1
+    sta @spr+1
+
+    ldy #7
+@l0 lda #$00
+    sta @next
+    lda (@spr),y
+    sta sprite,y
+    lda spritex
+    and #$07
+    tax
+    beq @cont
+
+    lda (@spr),y
+:   lsr
+    ror @next
+    dex
+    bne -
+    sta sprite,y
+
+@cont
+    lda @next
+    sta sprite+8,y
+    dey
+    bpl @l0
+```
+
+Here we really want to use `@spr` with indirect, y-indexed addressing, but we also
+want to use x-indexed addressing for the `ROR` into the overflow area of our sprite data.
+As a compromise, we define a new zeropage scratch variable called `@next` and `ROR` into
+it per row-iteration.
+
+
+Now, the updates to our joystick handler `movespr`.
+At the beginning of this procedure, handle the fire button before checking the four directions:
+
+```
+movespr
+    lda joy
+    and #JOYFIRE
+    beq +
+    lda swaptmr
+    bne +
+    inc spriteid
+    lda #$08
+    sta swaptmr
+:   lda joy
+```
+
+The existing left-direction code follows immediately after that final `lda joy`.
+
+Note that we are checking the `swaptmr` counter here to stop the handler from changing characters
+every single frame.  We are reinitalizing the delay with `$08` each time we cycle characters,
+but you may experiment with this value.
+
+Finally, count the repeat timer down once per pass through the main loop:
+
+```
+    jsr drawspr     ; redraw
+    lda swaptmr
+    beq main
+    dec swaptmr
+    jmp main
+```
+
+We are careful not to decrement the timer if it's already 0 here.  If we did, the timer would
+overflow and we'd have to be very lucky to press the joystick on the exact frame where the timer is `0`.
+
+Assemble and run again.  Press fire to cycle through the characters in `chars.s`; any changes
+you made with the UDG editor should now appear in the moving sprite.
+
 #### Symbol viewer
 
 It is often useful to examine the symbols defined once your program is assembled.  This is
@@ -859,3 +990,411 @@ appendicies in this manual to understand how to do this).
 The rest of the manual serves as a reference as you continue to advance.  It is worth
 giving a first pass read, but the best way to learn is to keep exersizing your abilities
 by using Monster.  Have fun!
+
+#### Complete program
+
+For reference, here are the complete contents of each source file from the tutorial disk.
+
+##### `main.s`
+
+```
+.org $2000
+
+.inc "macros.inc"
+
+.eq JOYUP    $04
+.eq JOYDOWN  $08
+.eq JOYLEFT  $10
+.eq JOYFIRE  $20
+.eq JOYRIGHT $80
+
+init
+	.eq @addr $f0
+
+	; configure MINIGRAFIK
+	lda #20        ; # columns
+	sta $9002
+
+	lda #(12*2)+1  ; dbl rows
+	sta $9003
+
+	lda #$08
+	sta $900f
+
+	lda #$cc
+	sta $9005
+
+	lda $9113
+	and #$c3
+	sta $9113
+
+	ldxy $1000
+	stxy @addr
+
+	ldx #$10
+@l0	ldy #0
+	txa
+:	sta (@addr),y
+	clc
+	adc #$0c
+	iny
+	cpy #20
+	bne -
+
+	; next column
+	lda @addr
+	clc
+	adc #20
+	sta @addr
+	bcc +
+	inc @addr+1
+:	inx
+	cpx #12+$10
+	bne @l0
+
+clr
+	.eq @bm $f0
+	ldxy $1100
+	stxy @bm
+
+	lda #$00
+	ldy #$00
+	ldx #$20-$11
+:	sta (@bm),y
+	iny
+	bne -
+	inc @bm+1
+	dex
+	bne -
+
+	lda #$01
+clrcolor
+	sta $9400,x
+	sta $9500,x
+	dex
+	bne clrcolor
+
+	jsr drawspr
+main	lda #$60
+:	cmp $9004
+	bne -
+	jsr drawspr	; erase
+	jsr readjoy
+	jsr movespr
+	jsr drawspr ; redraw
+	lda swaptmr
+	beq main
+	dec swaptmr
+	jmp main
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+drawspr
+.eq @spr $f0
+.eq @next $f2
+; get sprite data from id
+	lda #$00
+	sta @spr+1
+	lda spriteid
+	asl
+	rol @spr+1
+	asl
+	rol @spr+1
+	asl
+	rol @spr+1
+	adc #<chars
+	sta @spr
+	lda #>chars
+	adc @spr+1
+	sta @spr+1
+
+	ldy #7
+@l0	lda #$00
+	sta @next
+	lda (@spr),y
+	sta sprite,y
+	lda spritex
+	and #$07
+	tax
+	beq @cont
+
+	lda (@spr),y
+:	lsr
+	ror @next
+	dex
+	bne -
+	sta sprite,y
+
+@cont	lda @next
+	sta sprite+8,y
+	dey
+	bpl @l0
+
+	.eq @col $f0
+	.eq @col2 $f2
+
+; get column address (x/8)
+	lda spritex
+	lsr
+	lsr
+	lsr
+	tax
+	lda columnslo,x
+	sta @col
+	lda columnshi,x
+	sta @col+1
+	lda columnslo+1,x
+	sta @col2
+	lda columnshi+1,x
+	sta @col2+1
+
+	ldy spritey
+	ldx #7
+@blit
+	lda sprite,x
+	eor (@col),y
+	sta (@col),y
+	lda sprite+8,x
+	eor (@col2),y
+	sta (@col2),y
+	dey
+	dex
+	bpl @blit
+
+	rts
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+readjoy
+	lda $9111      ; U/D/L/fire
+	eor #$ff
+	and #$3c       ; keep bits 2-5
+	sta joy
+
+	sei
+	lda #$7f
+	sta $9122      ; PB7=input
+	lda $9120      ; sample
+	ldx #$ff
+	stx $9122      ; PB7=output
+	cli
+
+	eor #$ff
+	and #JOYRIGHT
+	ora joy
+	sta joy
+	rts
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+movespr
+	lda joy
+	and #JOYFIRE
+	beq +
+	lda swaptmr
+	bne +
+	inc spriteid
+	lda #$08
+	sta swaptmr
+:	lda joy
+	and #JOYLEFT
+	beq +
+	lda spritex
+	beq +
+;dec spritex
+	dec spritex
+
+:	lda joy
+	and #JOYRIGHT
+	beq +
+	lda spritex
+	cmp #(20*8)-8
+	beq +
+;inc spritex
+	inc spritex
+
+:	lda joy
+	and #JOYUP
+	beq +
+	lda spritey
+	beq +
+	dec spritey
+
+:	lda joy
+	and #JOYDOWN
+	beq +
+	lda spritey
+	cmp #$c0-8
+	beq +
+	inc spritey
+
+:	rts
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+columnslo
+.rep 20,i
+	.db	<($1100+(i*$c0))
+.endrep
+
+columnshi
+.rep 20,i
+	.db >($1100+(i*$c0))
+.endrep
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+spriteid	.db 0
+swaptmr	.db 0
+
+sprite	.res 16
+spritex	.db 0
+joy	.db 0
+spritey	.db 120
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+chars
+.inc "chars.s"
+```
+
+##### `macros.inc`
+
+```
+.mac ldxy val
+    ldx #<val
+    ldy #>val
+.endmac
+
+.mac stxy addr
+    stx addr
+    sty addr+1
+.endmac
+```
+
+##### `chars.s`
+
+```
+.db $1c,$22,$4a,$56,$4c,$20,$1e,$00
+.db $18,$24,$42,$7e,$42,$42,$42,$00
+.db $7c,$22,$22,$3c,$22,$22,$7c,$00
+.db $1c,$22,$40,$40,$40,$22,$1c,$00
+.db $78,$24,$22,$22,$22,$24,$78,$00
+.db $7e,$40,$40,$78,$40,$40,$7e,$00
+.db $7e,$40,$40,$78,$40,$40,$40,$00
+.db $1c,$22,$40,$4e,$42,$22,$1c,$00
+.db $42,$42,$42,$7e,$42,$42,$42,$00
+.db $1c,$08,$08,$08,$08,$08,$1c,$00
+.db $0e,$04,$04,$04,$04,$44,$38,$00
+.db $42,$44,$48,$70,$48,$44,$42,$00
+.db $40,$40,$40,$40,$40,$40,$7e,$00
+.db $42,$66,$5a,$5a,$42,$42,$42,$00
+.db $42,$62,$52,$4a,$46,$42,$42,$00
+.db $18,$24,$42,$42,$42,$24,$18,$00
+.db $7c,$42,$42,$7c,$40,$40,$40,$00
+.db $18,$24,$42,$42,$4a,$24,$1a,$00
+.db $7c,$42,$42,$7c,$48,$44,$42,$00
+.db $3c,$42,$40,$3c,$02,$42,$3c,$00
+.db $3e,$08,$08,$08,$08,$08,$08,$00
+.db $42,$42,$42,$42,$42,$42,$3c,$00
+.db $42,$42,$42,$24,$24,$18,$18,$00
+.db $42,$42,$42,$5a,$5a,$66,$42,$00
+.db $42,$42,$24,$18,$24,$42,$42,$00
+.db $22,$22,$22,$1c,$08,$08,$08,$00
+.db $7e,$02,$04,$18,$20,$40,$7e,$00
+.db $3c,$20,$20,$20,$20,$20,$3c,$00
+.db $0c,$10,$10,$3c,$10,$70,$6e,$00
+.db $3c,$04,$04,$04,$04,$04,$3c,$00
+.db $00,$08,$1c,$2a,$08,$08,$08,$08
+.db $00,$00,$10,$20,$7f,$20,$10,$00
+.db $00,$00,$00,$00,$00,$00,$00,$00
+.db $08,$08,$08,$08,$00,$00,$08,$00
+.db $24,$24,$24,$00,$00,$00,$00,$00
+.db $24,$24,$7e,$24,$7e,$24,$24,$00
+.db $08,$1e,$28,$1c,$0a,$3c,$08,$00
+.db $00,$62,$64,$08,$10,$26,$46,$00
+.db $30,$48,$48,$30,$4a,$44,$3a,$00
+.db $04,$08,$10,$00,$00,$00,$00,$00
+.db $04,$08,$10,$10,$10,$08,$04,$00
+.db $20,$10,$08,$08,$08,$10,$20,$00
+.db $08,$2a,$1c,$3e,$1c,$2a,$08,$00
+.db $00,$08,$08,$3e,$08,$08,$00,$00
+.db $00,$00,$00,$00,$00,$08,$08,$10
+.db $00,$00,$00,$7e,$00,$00,$00,$00
+.db $00,$00,$00,$00,$00,$18,$18,$00
+.db $00,$02,$04,$08,$10,$20,$40,$00
+.db $3c,$42,$46,$5a,$62,$42,$3c,$00
+.db $08,$18,$28,$08,$08,$08,$3e,$00
+.db $3c,$42,$02,$0c,$30,$40,$7e,$00
+.db $3c,$42,$02,$1c,$02,$42,$3c,$00
+.db $04,$0c,$14,$24,$7e,$04,$04,$00
+.db $7e,$40,$78,$04,$02,$44,$38,$00
+.db $1c,$20,$40,$7c,$42,$42,$3c,$00
+.db $7e,$42,$04,$08,$10,$10,$10,$00
+.db $3c,$42,$42,$3c,$42,$42,$3c,$00
+.db $3c,$42,$42,$3e,$02,$04,$38,$00
+.db $00,$00,$08,$00,$00,$08,$00,$00
+.db $00,$00,$08,$00,$00,$08,$08,$10
+.db $0e,$18,$30,$60,$30,$18,$0e,$00
+.db $00,$00,$7e,$00,$7e,$00,$00,$00
+.db $70,$18,$0c,$06,$0c,$18,$70,$00
+.db $3c,$42,$02,$0c,$10,$00,$10,$00
+.db $00,$00,$00,$00,$ff,$00,$00,$00
+.db $08,$1c,$3e,$7f,$7f,$1c,$3e,$00
+.db $10,$10,$10,$10,$10,$10,$10,$10
+.db $00,$00,$00,$ff,$00,$00,$00,$00
+.db $00,$00,$ff,$00,$00,$00,$00,$00
+.db $00,$ff,$00,$00,$00,$00,$00,$00
+.db $00,$00,$00,$00,$00,$ff,$00,$00
+.db $20,$20,$20,$20,$20,$20,$20,$20
+.db $04,$04,$04,$04,$04,$04,$04,$04
+.db $00,$00,$00,$00,$e0,$10,$08,$08
+.db $08,$08,$08,$04,$03,$00,$00,$00
+.db $08,$08,$08,$10,$e0,$00,$00,$00
+.db $80,$80,$80,$80,$80,$80,$80,$ff
+.db $80,$40,$20,$10,$08,$04,$02,$01
+.db $01,$02,$04,$08,$10,$20,$40,$80
+.db $ff,$80,$80,$80,$80,$80,$80,$80
+.db $ff,$01,$01,$01,$01,$01,$01,$01
+.db $00,$3c,$7e,$7e,$7e,$7e,$3c,$00
+.db $00,$00,$00,$00,$00,$00,$ff,$00
+.db $36,$7f,$7f,$7f,$3e,$1c,$08,$00
+.db $40,$40,$40,$40,$40,$40,$40,$40
+.db $00,$00,$00,$00,$03,$04,$08,$08
+.db $81,$42,$24,$18,$18,$24,$42,$81
+.db $00,$3c,$42,$42,$42,$42,$3c,$00
+.db $08,$1c,$2a,$77,$2a,$08,$08,$00
+.db $02,$02,$02,$02,$02,$02,$02,$02
+.db $08,$1c,$3e,$7f,$3e,$1c,$08,$00
+.db $08,$08,$08,$08,$ff,$08,$08,$08
+.db $a0,$50,$a0,$50,$a0,$50,$a0,$50
+.db $08,$08,$08,$08,$08,$08,$08,$08
+.db $00,$00,$01,$3e,$54,$14,$14,$00
+.db $ff,$7f,$3f,$1f,$0f,$07,$03,$01
+.db $00,$00,$00,$00,$00,$00,$00,$00
+.db $f0,$f0,$f0,$f0,$f0,$f0,$f0,$f0
+.db $00,$00,$00,$00,$ff,$ff,$ff,$ff
+.db $ff,$00,$00,$00,$00,$00,$00,$00
+.db $00,$00,$00,$00,$00,$00,$00,$ff
+.db $80,$80,$80,$80,$80,$80,$80,$80
+.db $aa,$55,$aa,$55,$aa,$55,$aa,$55
+.db $01,$01,$01,$01,$01,$01,$01,$01
+.db $00,$00,$00,$00,$aa,$55,$aa,$55
+.db $ff,$fe,$fc,$f8,$f0,$e0,$c0,$80
+.db $03,$03,$03,$03,$03,$03,$03,$03
+.db $08,$08,$08,$08,$0f,$08,$08,$08
+.db $00,$00,$00,$00,$0f,$0f,$0f,$0f
+.db $08,$08,$08,$08,$0f,$00,$00,$00
+.db $00,$00,$00,$00,$f8,$08,$08,$08
+.db $00,$00,$00,$00,$00,$00,$ff,$ff
+.db $00,$00,$00,$00,$0f,$08,$08,$08
+.db $08,$08,$08,$08,$ff,$00,$00,$00
+.db $00,$00,$00,$00,$ff,$08,$08,$08
+.db $08,$08,$08,$08,$f8,$08,$08,$08
+.db $c0,$c0,$c0,$c0,$c0,$c0,$c0,$c0
+.db $e0,$e0,$e0,$e0,$e0,$e0,$e0,$e0
+.db $07,$07,$07,$07,$07,$07,$07,$07
+.db $ff,$ff,$00,$00,$00,$00,$00,$00
+.db $ff,$ff,$ff,$00,$00,$00,$00,$00
+.db $00,$00,$00,$00,$00,$ff,$ff,$ff
+.db $01,$01,$01,$01,$01,$01,$01,$ff
+.db $00,$00,$00,$00,$f0,$f0,$f0,$f0
+.db $0f,$0f,$0f,$0f,$00,$00,$00,$00
+.db $08,$08,$08,$08,$f8,$00,$00,$00
+.db $f0,$f0,$f0,$f0,$00,$00,$00,$00
+.db $f0,$f0,$f0,$f0,$0f,$0f,$0f,$0f
+```
