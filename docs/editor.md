@@ -114,6 +114,15 @@ Macros are registered with the assembler when their definition is _assembled_
 necesarrily the macros that happen to be visible in the active buffer.  If no macros have been
 defined, the viewer aborts and reports `NO MACROS` in the status bar.
 
+```{figure} screenshots/macro-viewer.png
+:alt: The macro viewer listing the defined macros
+:align: center
+:width: 75%
+:class: screenshot
+
+The macro viewer lists the macros defined by the most recent assembly.
+```
+
 The viewer has two modes:
 
 **MACRO LIST**: the initial mode, titled `MACROS`.  Each row is the name of one
