@@ -686,6 +686,7 @@ plot3:	lda #$03
 @byte=zp::util
 	tya
 	jsr @tohex
+	bcs @err
 	asl
 	asl
 	asl
@@ -693,6 +694,7 @@ plot3:	lda #$03
 	sta @byte
 	txa
 	jsr @tohex
+	bcs @err
 	ora @byte
 
 @ok:	clc
@@ -702,26 +704,34 @@ plot3:	lda #$03
 	rts
 
 @tohex:
-	cmp #'f'+1
-	bcs @err
-	cmp #'a'
-	bcc :+
-	sbc #'a'-$a
+	cmp #$3a		; ASCII '9'+1
+	bcs @alpha
+	cmp #$30		; ASCII '0'
+	bcc @invalid
+	sbc #$30
+	clc
 	rts
 
-:	cmp #'F'+1
-	bcs @err
-	cmp #'A'
-	bcc @numeric
-	sbc #'A'-$a
+@alpha: and #$df		; transform lowercase to uppercase range $41-$5a
+	cmp #$47
+	bcs @petscii_upper
+	cmp #$41
+	bcc @invalid
+	sbc #$41-$a
+	clc
 	rts
 
-@numeric:
-	cmp #'9'+1
-	bcs @err
-	cmp #'0'
-	bcc @err
-	sbc #'0'
+@petscii_upper:
+	cmp #$c7		; PETSCII $c1-$c6
+	bcs @invalid
+	cmp #$c1
+	bcc @invalid
+	sbc #$c1-$a
+	clc
+	rts
+
+@invalid:
+	sec
 	rts
 .endproc
 
