@@ -285,7 +285,7 @@ main:	jsr key::getch
 	beq @done
 
 	jsr is_visual
-	beq :+ 		; leave cursor on if in VISUAL/VISUAL_LINE mode
+	beq :+			; leave cursor on if in VISUAL/VISUAL_LINE mode
 	pha
 	jsr cur::off
 	pla
@@ -323,16 +323,7 @@ main:	jsr key::getch
 ;*******************************************************************************
 ; DRAW STATUS BAR
 ; Draws the row of status data
-; If the cursor's current line contains an error, the error's message is shown
-; instead of the normal status content
 .proc draw_status_bar
-	jsr edit_current_file		; .A=file id, .XY=current line
-	bcs @draw			; no file mapped -> default status
-	jsr errlog::getbyline		; .C clear if an error is on this line
-	bcs @draw			; no error on this line -> default status
-	jsr err::get			; .A=code -> .XY=message
-	jsr set_status_err		; overwrite the status line w/ the message
-
 @draw:	; redraw status row
 	ldx status_row
 	lda mem::rowcolors_idx,x
@@ -345,29 +336,18 @@ main:	jsr key::getch
 .endproc
 
 ;*******************************************************************************
-; SET STATUS ERR
-; Overwrites the status line (mem::statusline) with the given message, padded to
-; the full width of the status bar.
-; IN:
-;  - .XY: the null-terminated message to display
-.proc set_status_err
-@src=zp::text
-	stxy @src
-	ldy #$00
-@copy:	lda (@src),y
-	beq @pad
-	sta mem::statusline,y
-	iny
-	cpy #SCREEN_WIDTH
-	bcc @copy
-	rts
-
-@pad:	lda #' '
-:	sta mem::statusline,y
-	iny
-	cpy #SCREEN_WIDTH
-	bcc :-
-	rts
+; LINE NAVIGATED
+; Clear previous message, then draw error (if any) on the destination line
+; Called when a line is navigated to
+.proc line_navigated
+	jsr clear_message
+	jsr edit_current_file		; .A=file id, .XY=current line
+	bcs @done
+	jsr errlog::getbyline		; .C clear if an error is on this line
+	bcs @done
+	jsr err::get			; .A=code -> .XY=message
+	jsr text::info
+@done:	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -838,7 +818,7 @@ main:	jsr key::getch
 .proc display_result
 	jsr unblank
 
-	jsr clrerror
+	jsr clear_message
 	lda #$01
 	sta zp::verify		; re-enable verify
 
@@ -846,6 +826,7 @@ main:	jsr key::getch
 	beq @printresult
 
 @err:	jsr errlog::activate
+	jsr line_navigated	; publish the new assembly result at the cursor
 
 	jsr log::close
 	sec			; assembly failed
@@ -2648,9 +2629,11 @@ cancel = enter_command
 	lda #$00
 	sta zp::curx
 	sta zp::cury
+	jsr line_navigated
 	jmp refresh
 
 @set:	jsr src::forceset
+	jsr line_navigated
 	jmp refresh
 .PUSHSEG
 .BSS
@@ -3170,6 +3153,7 @@ edit_set_breakpoint:
 	jsr src::setbuff
 	bcs @done
 	jsr clamp_cursor	; the buffer may have been left off-screen
+	jsr line_navigated
 	jmp refresh
 @done:	rts
 .endproc
@@ -3278,6 +3262,7 @@ goto_buffer:
 	jsr src::setbuff
 	bcs @done		; if we can't set the buffer, exit
 	jsr clamp_cursor	; the buffer may have been left off-screen
+	jsr line_navigated
 	jmp refresh
 @done:	rts
 
@@ -4246,9 +4231,11 @@ goto_buffer:
 .segment "EDITCODE"
 
 ;*******************************************************************************
-; CLRERROR
-; Clears any error message
-.proc clrerror
+; CLEAR MESSAGE
+; Clears the current status message
+; OUT:
+;   - .A: 0
+.proc clear_message
 	lda #$00
 	sta mem::statusinfo
 :	rts
@@ -4286,7 +4273,7 @@ goto_buffer:
 
 :	cmp #$0d
 	bne :+
-	jsr clrerror		; clear error so we can report on THIS line
+	jsr clear_message		; clear message so we can report on THIS line
 	jsr linedone		; handle RETURN
 	jmp @done
 
@@ -4317,7 +4304,17 @@ goto_buffer:
 ; Handles the up cursor key
 ; OUT:
 ;   - .C: set if the cursor could not be moved
+.pushseg
+.CODE
 .proc ccup
+	jsr move_up
+	bcs :+
+	jmp line_navigated
+:	rts
+.endproc
+.popseg
+
+.proc move_up
 @xend=r9
 @ch=ra
 	; are we already on the first line of the buffer?
@@ -4757,6 +4754,13 @@ goto_buffer:
 ; OUT:
 ;  - .C: clear if the cursor was moved DOWN or screen scrolled
 .proc ccdown
+	jsr move_down
+	bcs :+
+	jmp line_navigated
+:	rts
+.endproc
+
+.proc move_down
 @xend=r9
 @selecting=ra
 @linelen=rb
@@ -5558,6 +5562,11 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 ; IN:
 ;  - .XY: the line number to go to
 .proc edit_gotoline
+	jsr move_to_line
+	jmp line_navigated
+.endproc
+
+.proc move_to_line
 @target=r6
 @diff=r6		; lines to move up or down
 @seekforward=r8		; 0=backwards 1=forwards
