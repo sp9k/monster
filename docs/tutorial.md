@@ -593,7 +593,11 @@ We could also use a word-sized table, but splitting the table into two parallel 
 and most significant bytes will make addressing easier.  This is a common technique.
 
 Now, picking up where we left off our draw procedure.  We will first use our column tables to get the
-addresses for the two columns to blit to (x/8 and x/8+1).
+address of the first column (x/8).  If `spritex & 7` is nonzero, the sprite overflows into
+a second column (x/8+1), so we look up that address too.
+
+When the sprite is aligned, we skip the second-column lookup and writes.  This also prevents us from
+reading an invalid column when the sprite is at its rightmost position.
 
 Once we have our column addresses the only thing to do is to perform the blit from our buffered shifted
 sprite data.
@@ -612,18 +616,26 @@ sprite data.
     sta @col
     lda columnshi,x
     sta @col+1
+    lda spritex
+    and #$07
+    beq @draw
     lda columnslo+1,x
     sta @col2
     lda columnshi+1,x
     sta @col2+1
 
+@draw
     ldy spritey
     ldx #7
 @blit
     lda sprite,x
     sta (@col),y
+    lda spritex
+    and #$07
+    beq @rowdone
     lda sprite+8,x
     sta (@col2),y
+@rowdone
     dey
     dex
     bpl @blit
@@ -661,7 +673,8 @@ spritey
 As we mentioned earlier, `sprite` is 16 bytes (double the size of the sprite data). `sprite+8`
 contains the overflow when the sprite is _shifted_ to the right.
 
-`spritey` is initialized here as `120`.  This is an arbitrary value near the bottom of the bitmap.
+`spritey` is the bottom-row coordinate of the eight-pixel-high sprite.  It is initialized
+here as `120`, so the sprite occupies rows 113–120 of the bitmap.
 
 Save your work and assemble.  Fix any bugs/typos and continue on to debugging.  Step/trace however you
 like and hopefully you should see the new sprite visible on screen by the time we get through one iteration
@@ -737,6 +750,8 @@ With the switches in `joy`, moving the player is just a matter of looking at thi
 and applying the appropriate `INC` or `DEC`.
 
 We will also clamp the sprite position to prevent it from leaving the bitmap range.
+Since `spritey` is the bottom-row coordinate, its valid range is 7–191 (`$07`–`$bf`)
+within the 192-pixel-high bitmap.
 
 ```
 movespr
@@ -759,6 +774,7 @@ movespr
     and #JOYUP
     beq +
     lda spritey
+    cmp #7
     beq +
     dec spritey
 
@@ -766,7 +782,7 @@ movespr
     and #JOYDOWN
     beq +
     lda spritey
-    cmp #$c0-8
+    cmp #$c0-1
     beq +
     inc spritey
 
@@ -825,9 +841,13 @@ your `blit` loop and add an `eor (@col),y` between the sprite data loads and the
     lda sprite,x
     eor (@col),y	; new
     sta (@col),y
+    lda spritex
+    and #$07
+    beq @rowdone
     lda sprite+8,x
     eor (@col2),y	; new
     sta (@col2),y
+@rowdone
     dey
     dex
     bpl @blit
@@ -942,12 +962,16 @@ movespr
     lda swaptmr
     bne +
     inc spriteid
+    lda spriteid
+    and #$7f
+    sta spriteid
     lda #$08
     sta swaptmr
 :   lda joy
 ```
 
 The existing left-direction code follows immediately after that final `lda joy`.
+The `and #$7f` wraps `spriteid` from 127 to 0, keeping it within the 128 character set.
 
 Note that we are checking the `swaptmr` counter here to stop the handler from changing characters
 every single frame.  We are reinitializing the delay with `$08` each time we cycle characters,
@@ -1141,20 +1165,28 @@ drawspr
 	sta @col
 	lda columnshi,x
 	sta @col+1
+	lda spritex
+	and #$07
+	beq @draw
 	lda columnslo+1,x
 	sta @col2
 	lda columnshi+1,x
 	sta @col2+1
 
+@draw
 	ldy spritey
 	ldx #7
 @blit
 	lda sprite,x
 	eor (@col),y
 	sta (@col),y
+	lda spritex
+	and #$07
+	beq @rowdone
 	lda sprite+8,x
 	eor (@col2),y
 	sta (@col2),y
+@rowdone
 	dey
 	dex
 	bpl @blit
@@ -1190,6 +1222,9 @@ movespr
 	lda swaptmr
 	bne +
 	inc spriteid
+	lda spriteid
+	and #$7f
+	sta spriteid
 	lda #$08
 	sta swaptmr
 :	lda joy
@@ -1213,6 +1248,7 @@ movespr
 	and #JOYUP
 	beq +
 	lda spritey
+	cmp #7
 	beq +
 	dec spritey
 
@@ -1220,7 +1256,7 @@ movespr
 	and #JOYDOWN
 	beq +
 	lda spritey
-	cmp #$c0-8
+	cmp #$c0-1
 	beq +
 	inc spritey
 

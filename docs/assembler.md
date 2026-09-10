@@ -152,12 +152,12 @@ the following example.
 PROC0:
 @L0:
     dex
-    bne L0
+    bne @L0
     rts
 PROC1:
 @L0:
     dey
-    bne L0
+    bne @L0
     rts
 ```
 ````
