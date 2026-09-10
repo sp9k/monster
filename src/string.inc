@@ -3,6 +3,7 @@
 .import __str_comparez
 .import __str_len
 .import __str_toupper
+.import __str_toupper_unquoted
 .import __str_uncompress
 .import __str_breakpoints_line_noname
 
@@ -11,6 +12,7 @@
 	compare    = __str_compare
 	comparez   = __str_comparez
 	len        = __str_len
+	toupper_unquoted = __str_toupper_unquoted
 	toupper    = __str_toupper
 	uncompress = __str_uncompress
 .endscope

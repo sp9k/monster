@@ -171,6 +171,57 @@ SLASH = SPECIAL_CHARS_START+2
 .endproc
 
 ;*******************************************************************************
+; TOUPPER UNQUOTED
+; Uppercases the given string, but preserves double-quoted strings and
+; single-character literals.  Used in assembly so that include files, etc.
+; are not blindly uppercased.
+; IN:
+;   - .XY = zero-terminated line
+;  CLOBBERS:
+;    - .A, .Y
+;    - zp::str0, zp::str2
+.export __str_toupper_unquoted
+.proc __str_toupper_unquoted
+@str=zp::str0
+@quote=zp::str2
+	stxy @str
+
+	ldy #$00
+@loop:	lda (@str),y
+	beq @done
+	sta @quote
+	cmp #'"'
+	beq @string		; if ", continue to skip to its matching "
+	cmp #$27
+	beq @character		; if ', continue to skip over next char
+	cmp #$61
+	bcc @next
+	cmp #$7b
+	bcs @next
+	eor #$20		; uppercase
+	sta (@str),y
+
+@next:	iny
+	bne @loop
+@done:	rts
+
+@character:
+	iny			; skip character after the opening '
+	beq @done
+	lda (@str),y
+	beq @done
+
+@string:
+	iny
+	beq @done
+	lda (@str),y
+	beq @done
+	cmp @quote
+	bne @string
+	beq @next		; branch always
+.endproc
+
+;*******************************************************************************
 ; UNCOMPRESS
 ; Uncompresses the 5-bit compressed string
 ;

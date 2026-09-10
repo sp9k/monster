@@ -515,7 +515,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @submit:
 	pha
 	ldxy #$101
-	CALLMAIN str::toupper	; commands are case insensitive
+	CALLMAIN str::toupper_unquoted ; preserve literals in monitor assembly/expressions
 
 	ldx #$00
 	lda $101

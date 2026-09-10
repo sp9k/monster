@@ -774,8 +774,7 @@ BANKED_CODE "ASMBANK"
 ;  - .A: the type of the result e.g. ASM_OPCODE or the error code
 ;  - .C: set if an error occurred
 .proc tokenize
-	; copy the line to the main RAM bank and make it uppercase (assembly is
-	; case-insensitive)
+	; copy the line to the main RAM bank and
 	stxy zp::bankaddr0
 	ldxy #asmbuffer
 	stxy zp::bankaddr1
@@ -789,7 +788,7 @@ BANKED_CODE "ASMBANK"
 
 	ldxy #asmbuffer
 	stxy zp::line
-	jsr str::toupper
+	jsr str::toupper_unquoted	; uppercase all non-enquoted characters
 
 	jsr line::process_ws
 	beq noasm			; empty line -> done
@@ -2604,7 +2603,11 @@ CUR_BANK .set FP_CALLER_BANK
 	bcc @add
 	rts		; error
 
-@add:	; if verifying, the name is validated; skip all side effects
+@add:	; segment names are identifiers, even though their syntax uses quotes
+	ldxy #@name
+	jsr str::toupper
+
+	; if verifying, the name is validated; skip all side effects
 	lda zp::verify
 	beq @apply
 	lda #ASM_DIRECTIVE

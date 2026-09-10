@@ -126,6 +126,9 @@ single quotes.
 Character literals must contain exactly one character and always resolve to
 a 1 byte value.
 
+Quoted strings and character literals preserve case: `'a'` is `$61`, while
+`'A'` is `$41`.
+
 ## Formatting
 
 Spacing is not important, but instructions are auto-formatted so that they are TAB indented.
@@ -313,6 +316,7 @@ cury    .db 0
 ```
 .db $00, $01, $02 ; $00 $01 $02
 .db "HI",0        ; $48 $49 $00
+.db "Hello!",0    ; $48 $65 $6c $6c $6f $21 $00
 ```
 ````
 
@@ -488,6 +492,9 @@ manual for more details.
 
 **Behavior:** Includes a file at the line of the directive. The file is loaded line-by-line
 from disk and assembled as if the code was copy/pasted in place of the include directive.
+
+Filenames preserve case unlike normal assembly syntax. Including a file named `Data.inc` must use the
+same exact casing (`.inc "Data.inc"`).  The same is true with `.INCBIN` filenames.
 
 ````{example}
 ```
