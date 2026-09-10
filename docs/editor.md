@@ -187,8 +187,12 @@ The format of this string is a _command_ (usually one or two characters) followe
 arguments.
 
 ```{example}
-For example, `:s hello.s` writes a file named "hello.s" to disk.
+For example, `:s HELLO.S` writes a file named `HELLO.S` to disk.
 ```
+
+Uppercase filenames are recommended.  Lowercase PETSCII codes may appear as graphic
+characters in VIC-20 directory listings, and quoted `.INC` and `.INCBIN` filenames must
+match the case of the filename on disk.
 
 The table below details the available commands in _EX_ mode.
 
@@ -419,6 +423,19 @@ commands accessed via them.
 There are various keys that enter insert mode from command mode: {c64-key}`I`, {c64-key}`A`,
 {c64-keys}`Shift + A`, etc.
 
+Several ASCII punctuation characters do not appear on a VIC-20 keyboard.  Monster maps them
+from the following VIC keys; the same combinations apply to VICE's virtual keyboard:
+
+| CHARACTER             | VIC-20 KEY              |
+|-----------------------|-------------------------|
+| backslash (`\`)       | `£`                     |
+| caret (`^`)           | up arrow                |
+| underscore (`_`)      | `SHIFT` + `-`           |
+| grave accent (`` ` ``)| left arrow              |
+| left brace (`{`)      | `SHIFT` + `@`           |
+| vertical bar (`\|`)   | `SHIFT` + `£`           |
+| right brace (`}`)     | `SHIFT` + `*`           |
+
 ### Visual mode
 In _visual_ mode (accessed via {c64-key}`V` in _command_ mode), the user can select
 a block of text which may then be deleted or copied.  Below is the table of supported commands
@@ -499,6 +516,10 @@ following commands:
 
 Entering the editor while on a line with an 8-byte ".db" definition (e.g. `.db $ff,$00,$ff,$00,$ff,$00,$ff,$00`) will pre-populate the
 UDG editor with the character defined by these directives.
+
+The blinking selection cursor begins on the top-left pixel.  When it is visible, that corner
+may look misaligned; the ordinary outline appears when the cursor blinks off.  The cursor does
+not alter the character data unless you plot a color.
 
 ```{figure} screenshots/editor-udg-1.png
 :alt: The UDG editor

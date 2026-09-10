@@ -83,9 +83,9 @@ In this mode, the editor accepts a string, interprets it, and executes it.
 To name our source buffer, we will use the “r” (rename) command. Enter the following
 at the prompt and press {c64-key}`RETURN`:
 
-`:r hello.s`
+`:r HELLO.S`
 
-You should now see “hello.s” at the bottom of the screen (in the status bar).
+You should now see “HELLO.S” at the bottom of the screen (in the status bar).
 This means that our buffer has successfully accepted its new name.
 
 You may be asking: why do we need to name our program before assembling?
@@ -96,13 +96,13 @@ While a buffer can be assembled, the assembler **cannot** reference buffers.  If
 to assemble multiple buffers, they must be first saved to disk.
 
 ```{figure} screenshots/getting-started-1.png
-:alt: The complete hello world program in the editor, with hello.s shown in the status bar
+:alt: The complete hello world program in the editor, with HELLO.S shown in the status bar
 :align: center
 :width: 75%
 :class: screenshot
 
 The finished program in the editor.  The status bar shows the buffer's new
-name, `hello.s`, at the right.
+name, `HELLO.S`, at the right.
 ```
 
 With all the code written, and our buffer named, we’re finally ready to assemble the program.
@@ -177,9 +177,9 @@ means you have edited the buffer since it was last written.
 
 Enter EX mode once again and type:
 
-`:s hello.s`
+`:s HELLO.S`
 
-This will save your source code to a new file named, per our instruction, hello.s.
+This will save your source code to a new file named, per our instruction, `HELLO.S`.
 Note that the `*` indicator in the status bar has vanished.
 
 If you're still not convinced that your program is safe, you can confirm by pressing {c64-key}`Minus` while in **command mode**

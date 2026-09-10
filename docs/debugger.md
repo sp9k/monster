@@ -222,7 +222,7 @@ are supported within the memory viewer:
 | {c64-key}`Slash`      | FIND VALUE| Seeks from current memory address for given value|
 | {c64-key}`RUN/STOP`   | EXIT      | Returns to the debugger (the view stays open)    |
 | {c64-keys}`C= + Q`    | CLOSE     | Closes the memory viewer                         |
-| {c64-key}`Up-arrow`   | SET ADDR  | Sets the viewer's address to the given value     |
+| {c64-key}`Up-arrow`   | SET ADDR  | Sets the viewer's address to the given value; use the dedicated up-arrow key, not cursor up |
 
 #### Set watch
 
@@ -244,8 +244,8 @@ the first occurrence of the byte value `$34` followed by `$12`.
 
 #### Set address
 
-Moves the cursor to the address of the viewer, then prompts the user for a new
-value to set the memory viewer to.  Pressing {c64-key}`RETURN` confirms the new address
+Press the dedicated up-arrow key to move the cursor to the address field, then enter the
+new starting address for the memory viewer. Pressing {c64-key}`RETURN` confirms the new address
 and {c64-key}`RUN/STOP` cancels and returns the user to the editor without changing the address
 
 ### Breakpoint viewer

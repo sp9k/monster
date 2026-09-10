@@ -10,7 +10,7 @@ and move up and down under joystick control.
 ## Main
 
 This project will span multiple files, but when assembling directly into memory, Monster begins with the
-active source file.  For us, that will be a `main.s` file.  All other files will be _included_ from
+active source file.  For us, that will be a `MAIN.S` file.  All other files will be _included_ from
 this one (more on that when we get to it).
 
 If you still have buffers open from your past work, close them with {c64-keys}`C= + Q` until only one remains.  Press {c64-key}`F3` to
@@ -21,7 +21,7 @@ Once confirmed, with the BUFFERS VIEWER, press {c64-keys}`C= + Q` to close the B
 You can also press {c64-key}`RUN/STOP` to re-enter the editor, but leave the viewer onscreen.
 We'll touch more on the concept of these "windows" when we start debugging.
 
-Now rename the buffer by entering EX mode ({c64-key}`:`) and typing `r main.s` at the prompt.
+Now rename the buffer by entering EX mode ({c64-key}`:`) and typing `r MAIN.S` at the prompt.
 
 Let's set the origin of this program to `$2000`.
 
@@ -35,17 +35,23 @@ from `$1000`-`$2000`, so this is important.
 
 Since this program will be a bit more substantial, we will want to leverage Monster's macro
 capabilities a bit.  A good organizational practice for this is to have a single "macros" file
-that you include at the top of your "main" assembly file (`main.s` for us).
+that you include at the top of your "main" assembly file (`MAIN.S` for us).
 
 To create a new buffer, press {c64-keys}`C= + N`.  This will open a new unnamed buffer.  Press
-{c64-key}`F3` and you should see there are now two buffers: `main.s` and our new unnamed one.
+{c64-key}`F3` and you should see there are now two buffers: `MAIN.S` and our new unnamed one.
 
 ## Macros
 
-Let's call this new file `macros.inc`.  Rename it using the `r` EX command.
+Let's call this new file `MACROS.INC`.  Rename it using the `r` EX command.
 The `.inc` suffix tells us this is an _include_ file.
 Monster doesn't care what suffix you use in most cases, but avoid `.o`, which is
 reserved for use by the linker.
+
+Note that filenames inside quotes are case-sensitive, so the name in an `.inc` directive must use exactly the
+same case as the file on disk.
+
+On the VIC-20, lowercase PETSCII codes may also appear as graphic characters in a directory
+listing, which makes uppercase filenames much easier to recognize.
 
 Macro use is very much a matter of personal taste.  I avoid heavy macro use as it can obscure
 potential optimizations, which is half the fun of writing assembly by hand, but there are some
@@ -61,7 +67,7 @@ For this project, we'll define two macros to treat the index registers `X` and `
 :width: 75%
 :class: screenshot
 
-macros.inc
+MACROS.INC
 ```
 
 By now, hopefully, you're getting a sense of Monster's autoformatting and syntax checking.
@@ -74,7 +80,7 @@ assembling.  You may find it useful to incrementally test your files as you are 
 You can do this even with files like this which emit no real bytes.  In fact, in the case
 of macros, it's often a good idea to do so.
 
-If you left the `macros.inc` buffer, return to it and press {c64-keys}`C= + A` to assemble it.  You
+If you left the `MACROS.INC` buffer, return to it and press {c64-keys}`C= + A` to assemble it.  You
 should see a simple "DONE" message.  But what actually happened?  Press {c64-keys}`C= + M` to open
 the **MACRO VIEWER**.  Here you will see all the macros that Monster has registered from our
 assembly.
@@ -101,10 +107,10 @@ information.
 This is why it's a good idea to start your session by assembling your macros file and to
 include it at the top of your "main" entrypoint file.
 
-Add that include near the top of `main.s`, immediately after the `.org` directive:
+Add that include near the top of `MAIN.S`, immediately after the `.org` directive:
 
 ```
-    .inc "macros.inc"
+    .inc "MACROS.INC"
 ```
 
 The `.inc` directive assembles the contents of the target file directly.  Macros must
@@ -141,7 +147,7 @@ save the whole range from `$8000`-`$83ff` (one of the VIC-20's character sets) t
 our own repurposing.
 
 ```
-dump $8000 $8400 > chars.s
+dump $8000 $8400 > CHARS.S
 ```
 
 Exit the monitor now by running the `x` command:
@@ -150,7 +156,7 @@ Exit the monitor now by running the `x` command:
 x
 ```
 
-This returns you to the editor.  Now open the directory viewer and you should see the file we wrote: `chars.s`.
+This returns you to the editor.  Now open the directory viewer and you should see the file we wrote: `CHARS.S`.
 Navigate to it and press {c64-key}`RETURN`.  Once it loads you should see a wall of `.db`
 directives.  Remember from our "Hello World" example that these define a list of raw byte values.
 
@@ -158,9 +164,13 @@ Now, move the cursor to any `.db` row and press {c64-keys}`C= + U` to bring up t
 This will show you an 8×8 representation of the VIC's interpretation of the character data
 represented by the row you activated the editor on.
 
+The selection cursor starts on the top-left pixel and blinks.  While it is visible, that corner
+can look as though the outline is misaligned; when the cursor blinks off after a few seconds, the
+ordinary outline is visible.  This does not change the character data.
+
 Feel free to play around with all the other characters in the set.  You can always regenerate
 the whole set with the same command we used to get the character set in the first place.  To do
-so, close the `chars.s` buffer, scratch the existing file with `:x chars.s`, and run the `dump`
+so, close the `CHARS.S` buffer, scratch the existing file with `:x CHARS.S`, and run the `dump`
 command again.
 
 That is enough for now.  We will return to the character set once our program is ready to use
@@ -176,7 +186,7 @@ worth taking a moment to get a handle on them.
 _next_ one.  Go back and forth between your buffers with these keys to get a feel for this.
 
 You may have noticed a number to the left of your buffers' names.  This is the buffer's "ID" but,
-more importantly, it is a handle for quick navigation to it.  If your `main.s` buffer has ID `1`,
+more importantly, it is a handle for quick navigation to it.  If your `MAIN.S` buffer has ID `1`,
 for example, you can jump straight to it, no matter which buffer you're currently on, by
 pressing {c64-keys}`CTRL + 1`.
 
@@ -188,7 +198,7 @@ true in the buffer viewer as well as the UDG editor and others we've yet to expl
 ## Implementation logic
 
 Okay, time for the exciting stuff: let's work on writing the logic that ties everything together.
-Navigate to the `main.s` buffer.
+Navigate to the `MAIN.S` buffer.
 
 First things first, we need to set up the display. The VIC registers at $9000 retain their
 "cold start" defaults in Monster's virtual memory upon boot, but those are not fit for our
@@ -210,7 +220,7 @@ colors.
     lda #20        ; # columns
     sta $9002
 
-    lda #(12*2)+1  ; (# rows << 1) | 1
+    lda #(12*2)+1  ; double # rows, then set bit 0
     sta $9003
 
     lda #$08       ; black/black (no rvs)
@@ -357,7 +367,7 @@ fails, that file may be left without its original or a complete replacement.
 ## Assembly
 
 As mentioned earlier, assembly will typically take place from the top-level unit from which
-all others are included (`main.s` in our case).  Navigate to that buffer and press
+all others are included (`MAIN.S` in our case).  Navigate to that buffer and press
 {c64-keys}`C= + A` to assemble it.
 
 ## Errors
@@ -395,7 +405,11 @@ let's just step through all of that.  Press {c64-key}`Z` several times until the
 past all the VIC writes (stores to `$90xx`).  Then press {c64-key}`SPACE` to observe the new state of
 the screen post-setup.
 
-Alternatively, you can set a breakpoint after all the setup code and TRACE ({c64-key}`T`) the program.
+Alternatively, you can set a breakpoint after all the setup code and use either TRACE
+({c64-key}`T`) or GO ({c64-keys}`C= + G`) to run to it.  Both stop at the breakpoint;
+TRACE simulates each instruction and displays the program screen as it progresses, while
+GO gives control directly to the program and runs it in realtime. But be careful: a `JAM`,
+if encountered, will require you to reset the machine.  Another reason to save often.
 
 So far so good?  If not, you may want to enter the monitor ({c64-key}`F7`) to make sure the VIC registers are configured
 as expected:
@@ -406,9 +420,10 @@ m $9000 $9010
 
 Our setup code is very simple, so if any correction is required it ought to be a simple exercise from here.
 
-Remember, if you need to make changes to your program at any point during the debug cycle, you must first
-stop debugging ({c64-keys}`C= + X`) to return to edit mode.  When you are done with your changes, reassemble
-the program ({c64-keys}`C= + A`) and try again.
+Remember, if you need to edit your program at any point during the debug cycle, you must first
+stop debugging ({c64-keys}`C= + X`) to return to edit mode.  Breakpoint toggles are the exception:
+you may add or remove them from the debugger.  When you are done with ordinary source changes,
+reassemble the program ({c64-keys}`C= + A`) and try again.
 
 
 Okay, however circuitous your path to get there, let’s continue our debug session post-VIC initialization.
@@ -416,11 +431,18 @@ This is where the code gets a bit more interesting.  For starters, we have contr
 And it's quite a lot of iterations this time.  Repeated stepping would be tedious here, so let's instead set a
 breakpoint after the screen initialization loop and see if the outcome is as we expect.
 
+While still in the debugger, move the cursor to `ldxy $1100`, the first instruction below the
+`clr` label, and press {c64-keys}`C= + B`.  The breakpoint marker appears on that line.  Breakpoints
+can be added while debugging and take effect immediately, so you do not need to quit or reassemble.
+Now press {c64-keys}`C= + G` to run.  Monster returns to the debugger when execution reaches
+`ldxy $1100`; at that point the loop above it has initialized the complete screen matrix.
+
 The easiest way to inspect the output here is a tool we've yet to invoke: the MEMORY VIEWER (activated
 with {c64-key}`F8`).  The memory viewer is similar to the monitor's `m` command, but it allows us to easily
 scroll around through memory as we please using the usual motion keys (h/j/k/l).
 
-Once activated, set the address to our screen matrix by pressing {c64-key}`Up-Arrow` and then entering `1000` and
+Once activated, set the address to our screen matrix by pressing the dedicated {c64-key}`Up-Arrow`
+key—not the cursor-up key—and then entering `1000` and
 {c64-key}`RETURN`.  The viewer will refresh with the contents at address `$1000` and _hopefully_ you will
 see a steadily increasing (by `$0c`) array of values: `10`, `1c`, `28`, ...
 
@@ -449,7 +471,7 @@ them if they are already hidden.
 ## Editor tips
 
 Before we finish up our program, let's take a moment to hone our editing skills.
-The `main.s` buffer is still small, but it's getting big enough that navigation by individual cursor
+The `MAIN.S` buffer is still small, but it's getting big enough that navigation by individual cursor
 motion may be feeling a little cumbersome.  Fortunately Monster has many options for zipping around your
 code more efficiently.  We will touch on only a few here.
 
@@ -866,7 +888,7 @@ of our program to access our character set by programmatically changing the spri
 that is rendered.
 
 To accomplish this, let's replace the hardcoded `spritedat` with a character ID and include the
-entire character set at the end of `main.s`:
+entire character set at the end of `MAIN.S`:
 
 ```
 spriteid
@@ -884,11 +906,11 @@ spritey
     .db 120
 
 chars
-    .inc "chars.s"
+    .inc "CHARS.S"
 ```
 
 The `chars` label represents the address of our character set.
-If you wish, you may also put the `chars` label inside the `chars.s` file.
+If you wish, you may also put the `chars` label inside the `CHARS.S` file.
 
 `spriteid` will represent the cell from our character set that we'll render.  It will
 be the basis for the multiplication we do to calculate the actual data for the "sprite" at
@@ -990,7 +1012,7 @@ Finally, count the repeat timer down once per pass through the main loop:
 We are careful not to decrement the timer if it's already 0 here.  If we did, the timer would
 overflow and we'd have to be very lucky to press the joystick on the exact frame where the timer is `0`.
 
-Assemble and run again.  Press fire to cycle through the characters in `chars.s`; any changes
+Assemble and run again.  Press fire to cycle through the characters in `CHARS.S`; any changes
 you made with the UDG editor should now appear in the moving sprite.
 
 ## Symbol viewer
@@ -1017,12 +1039,12 @@ by using Monster.  Have fun!
 
 For reference, here are the complete contents of each source file from the tutorial disk.
 
-### `main.s`
+### `MAIN.S`
 
 ```
 .org $2000
 
-.inc "macros.inc"
+.inc "MACROS.INC"
 
 .eq JOYUP    $04
 .eq JOYDOWN  $08
@@ -1283,10 +1305,10 @@ spritey	.db 120
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 chars
-.inc "chars.s"
+.inc "CHARS.S"
 ```
 
-### `macros.inc`
+### `MACROS.INC`
 
 ```
 .mac ldxy val
@@ -1300,7 +1322,7 @@ chars
 .endmac
 ```
 
-### `chars.s`
+### `CHARS.S`
 
 ```
 .db $1c,$22,$4a,$56,$4c,$20,$1e,$00
