@@ -12,7 +12,7 @@ As with all work you do on your Vic-20, if you care about it, save often.
 ### Buffers
 
 Up to 8 source buffers may be stored in memory at a time, each up to 24KB
-in size. These are accessed via a key chord comprised of {c64-key}`C=` and the number
+in size. These are accessed via a key chord comprised of {c64-key}`Ctrl` and the number
 key for the corresponding buffer.  You can also navigate to the _previous_
 buffer with {c64-keys}`Ctrl + H` and the _next_ buffer with {c64-keys}`Ctrl + L`.
 
@@ -127,7 +127,7 @@ that is currently defined and allows you to inspect the body of any of them.
 
 Macros are registered with the assembler when their definition is _assembled_
 ({c64-keys}`C= + A`), so the list reflects the macros from your last assembly, not
-necesarrily the macros that happen to be visible in the active buffer.  If no macros have been
+necessarily the macros that happen to be visible in the active buffer.  If no macros have been
 defined, the viewer aborts and reports `NO MACROS` in the status bar.
 
 ```{figure} screenshots/macro-viewer.png
@@ -199,7 +199,7 @@ The table below details the available commands in _EX_ mode.
 |    `D`    | `EXPORT DEBUG FILE `  | Filename                        | exports the loaded assembly, debug information, and symbol table as a debug (`.D`) file         |
 |    `L`    | `LOAD DEBUG FILE   `  | Filename                        | loads the given debug (`.D`) file (symbol table, debug information, and program data)           |
 |    `e`    | `EDIT              `  | Filename                        | loads the buffer with the contents of the given file                                            |
-|    `o`    | `ASSEMBLE TO OBJECT`  | Filename                        | assembles the current source buffer to an object file with the given filename                   |
+|    `o`    | `EXPORT OBJECT     `  | Filename                        | exports the active assembly to an object file with the given filename                   |
 |    `P`    | `EXPORT .PRG       `  | Filename                        | exports the active assembly to a .PRG file                                                      |
 |    `r`    | `RENAME            `  | Name                            | renames the buffer to the given name                                                            |
 |    `s`    | `SAVE              `  | Filename                        | saves the buffer to the given filename                                                          |
@@ -271,11 +271,12 @@ view symbols, etc. as if you had just assembled the program.
 `:e HELLO.S`
 ```
 
-#### Assemble to object
+#### Export object
 
 **Syntax:** `:o filename`
 
-**Behavior:** Assembles the current source buffer to an object file with the given name.
+**Behavior:** Exports the active assembly to an object file with the given name.
+Assemble the source with {c64-keys}`C= + A` before running this command.
 The filename must have a `.o` (or `.O`) extension if you want the linker to
 pick it up at link time.  See the [Linker](linker.md) document for more on
 object files and linking.
@@ -366,7 +367,7 @@ to _COMMAND_ mode when {c64-key}`RUN/STOP` is pressed.  Below is a list of the m
 
 This is the default mode.  The primary function of command mode is to navigate around the
 source code and to enter other modes.
-Navigation behaves similar to `vi` and many basic `vi` commands are supported.
+Navigation behaves similarly to `vi` and many basic `vi` commands are supported.
 The following keys are handled in COMMAND mode.
 
 |  KEY                                       | NAME         | DESCRIPTION                                                                             |
@@ -466,8 +467,10 @@ While this should reduce the number of errors you encounter when assembling,
 it does not guarantee it.  The following permissions are granted in order to
 provide a smoother editing experience for common cases that are invalid at
 assembly time:
-    - labels may not be defined
-    - origin may not be set
+
+- labels may not be defined
+- origin may not be set
+
 This means that lines using undefined labels are treated as valid.  If
 the label does not exist at assembly time, of course this will result in an
 error.

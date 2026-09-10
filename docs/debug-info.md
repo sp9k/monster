@@ -1,6 +1,7 @@
 ## Debug information technical details
 
 Debug information is stored in a few tables as described below. At a high level, these are:
+
   - FILE TABLE: maps file IDs to their filenames
   - BLOCKS: stores ranges of addresses and lines for blocks of code
   - LINE PROGRAMS: state machine that resolves addresses and line numbers when executed
@@ -28,8 +29,8 @@ The table below describes the layout of a BLOCK (header).
 | base         |  2    | the (segment relative) address that this block begins at
 | top address  |  2    | the (segment relative) top address represented by the block + 1
 | base line    |  2    | the lowest line number represented by the block
-| # of lines   |  2    | the highest line number represented by the block
-| file id      |  1    | filename 0
+| # of lines   |  2    | the number of lines in the range represented by the block
+| file id      |  1    | index in the file table
 | segment id   |  1    | segment id for the block (only used for linking)
 | program      |  2    | address of the line mapping program
 | program end  |  2    | address of the end of the line program
@@ -51,6 +52,7 @@ If the file changes during assembly, e.g. when a `.INC` directive is encountered
 BLOCK is created.
 
 In the assembler, the pseudo-ops that force the creation of a block are:
+
   - including a file (`.INC`)
   - setting the address (`.ORG`)
   - creating/activating a SEGMENT (`.SEG`, `.SEGZP`)
@@ -58,6 +60,7 @@ In the assembler, the pseudo-ops that force the creation of a block are:
 ### Line program
 The line program facilitates compact mapping of line numbers to addresses.
 It is a state machine with the following variables:
+
  - line number
  - address (or program counter)
 
@@ -92,7 +95,7 @@ Below is the list of extended commands and their effects.
 | `RESERVED`    |    -      |  $03 | x           | Reserved (unused)                                 |
 | `ADVANCE_LINE`| offset    |  $04 | 2           | Moves the line by the given signed offset         |
 | `ADVANCE_PC`  | offset    |  $05 | 2           | Moves the address by the given signed offset      |
-| `SET_PC`      | offset    |  $06 | 2           | Moves the address by the given signed offset      |
+| `SET_PC`      | address   |  $06 | 2           | Sets the address to the given absolute address      |
 | `END`         |  -        |  $00 | 0           | Marks the end of the program (block)              |
 
 
@@ -112,18 +115,19 @@ The BLOCK header sets up the file ID, line number, and (base) address.
 In this program, we start with a base address of $1000 (.ORG $1000).  The first
 meaningful line (line that may be executed) is line 2, so we store this in the header as well.
 This example has 5 lines and occupies 8 bytes. With these two pieces of data we have enough information
-to complete our header:
+to fill in the following selected header fields:
 
 | FIELD                 | DATA
 |-----------------------|--------------
 | base address          | $00 $10
 | top address           | $08 $10
-| base line             | $00 02
-| number of lines       | $00 05
+| base line             | $02 $00
+| number of lines       | $04 $00
 | file ID               | $01
 | line program address  | $00 $20
 
 The state machine is initialized with values from the block header, so we enter the program with:
+
   - line number: 2
   - file ID: 1
   - address: $1000
@@ -138,7 +142,7 @@ instructions to resolve "sta $900f" and "jmp loop".  Here's what those look like
 
 | VALUE | DESCRIPTION                                                 |
 |-------|-------------------------------------------------------------|
-| $22   | move line by 2 and address by 2 (we are now at `sta $900f`) |
+| $21   | move line by 1 and address by 2 (we are now at `sta $900f`) |
 | $32   | move line by 2 and address by 3 (we are now at `jmp loop`)  |
 
 ````
@@ -146,6 +150,7 @@ instructions to resolve "sta $900f" and "jmp loop".  Here's what those look like
 ### Debug information generation
 
 The flow for generating debug information is:
+
  1. begin block: a new BLOCK is defined for the current file, line, and address
  2. add lines: instructions are added to the line program for the active block to produce a program capable of resolving the addresses and lines for each CPU instruction.
  3. end block: the most recently defined BLOCK is closed
@@ -164,5 +169,5 @@ the current line number is returned.
 #### Mapping line to address
 
 The line to address mapping works just like address to line mapping.  The first block containing the
-file/address range being sought is executed.  When the line program's line number is equal to the one
+file/line range being sought is executed.  When the line program's line number is equal to the one
 requested, the PC value for the program at that point is returned.

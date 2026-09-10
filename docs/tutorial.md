@@ -5,7 +5,7 @@ we will now walk through a much more substantial project.  The goal is to build 
 that familiarizes you with the multitude of powerful features Monster provides.
 
 By the end of this tutorial we will have a smoothly moving character that can run from side to side
-and jump under joystick control.
+and move up and down under joystick control.
 
 #### Main
 
@@ -18,7 +18,7 @@ enter the **BUFFERS VIEWER**.  This will pop open a _window_ which allows you to
 select one to navigate to.  Confirm in this view that we have only one buffer open.
 
 Once confirmed, with the BUFFERS VIEWER, press {c64-keys}`C= + Q` to close the BUFFERS VIEWER.
-You can also press ({c64-key}`RUN/STOP` to re-enter the editor, but leave the viewer onscreen.
+You can also press {c64-key}`RUN/STOP` to re-enter the editor, but leave the viewer onscreen.
 We'll touch more on the concept of these "windows" when we start debugging.
 
 Now rename the buffer by entering EX COMMAND mode ({c64-key}`:`) and typing `r main.s` at the prompt.
@@ -30,7 +30,7 @@ Let's set the origin of this program to `$2000`.
 ```
 
 `$2000` is outside of the range visible to the VIC, so it is a good location for code on
-a program targetting an expanded RAM configuration.  Our program will use almost all of the memory
+a program targeting an expanded RAM configuration.  Our program will use almost all of the memory
 from `$1000`-`$2000`, so this is important.
 
 Since this program will be a bit more substantial, we will want to leverage Monster's macro
@@ -190,7 +190,7 @@ true in the buffer viewer as well as the UDG editor and others we've yet to expl
 Okay, time for the exciting stuff: let's work on writing the logic that ties everything together.
 Navigate to the `main.s` buffer.
 
-First things first, we need to setup the display. The VIC registers at $9000 retain their
+First things first, we need to set up the display. The VIC registers at $9000 retain their
 "cold start" defaults in Monster's virtual memory upon boot, but those are not fit for our
 purposes.  Configuring the display can be thought of in two parts: the geometry/attributes, and the
 matrix.
@@ -250,7 +250,7 @@ init
     ldxy $1000
     stxy @addr
 
-    ldx #$0f	; screen code
+    ldx #$10	; screen code
 @l0 ldy #0
     txa
 :   sta (@addr),y
@@ -268,14 +268,13 @@ init
     bcc +
     inc @addr+1
 :   inx
-    cpx #12+$0f
+    cpx #12+$10
     bne @l0
 ```
 
-`X` contains the screen code in this loop.  Note that it starts at `$10`.  This is because
-the data for the first `$0f` screen codes overlaps our matrix and, thus, is unusable
-for storing the bitmap data.  We need 20*12 (240) bytes for our matrix, and, at 16 bytes per
-(double height) character, that means our first usable code in the bitmap space is 240/16 = 15 (`$0f`).
+`X` contains the screen code in this loop.  Note that it starts at `$10`.  Our matrix
+occupies 20*12 (240) bytes, from `$1000` through `$10ef`.  We leave another 16 bytes unused
+so the bitmap begins at `$1100`, corresponding to screen code `$10` for double-height characters.
 
 For each column we write, we are updating the screen code by `$0c`.  This is simply the
 number of rows in our matrix.  Striding by this amount and incrementing our base value per
@@ -412,7 +411,7 @@ stop debugging ({c64-keys}`C= + X`) to return to edit mode.  When you are done w
 the program ({c64-keys}`C= + A`) and try again.
 
 
-Okay, however circuitous your path to get there, we are contniue our debug session post-VIC initialization.
+Okay, however circuitous your path to get there, let’s continue our debug session post-VIC initialization.
 This is where the code gets a bit more interesting.  For starters, we have control flow to initialize the screen.
 And it's quite a lot of iterations this time.  Repeated stepping would be tedious here, so let's instead set a
 breakpoint after the screen initialization loop and see if the outcome is as we expect.
@@ -425,7 +424,7 @@ Once activated, set the address to our screen matrix by pressing {c64-key}`Up-Ar
 {c64-key}`RETURN`.  The viewer will refresh with the contents at address `$1000` and _hopefully_ you will
 see a steadily increasing (by `$0c`) array of values: `10`, `1c`, `28`, ...
 
-If you don't, then try to see what is wrong with the pattern, hunt for any bugs in the initializatoin loop, and
+If you don't, then try to see what is wrong with the pattern, hunt for any bugs in the initialization loop, and
 fix using the usual flow.
 
 #### Window management
@@ -527,7 +526,7 @@ Let's start with #1 so that we can see our sprite at all before we worry about m
 #### Sprite Rendering
 
 There are various ways to render a sprite.  For this tutorial we will use a rather crude
-approach, but you may experiment with optimiztions to speed it up.
+approach, but you may experiment with optimizations to speed it up.
 
 The concept is this: the Vic-20 has only rough 8x8 character positions in hardware.
 In software, however, we can leverage the bitmap that we have already configured to move a sprite
@@ -567,7 +566,7 @@ drawspr
     bpl @l0
 ```
 
-Here `sprite` contains 16 bits of data.  `sprite` contains the left half and `sprite+8` the right
+Here `sprite` contains 16 bytes of data.  `sprite` contains the left half and `sprite+8` the right
 one.  When `spritex` evenly divides by 8, we skip the shift altogether (this is the `beq @cont` after
 we initialize the `sprite` data for the row).
 
@@ -700,7 +699,7 @@ readjoy
 That leaves "right".  As we noted earlier, it shares a pin with the keyboard column drive, so we
 briefly make PB7 an input, sample it, and then restore the port to all-outputs.
 
-Our program doesn't need the keyboard, so you could leave simply keep PB7 as an input
+Our program doesn't need the keyboard, so you could simply keep PB7 as an input
 forever, but this approach allows you to extend the program with keyboard input later if you wish.
 
 ```
@@ -729,7 +728,7 @@ per switch.
 
 Note that we disabled interrupts when sampling the joystick.  The KERNAL
 IRQ is still enabled in our program, and it uses the VIA for keyboard input.
-Without this, the KERNAL may read bad data, thinking the VIA's are still in the state
+Without this, the KERNAL may read bad data, thinking the VIAs are still in the state
 it left them.  We restore `$9122` to the KERNAL's usual value to keep things in
 the state it expects.
 
@@ -815,9 +814,9 @@ There are two popular approaches to erasing a sprite
 1. saving a "backup" of the data that the sprite is drawing over.
 2. `EOR`ing the sprite with itself
 
-The `EOR` approach is simpler, but it relies on the background being empty.  If it's not, it will be
-cleared wherever the sprite goes.  If you have overlapping sprites, you will similarly face corruption.
-But for our purposes (1 sprite, blank background) it is perfect.  And it hardly requires any new code.
+The `EOR` approach is simpler: applying the same sprite mask twice restores the original
+background, provided it has not changed between drawing and erasing.
+For our purposes (1 sprite, blank background) it is perfect.  And it hardly requires any new code.
 All we have to do is slightly modify the code that stores the sprite data to the screen.  Go back to
 your `blit` loop and add an `eor (@col),y` between the sprite data loads and the bitmap writes.
 
@@ -843,7 +842,7 @@ When you free run the program, you should now see the sprite moving around clean
 
 The solid block was a fun start to prove out our sprite renderer works, but
 what about our character set we worked so hard to rip and edit?  Next we will allow the user
-of our program to access our character set by programatically chaning the sprite data
+of our program to access our character set by programmatically changing the sprite data
 that is rendered.
 
 To accomplish this, let's replace the hardcoded `spritedat` with a character ID and include the
@@ -951,7 +950,7 @@ movespr
 The existing left-direction code follows immediately after that final `lda joy`.
 
 Note that we are checking the `swaptmr` counter here to stop the handler from changing characters
-every single frame.  We are reinitalizing the delay with `$08` each time we cycle characters,
+every single frame.  We are reinitializing the delay with `$08` each time we cycle characters,
 but you may experiment with this value.
 
 Finally, count the repeat timer down once per pass through the main loop:
@@ -984,11 +983,11 @@ definition.
 #### Where to go from here
 
 What we've built here is a great starting point for further experimentation.
-Try changing the sprite data or adding sound effects when the sprite jumps (you can use the
-appendicies in this manual to understand how to do this).
+Try changing the sprite data or adding sound effects when the sprite moves (you can use the
+appendices in this manual to understand how to do this).
 
 The rest of the manual serves as a reference as you continue to advance.  It is worth
-giving a first pass read, but the best way to learn is to keep exersizing your abilities
+giving a first pass read, but the best way to learn is to keep exercising your abilities
 by using Monster.  Have fun!
 
 #### Complete program

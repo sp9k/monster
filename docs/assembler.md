@@ -58,9 +58,9 @@ produce the final result of 7.
 |   `-`    | binary operator to subtract one value from another (also unary negate) |     1      |
 |   `*`    | binary operator to multiply two values                                 |     2      |
 |   `/`    | binary operator to divide one value by another                         |     2      |
-|   `&`    | binary operator: logical AND of two values                             |     3      |
+|   `&`    | binary operator: bitwise AND of two values                             |     3      |
 |   `^`    | binary operator: exclusive OR (EOR) of two values                      |     4      |
-|   `.`    | binary operator: logical OR of two values                              |     5      |
+|   `.`    | binary operator: bitwise OR of two values                              |     5      |
 |   `<`    | unary operator: least significant byte of the value                    |     3      |
 |   `>`    | unary operator: most significant byte of the value                     |     3      |
 |   `==`   | binary operator: 1 if the two values are equal, else 0                 |     0      |
@@ -73,7 +73,7 @@ produce the final result of 7.
 Note that `<` and `>` are byte-select post-processing operators if value is expected (`LDA #<LABEL`) and
 comparisons where an operator is expected (`LDA #LABEL<$100`).
 
-The comparisons compare unsigned 16-bit values and produce the integer 1 (true)
+Integer comparisons compare unsigned 16-bit values and produce the integer 1 (true)
 or 0 (false), so they may be used anywhere a value may be.  Their precedence of
 0 is lower than every other operator, meaning arithmetic on either side is always evaluated first.
 For example:
@@ -315,6 +315,13 @@ cury    .db 0
 .db "HI",0        ; $48 $49 $00
 ```
 ````
+
+#### .DF
+
+**Syntax:** `.DF expression [, expression ...]`
+
+**Behavior:** Defines a sequence of five-byte CBM floating-point values.
+See [CBM floating-point support](floating-point.md) for details and examples.
 
 #### .DW
 
@@ -715,7 +722,7 @@ linker section of the manual.
 Macros offer a convenient way to abstract patterns that you find yourself
 frequently writing.
 
-They may be recursive as in this example:
+Macros may invoke other macros, as in this example:
 
 ````{example}
 ```

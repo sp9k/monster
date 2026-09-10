@@ -17,7 +17,7 @@ letters are added to the source buffer upon entry.
 
 Type some characters and you will see them appear onscreen.  Unlike the KERNAL, text cannot be arbitrarily
 entered anywhere on the screen.  The screen displays a representation of the **SOURCE BUFFER**.  If this buffer
-contains no further characters on the current line, you are unable to navigate to that positon.  If the buffer
+contains no further characters on the current line, you are unable to navigate to that position.  If the buffer
 contains only 10 lines, you cannot navigate to line 11.
 
 Press {c64-key}`RUN/STOP` and you will exit INSERT MODE and return to COMMAND MODE.
@@ -37,7 +37,7 @@ Note that upon pressing {c64-key}`RETURN` the line is automatically formatted.  
 by the autoformatter while everything else is indented by a tab character. Tabs can also be manually inserted by pressing
 {c64-keys}`Ctrl + I`.  However, practically speaking, you are unlikely to need to do this often (if ever) because of the formatter.
 
-This tells the assembler to place the origin of what follows to address $1000.  An origin is required before any instructions because,
+This tells the assembler to set the origin of what follows to address $1000.  An origin is required before any instructions because,
 without it, the assembler doesn’t know where to assemble the instructions.  With this taken care of, we can continue with the meat of our program.
 However, as we will later discuss, it isn't necessarily an absolute address.
 
@@ -53,7 +53,7 @@ loop
     bne loop
 ```
 
-Here we have defined a loop.  Note that we have two instructions that reference labels.
+Here we have defined a loop.  Note that we have three instructions that reference labels.
 These are described in more detail later in this document, but as you can see in this example,
 they are left-aligned (begin at column 0) and are followed by whitespace.
 Although not shown above, they _may_, but are not required to, end with a ‘:’. If they do, the ':'
@@ -124,10 +124,7 @@ A successful assembly reports the address range that the program occupies.
 
 With the program in memory, it's time to debug it!
 
-To enter the debugger, press {c64-key}`Colon` again to enter EX MODE. Then enter the following at the prompt:
-`:d`
-
-Now press {c64-key}`RETURN`.  This will launch the debugger, a major component of Monster.
+To enter the debugger, press {c64-keys}`C= + D`.  This will launch the debugger, a major component of Monster.
 
 The debugger enables source level debugging of an assembled program.  At the bottom of the screen,
 the debugger displays information about the state of the machine at the current step of the program:
@@ -205,17 +202,16 @@ This is the basis of the object code idea.  You write your assembly files as sel
 assemble these individually, and when you’re ready to produce your full binary, you link these
 object files together to produce the final program.
 
-Assembling your program to object files with Monster is simple.  Enter the command mode, [:],
-and then type `:o HELLO.O` after the prompt.  Note that this sends the active state of the
-last assembly to the object file, it does not actually perform the assembly step.
+Assembling your program to object files with Monster is simple.  Enter EX MODE with {c64-key}`Colon`,
+and then type `o HELLO.O` at the prompt.  Note that this sends the active state of the
+last assembly to the object file; it does not actually perform the assembly step.
 The command assumes that you’ve done that yourself prior to running the command.
 
 If all goes well, you will now have a new file on disk: `HELLO.O`.  This is your object file.
 By itself, this is insufficient to produce the linked binary.
 The linker needs to know where to place the code inside this file.  Enter the `LINK` file.
 
-Jump ahead to the LINKER section of this document for more details on this.  For now, just create a new file,
-enter the following inside it, and save it (`:s LINK`).  Now you’re ready to produce your first linked program.
+See the [Linker](linker.md) chapter for the LINK file format and linking instructions.
 
 ```{toctree}
 :maxdepth: 2

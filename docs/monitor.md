@@ -183,7 +183,7 @@ that differs.
 
 **Syntax:** `clear`
 
-**Behavior:** Clears the monitor and returns the cursor to the origin. The
+**Behavior:** Clears the monitor and returns the cursor to the origin.
 Pressing {c64-keys}`C= + L` performs the same action.
 
 ```{example}

@@ -2,8 +2,6 @@
 
 ## Debugger overview
 
----
-
 ```{figure} screenshots/debugger-1.png
 :alt: The debugger
 :align: center
@@ -28,7 +26,7 @@ While debugging, most navigation commands work as normal. Breakpoints may
 be set as they would in the editor prior to assembly, and they will be installed
 in realtime.  Other edits are not allowed, however, while the debugger is active.
 
-Both the debugger and the user program's RAM is saved/restored when control
+RAM for both the debugger and the user program is saved/restored when control
 transfers between the two. That is the screen data ($1000-$2000), the zeropage,
 and color RAM.  This allows the debugger and debugged program
 to operate independently without worrying about writes to one affecting the other.
@@ -83,7 +81,7 @@ respective Key in the table below.
 | {c64-key}`Y`          | STEP OUT        | steps until the next RTS instruction                                                    |
 | {c64-key}`Z`          | STEP            | steps to the next instruction.                                                          |
 | {c64-key}`T`          | TRACE           | like GO but the debugger takes control between each instruction                         |
-| {c64-keys}`C= + G`    | GO              | begins execution at the cursor                                                          |
+| {c64-keys}`C= + G`    | GO              | continues execution from the current program counter                                                          |
 | {c64-keys}`C= + P`    | JUMP TO         | sets the PC to the address corresponding to the line the cursor is on                   |
 | {c64-keys}`C= + R`    | RESET STOPWATCH | resets the value of the stopwatch to 0                                                  |
 | {c64-keys}`C= + X`    | QUIT DEBUGGER   | Prompts the user for confirmation then quits the debugger upon receiving it             |
@@ -171,7 +169,7 @@ during a trace if it has a visual component.
 ## Free run (go)
 
 The `GO` command begins execution and returns to the debugger only when a
-breakpoint is encountered or when {c64-key}`RUN/STOP` is pressed.  Unlike any of the step/trace
+breakpoint is encountered or when {c64-key}`RESTORE` is pressed.  Unlike any of the step/trace
 commands, Go will _not_ simulate anything.  Control is given entirely over
 to the user program.  This could be dangerous, but is likely necessary in many
 cases.  A nearly finished game, for example, will require the user to give over
@@ -258,7 +256,7 @@ The user simply navigates the list with the cursor keys and presses {c64-key}`RE
 toggle those which he/she wishes to enable/disable.
 
 Note that breakpoints correspond to the debug information generated with
-the {c64-key}`F4` command.  If the line numbers change after this information is generated,
+the {c64-keys}`C= + A` command.  If the line numbers change after this information is generated,
 breakpoints are unlikely to behave in expected ways.
 
 ### Watch viewer
