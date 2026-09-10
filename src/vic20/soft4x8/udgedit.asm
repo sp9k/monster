@@ -27,7 +27,7 @@
 
 ;*******************************************************************************
 PIXEL_SIZE = 4		; size of each pixel in the editor
-CUR_DELAY  = $2000	; ticks before cursor is toggled
+CUR_DELAY  = $0400	; ticks before cursor is toggled
 
 UP    = 0
 DOWN  = 1
@@ -298,7 +298,7 @@ udg = r8	; buffer where character data is stored (8 bytes)
 ; Toggles the cursor
 .proc curtoggle
 @dst=r0
-@y=r2
+@mask=r2
 	lda cur_on
 	eor #$01
 	sta cur_on
@@ -307,11 +307,11 @@ udg = r8	; buffer where character data is stored (8 bytes)
 	lsr
 	tax
 
-	lda colslo+(CANVAS_X/8)-1,x
+	lda colslo+(CANVAS_X/8),x
 	clc
 	adc #CANVAS_Y
 	sta @dst
-	lda colshi+(CANVAS_X/8)-1,x
+	lda colshi+(CANVAS_X/8),x
 	adc #$00
 	sta @dst+1
 
@@ -319,148 +319,33 @@ udg = r8	; buffer where character data is stored (8 bytes)
 	asl
 	asl
 	tay
-	sty @y
+
+	ldx #$00	; hires, even column
+	lda multicolor
+	bne @multicolor
 	lda zp::curx
 	and #$01
-	bne @oddcol
+	beq @draw
+	ldx #PIXEL_SIZE	; hires, odd column
+	bne @draw
+@multicolor:
+	ldx #2*PIXEL_SIZE
 
-	lda multicolor
-	bne @evencol_mc
-
-@evencol_hires:
-	; left border
-	ldx #PIXEL_SIZE
-:	lda #$02
+@draw:	lda #PIXEL_SIZE
+	sta @mask	; rows remaining
+@row:	lda masks,x
 	eor (@dst),y
 	sta (@dst),y
+	inx
 	iny
-	dex
-	bne :-
-
-	lda @dst
-	clc
-	adc #BITMAP_HEIGHT
-	sta @dst
-	bcc :+
-	inc @dst+1
-
-:	ldy @y
-	; top row
-	lda #$a8
-	eor (@dst),y
-	sta (@dst),y
-
-	; middle rows
-	iny
-	lda #$08
-	eor (@dst),y
-	sta (@dst),y
-	iny
-	lda #$08
-	eor (@dst),y
-	sta (@dst),y
-
-	; bottom row
-	iny
-	lda #$a8
-	eor (@dst),y
-	sta (@dst),y
+	dec @mask
+	bne @row
 	rts
 
-@oddcol:
-	lda @dst
-	clc
-	adc #BITMAP_HEIGHT
-	sta @dst
-	bcc :+
-	inc @dst+1
-
-:	; top row
-	lda #$2a
-	eor (@dst),y
-	sta (@dst),y
-
-	; middle rows
-	iny
-	lda #$20
-	eor (@dst),y
-	sta (@dst),y
-	iny
-	lda #$20
-	eor (@dst),y
-	sta (@dst),y
-
-	; bottom row
-	iny
-	lda #$2a
-	eor (@dst),y
-	sta (@dst),y
-
-	lda @dst
-	clc
-	adc #BITMAP_HEIGHT
-	sta @dst
-	bcc :+
-	inc @dst+1
-
-:	ldy @y
-	; right border
-	ldx #PIXEL_SIZE
-:	lda #$80
-	eor (@dst),y
-	sta (@dst),y
-	iny
-	dex
-	bne :-
-	rts
-
-; multicolor is always even
-@evencol_mc:
-	; left border
-	ldx #PIXEL_SIZE
-:	lda #$02
-	eor (@dst),y
-	sta (@dst),y
-	iny
-	dex
-	bne :-
-
-	lda @dst
-	clc
-	adc #BITMAP_HEIGHT
-	sta @dst
-	bcc :+
-	inc @dst+1
-
-:	ldy @y
-	lda #$aa		; top border
-	eor (@dst),y
-	sta (@dst),y
-	iny
-	iny
-	iny
-	lda #$aa		; bottom border
-	eor (@dst),y
-	sta (@dst),y
-
-	lda @dst
-	clc
-	adc #BITMAP_HEIGHT
-	sta @dst
-	bcc :+
-	inc @dst+1
-
-:	ldy @y
-	; right border
-	ldx #PIXEL_SIZE
-:	lda #$80
-	eor (@dst),y
-	sta (@dst),y
-	iny
-	dex
-	bne :-
-
-	rts
+;-------------------------------------------------------------------------------
+masks:	.byte $a0, $a0, $a0, $a0
+	.byte $0a, $0a, $0a, $0a
+	.byte $aa, $82, $82, $aa
 .endproc
 
 ;*******************************************************************************
@@ -585,7 +470,9 @@ udg = r8	; buffer where character data is stored (8 bytes)
 	sta zp::cury
 	pla
 	sta zp::curx
-	rts
+	ldxy #CUR_DELAY	; reset blink timer
+	stxy cur_tmr
+	jmp curon
 .endproc
 
 ;*******************************************************************************
