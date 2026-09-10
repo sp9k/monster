@@ -127,7 +127,8 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	dex
 	bne :-
 
-	rts
+	; buffers are reset so all errors are now invalid, clear them too
+	jmp errlog::reset
 .endproc
 
 ;*******************************************************************************
@@ -549,6 +550,8 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	lda numsrcs
 	beq @ok		; no buffer to close
 
+	jsr errlog::close_buffer
+	lda numsrcs
 	cmp #$01	; is the current buffer the last one?
 	bne @close
 
@@ -798,6 +801,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Callback to handle a line deletion. Various state needs to be shifted when
 ; this occurs (breakpoints for now, TODO: debug info)
 .proc on_line_deleted
+@fileid=r0
 	decw lines
 
 	; update debug info: find all line programs in the current file with
@@ -807,23 +811,14 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 
 	; shift breakpoints and errors
 	jsr edit::currentfile	; .A=file id, .XY=current line
-	bcs @done		; no file ID: nothing is mapped to this buffer
-	sta r0			; file ID (preserved across both shifts)
-	txa
-	pha			; save line (LSB)
-	tya
-	pha			; save line (MSB)
-
+	bcs @errors		; no file ID: nothing is mapped to this buffer
+	sta @fileid			; file ID for breakpoint shift
 	lda #$01
 	jsr dbg::shift_breakpointsu
 
-	pla
-	tay			; restore line (MSB)
-	pla
-	tax			; restore line (LSB)
-	lda #$01
-	jmp errlog::shift_errorsu
-@done:	rts
+@errors:
+	jsr errlog::deleted
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1436,6 +1431,8 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ;  - .A: the buffer ID to flag as DIRTY
 .export __src_mark_dirty
 .proc __src_mark_dirty
+	lda #errlog::NAV_NONE
+	sta errlog::navpending
 	lda #FLAG_DIRTY
 	ldx activesrc
 	sta flags,x

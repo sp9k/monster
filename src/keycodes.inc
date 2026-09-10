@@ -18,9 +18,10 @@ K_UDG_TOGGLE_MODE  = $6d	; m
 K_UDG_CLEAR        = $93	; SHIFT + CLR/HOME
 
 ; GLOBAL INTERFACE KEYS
-K_RETURN    = $0d	; RETURN
-K_QUIT      = $03	; STOP
-K_DEL       = $14	; DELETE
+K_RETURN        = $0d	; RETURN
+K_FORCE_NEWLINE = $8d	; SHIFT + RETURN
+K_QUIT          = $03	; STOP
+K_DEL           = $14	; DELETE
 
 ; EDITOR KEYS
 K_GO_BASIC       = $85	; F1
@@ -65,6 +66,8 @@ K_PREV_DRIVE     = $dc  ; C= + -
 K_EDIT_STATE     = $89	; F2
 K_SWAP_WINS      = $b3	; C= + w
 K_NEXT_ERR       = $b1  ; C= + e
+K_DISMISS_ERR    = $bd  ; C= + x
+K_CHECK_LINE     = $a3  ; C= + t
 
 K_NEXT_BANNER    = $ea	; CTRL + ; (next ";;;" comment banner)
 K_PREV_BANNER    = $eb	; CTRL + : (previous ";;;" comment banner)

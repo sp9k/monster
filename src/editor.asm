@@ -150,6 +150,8 @@ status_row: .byte 0
 
 autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 
+forcenewl: .byte 0		; nonzero if linedone may leave an invalid line
+
 getsvec: .word 0		; key handler for gets
 
 .CODE
@@ -171,6 +173,7 @@ getsvec: .word 0		; key handler for gets
 .export __edit_sethighlight
 .export __edit_current_file
 .export __edit_refreshline
+.export __edit_redrawline
 
 .if .defined(CART) .and .defined(c64)
 __edit_init:           JUMP FINAL_BANK_EDIT, edit_init
@@ -188,6 +191,7 @@ __edit_src2screen:     JUMP FINAL_BANK_EDIT, edit_src2screen
 __edit_sethighlight:   JUMP FINAL_BANK_EDIT, edit_sethighlight
 __edit_current_file:   JUMP FINAL_BANK_EDIT, edit_current_file
 __edit_refreshline:    JUMP FINAL_BANK_EDIT, edit_refreshline
+__edit_redrawline:     JUMP FINAL_BANK_EDIT, print_current_line
 
 ;*******************************************************************************
 ; MAIN-context vectors for the gui:: handlers dispatched from the banked
@@ -215,6 +219,7 @@ __edit_src2screen      = edit_src2screen
 __edit_sethighlight    = edit_sethighlight
 __edit_current_file    = edit_current_file
 __edit_refreshline     = edit_refreshline
+__edit_redrawline      = print_current_line
 
 guienter      = gui::enter
 guigrow       = gui::grow
@@ -233,6 +238,7 @@ guitogglehide = gui::togglehide
 	inx			; ldx #$00
 	stx zp::banksp		; reset "far" (bank byte) stack
 	stx zp::gendebuginfo
+	jsr errlog::reset
 	jsr enter_command
 
 	; rewind source and get the first line's contents in textbuffer
@@ -283,8 +289,11 @@ guitogglehide = gui::togglehide
 
 main:	jsr key::getch
 	beq @done
+	cmp #K_RETURN
+	bne :+
+	lda key::raw		; check if RETURN or SHIFT+RETURN (force newl)
 
-	jsr is_visual
+:	jsr is_visual
 	beq :+			; leave cursor on if in VISUAL/VISUAL_LINE mode
 	pha
 	jsr cur::off
@@ -303,6 +312,7 @@ main:	jsr key::getch
 ; OUT:
 ;  - .C: set if the key resulted in no action in the editor
 .proc edit_handlekey
+	jsr errlog::before_key
 	jsr is_visual
 	beq @cmd		; handle keys in VISUAL mode like COMMAND
 
@@ -312,7 +322,8 @@ main:	jsr key::getch
 	jmp @done
 @ins:	jsr onkey
 
-@done:	jsr text::update	; update status in case something was changed
+@done:	jsr errlog::after_key
+	jsr text::update	; update status in case something was changed
 	jsr is_visual
 	beq :+
 	jsr cur::on
@@ -341,9 +352,7 @@ main:	jsr key::getch
 ; Called when a line is navigated to
 .proc line_navigated
 	jsr clear_message
-	jsr edit_current_file		; .A=file id, .XY=current line
-	bcs @done
-	jsr errlog::getbyline		; .C clear if an error is on this line
+	jsr errlog::get_curent		; .C clear if an error is on this line
 	bcs @done
 	jsr err::get			; .A=code -> .XY=message
 	jsr text::info
@@ -407,13 +416,13 @@ main:	jsr key::getch
 	jsr src::downn
 	bcs @clr		; source ended before the target row
 
-@read:	jsr src::readline	; read the target line into the linebuffer
+@read:	jsr src::get		; leaves the source on the drawn row
 	pla			; restore the row
-	jsr text::drawline
+	jsr print_line
 	jmp @done
 
 @clr:	pla			; restore the row
-	jsr scr::clrline
+	jsr clear_row
 
 @done:	jsr src::popgoto	; restore the source position
 	jmp text::restorebuff	; and the linebuffer
@@ -476,7 +485,7 @@ main:	jsr key::getch
 
 	jsr clear_errors	; close errlog (if open)
 	CALLMAIN dbgi::init
-	jsr errlog::clear
+	jsr errlog::reset	; assembly starts fresh, including dismissed errors
 	jsr run::install_sigint	; reset SIGINT flag
 
 	jsr init_log		; create a (new) log file
@@ -499,7 +508,7 @@ main:	jsr key::getch
 	jsr errlog::log		; log the unclosed-block error
 
 @p1chk:	; if there were any errors after pass 1, abort
-	lda errlog::numerrs
+	lda errlog::asmerrors
 	bne @done
 
 	; do the second assembly pass
@@ -690,7 +699,7 @@ main:	jsr key::getch
 	jsr run::install_sigint	; reset SIGINT flag
 
 	CALLMAIN dbgi::init
-	jsr errlog::clear
+	jsr errlog::reset	; assembly starts fresh, including dismissed errors
 
 	; save the current source position and rewind it for assembly
 	jsr text::savebuff
@@ -741,7 +750,7 @@ main:	jsr key::getch
 	jsr errlog::log		; log the unclosed-block error
 
 @p1chk:	; if there were any errors after pass 1, abort
-	lda errlog::numerrs
+	lda errlog::asmerrors
 	bne @done
 
 	CALLMAIN obj::close_section	; close final OBJ section
@@ -822,11 +831,14 @@ main:	jsr key::getch
 	lda #$01
 	sta zp::verify		; re-enable verify
 
-	lda errlog::numerrs
+	lda errlog::asmerrors
 	beq @printresult
 
-@err:	jsr errlog::activate
-	jsr line_navigated	; publish the new assembly result at the cursor
+@err:	lda errlog::numerrs
+	beq :+
+	jsr errlog::activate
+
+:	jsr line_navigated	; publish the new assembly result at the cursor
 
 	jsr log::close
 	sec			; assembly failed
@@ -1234,18 +1246,13 @@ main:	jsr key::getch
 	lda #'i'
 	sta text::statusmode
 	jsr sync_cur
-:				; <- fmt_and_enter_command
 @done:	rts
 .endproc
 
 ;*******************************************************************************
-; FMT AND ENTER COMMAND
-; Attempts to format the current line and then enters command mode
-.proc fmt_and_enter_command
-	lda mode
-	cmp #MODE_COMMAND
-	beq :-			; already in COMMAND mode
-	jsr fmt_line
+; LEAVE INSERT
+; Returns to COMMAND mode
+.proc leave_insert
 	jmp enter_command
 .endproc
 
@@ -1564,12 +1571,29 @@ cancel = enter_command
 ; Inserts a newline at the current cursor position
 ; The indentation flag is ignored (line will not be indented)
 .proc newl
+	lda #errlog::SPLIT_LINE
+	; fall through
+.endproc
+
+;*******************************************************************************
+; INSERT NEWLINE
+; IN:
+;  - .A: flag whether this splits a line or opens a blank line above/below it
+.proc insert_newline
+	pha
 	jsr is_readonly
-	beq begin_next_line	; if in readonly mode, just go down
+	bne @insert
+	pla
+	jmp begin_next_line
 
 @insert:
+	pla
+	jsr errlog::insertion_mode
 	lda #$0d
 	jsr src::insert
+
+	lda #errlog::SPLIT_LINE
+	jsr errlog::insertion_mode
 	jmp scroll_line
 .endproc
 
@@ -1641,9 +1665,17 @@ cancel = enter_command
 	jsr src::home
 	jsr gotoindex0
 
-	lda #MODE_VISUAL_LINE
+	; Removing the separator also invalidates mapped errors on the preceding
+	; source line. Reconcile that row without shifting its text or colors.
+	lda zp::cury
+	beq :+
+	sec
+	sbc #$01
+	jsr edit_render_row
+
+:	lda #MODE_VISUAL_LINE
 	sta selection_type	; set copy mode to LINE
-	jmp draw_active_line
+	jmp print_current_line
 .endproc
 
 ;*******************************************************************************
@@ -1993,7 +2025,7 @@ cancel = enter_command
 
 	; redraw the line and move to the next one
 	lda @row
-	jsr text::drawline
+	jsr draw_completed_paste_line
 	inc @row
 
 @middlerows:
@@ -2012,7 +2044,7 @@ cancel = enter_command
 
 	jsr src::insert			; insert the newline
 	lda @row
-	jsr draw_line_if_visible	; redraw current row
+	jsr draw_completed_paste_line
 	inc @row			; move to the next row
 	bne @l1				; and continue
 
@@ -2054,6 +2086,24 @@ cancel = enter_command
 .endproc
 
 ;*******************************************************************************
+; DRAW COMPLETED PASTE LINE
+; The source cursor has crossed the inserted CR, but linebuffer still holds
+; the completed paste row. Match its source position before drawing markers.
+; IN:
+;  - .A: the screen row to draw
+;  - mem::linebuffer: the completed paste line
+;  - source position: immediately after the inserted newline
+; OUT:
+;  - source position: restored to immediately after the newline
+.proc draw_completed_paste_line
+	pha
+	jsr src::prev
+	pla
+	jsr draw_line_if_visible
+	jmp src::next
+.endproc
+
+;*******************************************************************************
 ; DRAW_LINE_IF_VISIBLE
 ; If the given row is within the current screen range, (0, height], draws the
 ; linebuffer.  If not, does nothing.
@@ -2064,7 +2114,7 @@ cancel = enter_command
 	cmp height
 	beq :+
 	bcs @done
-:	jmp text::drawline
+:	jmp print_line
 @done:	rts
 .endproc
 
@@ -2451,7 +2501,7 @@ cancel = enter_command
 	jsr make_joined_line
 	bcs :-			; can't join -> rts
 
-	jsr draw_active_line	; redraw the newly joined line
+	jsr print_current_line	; redraw the join and its errors
 	inc zp::cury
 	jsr bumpup
 
@@ -2538,8 +2588,9 @@ cancel = enter_command
 	jsr src::after_cursor
 	pha
 
-	jsr newl
-	jsr draw_active_line
+	lda #errlog::BLANK_ABOVE
+	jsr insert_newline
+	jsr print_current_line	; restore mapped errors on the line moved down
 	jsr ccup		; go up
 
 	pla			; did line start with TAB?
@@ -2576,7 +2627,8 @@ cancel = enter_command
 .proc open_line_below
 	jsr enter_insert
 	jsr end_of_line		; move to end of current line
-	jmp newl		; and insert a newline
+	lda #errlog::BLANK_BELOW
+	jmp insert_newline
 .endproc
 
 ;*******************************************************************************
@@ -2682,6 +2734,8 @@ cancel = enter_command
 	.byte K_MEMVIEW		; mem viewer/editor (same as while debugging)
 	.byte K_BRKVIEW		; breakpoint viewer/editor (same as while debugging)
 	.byte K_WATCHVIEW	; watch viewer/editor (same as while debugging)
+	.byte K_MONITOR_WIN	; enter console in a window
+	.byte K_SWAP_WINS	; C= + w (swap windows)
 	.byte K_REFRESH		; refresh
 	.byte K_LIST_SYMBOLS	; list symbols
 	.byte K_VIEW_MACROS	; open macro viewer
@@ -2712,24 +2766,89 @@ cancel = enter_command
 	.byte K_PREV_PAL
 	.byte K_TOGGLE_FMT
 	.byte K_VIS_WHITESPACE  ; C=-v toggle visual tabs
+	.byte K_DISMISS_ERR
+	.byte K_FORCE_NEWLINE
+	.byte K_CHECK_LINE
+	.byte K_NEXT_DRIVE	; C= + + (next drive)
+	.byte K_PREV_DRIVE	; C= + - (previous drive)
+	.byte K_WIN_GROW	; C= + k (grow the active window)
+	.byte K_WIN_SHRINK	; C= + j (shrink the active window)
+	.byte K_WIN_MAXIMIZE	; C= + z (maximize/restore the active window)
+	.byte K_NEXT_ERR	; C= + e (next error)
+	.byte K_WIN_HIDE	; C= + h (toggle rendering of the windows)
+	.byte K_NEXT_BANNER	; CTRL + ; (next comment banner)
+	.byte K_PREV_BANNER	; CTRL + : (previous comment banner)
 @num_special_keys=*-@specialkeys
 .linecont +
 .define specialvecs ccleft, ccright, ccup, ccdown, \
 	home, \
 	command_asmdbg, command_debug, show_buffers, \
-	view::edit, brkpt::edit, watch::edit, \
+	view::edit, brkpt::edit, watch::edit, monitor_win, \
+	guienter, \
 	refresh, \
 	view_symbols, view_macros, show_log, command_link, \
 	close_buffer, new_buffer, set_breakpoint, jumpback, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
-	next_buffer, prev_buffer, udgedit, fmt_and_enter_command, go_basic, \
+	next_buffer, prev_buffer, udgedit, leave_insert, go_basic, \
 	mem_config, \
-	gprefs::next_pal, gprefs::prev_pal, toggle_autoformat, toggle_vis_ws
+	gprefs::next_pal, gprefs::prev_pal, toggle_autoformat, \
+	toggle_vis_ws, dismiss_error, force_newline, check_current_line, \
+	next_drive, prev_drive, guigrow, guishrink, maximize_win, next_err, \
+	guitogglehide, next_banner, prev_banner
 .linecont -
 
 @specialvecslo: .lobytes specialvecs
 @specialvecshi: .hibytes specialvecs
 .POPSEG
+.endproc
+
+;*******************************************************************************
+.proc dismiss_error
+	jsr errlog::dismiss
+	jmp line_navigated
+.endproc
+
+;*******************************************************************************
+; CHECK CURRENT LINE
+; Checks and formats the current line without inserting a newline.
+; Temporarily enables formatting regardless of the automatic setting.
+; IN:
+;  - mem::linebuffer: the current source line
+; OUT:
+;  - source cursor: follows the same text after formatting
+.proc check_current_line
+	jsr is_readonly
+	beq @done
+	lda zp::verify
+	beq @done
+	lda src::activebuff
+	cmp #MAX_SOURCES
+	bcs @done
+	jsr errlog::undismiss
+	jsr clear_message
+	lda fmt::enable
+	pha
+	lda #1
+	sta fmt::enable
+	jsr fmt_line
+	pla			; restore the automatic setting, preserving the result in .C
+	sta fmt::enable
+	bcs @error
+	jsr line_navigated
+	jmp errlog::refresh
+@error:
+	jmp errlog::show
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; FORCE NEWLINE
+; Begins a newline (like linedone) ALWAYS (unlike linedone, which first
+; validates the contents of the line being completed.
+.proc force_newline
+	jsr clear_message
+	lda #K_FORCE_NEWLINE
+	jmp linedone
 .endproc
 
 ;*******************************************************************************
@@ -3987,24 +4106,23 @@ goto_buffer:
 ;         1 = indented
 ;         2 = start with a ';'
 ;   - .C: set if the line was not formatted (assembly failed)
+;   - .A: error code when .C is set
 .proc fmt_line
-	lda fmt::enable
-	bne :+
-	RETURN_OK		; formatting disabled, return
-
-:	; tokenize (1st pass) to check if the line is valid
-	ldxy #mem::linebuffer
-	lda #FINAL_BANK_MAIN
-	jsr asm::tokenize
+	jsr errlog::check_line
 	bcc @fmt
 
-	; failed to assemble, don't format and print the error
+	; Keep the existing status message/beep for an explicit line check.
+	pha			; save the error for linedone's rollback
 	jsr report_typein_error
+	jsr print_current_line
+	pla
 	sec
 	rts
 
 ; format the line based on the line's contents (in .A from tokenize)
-@fmt:	ldx autoindent
+@fmt:	ldx fmt::enable
+	beq @done
+	ldx autoindent
 	beq @done		; if indent disabled, skip
 
 	jsr fmt::line
@@ -4032,7 +4150,16 @@ goto_buffer:
 ; (mem::linebuffer).
 ; If successful, formats the source according to the type of the assembled line
 ; (instruction, label, etc.) and creates a line/address mapping.
+; IN:
+;  - .A: K_FORCE_NEWLINE to begin a new line even when validation fails
 .proc linedone
+@buffer=r0
+	ldx #$00		; assume the newline must be earned
+	cmp #K_FORCE_NEWLINE
+	bne :+
+	inx			; SHIFT+RETURN: advance even if the line is bad
+:	stx forcenewl
+
 	jsr is_readonly
 	bne :+
 	jmp begin_next_line	; if READONLY, just go down a line
@@ -4063,17 +4190,40 @@ goto_buffer:
 	jsr src::down
 	plp
 	bcc @fmt_done
+	lda forcenewl
+	beq @err		; not forced -> reject the line
+
+	pla			; cleanup
+	pla
+	pla
+	jsr scroll_line
+	lda autoindent
+	jsr start_next_line
+	jmp errlog::show
 
 @err:	; invalid line, back up and return
-	pla			; discard the indent hint
 	jsr beep::short
+	pla
+	tax			; .X=error
 	pla
 	tay
 	pla
 	sta mem::linebuffer,y
+	txa
+	pha			; save error
 	jsr print_current_line
 	jsr src::backspace	; delete the newline that was added
-	jmp sync_cur
+
+	; Joining invalidates the temporary mapped error. Restore the prefix's
+	; result without checking the suffix that the user has not finished.
+	lda src::activebuff
+	sta @buffer
+	ldxy src::line
+	pla
+	jsr errlog::set_live
+	jsr print_current_line
+	jsr sync_cur
+	jmp errlog::show
 
 @fmt_done:
 	pla			; get the indent hint
@@ -4126,7 +4276,8 @@ goto_buffer:
 	jsr src::insert
 
 @indentdone:
-	jmp print_current_line
+	jsr print_current_line
+	jmp errlog::refresh
 .endproc
 
 ;*******************************************************************************
@@ -5011,7 +5162,7 @@ goto_buffer:
 	bcs @done		; failed to join -> quit
 
 @join:	jsr bumpup
-	jsr draw_active_line	; redraw the newly joined line
+	jsr print_current_line	; redraw the join and its errors
 	jmp sync_cur
 
 @done:	rts
@@ -5105,9 +5256,7 @@ goto_buffer:
 
 	; shift colors up by the same amount
 	ldx @start
-	beq :+
-	dex
-:	ldy @stop
+	ldy @stop
 	lda @num
 	jsr draw::scrollcolorsu
 
@@ -5161,9 +5310,7 @@ goto_buffer:
 	sta mem::breakpoint_rows,x
 
 	; if there's an error on this line, color the row
-	jsr edit_current_file		; .A=file ID, .XY=line #
-	bcs @noerr			; no file ID -> no error on this line
-	jsr errlog::getbyline
+	jsr errlog::get_curent
 	bcs @noerr			; no error on this line
 	pla
 	tax				; .X = row
@@ -6469,7 +6616,6 @@ num_rw_commands=*-rw_commands
 
 ro_commands:
 	.byte K_DIR		; - (show directory)
-	.byte K_SWAP_WINS	; C= + w (swap windows)
 	.byte $68		; h (left)
 	.byte $6c		; l (right)
 	.byte $6b		; k (up)
@@ -6492,18 +6638,8 @@ ro_commands:
 	.byte $0d		; RETURN (go to start of next line)
 	.byte $7a		; z (move screen prefix)
 	.byte K_FIND		; / (find)
-	.byte K_NEXT_DRIVE	; next drive
-	.byte K_PREV_DRIVE	; prev drive
 	.byte K_GETCMD		; get command
-	.byte K_MONITOR_WIN	; enter console in a window
-	.byte K_WIN_GROW	; grow the active window
-	.byte K_WIN_SHRINK	; shrink the active window
-	.byte K_WIN_MAXIMIZE	; maximize/restore the active window
-	.byte K_NEXT_ERR	; go to next error from error log
 	.byte K_HELP		; ? (help)
-	.byte K_WIN_HIDE	; toggle rendering of the windows
-	.byte K_NEXT_BANNER	; CTRL + ; (go to next ";;;" comment banner)
-	.byte K_PREV_BANNER	; CTRL + : (go to previous ";;;" comment banner)
 numcommands=*-commands
 
 ; command tables for COMMAND mode key commands
@@ -6514,14 +6650,12 @@ numcommands=*-commands
 	paste_below, paste_above, delete_char, \
 	open_line_above, open_line_below, join_line, comment_out, \
 	enter_visual, enter_visual_line, command_yank, sub_char, sub_line, \
-	dirview, guienter, ccleft, ccright, ccup, ccdown, endofword, \
+	dirview, ccleft, ccright, ccup, ccdown, endofword, \
 	beginword, word_advance, home_col, last_line, \
 	home_line, ccdel, ccright, goto_end, goto_start, find_next, find_prev, \
 	end_of_line, prev_empty_line, next_empty_line, begin_next_line, \
 	command_move_scr, \
-	command_find, next_drive, prev_drive, get_command, \
-	monitor_win, guigrow, guishrink, maximize_win, next_err, \
-	help::show, guitogglehide, next_banner, prev_banner
+	command_find, get_command, help::show
 .linecont -
 
 command_vecs_lo: .lobytes cmd_vecs

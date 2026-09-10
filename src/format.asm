@@ -24,6 +24,7 @@
 __fmt_enable: .byte 0	; flag to enable (!0) or disable (0) formatting
 
 offset = r7
+position = r9
 
 .CODE
 
@@ -65,6 +66,8 @@ offset = r7
 ;-------------------------------------------------------------------------------
 @fmt:	; remove spaces from start of line
 	jsr src::home
+	lda #0
+	sta position		; source character index being formatted
 
 @removespaces:
 	jsr src::after_cursor
@@ -73,7 +76,10 @@ offset = r7
 	jsr util::is_whitespace
 	bne @left_aligned
 
-	dec offset		; decrement offset to restore cursor to
+	lda offset
+	beq :+			; a cursor in leading whitespace stops at column zero
+	dec offset
+:
 	jsr src::delete		; delete whitespace character
 	ldx #$00
 	ldy #LINESIZE-1
@@ -91,27 +97,36 @@ offset = r7
 	and #ASM_COMMENT|ASM_DIRECTIVE
 	beq indent			; anything else -> indent
 
-:				; <- indent
 @done:  rts			; line is COMMENT, DIRECTIVE, NONE, we're done
 .endproc
 
 ;*******************************************************************************
 ; INDENT
 ; Insert one indent at current source position, then refresh the
-; line buffer and move to the end of it
+; line buffer. Adjust the saved cursor only if the TAB precedes it.
 .proc indent
 	lda #$09
 	jsr src::insert		; insert a TAB at start of line
 
-	inc offset
+	lda position
+	cmp offset
+	bcc @shift
+	bne @refresh
+@shift:	inc offset
+@refresh:
 	jsr refresh
 
 	; check the size of the line now that it has a TAB
 	jsr text::rendered_line_len
-	bcc :-				; ok
+	bcs @undo
+	rts
 
 	; line would be oversized with a TAB, undo the addition of it
+@undo:	lda position
+	cmp offset
+	bcs @remove		; only undo a cursor adjustment that was made above
 	dec offset
+@remove:
 	jmp src::backspace	; delete the TAB
 .endproc
 
@@ -122,6 +137,7 @@ offset = r7
 	; read past the label
 @l0:	jsr src::right_rep
 	bcs @done			; nothing on the line after the label
+	inc position
 	; TODO: check invalid label characters
 
 	jsr util::is_whitespace
@@ -134,7 +150,11 @@ offset = r7
 	beq @done		; newline -> done
 	jsr util::is_whitespace
 	bne indent		; non-whitespace -> separate with tab
+	lda position
+	cmp offset
+	bcs :+			; deleting after the saved cursor does not move it
 	dec offset
+:
 	jsr src::delete		; delete whitespaced
 	bcc @l1
 

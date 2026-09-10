@@ -7,6 +7,10 @@
 ; CONSTANTS
 CURSOR_LR_MASK = 2
 
+.DATA
+.export __key_raw
+__key_raw: .byte 0	; untransformed raw key value read
+
 .CODE
 
 ;*******************************************************************************
@@ -41,6 +45,7 @@ CURSOR_LR_MASK = 2
 	tya		; get key
 .endif
 
+	sta __key_raw
 	ldx #@num_translate
 @transloop:
 	cmp @to_translate-1,x

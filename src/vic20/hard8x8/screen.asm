@@ -290,7 +290,7 @@ HL_MARKER_COLOR = TEXT_COLOR	; match the editor text color
 
 	; save the per-row colors and reset them to the default
 	ldx #NUM_ROWS-1
-:	lda mem::rowcolors,x
+:	lda mem::rowcolors_idx,x
 	sta mem::rowcolors_save,x
 	dex
 	bpl :-
@@ -326,11 +326,11 @@ HL_MARKER_COLOR = TEXT_COLOR	; match the editor text color
 	; restore the per-row colors
 	ldx #NUM_ROWS-1
 :	lda mem::rowcolors_save,x
-	sta mem::rowcolors,x
+	sta mem::rowcolors_idx,x
 	dex
 	bpl :-
 
-	rts
+	jmp draw::refresh_colors
 .endproc
 
 ;*******************************************************************************
@@ -910,4 +910,3 @@ __screen_rowshi: .hibytes rows
 
 vrowslo: .lobytes vrows
 vrowshi: .hibytes vrows
-

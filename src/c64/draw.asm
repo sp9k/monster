@@ -147,7 +147,16 @@ COLOR_SELECT  = 6
 	txa
 	clc
 	adc @n
+	bcs @vacated
 	tay
+	cpy @last
+	bcc @l0
+	beq @l0
+
+@vacated:
+	; clamp an oversized source so incrementing it cannot wrap into row 0.
+	ldy @last
+	iny
 
 	; copy row (.Y) to row (.X) for every row in [start, last].  rows whose
 	; source lies past the last row are cleared instead: they are NOT part
@@ -197,38 +206,44 @@ COLOR_SELECT  = 6
 ;  - .A: the amount to scroll
 .export __draw_scrollcolorsd
 .proc __draw_scrollcolorsd
-@last=r0
+@n=r0
 @start=r1
+	cmp #$00
+	beq @done		; zero distance leaves every row unchanged
+	sta @n
 	stx @start
-	sty @last
+	cpy @start
+	bcc @done		; reversed range
 
-	clc
-	adc @last
-	tay
-
-	ldx @last
+	; work backward from the last destination
+	tya
+	sec
+	sbc @n
+	bcc @clear
+	tax
 	cpx @start
-	beq @done		; nothing to scroll
-@l0:	cpy @last		; is the target in the scroll range?
-	beq :+
-	bcs :++			; if not, skip it
-
-:	lda mem::rowcolors,x	; last_row
-	sta mem::rowcolors,y	; (last_row + amount)
+	bcc @clear
+@copy:
+	lda mem::rowcolors,x
+	sta mem::rowcolors,y
 	lda mem::rowcolors_idx,x
 	sta mem::rowcolors_idx,y
-
-:	; reset the line we just scrolled
-	lda prefs::normal_color
-	sta mem::rowcolors,x
-	lda #COLOR_NORMAL
-	sta mem::rowcolors_idx,x
-
 	dey
-	dex
-	bmi @done
 	cpx @start
-	bcs @l0
+	beq @clear
+	dex
+	jmp @copy
+
+	; clear the vacated rows
+@clear:
+	lda prefs::normal_color
+	sta mem::rowcolors,y
+	lda #COLOR_NORMAL
+	sta mem::rowcolors_idx,y
+	cpy @start
+	beq @done
+	dey
+	jmp @clear
 @done:	rts
 .endproc
 

@@ -22,27 +22,31 @@ Below are the basic commands along with their associated key combinations. These
 commands are available regardless of insertion mode (see the _Editor Modes_ section
 below for more info on modes).
 
-|  KEY                   | NAME            |   DESCRIPTION                                                                                   |
-|------------------------|-----------------|-------------------------------------------------------------------------------------------------|
-| {c64-keys}`C= + A`     | `ASSEMBLE      `| assembles the active program                                                                    |
-| {c64-keys}`C= + D`     | `DEBUG         `| begins debugging at the origin of the assembled program                                         |
-| {c64-keys}`C= + B`     | `SET BREAKPOINT`| sets a breakpoint at the current line                                                           |
-| {c64-keys}`C= + C`     | `REFRESH       `| refreshes the screen by redrawing the source buffer                                             |
-| {c64-key}`Minus`       | `FILE VIEWER   `| list directory, shows the files on the current disk                                             |
-| {c64-keys}`C= + N`     | `NEW BUFFER    `| creates a new source buffer and sets it as the active buffer                                    |
-| {c64-keys}`C= + Q`     | `CLOSE BUFFER  `| closes the current buffer and opens the next one that is open (if a window has focus, closes that window instead) |
-| {c64-keys}`C= + Y`     | `SHOW SYMBOLS  `| lists the symbol table for the assembled program                                                |
-| {c64-keys}`C= + M`     | `SHOW MACROS   `| lists the macros that are defined and allows viewing their definitions                          |
-| {c64-keys}`C= + E`     | `NEXT ERROR    `| if there are errors from the last assembly, navigates to the next one                           |
-| {c64-key}`F3`          | `SHOW BUFFERS  `| displays a list of the currently open buffers                                                   |
-| {c64-keys}`C= + L`     | `LINK          `| links the object files in the project using the LINK file on disk                               |
-| {c64-key}`F8`          | `MEMVIEW       `| opens the memory viewer/editor                                                                  |
-| {c64-key}`F5`          | `BRKVIEW       `| opens the breakpoint viewer/editor                                                              |
-| {c64-key}`F6`          | `WATCHVIEW     `| opens the watch viewer/editor                                                                   |
-| {c64-keys}`Shift + Slash` | `HELP          `| displays memory ranges and current resource usage                                            |
-| {c64-keys}`C= + Plus`  | `NEXT DRIVE    `| Selects the next drive (limited to #15)                                                         |
-| {c64-keys}`C= + Minus` | `PREV DRIVE    `| Selects the previous drive (limited to #8)                                                      |
-| {c64-key}`Colon`       | `EX COMMAND    `| Enters EX mode (see the EX commands section below for more on this)                           |
+|  KEY                       | NAME            |   DESCRIPTION                                                                                   |
+|----------------------------|-----------------|-------------------------------------------------------------------------------------------------|
+| {c64-keys}`C= + A`         | `ASSEMBLE      `| assembles the active program                                                                    |
+| {c64-keys}`C= + D`         | `DEBUG         `| begins debugging at the origin of the assembled program                                         |
+| {c64-keys}`C= + B`         | `SET BREAKPOINT`| sets a breakpoint at the current line                                                           |
+| {c64-keys}`C= + C`         | `REFRESH       `| refreshes the screen by redrawing the source buffer                                             |
+| {c64-key}`Minus`           | `FILE VIEWER   `| list directory, shows the files on the current disk                                             |
+| {c64-keys}`C= + N`         | `NEW BUFFER    `| creates a new source buffer and sets it as the active buffer                                    |
+| {c64-keys}`C= + Q`         | `CLOSE BUFFER  `| closes the current buffer and opens the next one that is open (if a window has focus, closes that window instead) |
+| {c64-keys}`C= + Y`         | `SHOW SYMBOLS  `| lists the symbol table for the assembled program                                                |
+| {c64-keys}`C= + M`         | `SHOW MACROS   `| lists the macros that are defined and allows viewing their definitions                          |
+| {c64-keys}`C= + E`         | `NEXT ERROR    `| navigates to the next error in the active buffer, wrapping at the end                           |
+| {c64-keys}`C= + X`         | `DISMISS ERROR `| dismisses errors on the current source line                                                     |
+| {c64-keys}`C= + T`         | `CHECK LINE    `| checks and formats the current line                                                            |
+| {c64-keys}`C= + F`         | `AUTOFORMAT    `| toggles automatic formatting and syntax checking                                                |
+| {c64-keys}`Shift + RETURN` | `FORCE NEWLINE `| inserts a newline and advances even if the completed line has an error                          |
+| {c64-key}`F3`              | `SHOW BUFFERS  `| displays a list of the currently open buffers                                                   |
+| {c64-keys}`C= + L`         | `LINK          `| links the object files in the project using the LINK file on disk                               |
+| {c64-key}`F8`              | `MEMVIEW       `| opens the memory viewer/editor                                                                  |
+| {c64-key}`F5`              | `BRKVIEW       `| opens the breakpoint viewer/editor                                                              |
+| {c64-key}`F6`              | `WATCHVIEW     `| opens the watch viewer/editor                                                                   |
+| {c64-keys}`Shift + Slash`  | `HELP          `| displays memory ranges and current resource usage                                               |
+| {c64-keys}`C= + Plus`      | `NEXT DRIVE    `| Selects the next drive (limited to #15)                                                         |
+| {c64-keys}`C= + Minus`     | `PREV DRIVE    `| Selects the previous drive (limited to #8)                                                      |
+| {c64-key}`Colon`           | `EX COMMAND    `| Enters EX mode (see the EX commands section below for more on this)                             |
 
 ```{warning}
 Closing a source buffer with {c64-keys}`C= + Q` immediately discards any
@@ -478,24 +482,71 @@ When the user "jumps" to a different position in the source (`gg`, `G`, `goto li
 that were "jumped" from are two commands: _jump-forward_ ({c64-keys}`C= + I`) and _jump-backward_ ({c64-keys}`C= + O`).
 
 ### Syntax checking
-Lines are checked and formatted according to their contents each time they
-are completed ({c64-key}`RETURN` is pressed).
-While this should reduce the number of errors you encounter when assembling,
-it does not guarantee it.  The following permissions are granted in order to
-provide a smoother editing experience for common cases that are invalid at
-assembly time:
 
-- labels may not be defined
-- origin may not be set
+With automatic formatting enabled, the editor checks a line when you press
+{c64-key}`RETURN` or navigate to another line or buffer. Navigating from a
+line checks the syntax of the line being left without formatting it (or preventing the move
+like RETURN does).
 
-This means that lines using undefined labels are treated as valid.  If
-the label does not exist at assembly time, of course this will result in an
-error.
-Macros, however, are expected to be defined.
+In insert mode, {c64-key}`RETURN` checks and formats the completed line. If it
+has an error, it is displayed immediately and the newline is aborted to allow
+you to correct the error.
 
-Although labels aren't _required_ to be defined, they are internally tracked
-while editing.  Because their addresses aren't valid til assembly, you cannot
-access them (e.g. in the symbol viewer) until then.
+Use {c64-keys}`Shift + RETURN` to force a newline to be inserted despite it
+containing an error. The invalid line is left unformatted.
+
+Press {c64-keys}`C= + T` to check the whole current line without inserting a
+newline, in either insert or command mode. If valid, the line is formatted
+using the current indentation setting, with the cursor following the same
+text. If invalid, its error is displayed and the line is left unformatted.
+
+{c64-keys}`C= + F` toggles both automatic formatting and syntax checking. When
+disabled, navigation and finishing a line do not check or format the source.
+{c64-keys}`C= + T` checks and formats the current line without affecting this setting.
+
+These checks do not assemble the program or assign addresses to labels. To
+allow incomplete programs to be edited, they accept undefined labels and an
+unset origin. Full assembly may therefore report errors that the editing checks
+did not catch.
+
+### Error log
+
+The `ERRORS` window contains errors from live syntax checks during editing
+or the result of the assembly if one was just executed.
+
+In command mode, {c64-keys}`C= + E` goes to the next error in the active buffer,
+wrapping to its first error after the last one. To select an error in the window, enter
+the error log with {c64-keys}`C= + W` as you would any _window_, move the selection with the cursor
+keys, and press {c64-key}`RETURN` to jump to its source line. {c64-key}`RUN/STOP`
+returns focus to the editor while leaving the window open.
+
+Correcting a line removes its corresponding error the next time that line is checked
+(on newline or navigation to another line). A successful syntax check does not clear
+an error from full assembly, since some assembly errors cannot be detected by a
+syntax-only validation test.
+
+#### Dismissing errors
+
+Press {c64-keys}`C= + X` in the editor to dismiss all errors on the current
+line. This works in both insert and command mode. In the error window, press
+**DEL** (the INST/DEL key without SHIFT) or {c64-keys}`C= + X` to dismiss the
+selected error. Removing the last error closes the window.
+
+Dismissed errors remain hidden when you edit or navigate away from their lines.
+To check a dismissed line again without adding a newline, press
+{c64-keys}`C= + T` or complete the line again by pressing {c64-key}`RETURN` at the
+end of it. The error will reappear if the line still has a problem.
+
+#### Limits
+
+The error window holds up to **16 errors across all buffers**. Once full,
+additional errors are dropped.
+
+Full assembly has a separate limit of **8 recorded errors**. A further error
+stops assembly (fatal errors may stop it sooner).
+
+The editor can remember **64 dismissed lines**. If this table is full, another
+dismissal beeps and leaves the error visible, preserving the earlier dismissals.
 
 ### UDG editor
 Press {c64-keys}`C= + U` to enter the UDG (user-defined graphics) editor.

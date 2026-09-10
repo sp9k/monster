@@ -33,7 +33,8 @@ FINAL_BANK_FASTTEXT        = $0e
 FINAL_BANK_USER            = $0f
 FINAL_BANK_FASTSCROLL_UP   = $10
 FINAL_BANK_FASTSCROLL_DOWN = $11
-NUM_BANKS                  = $11
+FINAL_BANK_ERRLOG          = $12
+NUM_BANKS                  = $12
 
 ERRORS_BANK        = 15	; BLOB0
 SIMDBG_BANK        = 35	; from "VSYS"
@@ -47,6 +48,8 @@ VMEM_BLK5_BANK     = 39	; $a000-$c000 ($2000 bytes)
 
 FINAL_BANK_SOURCE0 = 40	; 8 source buffers * 3 blocks each (40-63)
 FINAL_BANK_LOG     = 64
+ERRLOG_RAM_BANK    = 67
+ERRLOG_ROM_BANK    = 28
 
 ;*******************************************************************************
 ; MEMORY CONFIGURATION BLOCKS

@@ -881,6 +881,9 @@ BANKED_CODE "ASMBANK"
 	; nested context), directives are part of the body: store them
 	; instead of executing them.  the context-control directives
 	; (.mac/.endmac/.rep/.endrep) always execute to manage the capture
+	lda zp::verify
+	bne @exec_directive
+
 	lda ctx::active
 	beq @exec_directive	; no active context -> execute
 	cmp #$02
@@ -1134,9 +1137,17 @@ BANKED_CODE "ASMBANK"
 	stxy operand	; save the operand to store later
 	sta operandsz	; save size of the operand
 
-	; if verifying or in pass 1, force immediate label evaluations to 1 byte
 	lda zp::verify
-	bne @force_imm
+	beq @assembly_imm
+
+	; when verifying, treat unresolved symbols as 1 byte
+	lda expr::kind
+	cmp #VAL_ABS
+	beq @cont
+	bne @force_imm	; unresolved/relocatable values still need a dummy size
+
+@assembly_imm:
+	; in pass 1, force immediate evaluations to 1 byte
 	lda zp::pass
 	cmp #$02
 	beq @cont
@@ -1561,6 +1572,8 @@ BANKED_CODE "ASMBANK"
 .proc do_label
 	lda #ASM_LABEL
 	sta resulttype
+	lda zp::verify
+	bne @ok			; if checking syntax, don't change label scope
 	ldxy zp::line
 	lda zp::virtualpc
 	sta zp::label_value
@@ -1577,10 +1590,7 @@ BANKED_CODE "ASMBANK"
 	CALLMAIN lbl::setscope	; set the non-local label as the new scope
 	bcs @ret
 
-@cont:	lda zp::verify
-	bne @ok			; if verifying, don't add/check label
-
-	lda pcset
+@cont:	lda pcset
 	bne :+
 	RETURN_ERR ERR_NO_ORIGIN
 
@@ -1831,8 +1841,12 @@ BANKED_CODE "ASMBANK"
 
 ;-------------------------------------------------------------------------------
 @oversized:
+	lda zp::verify
+	bne @range_error
 	jsr pass1
 	beq @done
+
+@range_error:
 	RETURN_ERR ERR_OVERSIZED_OPERAND
 .endproc
 

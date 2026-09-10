@@ -39,7 +39,10 @@
 ;  - .Y: the number of rows to scroll by
 .export __text_scrollupn
 .proc __text_scrollupn
-	JUMP FINAL_BANK_FASTSCROLL_UP, scrollupn
+	cpy #$00
+	bne :+
+	rts
+:	JUMP FINAL_BANK_FASTSCROLL_UP, scrollupn
 .endproc
 
 ;*******************************************************************************
@@ -64,7 +67,10 @@
 ;  - .Y: the number of rows to scroll by
 .export __text_scrolldownn
 .proc __text_scrolldownn
-	JUMP FINAL_BANK_FASTSCROLL_DOWN, scrolldownn
+	cpy #$00
+	bne :+
+	rts
+:	JUMP FINAL_BANK_FASTSCROLL_DOWN, scrolldownn
 .endproc
 
 ;*******************************************************************************
@@ -213,12 +219,12 @@
 	cmp @numrows
 	bcc @done
 
-	; calculate number of rows (bottom - top - offset)
+	; Inclusive endpoints: copy bottom - top - offset + 1 rows.
 	;sec
 	sbc @numrows
 	sbc @offset
 	bcc @done	; offset exceeds the range: nothing to scroll
-	beq @done	; zero rows: nothing to scroll
+	adc #$00	; .C is set from SBC: include the last surviving row
 	asl
 	asl
 	asl
@@ -297,6 +303,8 @@
 	lda @stop
 	sec
 	sbc @start
+	beq @none	; no surviving rows in a one-row range
+	bcc @none	; reversed range
 	tay
 
 	lda #ROWS
@@ -304,6 +312,7 @@
 	sbc @stop
 	calc_entrypoint @speedcode
 	jmp (zp::text)			; execute the scroll
+@none:	rts
 
 ;-------------------------------------------------------------------------------
 @speedcode:
