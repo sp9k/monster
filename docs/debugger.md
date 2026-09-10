@@ -24,10 +24,10 @@ the effective address field is set to $ffff.
 
 While debugging, most navigation commands work as normal. Breakpoints may
 be set as they would in the editor prior to assembly, and they will be installed
-in realtime.  Other edits are not allowed, however, while the debugger is active.
+in real time.  Other edits are not allowed, however, while the debugger is active.
 
 RAM for both the debugger and the user program is saved/restored when control
-transfers between the two. That is the screen data ($1000-$2000), the zeropage,
+transfers between the two. That is the screen data ($1000-$2000), the zero page,
 and color RAM.  This allows the debugger and debugged program
 to operate independently without worrying about writes to one affecting the other.
 
@@ -265,6 +265,9 @@ The watch viewer displays all watches that have been set in the memory
 viewer.  The current value of a watch is shown along with its previous
 value (if it has changed since the debugger last took over).
 
+Each row ends with its trigger mode: `load` for loads, `store` for stores, or
+`load/store` for both.
+
 A watched address (or range) will also be prefixed with a '!' if it was modified
 during the trace or step.  This is especially important for knowing that a range
 was modified as ranges do not list the previous or current values for the watch.
@@ -275,6 +278,7 @@ The following keys are supported within the watch viewer:
 |-----------------------|------------|---------------------------------------------------------|
 | {c64-keys}`C= + W`    | ADD WATCH  | Prompt the user for expressions to watch                |
 | {c64-key}`RETURN`     | SELECT/EDIT| Enters the memory editor at the watch's address         |
+| **DEL**              | DELETE     | Removes the selected watch                             |
 | {c64-key}`RUN/STOP`   | EXIT       | Returns to the debugger (the view stays open)           |
 | {c64-keys}`C= + Q`    | CLOSE      | Closes the watch viewer                                 |
 
@@ -291,6 +295,12 @@ at the prompt.  If the expression(s) are invalid, no watch is added.
 `SELECT/EDIT` invokes the _memory editor_ at the location of the watch
 that was selected.  Returning from the memory editor will return the user
 back to the watch editor.
+
+#### Delete watch
+
+Select the watch and press **DEL** (the INST/DEL key without SHIFT). In the
+monitor, use `w` to find the watch ID and `wr id` to remove it. IDs can change
+after deletion, so list the watches again before removing another one.
 
 ---
 

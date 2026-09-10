@@ -289,8 +289,8 @@ cury    .db 0
 
 **Syntax:** `.BSSZP "name"`
 
-**Behavior:** Activates a zeropage "BSS" segment with the given name.  All labels declared after are defined
-as zeropage and treated as part of this segment.  For more details on segments, refer to the
+**Behavior:** Activates a zero page "BSS" segment with the given name.  All labels declared after are defined
+as zero page and treated as part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
 **Constraint:** BSS segments must contain only zero-value bytes.
@@ -469,7 +469,7 @@ manual for more details.
 
 **Syntax:** `.IMPORTZP name`
 
-**Behavior:** Imports a zeropage label defined (exported) by another module.  See the linker section of this
+**Behavior:** Imports a zero page label defined (exported) by another module.  See the linker section of this
 manual for more details.
 
 
@@ -702,8 +702,8 @@ linker section of the manual.
 
 **Syntax:** `.SEGZP "name"`
 
-**Behavior:** Activates a zeropage segment with the given name.  All labels defined are treated as
-zeropage and considered to be part of this segment.  For more details on segments, refer to the
+**Behavior:** Activates a zero page segment with the given name.  All labels defined are treated as
+zero page and considered to be part of this segment.  For more details on segments, refer to the
 linker section of the manual.
 
 ````{example}

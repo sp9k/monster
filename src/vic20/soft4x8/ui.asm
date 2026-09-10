@@ -614,6 +614,14 @@ VIA_T2CH = $9		; T2 counter hi
 	sta @id
 	jsr watch::getdata
 	tax			; save flags
+
+	; Push the mode string; X keeps the dirty flags for the row below.
+	and #WATCH_LOAD|WATCH_STORE
+	tay
+	lda @modehi,y
+	pha
+	lda @modelo,y
+	pha
 	lda #$00
 	sta @range
 
@@ -689,6 +697,13 @@ VIA_T2CH = $9		; T2 counter hi
 	pha
 	jsr text::render
 	rts
+
+@none:  .byte "-",0
+@load:  .byte "load",0
+@store: .byte "store",0
+@both:  .byte "load/store",0
+@modelo: .lobytes @none, @load, @store, @both
+@modehi: .hibytes @none, @load, @store, @both
 .endproc
 
 ;*******************************************************************************

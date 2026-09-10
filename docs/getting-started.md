@@ -6,13 +6,13 @@ We will assume you are reasonably versed in 6502 assembly in this walkthrough.  
 great resources available to get you started if this is not the case, but this is not one
 of them. ;)
 
-When you boot up Monster, you will be dropped into a full screen editor.
+When you boot up Monster, you will be dropped into a full-screen editor.
 This is where programs are edited, saved, loaded, assembled, etc.  It is also the launchpad for
-many other features, and the mode from which this is all done is aptly called **COMMAND MODE**,
+many other features, and the mode from which this is all done is aptly called **command mode**,
 which is the default mode that Monster enters on startup.
 
 Advanced editor functionality is described later in this document, but to get started, press
-{c64-key}`I` to enter **INSERT MODE**.  Insert mode behaves much like the stock KERNAL.  That is,
+{c64-key}`I` to enter **insert mode**.  Insert mode behaves much like the stock KERNAL.  That is,
 letters are added to the source buffer upon entry.
 
 Type some characters and you will see them appear onscreen.  Unlike the KERNAL, text cannot be arbitrarily
@@ -20,11 +20,11 @@ entered anywhere on the screen.  The screen displays a representation of the **S
 contains no further characters on the current line, you are unable to navigate to that position.  If the buffer
 contains only 10 lines, you cannot navigate to line 11.
 
-Press {c64-key}`RUN/STOP` and you will exit INSERT MODE and return to COMMAND MODE.
+Press {c64-key}`RUN/STOP` and you will exit insert mode and return to command mode.
 
 ---
 
-Now let’s return to INSERT MODE and write a simple program.  As with most assembly programs, our first order of
+Now let’s return to insert mode and write a simple program.  As with most assembly programs, our first order of
 business is to define _where_ we are assembling.
 
 On the first line, type:
@@ -78,7 +78,7 @@ their own line and may coexist with instructions, or other items we have yet to 
 Now that our program is complete, it’s almost time for us to assemble it and run it.
 Before we can assemble the program, however, we must provide it a name.
 
-To do this first press {c64-key}`Colon` from COMMAND MODE.  This puts the editor in EX MODE.
+To do this first press {c64-key}`Colon` from command mode.  This puts the editor in EX mode.
 In this mode, the editor accepts a string, interprets it, and executes it.
 To name our source buffer, we will use the “r” (rename) command. Enter the following
 at the prompt and press {c64-key}`RETURN`:
@@ -106,7 +106,7 @@ name, `hello.s`, at the right.
 ```
 
 With all the code written, and our buffer named, we’re finally ready to assemble the program.
-Press {c64-keys}`C= + A` to do this. This can be done whether you are in INSERT MODE or COMMAND MODE.
+Press {c64-keys}`C= + A` to do this. This can be done whether you are in insert mode or command mode.
 The reason for this is because the {c64-key}`C=` + `<key>` chords are considered _universal keys_, meaning they're
 handled the same way regardless of which mode you are in.
 
@@ -126,7 +126,7 @@ With the program in memory, it's time to debug it!
 
 To enter the debugger, press {c64-keys}`C= + D`.  This will launch the debugger, a major component of Monster.
 
-The debugger enables source level debugging of an assembled program.  At the bottom of the screen,
+The debugger enables source-level debugging of an assembled program.  At the bottom of the screen,
 the debugger displays information about the state of the machine at the current step of the program:
 the contents of the registers, the current line number, the number of cycles that have elapsed,
 and some other information.
@@ -145,12 +145,12 @@ Once the debugger has completed stepping out of the subroutine, it should place 
 next line after the subroutine call: `inx`.
 
 You can also execute a version of step that will step _over_ subroutine calls.
-Since, as we've established, we’re not _too_ interested in debugging the Commodore Kernal at the moment,
+Since, as we've established, we’re not _too_ interested in debugging the Commodore KERNAL at the moment,
 this command might be a better fit for us here.  Press {c64-key}`S` (step over) a few times
 and notice that when we reach the line `JSR $FFD2` the next iteration lands our cursor
 on the `INX` after tracing all the KERNAL instructions in ROM.
 
-Press {c64-key}`SPACE` now and the screen will swap to a view that looks much like your Vic-20’s
+Press {c64-key}`SPACE` now and the screen will swap to a view that looks much like your VIC-20’s
 BASIC startup screen.  This is the current state of your program’s memory, also called virtual memory.
 This is a common flow for debugging visual programs: step through your program until you've
 reached a place you want to visibly observe, switch to the program screen to see if it matches your expectations,
@@ -175,14 +175,14 @@ To exit the debugger, press {c64-keys}`C= + X` and confirm your intention to qui
 Assuming you have a disk drive attached, we may now wish to save our work that we have so proudly completed.  You may have noticed a `*` indicator near your buffer name in the status bar.  This
 means you have edited the buffer since it was last written.
 
-Enter Ex Command mode once again and type:
+Enter EX mode once again and type:
 
 `:s hello.s`
 
 This will save your source code to a new file named, per our instruction, hello.s.
 Note that the `*` indicator in the status bar has vanished.
 
-If you're still not convinced that your program is safe, you can confirm by pressing {c64-key}`Minus` while in **COMMAND MODE**
+If you're still not convinced that your program is safe, you can confirm by pressing {c64-key}`Minus` while in **command mode**
 to bring up a **directory viewer**.  If all is well you should see your new program among
 the other files on your disk.
 
@@ -202,7 +202,7 @@ This is the basis of the object code idea.  You write your assembly files as sel
 assemble these individually, and when you’re ready to produce your full binary, you link these
 object files together to produce the final program.
 
-Assembling your program to object files with Monster is simple.  Enter EX MODE with {c64-key}`Colon`,
+Assembling your program to object files with Monster is simple.  Enter EX mode with {c64-key}`Colon`,
 and then type `o HELLO.O` at the prompt.  Note that this sends the active state of the
 last assembly to the object file; it does not actually perform the assembly step.
 The command assumes that you’ve done that yourself prior to running the command.
@@ -212,9 +212,3 @@ By itself, this is insufficient to produce the linked binary.
 The linker needs to know where to place the code inside this file.  Enter the `LINK` file.
 
 See the [Linker](linker.md) chapter for the LINK file format and linking instructions.
-
-```{toctree}
-:maxdepth: 2
-
-tutorial
-```

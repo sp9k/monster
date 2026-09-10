@@ -412,6 +412,22 @@ COLMEM_ADDR=$9400
 	sta @id
 	jsr watch::getdata
 	tax			; save flags
+
+	; Push the trailing mode characters in reverse order for text::render.
+	; X keeps the flags for the existing dirty/range formatting below.
+	and #WATCH_STORE
+	beq :+
+	lda #'s'
+	bne :++
+:	lda #'-'
+:	pha
+	txa
+	and #WATCH_LOAD
+	beq :+
+	lda #'l'
+	bne :++
+:	lda #'-'
+:	pha
 	lda #$00
 	sta @range
 

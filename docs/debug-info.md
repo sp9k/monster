@@ -1,4 +1,7 @@
-## Debug information technical details
+# Debug information internals
+
+Developer reference for Monster’s debug-information format. These implementation
+details may change at any time and are not part of the user manual.
 
 Debug information is stored in a few tables as described below. At a high level, these are:
 
@@ -6,7 +9,7 @@ Debug information is stored in a few tables as described below. At a high level,
   - BLOCKS: stores ranges of addresses and lines for blocks of code
   - LINE PROGRAMS: state machine that resolves addresses and line numbers when executed
 
-### File table
+## File table
 The FILE TABLE maps filenames to an implicit ID, which is the index of a given filename in this table.
 
 
@@ -17,7 +20,7 @@ The FILE TABLE maps filenames to an implicit ID, which is the index of a given f
 |   16     | ...                             |
 
 
-### Blocks
+## Blocks
 To simplify the storage of chunks of noncontiguous addresses and multi-file programs, mappings are broken down into BLOCKS.
 Each BLOCK header  defines a file id (BLOCKS will always reference one file only), and a range of lines and addresses.
 
@@ -37,7 +40,7 @@ The table below describes the layout of a BLOCK (header).
 
 
 For BLOCKS that begin with a `.SEG` directive, addresses in that BLOCK are relative to a SEGMENT.
-The SEGMENT table that the id references is described in more detail in the [linker](linker.md) document.
+The SEGMENT table that the id references is described in more detail in the [object code internals](object-code.md#segments) document.
 
 BLOCKS that begin with a `.ORG` directive, will contain the SEC\_ABS ($ff) segment id, which
 means their addresses are absolute (not relative to any SEGMENT).  The linker will look up the link-time
@@ -57,7 +60,7 @@ In the assembler, the pseudo-ops that force the creation of a block are:
   - setting the address (`.ORG`)
   - creating/activating a SEGMENT (`.SEG`, `.SEGZP`)
 
-### Line program
+## Line program
 The line program facilitates compact mapping of line numbers to addresses.
 It is a state machine with the following variables:
 
@@ -68,7 +71,7 @@ Commands modify this state in order to produce the address <-> line mapping.
 There are two types of instructions to handle this process: "basic" and "extended".
 Each type is detailed below.
 
-#### BASIC instructions
+### BASIC instructions
 
 The most basic operation, which is so common that it requires no special opcode, adds a small
 offset to the current line number AND program counter.  These are both encoded into a single
@@ -79,7 +82,7 @@ byte according to the following layout:
 | line offset | 0-3  | number of lines to advance the "line" count
 | addr offset | 4-7  | number of bytes to advance the PC or address offset
 
-#### Extended instructions
+### Extended instructions
 
 For cases when a small offset to either the line or address is not enough (e.g. a macro
 that expands to more than 16 bytes), or generally to handle bigger "jumps" in the line mapping, these instructions are required.
@@ -147,7 +150,7 @@ instructions to resolve "sta $900f" and "jmp loop".  Here's what those look like
 
 ````
 
-### Debug information generation
+## Debug information generation
 
 The flow for generating debug information is:
 
@@ -157,16 +160,16 @@ The flow for generating debug information is:
 
 ---
 
-### Using debug information
+## Using debug information
 Once debug information is generated, its primary function is to map lines to addresses and vice versa.
 
-#### Mapping address to line
+### Mapping address to line
 
 To map a given address to its corresponding line number, the line program for the block that contains
 its address is executed.  Once the line program reaches a PC value equal to the one that is sought,
 the current line number is returned.
 
-#### Mapping line to address
+### Mapping line to address
 
 The line to address mapping works just like address to line mapping.  The first block containing the
 file/line range being sought is executed.  When the line program's line number is equal to the one

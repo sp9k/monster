@@ -169,8 +169,15 @@ __str_link: .byte "link",0
 .export __str_run
 __str_run: .byte "run",0
 
+; Wide displays show a full mode name; the 22-column UI supplies two chars.
+.if .defined(vic20) .and .defined(hard8x8)
+.define WATCH_MODE_FORMAT ESCAPE_CHAR, ESCAPE_CHAR
+.else
+.define WATCH_MODE_FORMAT ESCAPE_STRING
+.endif
+
 .export __str_watches_range_line
-__str_watches_range_line: .byte ESCAPE_BYTE, ESCAPE_CHAR, " $", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
+__str_watches_range_line: .byte ESCAPE_BYTE, ESCAPE_CHAR, " $", ESCAPE_VALUE, "-$", ESCAPE_VALUE, " ", WATCH_MODE_FORMAT, 0
 
 .export __str_errors
 __str_errors: .byte "errors",0
@@ -216,12 +223,12 @@ __str_pass2:
 .export __str_watches_line
 ;   $1000 : $10
 __str_watches_line:
-.byte ESCAPE_BYTE, "  $", ESCAPE_VALUE, ": ", ESCAPE_BYTE, 0
+.byte ESCAPE_BYTE, "  $", ESCAPE_VALUE, ": ", ESCAPE_BYTE, " ", WATCH_MODE_FORMAT, 0
 
 ; ! $1000 : $10 > $20
 .export __str_watches_changed_line
 __str_watches_changed_line:
-.byte ESCAPE_BYTE, "! $", ESCAPE_VALUE, ": ", ESCAPE_BYTE, CH_R_ARROW, ESCAPE_BYTE, 0
+.byte ESCAPE_BYTE, "! $", ESCAPE_VALUE, ": ", ESCAPE_BYTE, CH_R_ARROW, ESCAPE_BYTE, " ", WATCH_MODE_FORMAT, 0
 
 ;*******************************************************************************
 ; These strings are modified thus are not in RODATA

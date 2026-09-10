@@ -17,7 +17,7 @@ commands.
 | `HIDE    ` | {c64-keys}`C= + H` | Toggles the display of windows entirely
 
 Note that `EXIT` only gives focus back to the editor; the window remains open above the
-status row.  To restore the fullscreen editor, either use `CLOSE` or hide the window
+status row.  To restore the full-screen editor, either use `CLOSE` or hide the window
 area entirely with `HIDE`.
 
 `CLOSE` acts on whatever has focus: it closes the active window when a window is focused,
@@ -42,9 +42,9 @@ Several windows may remain open at once as shown here with the buffer, monitor, 
 |------------|--------------------|-----------------------------------------------------------------------------------------------------
 | `GROW    ` | {c64-keys}`C= + K` | Enlarges the active window
 | `SHRINK  ` | {c64-keys}`C= + J` | Shrinks the active window
-| `MAXIMIZE` | {c64-keys}`C= + Z` | Toggles between full screen (if currently not maximized) or its last un-maximized size (if maximized)
+| `MAXIMIZE` | {c64-keys}`C= + Z` | Toggles between full screen (if currently not maximized) and its last unmaximized size (if maximized)
 
-#### Fullscreen viewers
+#### Full-screen viewers
 
 The directory viewer ({c64-key}`Minus`), symbol viewer ({c64-keys}`C= + Y`) and macro viewer
 ({c64-keys}`C= + M`) are _not_ windows.  Each takes over the whole screen while open,

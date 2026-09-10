@@ -344,6 +344,10 @@ err_invalid_alignment:
 ; .byte "invalid alignment",0
 .byte $4b,$96,$b,$9,$26,$c1,$62,$47,$73,$45,$75,$0
 
+err_watch_exists:
+; .byte "watch already exists",0
+.byte $b8,$54,$1a,$1b,$b,$12,$28,$44,$ce,$c5,$c2,$53,$a4,$c0
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -428,7 +432,8 @@ err_invalid_alignment:
 	err_duplicate_name, \
 	err_segment_out_of_range, \
 	err_not_integral, \
-	err_invalid_alignment
+	err_invalid_alignment, \
+	err_watch_exists
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

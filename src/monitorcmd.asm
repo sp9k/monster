@@ -157,6 +157,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ;  - .XY: the parameters for the command
 .proc add_watch_mode
 @addr=zp::debuggertmp
+@num=zp::debuggertmp+2
 	pha					; save the watch mode
 
 	; evaluate the expression to get start address
@@ -180,12 +181,19 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	bcs @err
 	stxy r0
 
-@set:	ldxy @addr
+@set:	lda watch::num
+	sta @num
+	ldxy @addr
 	pla					; restore the watch mode
 	CALLMAIN watch::add		; add the watch
 	bcc :+
 	RETURN_ERR ERR_TOO_MANY_WATCHES
-:	rts
+:	; watch::add succeeds without adding when the exact range exists.
+	lda watch::num
+	cmp @num
+	bne :+
+	RETURN_ERR ERR_WATCH_EXISTS
+:	RETURN_OK
 
 @err:	tax					; save error code
 	pla					; clean up saved watch mode

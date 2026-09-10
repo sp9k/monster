@@ -133,6 +133,9 @@ ERR_NOT_INTEGRAL         = 80
 ; LINK file ALIGN errors
 ERR_INVALID_ALIGNMENT    = 81
 
+; Monitor watch errors
+ERR_WATCH_EXISTS         = 82
+
 ;*******************************************************************************
 ; DOS STATUS CODES
 ; Stands in for the code the drive reports in its error message when that

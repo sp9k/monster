@@ -1,4 +1,4 @@
-### Tutorial
+# Tutorial
 
 I hope you're feeling excited and inspired by our adventure writing "Hello World" because
 we will now walk through a much more substantial project.  The goal is to build something
@@ -7,7 +7,7 @@ that familiarizes you with the multitude of powerful features Monster provides.
 By the end of this tutorial we will have a smoothly moving character that can run from side to side
 and move up and down under joystick control.
 
-#### Main
+## Main
 
 This project will span multiple files, but when assembling directly into memory, Monster begins with the
 active source file.  For us, that will be a `main.s` file.  All other files will be _included_ from
@@ -21,7 +21,7 @@ Once confirmed, with the BUFFERS VIEWER, press {c64-keys}`C= + Q` to close the B
 You can also press {c64-key}`RUN/STOP` to re-enter the editor, but leave the viewer onscreen.
 We'll touch more on the concept of these "windows" when we start debugging.
 
-Now rename the buffer by entering EX COMMAND mode ({c64-key}`:`) and typing `r main.s` at the prompt.
+Now rename the buffer by entering EX mode ({c64-key}`:`) and typing `r main.s` at the prompt.
 
 Let's set the origin of this program to `$2000`.
 
@@ -40,9 +40,9 @@ that you include at the top of your "main" assembly file (`main.s` for us).
 To create a new buffer, press {c64-keys}`C= + N`.  This will open a new unnamed buffer.  Press
 {c64-key}`F3` and you should see there are now two buffers: `main.s` and our new unnamed one.
 
-#### Macros
+## Macros
 
-Let's call this new file `macros.inc`.  Rename it using the `r` EX COMMAND.
+Let's call this new file `macros.inc`.  Rename it using the `r` EX command.
 The `.inc` suffix tells us this is an _include_ file.
 Monster doesn't care what suffix you use in most cases, but avoid `.o`, which is
 reserved for use by the linker.
@@ -111,19 +111,19 @@ The `.inc` directive assembles the contents of the target file directly.  Macros
 be defined before their first use, so that is a compelling reason for including your
 macro definitions this way.
 
-#### Custom characters
+## Custom characters
 
 Many sizeable programs will contain a relatively large chunk of data.  Logically it makes sense
 to store this in its own file.
 
 A character set is one popular use case, and this is exactly what we'll be defining.
 Defining an entire character set is quite a lot of work, so we're going to base ours on the
-Vic-20's own character set.
+VIC-20's own character set.
 
 To do this we will dip our toes into one of Monster's powerful utilities: the **MONITOR**.
 Press {c64-key}`F7` to activate the monitor.  A window will appear in which text commands
 are entered.  The character set on which we wish to base our design lives at address `$8000` in
-the Vic-20's ROM.  Run the following command to take a peek at the memory there:
+the VIC-20's ROM.  Run the following command to take a peek at the memory there:
 
 ```
 m $8000
@@ -137,7 +137,7 @@ to whatever filename follows.
 The other thing to understand is that commands like `dump` take an optional second parameter.
 In this case, it defines the address at which to stop dumping memory.  This ending address is
 exclusive, so `$8400` includes all bytes through `$83ff`.  With these things in mind, we can
-save the whole range from `$8000`-`$83ff` (one of the Vic-20's character sets) to a file for
+save the whole range from `$8000`-`$83ff` (one of the VIC-20's character sets) to a file for
 our own repurposing.
 
 ```
@@ -166,7 +166,7 @@ command again.
 That is enough for now.  We will return to the character set once our program is ready to use
 it—and once we are feeling sufficiently inspired.
 
-#### Buffer switching
+## Buffer switching
 
 At this point we have at least three buffers open (perhaps more if you got curious).  There are
 several ways to move between them and this will be a frequent part of our workflow, so it's
@@ -185,7 +185,7 @@ the most general way to select the buffer you want by name.  If you haven't noti
 the `H`, `J`, `K`, and `L` keys are almost always usable in addition to the cursor keys.  This is
 true in the buffer viewer as well as the UDG editor and others we've yet to explore.
 
-#### Implementation logic
+## Implementation logic
 
 Okay, time for the exciting stuff: let's work on writing the logic that ties everything together.
 Navigate to the `main.s` buffer.
@@ -222,7 +222,7 @@ colors.
 
 Great, now we need to configure the screen matrix.
 As we alluded to earlier, we want to set up a sort of virtual bitmap, where each column represents one continuous
-row of bytes.  With this arrangement, we can easily address a given pixel by loading a zeropage
+row of bytes.  With this arrangement, we can easily address a given pixel by loading a zero page
 variable with the address of the "sprite"'s x-position and then using indirect, y-indexed addressing
 to specify its y-position, e.g.
 
@@ -330,7 +330,7 @@ Let's take a pause here and familiarize ourselves with the environment a bit mor
 plenty more of our program to write, but it will help if we can iteratively build up to
 the final product.
 
-#### Saving
+## Saving
 
 Before we even think about beginning debugging, we should make sure our progress is
 safely stored on disk.
@@ -339,7 +339,7 @@ You should have a rough handle on saving buffers already (and the importance of 
 It is always a good idea to save your work before assembling.  If you have any dirty buffers,
 you will be asked if you want to do so with a prompt.
 
-You can also use the EX COMMAND `:S` to save all buffers.  The `@` suffix can be applied
+You can also use the EX command `:S` to save all buffers.  The `@` suffix can be applied
 to all save commands (`s` and `S`) to overwrite files that already share the buffers' names.
 In most cases this will be the desired command (save everything and overwrite) and it is
 also what will effectively be executed if you confirm "yes" to the prompt you're given
@@ -354,13 +354,13 @@ fails, that file may be left without its original or a complete replacement.
 :S@
 ```
 
-#### Assembly
+## Assembly
 
 As mentioned earlier, assembly will typically take place from the top-level unit from which
 all others are included (`main.s` in our case).  Navigate to that buffer and press
 {c64-keys}`C= + A` to assemble it.
 
-#### Errors
+## Errors
 
 There's a good chance your first assembly will generate one or more errors.
 If it does, they are displayed in a menu,
@@ -376,14 +376,14 @@ then repeat as needed until it actually does.
 Errors often have a cascading effect, so it's usually best to address the errors that
 occurred first during assembly.
 
-#### Log
+## Log
 
 In addition to the error window, the log provides a chronological record of what happened
 during assembly.  It will show you the order in which files were processed, errors
 as they occurred, etc.  When your program is successfully assembled, it will also give you
 details about the final result.
 
-#### Debugging
+## Debugging
 
 This debug session will be more involved than the "Hello World" one. We will cover breakpoints,
 watches, and the monitor interface (which we've already touched on a bit).
@@ -427,7 +427,7 @@ see a steadily increasing (by `$0c`) array of values: `10`, `1c`, `28`, ...
 If you don't, then try to see what is wrong with the pattern, hunt for any bugs in the initialization loop, and
 fix using the usual flow.
 
-#### Window management
+## Window management
 
 We introduced the concept of windows earlier with the BUFFER VIEWER. The MEMORY VIEWER is another one.
 A WINDOW is an interactive widget that can be invoked to allow you to view breakpoints
@@ -446,7 +446,7 @@ with {c64-keys}`C= + W` (also re-enters the visible window if the editor is in f
 Finally, all active windows can be hidden with {c64-keys}`C= + H`.  Repeating the command also unhides
 them if they are already hidden.
 
-#### Editor tips
+## Editor tips
 
 Before we finish up our program, let's take a moment to hone our editing skills.
 The `main.s` buffer is still small, but it's getting big enough that navigation by individual cursor
@@ -470,17 +470,17 @@ Banner comments are also common practice to separate logical blocks of procedure
 also allows to easily navigate to these with {c64-keys}`Ctrl + :` (previous banner) and {c64-keys}`Ctrl + ;` (next banner).
 
 Finally, a common practice will be inserting new lines above or below the current line.
-From COMMAND mode you can do this by pressing {c64-key}`O` (to insert a line _below_) or {c64-keys}`SHIFT + O`
-to insert one _above_ the current line.  Both commands will also enter INSERT mode so that you can
+From command mode you can do this by pressing {c64-key}`O` (to insert a line _below_) or {c64-keys}`SHIFT + O`
+to insert one _above_ the current line.  Both commands will also enter insert mode so that you can
 immediately begin writing your new line.
 
 This should get you started.  See the **EDITOR** chapter for the other navigation commands if
 you still find yourself frustrated at your editing/navigation speed.
 
-#### Finishing the program
+## Finishing the program
 
 We're not quite done with initialization just yet. Remember that we wish to use joystick input
-to move the player sprite around the screen.  To do this we need to configure the VIAs (the Vic-20's
+to move the player sprite around the screen.  To do this we need to configure the VIAs (the VIC-20's
 chips responsible for handling keyboard/joystick input, among other duties) to read the joystick.
 This is almost as simple as our VIC initialization was.
 
@@ -523,12 +523,12 @@ There's a few remaining items to finish up the program.
 
 Let's start with #1 so that we can see our sprite at all before we worry about moving it.
 
-#### Sprite Rendering
+## Sprite Rendering
 
 There are various ways to render a sprite.  For this tutorial we will use a rather crude
 approach, but you may experiment with optimizations to speed it up.
 
-The concept is this: the Vic-20 has only rough 8x8 character positions in hardware.
+The concept is this: the VIC-20 has only rough 8x8 character positions in hardware.
 In software, however, we can leverage the bitmap that we have already configured to move a sprite
 smoothly (pixel-by-pixel).  To do this, we shift the sprite data by the number of pixels that it
 is offset from the nearest character boundary (0-7).  At the character boundary, we move it to the
@@ -682,7 +682,7 @@ of the main loop.
 
 Beautiful work.  Now it's time to actually move the sprite.
 
-#### Reading the joystick
+## Reading the joystick
 
 We configured VIA #1 back in our `init` routine, so four of the five switches are ready to read.
 We can define constants for each direction to make our code a bit more legible.
@@ -858,7 +858,7 @@ Reassemble and give this updated code another go in the debugger.
 
 When you free run the program, you should now see the sprite moving around cleanly on the screen.
 
-#### Cycling through the character set
+## Cycling through the character set
 
 The solid block was a fun start to prove out our sprite renderer works, but
 what about our character set we worked so hard to rip and edit?  Next we will allow the user
@@ -947,7 +947,7 @@ drawspr
 
 Here we really want to use `@spr` with indirect, y-indexed addressing, but we also
 want to use x-indexed addressing for the `ROR` into the overflow area of our sprite data.
-As a compromise, we define a new zeropage scratch variable called `@next` and `ROR` into
+As a compromise, we define a new zero page scratch variable called `@next` and `ROR` into
 it per row-iteration.
 
 
@@ -993,7 +993,7 @@ overflow and we'd have to be very lucky to press the joystick on the exact frame
 Assemble and run again.  Press fire to cycle through the characters in `chars.s`; any changes
 you made with the UDG editor should now appear in the moving sprite.
 
-#### Symbol viewer
+## Symbol viewer
 
 It is often useful to examine the symbols defined once your program is assembled.  This is
 a great way to get a sense of the program's final layout and make sure things look
@@ -1004,21 +1004,20 @@ last assembly along with their addresses.  {c64-key}`F1` toggles between name an
 sorting in this view.  Press {c64-key}`RETURN` on a symbol to navigate to its
 definition.
 
-#### Where to go from here
+## Where to go from here
 
 What we've built here is a great starting point for further experimentation.
-Try changing the sprite data or adding sound effects when the sprite moves (you can use the
-appendices in this manual to understand how to do this).
+Try changing the sprite data or adding sound effects when the sprite moves.
 
 The rest of the manual serves as a reference as you continue to advance.  It is worth
 giving a first pass read, but the best way to learn is to keep exercising your abilities
 by using Monster.  Have fun!
 
-#### Complete program
+## Complete program
 
 For reference, here are the complete contents of each source file from the tutorial disk.
 
-##### `main.s`
+### `main.s`
 
 ```
 .org $2000
@@ -1287,7 +1286,7 @@ chars
 .inc "chars.s"
 ```
 
-##### `macros.inc`
+### `macros.inc`
 
 ```
 .mac ldxy val
@@ -1301,7 +1300,7 @@ chars
 .endmac
 ```
 
-##### `chars.s`
+### `chars.s`
 
 ```
 .db $1c,$22,$4a,$56,$4c,$20,$1e,$00

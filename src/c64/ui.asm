@@ -577,6 +577,14 @@ LINES           = 263
 	sta @id
 	jsr watch::getdata
 	tax			; save flags
+
+	; Push the mode string; X keeps the dirty flags for the row below.
+	and #WATCH_LOAD|WATCH_STORE
+	tay
+	lda @modehi,y
+	pha
+	lda @modelo,y
+	pha
 	lda #$00
 	sta @range
 
@@ -652,6 +660,13 @@ LINES           = 263
 	pha
 	jsr text::render
 	rts
+
+@none:  .byte "-",0
+@load:  .byte "load",0
+@store: .byte "store",0
+@both:  .byte "load/store",0
+@modelo: .lobytes @none, @load, @store, @both
+@modehi: .hibytes @none, @load, @store, @both
 .endproc
 
 ;*******************************************************************************

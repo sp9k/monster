@@ -3,11 +3,11 @@
 ## Editor overview
 
 The editor provides powerful facilities for loading, saving, and modifying source code.
-Text is displayed in 40 columns to provide a much higher density interface than the Vic-20's native BASIC line editor.
+Text is displayed in 40 columns to provide a much higher density interface than the VIC-20's native BASIC line editor.
 
 Navigation will be familiar to vi users.  There are also a variety of commands to handle things like assembly, disassembly, etc.
 
-As with all work you do on your Vic-20, if you care about it, save often.
+As with all work you do on your VIC-20, if you care about it, save often.
 
 ### Buffers
 
@@ -42,7 +42,7 @@ below for more info on modes).
 | {c64-keys}`Shift + Slash` | `HELP          `| displays memory ranges and current resource usage                                            |
 | {c64-keys}`C= + Plus`  | `NEXT DRIVE    `| Selects the next drive (limited to #15)                                                         |
 | {c64-keys}`C= + Minus` | `PREV DRIVE    `| Selects the previous drive (limited to #8)                                                      |
-| {c64-key}`Colon`       | `EX COMMAND    `| Enters "EX" mode (see the EX COMMANDS section below for more on this)                           |
+| {c64-key}`Colon`       | `EX COMMAND    `| Enters EX mode (see the EX commands section below for more on this)                           |
 
 ```{warning}
 Closing a source buffer with {c64-keys}`C= + Q` immediately discards any
@@ -360,15 +360,15 @@ confirmation. Monster provides no undo for this operation.
 ## Editor modes
 
 The editor is a _modal_ editor, that is, it behaves differently depending on which _mode_ it is
-in.  The modes are all accessed from the default one (called _COMMAND_ mode) and each returns
-to _COMMAND_ mode when {c64-key}`RUN/STOP` is pressed.  Below is a list of the modes along with their function and details on how to enter them.
+in.  The modes are all accessed from the default one (called _command_ mode) and each returns
+to _command_ mode when {c64-key}`RUN/STOP` is pressed.  Below is a list of the modes along with their function and details on how to enter them.
 
 ### Command mode
 
 This is the default mode.  The primary function of command mode is to navigate around the
 source code and to enter other modes.
 Navigation behaves similarly to `vi` and many basic `vi` commands are supported.
-The following keys are handled in COMMAND mode.
+The following keys are handled in command mode.
 
 |  KEY                                       | NAME         | DESCRIPTION                                                                             |
 |--------------------------------------------|--------------|-----------------------------------------------------------------------------------------|
@@ -416,24 +416,24 @@ Entering insert mode allows the user to enter text at the cursor location.  Keys
 interpreted as their corresponding ASCII character value in this mode, so there are no special
 commands accessed via them.
 
-There are various keys that enter INSERT mode from COMMAND: {c64-key}`I`, {c64-key}`A`,
+There are various keys that enter insert mode from command mode: {c64-key}`I`, {c64-key}`A`,
 {c64-keys}`Shift + A`, etc.
 
 ### Visual mode
-In _VISUAL_ mode (accessed via {c64-key}`V` in _COMMAND_ mode), the user can select
+In _visual_ mode (accessed via {c64-key}`V` in _command_ mode), the user can select
 a block of text which may then be deleted or copied.  Below is the table of supported commands
-while in visual mode. Pressing {c64-key}`RUN/STOP` will return the user to _COMMAND_ mode.
+while in visual mode. Pressing {c64-key}`RUN/STOP` will return the user to _command_ mode.
 
 |  KEY         | NAME      | DESCRIPTION                                                            |
 |--------------|-----------|------------------------------------------------------------------------|
 | {c64-key}`D` | `DELETE`  | deletes the selected text _and_ copies it to the copy buffer           |
-| {c64-key}`Y` | `YANK  `  | copies the selected text (in VISUAL mode) to the copy buffer           |
+| {c64-key}`Y` | `YANK  `  | copies the selected text (in visual mode) to the copy buffer           |
 
 ### Visual line mode
-_VISUAL LINE_, which is entered by pressing {c64-keys}`Shift + V` from _COMMAND_ mode, is similar to _VISUAL_ mode,
-but selections include only entire lines.  Upon entering _VISUAL LINE_ mode, the current row is selected.
+_Visual line_ mode, which is entered by pressing {c64-keys}`Shift + V` from _command_ mode, is similar to _visual_ mode,
+but selections include only entire lines.  Upon entering _visual line_ mode, the current row is selected.
 Navigating to rows above or below will select additional lines.  The delete and yank keys behave the same as they do
-in _VISUAL_ mode.
+in _visual_ mode.
 
 ---
 
@@ -481,7 +481,7 @@ while editing.  Because their addresses aren't valid til assembly, you cannot
 access them (e.g. in the symbol viewer) until then.
 
 ### UDG editor
-Press {c64-keys}`C= + U` to enter the UDG (user defined graphics) editor.
+Press {c64-keys}`C= + U` to enter the UDG (user-defined graphics) editor.
 This editor allows you to visually create simple graphics for your programs.  Navigation
 is done with the same vi-like commands used in the main editor and graphics are created using the
 following commands:
