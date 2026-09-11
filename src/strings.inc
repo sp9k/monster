@@ -15,20 +15,13 @@
 .import __str_dir
 .import __str_done
 .import __str_dumping
-.import __str_edit_file_delete_failed
-.import __str_edit_file_load_failed
-.import __str_edit_file_save_failed
 .import __str_edit_line_err
-.import __str_endrep
 .import __str_errors
 .import __str_file_open_failed
-.import __str_files
-.import __str_invalid_command
 .import __str_illegal_detected
 .import __str_jam_detected
 .import __str_link
 .import __str_linking
-.import __str_load
 .import __str_loading
 .import __str_machine_state
 .import __str_nolabels
@@ -39,18 +32,14 @@
 .import __str_newl
 .import __str_null
 .import __str_macros
-.import __str_memory
 .import __str_memview_title
 .import __str_monitor_title
 .import __str_pass1
 .import __str_pass2
 .import __str_question_marks
-.import __str_run
 .import __str_saveall
 .import __str_saved
 .import __str_saving
-.import __str_segments
-.import __str_symview_title
 .import __str_tracing
 .import __str_tracing_msg
 .import __str_tracing_stop
@@ -82,15 +71,9 @@
 	dir                     = __str_dir
 	done                    = __str_done
 	dumping                 = __str_dumping
-	edit_file_load_failed   = __str_edit_file_load_failed
-	edit_file_delete_failed = __str_edit_file_delete_failed
-	edit_file_save_failed   = __str_edit_file_save_failed
 	edit_line_err           = __str_edit_line_err
-	endrep                  = __str_endrep
 	errors                  = __str_errors
-	files                   = __str_files
 	illegal_detected        = __str_illegal_detected
-	invalid_command         = __str_invalid_command
 	file_open_failed        = __str_file_open_failed
 	link                    = __str_link
 	linking                 = __str_linking
@@ -110,7 +93,6 @@
 	saving                  = __str_saving
 	saveall			= __str_saveall
 	saved			= __str_saved
-	symview_title           = __str_symview_title
 	monitor_title           = __str_monitor_title
 	tracing                 = __str_tracing
 	tracing_msg             = __str_tracing_msg

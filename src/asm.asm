@@ -469,6 +469,7 @@ num_opcode_singles=*-opcode_singles
 
 ;*******************************************************************************
 ; DIRECTIVES
+DIRECTIVE_ORG   = 4
 DIRECTIVE_IF    = 8
 DIRECTIVE_ELSE  = 9
 DIRECTIVE_ENDIF = 10
@@ -2150,6 +2151,34 @@ BANKED_CODE "ASMBANK"
 .endproc
 
 ;*******************************************************************************
+; WORD TYPE
+; Classify the first WORD while editing. Directive operands may be incomplete.
+; Reuse validation to distinguish labels from opcodes and defined macros.
+; Used for formatting (autoindentation of the line)
+; IN:
+;  - zp::line:   uppercase, zero-terminated word
+;  - zp::verify: nonzero (validation only)
+; OUT:
+;  - .A: ASM_* type on success, error code on failure
+;  - .C: set if the word cannot be validated
+.proc word_type
+	jsr is_directive
+	bcc @directive
+	jmp assemble
+
+@directive:
+	jsr getdirective
+	bcs @done
+	cmp #DIRECTIVE_ORG
+	beq @org
+	lda #ASM_DIRECTIVE
+	RETURN_OK
+@org:	lda #ASM_ORG
+	clc
+@done:	rts
+.endproc
+
+;*******************************************************************************
 ; HANDLE_REPEAT
 ; Handler for .endrep.
 ; Generates the repeated assembly block defined between here and the
@@ -2158,6 +2187,7 @@ BANKED_CODE "ASMBANK"
 @itername=$100
 	lda zp::verify
 	beq :+
+	lda #ASM_DIRECTIVE
 	RETURN_OK
 
 :	; close the context
@@ -2312,7 +2342,8 @@ BANKED_CODE "ASMBANK"
 ; DEFINEBYTE
 ; Defines 0 or more bytes and stores them in (asmresult)
 ; OUT:
-;  - .A: the number of bytes written
+;  - .A: ASM_DIRECTIVE on success, error code on failure
+;  - .C: set if a value could not be parsed or written
 .proc definebyte
 	jsr line::process_ws
 	jsr eval_expr
@@ -2381,7 +2412,8 @@ BANKED_CODE "ASMBANK"
 
 	; unexpected character
 @err:	RETURN_ERR ERR_SYNTAX_ERROR
-@done:	clc
+@done:	lda #ASM_DIRECTIVE
+	clc
 @ret:	rts
 .endproc
 
@@ -2391,6 +2423,7 @@ BANKED_CODE "ASMBANK"
 ; 5-byte packed format, at (asmresult).
 ; Integer expressions are promoted (".df 1" = ".df 1.0")
 ; OUT:
+;  - .A: ASM_DIRECTIVE on success, error code on failure
 ;  - .C: set if a value could not be parsed
 .if FP_SUPPORTED
 
@@ -2440,7 +2473,8 @@ CUR_BANK .set FINAL_BANK_FP
 	; unexpected character
 	RETURN_ERR ERR_SYNTAX_ERROR
 
-@done:	clc
+@done:	lda #ASM_DIRECTIVE
+	clc
 @ret:	rts
 .endproc
 
@@ -2461,6 +2495,7 @@ CUR_BANK .set FP_CALLER_BANK
 ; DEFINEWORD
 ; Parses zp::line for a word value and stores it to zp::asmresult if possible.
 ; OUT:
+;  - .A: ASM_DIRECTIVE on success, error code on failure
 ;  - .C: set if a word could not be parsed
 .proc defineword
 	jsr line::process_ws
@@ -2489,7 +2524,8 @@ CUR_BANK .set FP_CALLER_BANK
 	beq @commaorws
 	; unexpected character
 @err:	RETURN_ERR ERR_SYNTAX_ERROR
-@done:	clc
+@done:	lda #ASM_DIRECTIVE
+	clc
 @ret:	rts
 .endproc
 
@@ -2518,7 +2554,8 @@ CUR_BANK .set FP_CALLER_BANK
 	decw @cnt
 	jmp @fill
 
-@done:	RETURN_OK
+@done:	lda #ASM_DIRECTIVE
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -4704,6 +4741,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 .export __asm_set_pc
 .export __asm_disassemble
 .export __asm_is_opcode
+.export __asm_word_type
 .export __asm_type_to_mode
 
 .if .defined(CART) .and .defined(c64)
@@ -4716,6 +4754,7 @@ __asm_include:      JUMP FINAL_BANK_ASM, includefile::include_entry
 __asm_set_pc:       JUMP FINAL_BANK_ASM, set_pc
 __asm_disassemble:  JUMP FINAL_BANK_ASM, disassemble
 __asm_is_opcode:    JUMP FINAL_BANK_ASM, isopcode
+__asm_word_type:    JUMP FINAL_BANK_ASM, word_type
 __asm_type_to_mode: JUMP FINAL_BANK_ASM, type2mode
 .else
 __asm_reset        = areset
@@ -4726,6 +4765,7 @@ __asm_include      = includefile::include_entry
 __asm_set_pc       = set_pc
 __asm_disassemble  = disassemble
 __asm_is_opcode    = isopcode
+__asm_word_type    = word_type
 __asm_type_to_mode = type2mode
 .endif
 

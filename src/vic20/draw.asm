@@ -167,19 +167,6 @@ COLOR_SELECT  = 6
 .endproc
 
 ;*******************************************************************************
-; SCROLLCOLORSD1
-; Scrolls all colors in the given range down by 1. See __draw_scrollcolorsd1
-; IN:
-;  - .X: the first row to scroll
-;  - .Y: the last row to scroll
-.export __draw_scrollcolorsd1
-.proc __draw_scrollcolorsd1
-	lda #$01
-
-	; fall through to __draw_scrollcolorsd
-.endproc
-
-;*******************************************************************************
 ; SCROLLCOLORSD
 ; Scrolls all colors from the given start row to the given stop row down by the
 ; given amount
@@ -238,18 +225,4 @@ COLOR_SELECT  = 6
 	dey
 	jmp @clear
 @done:	rts
-.endproc
-
-;*******************************************************************************
-; COLOROFF
-; Disables color in the interrupt and sets the background to its default color
-.export __draw_coloroff
-.proc __draw_coloroff
-	sei
-	lda #$00
-	sta mem::coloron
-	lda prefs::normal_color
-	sta $900f
-	cli
-	rts
 .endproc

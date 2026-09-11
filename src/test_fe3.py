@@ -502,6 +502,109 @@ class FE3(unittest.TestCase):
         self.assertEqual(m.call('__vmem_load', xy=0x3000)[0], 0x5a)
         self.assertEqual(m.call('__vmem_load', xy=0x900f)[0], 0x1b)
 
+    def test_trace_load_flags(self):
+        m = self.machine()
+        cases = [(0x2000, opcode, address)
+                 for opcode in (0xad, 0xae, 0xac, 0xaf)  # LDA/LDX/LDY/LAX
+                 for address in (0x1000, 0x900f, 0x9400)]
+        cases += [(0x1200, opcode, None) for opcode in (0xa9, 0xa2, 0xa0)]
+        for start, opcode, address in cases:
+            for value in (0, 0x80, 0x7f):
+                with self.subTest(start=hex(start), opcode=hex(opcode),
+                                  address=address, value=value):
+                    m.call('__sim_init')
+                    if address is None:
+                        instruction = bytes((opcode, value))
+                    else:
+                        m.call('__vmem_store', a=value, xy=address)
+                        instruction = bytes((opcode, address & 255, address >> 8))
+                    # TRACE single-steps its first instruction before swapping
+                    # the display in. Capture P after the following traced load.
+                    program = b'\xea' + instruction + bytes.fromhex('08 68 8d 00 30 00')
+                    for i, byte in enumerate(program):
+                        m.call('__vmem_store', a=byte, xy=start+i)
+                    m.mem[m.symbols['__sim_pc']] = start & 255
+                    m.mem[m.symbols['__sim_pc']+1] = start >> 8
+                    m.mem[m.symbols['__sim_reg_p']] = 0x24
+                    m.call('__debug_trace')
+                    flags = m.call('__vmem_load', xy=0x3000)[0]
+                    self.assertEqual(flags & 0x82, 2 if value == 0 else value & 0x80)
+                    self.assertEqual(m.mem.reg, 0xa1)
+
+
+class FE3CartridgeRecovery(unittest.TestCase):
+    def test_reset_during_native_execution(self):
+        for basic in (False, True):
+            with self.subTest(basic=basic):
+                m = FE3().machine()
+                contents = (b'first buffer\rsecond line\r', b'other unsaved buffer\r')
+                names = (b'first.s', b'second.s')
+                linebuf = m.symbols['__linebuffer']
+                for number, content in enumerate(contents):
+                    if number:
+                        m.call('__src_new')
+                    for i, byte in enumerate(names[number] + b'\0'):
+                        m.mem[linebuf+i] = byte
+                    m.call('__src_name', xy=linebuf)
+                    for byte in content:
+                        m.call('__src_insert', a=byte)
+                # Leave the active buffer unsaved: its current gap pointers
+                # still live in zero page, not in the per-buffer state table.
+                source = bytes(m.mem.ram[12*32768:16*32768])
+                for i, byte in enumerate(bytes.fromhex('4c 00 12')):
+                    m.call('__vmem_store', a=byte, xy=0x1200+i)
+                m.mem[m.symbols['__sim_pc']] = 0
+                m.mem[m.symbols['__sim_pc']+1] = 0x12
+                m.cpu.pc = m.symbols['__run_go_basic' if basic else '__run_go']
+                m.run_until(0x1200)
+                # Native code can own every byte of RAM123, including the
+                # usual recovery signature and source-buffer bookkeeping.
+                for address in range(0x400, 0x1000):
+                    m.mem[address] = 0x5a
+                m.boot()
+                self.assertEqual(bytes(m.mem.ram[12*32768:16*32768]), source)
+                self.assertEqual(m.mem[m.symbols['__src_numbuffers']], 2)
+                prompts = []
+
+                def recover():
+                    prompts.append(True)
+                    m.cpu.a = ord('Y')
+
+                m.io_hooks = {m.symbols['__key_waitch']: recover,
+                              m.symbols['__key_flush']: lambda: None}
+                m.cpu.step()
+                m.run_until(m.symbols['__edit_run'])
+                self.assertEqual(prompts, [True])
+                for number, content in enumerate(contents):
+                    m.call('__src_set', a=number)
+                    _, address, _ = m.call('__src_get_filename', a=number)
+                    self.assertEqual(bytes(m.mem[address:address+len(names[number])]),
+                                     names[number])
+                    m.call('__src_rewind')
+                    for line in content.split(b'\r')[:-1]:
+                        m.call('__src_get')
+                        self.assertEqual(bytes(m.mem[linebuf:linebuf+len(line)]), line)
+                        m.call('__src_down')
+
+    def test_reset_after_normal_native_return(self):
+        for brk in (False, True):
+            with self.subTest(brk=brk):
+                m = FE3().machine()
+                program = b'\x00' if brk else bytes.fromhex('4c 00 12')
+                for i, byte in enumerate(program):
+                    m.call('__vmem_store', a=byte, xy=0x1200+i)
+                m.mem[m.symbols['__sim_pc']] = 0
+                m.mem[m.symbols['__sim_pc']+1] = 0x12
+                m.cpu.pc = m.symbols['__run_go']
+                m.run_until(0x1200)
+                if not brk:
+                    m.cpu.nmi()
+                m.run_until(m.symbols['return_to_debugger'])
+                m.call('__src_new')
+                m.boot()
+                # A stale native snapshot would discard this new buffer.
+                self.assertEqual(m.mem[m.symbols['__src_numbuffers']], 2)
+
 
 if __name__ == '__main__':
     unittest.main()

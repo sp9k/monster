@@ -852,63 +852,6 @@ __text_tabr_dist_a=*+2
 .endproc
 
 ;*******************************************************************************
-; TABL_DIST
-; Returns the number of columns left to the previous tab column
-; OUT:
-;  - .A: the number of characters to the previous tab
-.export __text_tabl_dist
-.proc __text_tabl_dist
-	lda zp::curx
-.endproc
-.export __text_tabl_dist_a
-.proc __text_tabl_dist_a
-@xstart = zp::util
-@tmp    = zp::util+1
-	sta @xstart
-	cmp #$00
-	beq @done
-	ldy #tabs_end
-:	dey
-	cmp tabs,y
-	bcc :-
-	beq :-
-	lda tabs,y
-	sta @tmp
-	lda @xstart
-	; sec
-	sbc @tmp
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; TABL INDEX
-; Gets the column of the next non-TAB character to the left of the given
-; column position
-; IN:
-;   - .A: the starting column to seek from
-.export __text_tabl_index
-.proc __text_tabl_index
-@x      = zp::util+2		; set in tabl_dist_a
-@tabcnt = zp::util+3
-	sta @x
-	jsr __text_tabl_dist_a
-	sta @tabcnt
-
-@tabl:	dec @x
-	lda @x
-	jsr __text_char_index_a
-	inc @x
-	cmp #$09			; still on a TAB?
-	bne @done			; if not, we're done
-	dec @x
-	dec @tabcnt
-	bne @tabl
-
-@done:	lda @x
-	rts
-.endproc
-
-;*******************************************************************************
 ; TABS
 ; This table stores the offsets to each TAB column
 ; DATA (not RODATA): may be read from a banked context on the cart build

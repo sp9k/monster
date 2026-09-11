@@ -156,6 +156,8 @@ This is a common flow for debugging visual programs: step through your program u
 reached a place you want to visibly observe, switch to the program screen to see if it matches your expectations,
 and repeat.
 
+Press any key to return to the debugger.
+
 Take a close look at the display and you should see that we have just printed a character to the screen by calling `$FFD2`.
 Let’s run our program to finish displaying the message.  To do this, press {c64-keys}`C= + G`.
 

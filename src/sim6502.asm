@@ -3365,7 +3365,9 @@ h_nop_absx:
 	stxy @target
 	ldy #0
 	lda (@target),y
+	pha
 	ldy @target+1
+	pla			; N/Z must describe the loaded byte, not the address
 	rts
 :
 .endif

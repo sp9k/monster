@@ -162,23 +162,6 @@
 .CODE
 
 ;*******************************************************************************
-; GET BYTE
-; Reads the value at the given address
-; IN:
-;   - .XY: the address to get the value of
-; OUT:
-;   - .A: the value for the given address in the MAIN bank
-; CLOBBERS:
-;   - .A, .Y, r0-r1
-.export __ram_get_byte
-.proc __ram_get_byte
-	stxy r0
-	ldy #$00
-	lda (r0),y
-	rts
-.endproc
-
-;*******************************************************************************
 ; MEMCPY
 ; Copies data from ram::src to ram::dst
 ; The number of bytes is given in .YX

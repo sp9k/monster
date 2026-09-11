@@ -1254,9 +1254,17 @@ main:	jsr key::getch
 
 ;*******************************************************************************
 ; LEAVE INSERT
-; Returns to COMMAND mode
+; Completes the current line, then returns to COMMAND mode.
 .proc leave_insert
-	jmp enter_command
+	lda mode
+	cmp #MODE_INSERT
+	bne @done
+
+	lda fmt::enable
+	beq @done
+	jsr check_current_line	; validate/format line
+
+@done:	jmp enter_command
 .endproc
 
 ;*******************************************************************************
@@ -4137,7 +4145,9 @@ goto_buffer:
 	bne @done
 	inx			; 2 (hint for ';')
 
-@done:	txa
+@done:	lda #0
+	sta errlog::editpending	; formatting may have marked this checked line dirty
+	txa
 	pha			; save indent hint
 
 	jsr print_current_line
@@ -4434,6 +4444,17 @@ goto_buffer:
 :	jsr key::isprinting
 	bcs @done		; non-printing
 
+	cmp #' '
+	bne @write
+	lda autoindent
+	beq @space
+	jsr fmt::word_space
+	bcc @space
+	jsr sync_cur
+	jsr print_current_line
+@space:	lda #' '
+
+@write:
 	ldx text::insertmode
 	bne @put
 @replace:
@@ -6556,14 +6577,6 @@ unblank = scr::unblank
 	inc bufferedkeys
 	pla
 	rts
-.endproc
-
-;*******************************************************************************
-; GOTO SELECTION START
-; Moves the source cursor to where the active visual selection began
-.proc goto_selection_start
-	ldxy visual_start_pos
-	jmp src::goto
 .endproc
 
 ;*******************************************************************************

@@ -1044,7 +1044,7 @@ fe3_lineptrs: .res $200
 ;-------------------------------------------------------------------------------
 @is_null_return_space_comma_closingparen_newline:
 	cmp #$00
-	beq @done
+	beq :+
 	jsr @iswhitespace
 	beq :+
 	cmp #','

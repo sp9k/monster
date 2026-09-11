@@ -591,20 +591,43 @@ native_destination = native_restore_done::native_destination
 
 ; The shared 3 KiB cannot remain mapped while native user code runs.
 ; These loops execute in SIM's BLK5, with no calls or zero-page temporaries.
+.segment "FASTCOPY_BSS"
+.export __fe3_native_saved
+__fe3_native_saved: .res 4
+
 .segment "FASTCOPY"
 .import prog0400, dbg0400
+.export __fe3_native_magic
+__fe3_native_magic: .byte "FE3", 1
+
 .proc save_shared
 	ldx #0
 @byte:
 .repeat 12, page
 	lda $0400+page*$100,x
 	sta dbg0400+page*$100,x
+.endrepeat
+	inx
+	beq :+
+	jmp @byte
+:
+	; Publish only a complete snapshot, before replacing any shared RAM.
+	; The marker lives in SIM, beyond the memory native programs can see.
+	ldx #3
+@mark:
+	lda __fe3_native_magic,x
+	sta __fe3_native_saved,x
+	dex
+	bpl @mark
+	ldx #0
+@user:
+.repeat 12, page
 	lda prog0400+page*$100,x
 	sta $0400+page*$100,x
 .endrepeat
 	inx
 	beq :+
-	jmp @byte
+	jmp @user
 :	jmp BRIDGE_RETURN
 .endproc
 .proc restore_shared
@@ -619,5 +642,8 @@ native_destination = native_restore_done::native_destination
 	inx
 	beq :+
 	jmp @byte
-:	jmp BRIDGE_RETURN
+:	; Shared RAM is the debugger's again; a later reset must use it.
+	lda #0
+	sta __fe3_native_saved
+	jmp BRIDGE_RETURN
 .endproc

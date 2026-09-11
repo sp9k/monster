@@ -4,8 +4,6 @@
 .import __draw_rvs_underline
 .import __draw_scrollcolorsu
 .import __draw_scrollcolorsd
-.import __draw_coloroff
-.import __draw_scrollcolorsd1
 .import __draw_refresh_colors
 .import __draw_rvs_line
 
@@ -27,7 +25,5 @@ COLOR_ERROR   = 7	; palette index for the error-highlight row color
 	rvs_underline  = __draw_rvs_underline
 	scrollcolorsu  = __draw_scrollcolorsu
 	scrollcolorsd  = __draw_scrollcolorsd
-	scrollcolorsd1 = __draw_scrollcolorsd1
-	coloroff       = __draw_coloroff
 	refresh_colors = __draw_refresh_colors
 .endscope

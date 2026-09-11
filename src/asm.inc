@@ -13,6 +13,7 @@
 .import __asm_top
 .import __asm_linenum
 .import __asm_is_opcode
+.import __asm_word_type
 .import __asm_type_to_mode
 .import __asm_raw_opcode
 .import __asm_raw_operand
@@ -36,5 +37,5 @@
 	tokenize       = __asm_tokenize
 	top            = __asm_top
 	type_to_mode   = __asm_type_to_mode
+	word_type      = __asm_word_type
 .endscope
-

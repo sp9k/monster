@@ -17,7 +17,6 @@
 .import __src_down
 .import __src_downn
 .import __src_end
-.import __src_end_rep
 .import __src_force_set
 .import __src_get
 .import __src_getin
@@ -90,7 +89,6 @@ GAPSIZE = 20	; size of gap in gap buffer
 	new_log        = __src_new_log
 	numbuffers     = __src_numbuffers
 	end            = __src_end
-	end_rep        = __src_end_rep
 	filename       = __src_get_filename
 	forceset       = __src_force_set
 	get            = __src_get

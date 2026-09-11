@@ -16,6 +16,8 @@ Confirmed issues and fixes:
 | Monitor missing redirect filename | The monitor read MAIN's string while its own bank was mapped. | Render into shared RAM first. |
 | Monitor invalid-instruction fallback | The `???` string had the same pointer-lifetime problem. | Render into shared RAM first. |
 | Simulator native-handler boundary | Simulated stores still rejected `$7f80–$7fdf` after the native handler moved. | Protect `$7fe0–$7fff`, matching the virtual-memory API. |
+| Traced loads | Restoring Y after a physical read replaced N/Z with flags from the address's high byte. | Restore A last, so simulated loads receive flags from the loaded value. |
+| Reset during native GO/BASIC | The user's RAM123 image replaced the recovery signature and source metadata; startup silently began a blank session. | Mark the complete debugger snapshot in SIM and restore RAM123/zero page before cartridge recovery. Clear the marker on normal returns and fresh disk launches. |
 
 The other reviewed direct references either stay in their owning bank or
 execute from shared RAM with the required bank explicitly selected. Reviewed
@@ -24,7 +26,10 @@ to shared/internal RAM before their consumers change banks. Source and
 symbol-name loops use deliberately duplicated BLK5 code and restore the
 expected bank before accessing private state.
 
-All 17 FE3 regression tests pass. Boot relocation, native RESTORE, the symbol
+All 20 cartridge and 22 disk regression tests pass. NTSC and PAL cartridge
+and disk builds succeed. Dedicated regressions cover traced load flags and
+reset during native execution, including stale snapshots after normal
+native returns and fresh disk launches. Boot relocation, native RESTORE, the symbol
 viewer, and monitor messages were also rechecked against the current boot
 loader changes. Validation covers real `mac.s` assembly followed by opening/sorting the viewer,
 alternating zero-page/absolute/float symbol rendering with stack checks,

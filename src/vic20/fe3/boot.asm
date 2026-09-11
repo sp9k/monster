@@ -4,6 +4,7 @@
 .import enter, __irq_keydecode
 .import __FE3BOOT_LOAD__, __FE3BOOT_RUN__, __FE3BOOT_SIZE__
 .import __BSS_LOAD__, __BSS_SIZE__
+.import __fe3_native_saved, __fe3_native_magic, dbg0400, prog0400, dbg00
 .ifdef CART
 .segment "CART"
 .export __fe3_init
@@ -118,6 +119,15 @@ __fe3_init:
 	cpx #copies_end-copies
 	bne @bank
 
+	lda #FINAL_BANK_SIM
+	sta $9c02
+.ifdef CART
+	jsr recover_native
+.endif
+	; Disk launches always start fresh. Also invalidate cold-start garbage.
+	lda #0
+	sta __fe3_native_saved
+
 .ifdef CART
 	; Restore ROM zero to copy initialized shared code and data.
 	lda #$40
@@ -168,6 +178,38 @@ __fe3_init:
 	sta zp::bankjmpaddr
 	jmp enter
 .endproc
+
+.ifdef CART
+; The loader runs in internal RAM, with SIM mapped and interrupts disabled.
+; Restore the native snapshot before relocations and the recovery-signature
+; check. The saved zero page includes the active source's gap/cursor state.
+.proc recover_native
+	ldx #3
+@check:
+	lda __fe3_native_saved,x
+	cmp __fe3_native_magic,x
+	beq :+
+	rts
+:
+	dex
+	bpl @check
+	ldx #0
+@byte:
+.repeat 12, page
+	lda $0400+page*$100,x
+	sta prog0400+page*$100,x
+	lda dbg0400+page*$100,x
+	sta $0400+page*$100,x
+.endrepeat
+	lda dbg00,x
+	sta $00,x
+	inx
+	beq @done
+	jmp @byte
+@done:
+	rts
+.endproc
+.endif
 
 .proc relocate_shared
 	ldx #0

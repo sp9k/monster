@@ -62,7 +62,7 @@ NAV_CHECK_ON_RETURN = ERRLOG_NAV_CHECK_ON_RETURN
 .else
 .BSS
 .endif
-; These three values are read directly by the editor, source and GUI code.
+; These values are read directly by the editor, source and GUI code.
 .export __errlog_numerrs
 __errlog_numerrs:
 numerrs: .byte 0
@@ -73,6 +73,10 @@ __errlog_asmerrors: .byte 0	; assembly error count, independent of visible entri
 ; only navigation (or command-mode RETURN) may validate the line being left.
 .export __errlog_navpending
 __errlog_navpending: .byte NAV_NONE
+
+; flags if current line needs validation when navigated from
+.export __errlog_editpending
+__errlog_editpending: .byte 0
 
 .if .defined(ultimem) .or .defined(fe3)
 .segment "ERRLOG_BSS"
@@ -428,6 +432,7 @@ getline:
 	sta numerrs
 	sta __errlog_asmerrors
 	sta __errlog_navpending
+	sta __errlog_editpending
 	sta insertmode
 	rts
 .endproc
@@ -1211,6 +1216,7 @@ getline:
 @ownerid=r0
 	lda #NAV_NONE
 	sta __errlog_navpending
+	sta __errlog_editpending
 	lda src::activebuff
 	ora #LIVE_BUFFER	; OR to mark as "live" (not-debug id) buffer
 	sta @ownerid
@@ -1294,6 +1300,8 @@ getline:
 .proc check_line
 @line=r0
 @buffer=r0
+	lda #$00
+	sta __errlog_editpending
 	lda fmt::enable
 	beq @skip
 	lda numdismissed
@@ -1330,8 +1338,9 @@ getline:
 ;*******************************************************************************
 ; BEFOREKEY
 ; Snapshot an editor key's starting position without disturbing its arguments.
-; A source edit cancels navpending in src::mark_dirty. RETURN in insert mode
-; has its own completed-line check; command-mode RETURN is handled here.
+; Only edited lines are checked upon leaving. Source edits cancel navpending
+; and set editpending in src::mark_dirty. RETURN (breaking/ending line)
+; forces validation.
 ; IN:
 ;  - .A: the editor key to handle
 ; OUT:
@@ -1360,16 +1369,14 @@ getline:
 	cmp #MAX_SOURCES
 	bcs @done
 	sta navbuffer		; set buffer we're on BEFORE key is handled
-	ldxy src::line
-	stxy navline		; set line we're on BEFORE key is handled
-	CALLMAIN src::pos
-	stxy navpos		; save source position before handling key too
 
 	lda navkey
 	cmp #K_RETURN
 	beq @return		; set navpending to check always (RETURN)
 	cmp #K_FORCE_NEWLINE
 	beq @return		; same as RETURN - always check
+	lda __errlog_editpending
+	beq @done		; don't validate motion from unchanged lines
 	lda #NAV_CHECK_ON_LEAVE
 	bne @cont		; branch always (only check if we leave line)
 
@@ -1377,6 +1384,10 @@ getline:
 	jsr undismiss_current
 	lda #NAV_CHECK_ON_RETURN
 @cont:	sta __errlog_navpending	; set navpending to check if we leave the line
+	ldxy src::line
+	stxy navline		; set line we're on BEFORE key is handled
+	CALLMAIN src::pos
+	stxy navpos		; save source position before handling key too
 
 @done:	; restore registers
 	pla
@@ -1390,7 +1401,7 @@ getline:
 
 ;*******************************************************************************
 ; AFTER KEY
-; After navigation, check the departed line using its source text. Preserve
+; After navigation, check an edited departed line using its source text. Preserve
 ; the destination buffer, source/cursor position and line buffer. No formatting
 ; or beep: an invalid line must not prevent the user from navigating away.
 ; IN:

@@ -83,6 +83,10 @@ BLK1 is otherwise unused. FE3 control registers occupy I/O3, not writable RAM.
 Main BLK5 code is duplicated into source/LOG banks, and symbol code into the
 symbol-name bank, so routines can continue executing during bank changes.
 Startup leaves source contents and recovery metadata intact across reset.
+During native GO/BASIC the debugger's RAM123 and zero page live in SIM.
+A marker in SIM identifies that saved state, so cartridge startup restores it
+before offering source recovery. Normal native returns clear the marker;
+disk launches clear it and start a fresh session.
 The source limit is four, plus the separate LOG buffer. LINK files retain their
 1 KiB limit; the parser temporarily uses the unused object-relocation workspace.
 
@@ -123,6 +127,9 @@ banked assembler, editor assembly-completion path, source allocation/reset,
 LINK parser, scrolling, tracing, native BRK/RESTORE transitions, symbol-viewer
 formats/sorting, and monitor messages across bank switches. They reject
 CPU JAM opcodes and start expansion RAM with a nonzero pattern.
+They also check traced load flags in display RAM, VIC/color registers, and
+internal-RAM code, plus cartridge reset recovery during GO/BASIC and after
+normal BRK/RESTORE returns.
 The disk tests run the same application regressions with erased flash and
 emulated KERNAL file I/O, plus payload placement, device selection, and retries
 after missing or truncated files.

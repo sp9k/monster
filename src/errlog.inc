@@ -25,6 +25,7 @@
 .import __errlog_before_key
 .import __errlog_after_key
 .import __errlog_navpending
+.import __errlog_editpending
 
 .scope errlog
 	SPLIT_LINE          = ERRLOG_SPLIT_LINE
@@ -37,6 +38,7 @@
 	before_key     = __errlog_before_key
 	after_key      = __errlog_after_key
 	navpending     = __errlog_navpending
+	editpending    = __errlog_editpending
 	activate       = __errlog_activate
 	check_line     = __errlog_check_line
 	clear          = __errlog_clear

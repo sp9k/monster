@@ -124,6 +124,22 @@ class FE3Disk(fe3.FE3):
             self.assertEqual(m.mem[0xba], expected)
             self.assertEqual({r[1] for r in m.requests}, {expected})
 
+    def test_native_restart_starts_fresh(self):
+        m = self.machine()
+        m.call('__src_new')
+        for i, byte in enumerate(bytes.fromhex('4c 00 12')):
+            m.call('__vmem_store', a=byte, xy=0x1200+i)
+        m.mem[m.symbols['__sim_pc']] = 0
+        m.mem[m.symbols['__sim_pc']+1] = 0x12
+        m.cpu.pc = m.symbols['__run_go']
+        m.run_until(0x1200)
+        m.boot()
+        m.cpu.step()
+        m.run_until(m.symbols['__edit_run'])
+        self.assertEqual(m.mem[m.symbols['__src_numbuffers']], 1)
+        m.mem.reg = 0xa9
+        self.assertEqual(m.mem[m.symbols['__fe3_native_saved']], 0)
+
     def test_load_retry(self):
         for failure in ('missing', 'short'):
             m = DiskMachine(failure=failure)
