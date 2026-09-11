@@ -2152,6 +2152,7 @@ BANKED_CODE "ASMBANK"
 @itername=$100
 	lda zp::verify
 	beq :+
+	lda #ASM_DIRECTIVE
 	RETURN_OK
 
 :	; close the context
@@ -2306,7 +2307,8 @@ BANKED_CODE "ASMBANK"
 ; DEFINEBYTE
 ; Defines 0 or more bytes and stores them in (asmresult)
 ; OUT:
-;  - .A: the number of bytes written
+;  - .A: ASM_DIRECTIVE on success, error code on failure
+;  - .C: set if a value could not be parsed or written
 .proc definebyte
 	jsr line::process_ws
 	jsr eval_expr
@@ -2375,7 +2377,8 @@ BANKED_CODE "ASMBANK"
 
 	; unexpected character
 @err:	RETURN_ERR ERR_SYNTAX_ERROR
-@done:	clc
+@done:	lda #ASM_DIRECTIVE
+	clc
 @ret:	rts
 .endproc
 
@@ -2385,6 +2388,7 @@ BANKED_CODE "ASMBANK"
 ; 5-byte packed format, at (asmresult).
 ; Integer expressions are promoted (".df 1" = ".df 1.0")
 ; OUT:
+;  - .A: ASM_DIRECTIVE on success, error code on failure
 ;  - .C: set if a value could not be parsed
 .if FP_SUPPORTED
 
@@ -2434,7 +2438,8 @@ CUR_BANK .set FINAL_BANK_FP
 	; unexpected character
 	RETURN_ERR ERR_SYNTAX_ERROR
 
-@done:	clc
+@done:	lda #ASM_DIRECTIVE
+	clc
 @ret:	rts
 .endproc
 
@@ -2455,6 +2460,7 @@ CUR_BANK .set FP_CALLER_BANK
 ; DEFINEWORD
 ; Parses zp::line for a word value and stores it to zp::asmresult if possible.
 ; OUT:
+;  - .A: ASM_DIRECTIVE on success, error code on failure
 ;  - .C: set if a word could not be parsed
 .proc defineword
 	jsr line::process_ws
@@ -2483,7 +2489,8 @@ CUR_BANK .set FP_CALLER_BANK
 	beq @commaorws
 	; unexpected character
 @err:	RETURN_ERR ERR_SYNTAX_ERROR
-@done:	clc
+@done:	lda #ASM_DIRECTIVE
+	clc
 @ret:	rts
 .endproc
 
@@ -2512,7 +2519,8 @@ CUR_BANK .set FP_CALLER_BANK
 	decw @cnt
 	jmp @fill
 
-@done:	RETURN_OK
+@done:	lda #ASM_DIRECTIVE
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************

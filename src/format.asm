@@ -5,7 +5,7 @@
 ; on its contents.
 ; The main procedure, fmt::line, looks at the given "type" value and indents
 ; or unindents depending on what the line contains.
-; Labels are unindented, instructions are indented.
+; Labels and directives are unindented (except .ORG), instructions are indented.
 ;*******************************************************************************
 
 .include "codes.inc"
