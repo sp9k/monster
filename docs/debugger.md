@@ -86,7 +86,7 @@ respective Key in the table below.
 | {c64-keys}`C= + R`    | RESET STOPWATCH | resets the value of the stopwatch to 0                                                  |
 | {c64-keys}`C= + X`    | QUIT DEBUGGER   | Prompts the user for confirmation then quits the debugger upon receiving it             |
 | {c64-key}`RUN/STOP`   | SOURCE VIEW     | closes every open window and gives the whole screen back to the source view (also available with F1) |
-| {c64-key}`SPACE`      | SHOW FRAME      | Displays the current state of the user program                                          |
+| {c64-key}`SPACE`      | SHOW FRAME      | displays the current state of the user program until any key is pressed                  |
 | {c64-key}`Up-arrow`   | GOTO BREAK      | navigates to the address that the debugger is currently paused at                       |
 
 ## Register editor

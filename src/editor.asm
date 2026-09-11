@@ -1251,9 +1251,17 @@ main:	jsr key::getch
 
 ;*******************************************************************************
 ; LEAVE INSERT
-; Returns to COMMAND mode
+; Completes the current line, then returns to COMMAND mode.
 .proc leave_insert
-	jmp enter_command
+	lda mode
+	cmp #MODE_INSERT
+	bne @done
+
+	lda fmt::enable
+	beq @done
+	jsr check_current_line	; validate/format line
+
+@done:	jmp enter_command
 .endproc
 
 ;*******************************************************************************
