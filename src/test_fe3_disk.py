@@ -17,6 +17,11 @@ class DiskMachine(fe3.Machine):
         self.failure = failure
         self.requests = []
         self.messages = bytearray()
+        # A real disk launch inherits initialized KERNAL vectors from BASIC.
+        # The loader deliberately keeps them installed until loading finishes.
+        self.cpu.stPushWord(0x3ef)
+        self.cpu.pc = 0xfd52
+        self.run_until(0x3f0)
 
     def boot(self):
         boot = Path('fe3-disk/monster.prg').read_bytes()

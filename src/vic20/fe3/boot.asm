@@ -58,7 +58,7 @@ __fe3_init:
 	bcs :+
 	lda #DEFAULT_DEVICE
 :	sta disk_device
-	jsr $fd52	; standard KERNAL vectors during all disk I/O
+	jsr prepare_load	; keep the FE3 fast loader reachable while banking
 	jsr $ffe7	; CLALL
 	lda #$80
 	jsr $ff90	; enable KERNAL loading messages
@@ -73,12 +73,12 @@ __fe3_init:
 	lda #0
 	sta $9c03
 .ifndef CART
-	; Stage the shared initializers in bank zero before console replaces it.
+	; Stage shared initializers in unused USER BLK5. Keep the low-RAM wedge
+	; intact until the last LOAD, and avoid the console's bank-zero payload.
 	cli
 	ldx #<(shared_file-copies)
 	jsr load_file
 	sei
-	jsr relocate_shared
 .endif
 	ldx #0
 @bank:
@@ -118,6 +118,14 @@ __fe3_init:
 	tax
 	cpx #copies_end-copies
 	bne @bank
+
+.ifndef CART
+	; All disk I/O is complete: retire the wedge before replacing its RAM.
+	jsr $fd52
+	lda #FINAL_BANK_USER
+	sta $9c02
+	jsr relocate_shared
+.endif
 
 	lda #FINAL_BANK_SIM
 	sta $9c02
@@ -261,7 +269,7 @@ pages: .byte 0
 __fe3_copies = copies
 __fe3_copies_end = copies_end
 .ifndef CART
-shared_file: .byte $40,$a0,$a0,$20
+shared_file: .byte $40,FINAL_BANK_USER,$a0,$20
 .endif
 copies:
 .byte $40,$a0,$40,$20
@@ -300,6 +308,48 @@ relocation "FE3CFG"
 relocs_end:
 
 .ifndef CART
+; A RAM-resident wedge survives Super RAM bank changes. The FE3 firmware's
+; public SYS 41006 entry relocates its BLK5 wedge below $1000 when necessary.
+; KERNAL-ROM loaders (including JiffyDOS) need no relocation. If the installed
+; BLK5 loader has no recognized FE3 entry table, use the standard vectors.
+.proc prepare_load
+	; The ROM wedge also hooks CHROUT, CLRCHN, CLALL and GETIN. Those
+	; handlers are not part of its relocatable loader and disappear when
+	; we select payload RAM. Preserve only LOAD; reset the other vectors.
+	lda $0330
+	pha
+	lda $0331
+	pha
+	jsr $fd52
+	pla
+	sta $0331
+	pla
+	sta $0330
+
+	lda $0331		; high byte of the installed LOAD vector
+	cmp #$a0
+	bcc @done
+	cmp #$c0
+	bcs @done
+
+	lda $a000
+	sta $a000		; unlock while executing from internal RAM
+	lda #$40		; firmware ROM zero, writable RAM123
+	sta $9c02
+	lda #0
+	sta $9c03
+	lda $a02b		; SYS 41003: initialize wedge
+	cmp #$4c
+	bne @standard
+	lda $a02e		; SYS 41006: relocate wedge to low RAM
+	cmp #$4c
+	bne @standard
+	jsr $a02e
+@done:	rts
+@standard:
+	jmp $fd52
+.endproc
+
 ; KERNAL owns its zero-page workspace during LOAD. Keep the record and device
 ; in internal RAM, and use SA=0 so even a wrong PRG header cannot move the load.
 .proc load_file
