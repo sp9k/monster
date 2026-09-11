@@ -721,24 +721,6 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .endproc
 
 ;*******************************************************************************
-; END_REP
-; Returns .Z set if the current or next cursor position is at the end of the
-; buffer.
-; OUT:
-;  - .Z: set if the cursor is at the end of the buffer
-.export __src_end_rep
-.proc __src_end_rep
-	ldxy end
-	sub16 poststartzp
-	cpy #$00
-	bne @done
-	cpx #$00
-	beq @done
-	cpx #1		; set .Z if LSB is 1
-@done:	rts
-.endproc
-
-;*******************************************************************************
 ; BEFORE END
 ; Checks if the source cursor is located just before the end of the buffer.
 ; OUT:
@@ -775,9 +757,9 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ;  - .C: set if the backspace failed (we're at the START of the source)
 .export __src_backspace
 .proc __src_backspace
-	jsr __src_mark_dirty
 	jsr __src_start
 	beq @skip
+	jsr __src_mark_dirty
 	jsr __src_atcursor
 	pha
 	cmp #$0d
@@ -1434,6 +1416,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	lda #errlog::NAV_NONE
 	sta errlog::navpending
 	lda #FLAG_DIRTY
+	sta errlog::editpending
 	ldx activesrc
 	sta flags,x
 	rts

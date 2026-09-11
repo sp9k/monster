@@ -463,6 +463,7 @@ num_opcode_singles=*-opcode_singles
 
 ;*******************************************************************************
 ; DIRECTIVES
+DIRECTIVE_ORG   = 4
 DIRECTIVE_IF    = 8
 DIRECTIVE_ELSE  = 9
 DIRECTIVE_ENDIF = 10
@@ -2141,6 +2142,34 @@ BANKED_CODE "ASMBANK"
 	tax
 	lda @cnt		; get the ID of the directive
 	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; WORD TYPE
+; Classify the first WORD while editing. Directive operands may be incomplete.
+; Reuse validation to distinguish labels from opcodes and defined macros.
+; Used for formatting (autoindentation of the line)
+; IN:
+;  - zp::line:   uppercase, zero-terminated word
+;  - zp::verify: nonzero (validation only)
+; OUT:
+;  - .A: ASM_* type on success, error code on failure
+;  - .C: set if the word cannot be validated
+.proc word_type
+	jsr is_directive
+	bcc @directive
+	jmp assemble
+
+@directive:
+	jsr getdirective
+	bcs @done
+	cmp #DIRECTIVE_ORG
+	beq @org
+	lda #ASM_DIRECTIVE
+	RETURN_OK
+@org:	lda #ASM_ORG
+	clc
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -4706,6 +4735,7 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 .export __asm_set_pc
 .export __asm_disassemble
 .export __asm_is_opcode
+.export __asm_word_type
 .export __asm_type_to_mode
 
 .if .defined(CART) .and .defined(c64)
@@ -4718,6 +4748,7 @@ __asm_include:      JUMP FINAL_BANK_ASM, includefile::include_entry
 __asm_set_pc:       JUMP FINAL_BANK_ASM, set_pc
 __asm_disassemble:  JUMP FINAL_BANK_ASM, disassemble
 __asm_is_opcode:    JUMP FINAL_BANK_ASM, isopcode
+__asm_word_type:    JUMP FINAL_BANK_ASM, word_type
 __asm_type_to_mode: JUMP FINAL_BANK_ASM, type2mode
 .else
 __asm_reset        = areset
@@ -4728,6 +4759,7 @@ __asm_include      = includefile::include_entry
 __asm_set_pc       = set_pc
 __asm_disassemble  = disassemble
 __asm_is_opcode    = isopcode
+__asm_word_type    = word_type
 __asm_type_to_mode = type2mode
 .endif
 

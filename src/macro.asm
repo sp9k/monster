@@ -1033,7 +1033,7 @@ MODE_DEF  = 1
 ;-------------------------------------------------------------------------------
 @is_null_return_space_comma_closingparen_newline:
 	cmp #$00
-	beq @done
+	beq :+
 	jsr @iswhitespace
 	beq :+
 	cmp #','

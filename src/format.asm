@@ -8,11 +8,14 @@
 ; Labels and directives are unindented (except .ORG), instructions are indented.
 ;*******************************************************************************
 
+.include "asm.inc"
 .include "codes.inc"
 .include "config.inc"
 .include "linebuffer.inc"
+.include "macros.inc"
 .include "memory.inc"
 .include "source.inc"
+.include "string.inc"
 .include "text.inc"
 .include "util.inc"
 .include "zeropage.inc"
@@ -27,6 +30,69 @@ offset = r7
 position = r9
 
 .CODE
+
+;*******************************************************************************
+; WORD SPACE
+; Before inserting SPACE, unindent a label or directive (except .ORG).
+; Only inspects the first word; operands may be invalid
+; IN:
+;  - zp::verify: must be !0
+; OUT:
+;  - .C: set if the line was unindented (caller must sync/redraw the cursor)
+.export __fmt_word_space
+.proc __fmt_word_space
+@end=r5
+	lda __fmt_enable
+	beq @done
+
+	jsr text::char_index
+	sty @end
+
+	; find first word on the line
+	ldy #$00
+:	cpy @end
+	bcs @done
+	lda mem::linebuffer,y
+	jsr util::is_whitespace
+	bne @name
+	iny
+	bne :-
+
+@name:	cpy #$00		; is first word at index 0?
+	beq @done		; yes -> already left aligned
+	ldx #$00
+
+@copy:	; copy first word to asmbuffer
+	lda mem::linebuffer,y
+	jsr util::is_whitespace
+	beq @done		; end of word -> done
+	sta mem::asmbuffer,x
+	inx
+	iny
+	cpy @end
+	bcc @copy		; repeat til end of line
+
+	lda #$00
+	sta mem::asmbuffer,x	; terminate buff
+
+	; assemble the word to see if it's a label or directive
+	ldxy #mem::asmbuffer
+	jsr str::toupper
+	stxy zp::line
+	jsr asm::word_type
+	bcs @done
+
+	; if first word is a label or directive, format it immediately
+	and #ASM_LABEL|ASM_DIRECTIVE
+	beq @done
+	lda #ASM_DIRECTIVE	; treat as DIRECTIVE (JUST strip indentation)
+	jsr __fmt_line		; remove indentation
+	sec			; flag for caller to redraw
+	rts
+
+@done:	clc
+	rts
+.endproc
 
 ;*******************************************************************************
 ; LINE

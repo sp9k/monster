@@ -12,7 +12,6 @@ ULTIMEM_ULTIMEM_INC = 1
 .import __ram_copy_line
 .import __ram_load_byte
 .import __ram_load_byte_off
-.import __ram_get_byte
 .import __ram_store_byte
 .import __ram_bank_store_rel
 .import __ultimem_init
@@ -26,7 +25,6 @@ ULTIMEM_ULTIMEM_INC = 1
 	copyline    = __ram_copy_line
 	load        = __ram_load_byte
 	load_off    = __ram_load_byte_off
-	get_byte    = __ram_get_byte
 	store       = __ram_store_byte
 	store_off   = __ram_bank_store_rel
 .endscope

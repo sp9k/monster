@@ -36,9 +36,6 @@ __str_nomacros: .byte "no macros",0
 .export __str_null
 __str_null = *-1
 
-.export __str_endrep
-__str_endrep: .byte ".endrep",0
-
 .export __str_breakpoints_title
 __str_breakpoints_title: .byte "breakpoints",0
 
@@ -94,23 +91,11 @@ __str_saveall: .byte "save all buffers? ", yes_no, 0
 __str_watch_triggered:
 .byte "watch @ $", ESCAPE_VALUE, "=$", ESCAPE_BYTE, " ", ESCAPE_STRING, " ", ESCAPE_STRING, 0
 
-.export __str_invalid_command
-__str_invalid_command: .byte "invalid command", 0
-
 .export __str_done
 __str_done: .byte "done",0
 
 .export __str_edit_line_err
 __str_edit_line_err: .byte ESCAPE_STRING, " l", ESCAPE_VALUE_DEC,":", ESCAPE_STRING,0
-
-.export __str_edit_file_load_failed
-__str_edit_file_load_failed: .byte "load error $",ESCAPE_BYTE,0
-
-.export __str_edit_file_delete_failed
-__str_edit_file_delete_failed: .byte "delete error $", ESCAPE_BYTE, 0
-
-.export __str_files
-__str_files: .byte "files",0
 
 .export __str_file_open_failed
 __str_file_open_failed: .byte "open error $", ESCAPE_BYTE, 0
@@ -139,9 +124,6 @@ __str_assembling: .byte "assembling...",0
 .export __str_linking
 __str_linking: .byte "linking...",0
 
-.export __str_edit_file_save_failed
-__str_edit_file_save_failed: .byte "failed to save file; error ", ESCAPE_BYTE, 0
-
 .export __str_watches_title
 __str_watches_title: .byte "watches",0
 
@@ -154,20 +136,8 @@ __str_dumping: .byte "dumping...",0
 .export __str_macros
 __str_macros: .byte "macros",0
 
-.export __str_memory
-__str_memory: .byte "memory",0
-
-.export __str_segments
-__str_segments: .byte "segments",0
-
-.export __str_load
-__str_load: .byte "load",0
-
 .export __str_link
 __str_link: .byte "link",0
-
-.export __str_run
-__str_run: .byte "run",0
 
 ; Wide displays show a full mode name; the 22-column UI supplies two chars.
 .if .defined(vic20) .and .defined(hard8x8)
@@ -255,9 +225,6 @@ __str_watch_added:
 __str_memview_title:
 .byte "memory[$1000]",0
 .RODATA
-
-.export __str_symview_title
-__str_symview_title: .byte "symbols",0
 
 .export __str_monitor_title
 __str_monitor_title: .byte "monitor",0
