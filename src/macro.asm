@@ -430,6 +430,12 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 ; been loaded
 MODE_MAIN = 0
 MODE_DEF  = 1
+.ifdef fe3
+.pushseg
+.segment "FE3MAC_BSS"
+fe3_lineptrs: .res $200
+.popseg
+.endif
 .export __mac_view
 .proc __mac_view
 @name=r8
@@ -442,8 +448,13 @@ MODE_DEF  = 1
 @mode=zp::tmp10
 @dirbuff=mem::spare+40		; 0-40 will be corrupted by text routines
 @namebuff=mem::spareend-40	; buffer for the file name
+.ifdef fe3
+@lineptrslo=fe3_lineptrs
+@lineptrshi=fe3_lineptrs+$100
+.else
 @lineptrslo=@namebuff-(256*2)	; room for 128 lines
 @lineptrshi=@namebuff-(256)	; room for 128 lines
+.endif
 
 	; reset/save the screen
 	CALLMAIN scr::save

@@ -101,6 +101,7 @@ prog00:	.res $400	; $00-$0400
 .ifdef ultimem
 .segment "SIMDBG_00"
 .endif
+.export dbg00
 dbg00:  .res $400	; $00-$400
 
 ;*******************************************************************************
@@ -444,6 +445,7 @@ blank   = scr::blank
 
 	; check if an interrupt occurred inside the interrupt handler
 	; if it did, just RTI
+.ifndef fe3
 	cmp #$80
 	bcs @enter
 	cmp #$7f
@@ -458,6 +460,7 @@ blank   = scr::blank
 	ldy sim::reg_y
 	lda sim::reg_a
 	rti
+.endif
 
 @enter: ; disable anything that could steal control
 	TRACE_OFF
@@ -741,7 +744,7 @@ blank   = scr::blank
 :	jsr blank
 	jsr bsp::install_tracer
 	jsr install_breakpoints
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 	; swap user's memory in so that it is visible during the trace
 	jsr bsp::save_debug_state	; save the debugger's visible state
 	jsr bsp::restore_prog_visual	; make the user program's state visible
@@ -910,6 +913,11 @@ blank   = scr::blank
 	ldxy #strings::tracing
 	lda __debug_interface
 	beq @gui
+.ifdef fe3
+	; The monitor reads the message in its own bank, including for history
+	; and redirected output. Render MAIN's string into shared RAM first.
+	RENDER_STR
+.endif
 	JUMP FINAL_BANK_MONITOR, mon::puts
 
 @gui:	ldxy #strings::tracing_stop
@@ -1027,7 +1035,7 @@ __debug_step:
 ; If a TRACE is active (the user's visible state was swapped in via
 ; __debug_trace), saves the program's (possibly updated) visible state and
 ; restores the debugger's.
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .proc trace_done
 	pha
 	lda sim::tracing
@@ -1190,7 +1198,12 @@ __debug_step:
 ; Saves the state of the user's zeropage
 ; IN:
 ;  - .XY: the resturn address (the stack s clobbered by this procedure)
+.ifndef fe3
 .export __debug_save_user_zp
+.else
+.import __debug_save_user_zp, __debug_restore_debug_low, __debug_restore_debug_zp
+.endif
+.ifndef fe3
 .proc __debug_save_user_zp
 @ret=mem::sparevec
 	stxy @ret
@@ -1446,6 +1459,7 @@ __debug_step:
 
 ;*******************************************************************************
 ; BANKED DEBUG UI
+.endif ; !fe3: FE3's low-memory transfers live in fe3/debug.asm
 ; Cold UI/logic; on the c64 cart build this runs from its own ROM bank 12
 .segment "DBGUI"
 
@@ -1786,7 +1800,7 @@ __debug_step:
 ; This procedure is called when STEP (via step, trace, etc.) reads/writes to a
 ; memory location that is being watched
 .proc watch_triggered
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 	jsr trace_done		; if user memory is swapped in, swap it out
 .endif
 	; disassemble the instruction that did the access (into $0100)
@@ -1851,7 +1865,7 @@ __debug_step:
 .proc print_msg
 @msg = debugtmp+4
 	stxy @msg		; save format string
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 	jsr trace_done		; if user memory is swapped in, swap it out
 .endif
 	lda __debug_interface

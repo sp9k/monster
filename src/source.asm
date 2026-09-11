@@ -40,7 +40,11 @@
 ;*******************************************************************************
 ; CONSTANTS
 ; NOTE: MAX_SOURCES and LOG_BUFFER must match their definitions in source.inc
+.ifdef fe3
+MAX_SOURCES    = FE3_MAX_SOURCES
+.else
 MAX_SOURCES    = 8		; max # of user source buffers
+.endif
 NUM_BUFFERS    = MAX_SOURCES+1	; user buffers + the reserved LOG buffer
 POS_STACK_SIZE = 16 		; size of source position stack
 
@@ -51,6 +55,9 @@ LOG_BUFFER	= MAX_SOURCES	; reserved buffer for LOG
 FLAG_DIRTY = 1
 
 .segment "BSS_NOINIT"
+.ifdef fe3
+.segment "MAINBSS_NOINIT"
+.endif
 
 ;*******************************************************************************
 data_start:
@@ -90,6 +97,9 @@ names:	   .res NUM_BUFFERS*MAX_BUFFER_NAME_LEN
 
 ;*******************************************************************************
 .export __src_numbuffers
+.ifdef fe3
+.segment "BSS_NOINIT"
+.endif
 __src_numbuffers:
 numsrcs:    .byte 0		; number of buffers
 .export __src_activebuff
@@ -328,7 +338,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .proc __src_new
 	ldx numsrcs
 	beq @cont
-	cpx #MAX_SOURCES	; all 8 user buffers in use? (LOG has its own bank)
+	cpx #MAX_SOURCES	; all user buffers in use? (LOG has its own bank)
 	bcc @saveold
 	rts			; err, too many sources
 
@@ -967,7 +977,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; OUT:
 ;  - .A: the character at the cursor position
 ;  - .C: set if cursor is at the start of the buffer
-.ifndef ultimem
+.if (.defined(ultimem) .or .defined(fe3)) = 0
 .export __src_up
 .proc __src_up
 	jsr __src_start
@@ -992,7 +1002,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; the buffer if there is no such character
 ; OUT:
 ;  - .C: set if the end of the buffer was reached (cannot move "down")
-.ifndef ultimem
+.if (.defined(ultimem) .or .defined(fe3)) = 0
 .export __src_down
 .proc __src_down
 	jsr __src_end
@@ -1333,7 +1343,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 
 	dey
 	lda __src_bank
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 	.import src_copyline
 	jsr src_copyline
 .else
@@ -1394,7 +1404,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ;  - .XY: contains the number of lines that were not read
 ;  - .C: set if the beginning was reached before the total lines requested could
 ;        be reached
-.ifndef ultimem
+.if (.defined(ultimem) .or .defined(fe3)) = 0
 .export __src_upn
 .proc __src_upn
 @cnt=r4

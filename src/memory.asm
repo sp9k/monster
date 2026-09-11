@@ -23,6 +23,9 @@ __mem_spareend:
 ; This vector resides in a location unused by user memory
 .ifdef ultimem
 .segment "ULTICFG"
+.elseif .defined(fe3)
+.segment "FE3CFG"
+.align 2
 .endif
 .export __mem_sparevec
 __mem_sparevec: .word 0
@@ -62,7 +65,7 @@ __mem_rowcolors_save: .res SCREEN_HEIGHT
 .export __mem_breakpoint_rows
 __mem_breakpoint_rows: .res SCREEN_HEIGHT
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .segment "SHAREBSS2"
 .endif
 
@@ -72,7 +75,7 @@ __mem_filename: .res 17	; buffer for a filename (16 chars + terminator)
 .export __mem_findbuff
 __mem_findbuff: .res MAX_SEARCH_LEN+1	; +1 for terminating 0
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .BSS
 .endif
 

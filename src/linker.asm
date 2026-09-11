@@ -309,8 +309,16 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ;  - .C: set if the file could not be successfully opened or parsed
 .export __link_parse
 .proc __link_parse
+.ifdef fe3
+	; Object payload storage is idle until LINK parsing has completed.
+	; Keep the full 1 KiB LINK-file capacity without using scarce shared RAM.
+	.import __OBJBSS_LOAD__
+@filebuff=__OBJBSS_LOAD__
+@filebuff_end=@filebuff+$400
+.else
 @filebuff=mem::spare
 @filebuff_end=mem::spareend
+.endif
 @segments_declared=r8
 @sections_declared=r9
 @buff=ra
@@ -426,7 +434,11 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_ERR ERR_DUPLICATE_BLOCK	; MEMORY block already declared
 
 :	; read past "MEMORY" declaration
+.ifdef fe3
+	jsr process_link_word
+.else
 	CALLMAIN line::process_word
+.endif
 	inc @sections_declared
 
 	; look for the '['
@@ -458,7 +470,11 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_ERR ERR_DUPLICATE_BLOCK	; SEGMENTS block already declared
 
 :	; read past "SEGMENTS"
+.ifdef fe3
+	jsr process_link_word
+.else
 	CALLMAIN line::process_word
+.endif
 	inc @segments_declared
 
 	; look for the '['
@@ -2492,6 +2508,20 @@ __link_get_segment_by_name:
 ;  .A: the last character processed
 ;  .Y: 0
 ;  zp::line: updated to first non ' ' character
+.ifdef fe3
+; The LINK-file buffer is local to this bank on FE3.
+.proc process_link_word
+	ldy #0
+@byte:
+	lda (zp::line),y
+	beq @done
+	jsr is_ws
+	beq @done
+	incw zp::line
+	jmp @byte
+@done: rts
+.endproc
+.endif
 .proc process_ws
 	ldy #$00
 @l0:	lda (zp::line),y
@@ -2996,13 +3026,13 @@ __link_get_segment_by_name:
 
 	ldxy #@buff
 	RENDER_STR			; render the string
-	CALLMAIN log::out		; and log it
 
+	; Source-edit callbacks inside log::out use r4/r5.
 	lda @ret+1
 	pha
 	lda @ret
 	pha
-	rts
+	JUMPMAIN log::out
 .endproc
 
 ;*******************************************************************************

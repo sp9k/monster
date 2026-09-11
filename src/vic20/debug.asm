@@ -17,7 +17,11 @@ PROGRAM_STACK_START = $1ff
 ; STOP TRACING STATE/NMI
 ; This NMI is installed for the duration of a trace and catches the RESTORE key
 ; as a signal to stop it
+.ifdef fe3
+.segment "IRQ"
+.else
 .segment "INTS"
+.endif
 stop_tracing_nmi:
 	inc stop_tracing
 	rti

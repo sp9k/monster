@@ -4,7 +4,11 @@ VIC20_RAM_INC = 1
 .import __ram_call
 
 .include "../zeropage.inc"
+.ifdef fe3
+.include "fe3/banks.inc"
+.else
 .include "ultimem/banks.inc"
+.endif
 
 ;*******************************************************************************
 ; LDA24

@@ -59,9 +59,17 @@ DIR_NUM_FILE_ROWS = DIR_MAX_ROW-DIR_FILE_ROW
 .segment "SHAREBSS2"
 .else
 .BSS
+.ifdef fe3
+.segment "FE3DIR_BSS"
+.endif
 .endif
 
+.ifdef fe3
+rowbuf = mem::spare
+listing: .res $400
+.else
 rowbuf: .res LINESIZE		; row being composed
+.endif
 
 .CODE
 ;*******************************************************************************
@@ -69,7 +77,7 @@ rowbuf: .res LINESIZE		; row being composed
 .export __dir_get_by_type
 .export __dir_view
 
-.if .defined(CART) .and .defined(c64)
+.if .defined(fe3) .or (.defined(CART) .and .defined(c64))
 __dir_get_by_type: JUMP FINAL_BANK_FILEDIR, getbytype
 __dir_view:        JUMP FINAL_BANK_FILEDIR, dirview
 .else
@@ -77,7 +85,12 @@ __dir_get_by_type = getbytype
 __dir_view        = dirview
 .endif
 
+.ifdef fe3
+.segment "FE3DIR"
+CUR_BANK .set BANK_NONE
+.else
 BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
+.endif
 
 ;*******************************************************************************
 ; GET BY TYPE
@@ -182,7 +195,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	tya
 	sta (@resultptr),y	; leave a valid partial list
 	lda @file
-	jsr file::close
+	CALLMAIN file::close
 	pla
 	sec
 	rts
@@ -192,7 +205,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	sta (@resultptr),y	; terminate list
 
 	lda @file
-	jsr file::close
+	CALLMAIN file::close
 
 @ok:	lda @cnt
 	beq @nofiles		; no file has the requested extension -> error
@@ -223,14 +236,19 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 @scrollmax=rd		; maximum amount to allow scrolling
 @scroll=re
 @file=zp::tmp10
+.ifdef fe3
+@dirbuff=listing
+@namebuff=listing+$400-40
+.else
 @dirbuff=mem::spare+40		; 0-40 will be corrupted by text routines
 @namebuff=mem::spareend-40	; buffer for the file name
+.endif
 @fptrslo=@namebuff-(128*2)	; room for 128 files
 @fptrshi=@namebuff-(128)	; room for 128 files
 	jsr open_dir
 	bcc :+
-	jsr scr::unblank
-	jmp scr::restore
+	CALLMAIN scr::unblank
+	JUMPMAIN scr::restore
 
 :	sta @file
 
@@ -323,8 +341,8 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ;-------------------------------------------------------------------------------
 ; init viewer
 @cont:	lda @file
-	jsr file::close
-	jsr scr::unblank
+	CALLMAIN file::close
+	CALLMAIN scr::unblank
 
 	; close the window with its bottom border below the last file
 	lda @row
@@ -353,17 +371,17 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 ;-------------------------------------------------------------------------------
 ; main viewer loop
-@key:	jsr key::waitch
+@key:	CALLMAIN key::waitch
 	cmp #K_QUIT
 	beq @exit
 	cmp #K_WIN_CLOSE
 	bne @checkdown
-@exit:  jsr scr::restore
+@exit:  CALLMAIN scr::restore
 	RETURN_OK
 
 ; check the arrow keys (used to select a file)
 @checkdown:
-	jsr key::isdown
+	CALLMAIN key::isdown
 	bne @checkup
 @rowdown:
 	jsr @toggle
@@ -383,7 +401,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	; scroll up and redraw the bottom line
 	ldx #DIR_FILE_ROW
 	lda #DIR_MAX_ROW-1
-	jsr text::scrollup
+	CALLMAIN text::scrollup
 
 	lda @select
 	jsr @getname
@@ -392,7 +410,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	jmp @hiselection
 
 @checkup:
-	jsr key::isup
+	CALLMAIN key::isup
 	bne @checkret
 
 @rowup: jsr @toggle
@@ -405,7 +423,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	; scroll down and redraw the top line
 	lda #DIR_FILE_ROW
 	ldx #DIR_MAX_ROW-1
-	jsr text::scrolldown
+	CALLMAIN text::scrolldown
 
 	dec @scroll
 	lda @select
@@ -427,7 +445,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 @checkgototop:
 	cmp #$67		; 'g'
 	bne @checkbottom
-	jsr key::waitch
+	CALLMAIN key::waitch
 	cmp #$67		; gg?
 	bne @nextkey
 
@@ -462,9 +480,19 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 ; user selected a file (RETURN), load it and exit the directory view
 @loadselection:
-	jsr scr::restore
+	CALLMAIN scr::restore
 	lda @select
 	jsr @getname
+.ifdef fe3
+	stxy r0
+	ldy #0
+:	lda (r0),y
+	sta mem::spare+40,y
+	beq :+
+	iny
+	bne :-
+:	ldxy #mem::spare+40
+.endif
 	JUMPMAIN edit::load		; load the file
 
 ;-------------------------------------------------------------------------------
@@ -639,14 +667,14 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ;  - .C: set on error
 .proc open_dir
 	ldxy #strings::dir
-	jsr file::exists
+	CALLMAIN file::exists
 	bcs :+
 	ldxy #strings::dir
-	jsr file::open_r_prg
+	CALLMAIN file::open_r_prg
 	bcs :+
 	pha			; save the file handle
 	tax
-	jsr krn::chkin
+	CALLMAIN krn::chkin
 	pla			; restore the file handle to return
 	clc			; ok
 :	rts
@@ -663,12 +691,12 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	stxy @buff
 
 	ldy #8
-:	jsr krn::chrin
+:	CALLMAIN krn::chrin
 	dey
 	bne :-
 
 	; read until the closing '"'
-:	jsr krn::chrin
+:	CALLMAIN krn::chrin
 	cmp #'"'
 	beq @done
 	sta (@buff),y
@@ -679,7 +707,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	sta (@buff),y
 
 	; read until $00 (line terminator)
-:	jsr krn::chrin
+:	CALLMAIN krn::chrin
 	cmp #$00
 	bne :-
 
@@ -733,9 +761,9 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	RETURN_OK
 
 ;-------------------------------------------------------------------------------
-getb:	jsr krn::readst	; call READST
+getb:	CALLMAIN krn::readst	; call READST
         bne @eof       	; read error or end of file
-        jmp krn::chrin	; call chrin (read byte from directory)
+        JUMPMAIN krn::chrin	; call chrin (read byte from directory)
 @eof:	pla
 	pla
 	sec

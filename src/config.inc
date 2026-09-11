@@ -1,5 +1,5 @@
 .ifndef CONFIG_INC
-.define CONFIG_INC
+CONFIG_INC = 1
 
 ;*******************************************************************************
 ; PREFERENCES/COLORS
@@ -41,6 +41,12 @@ LINE_CONT = $5c
 .endif
 
 ; size of "spare" buffer
+.ifdef fe3
+; Shared scratch must fit the complete 16-entry, 16-character object list.
+SPARESIZE = $120
+FE3_MAX_SOURCES = 4
+.else
 SPARESIZE = $400
+.endif
 
 .endif

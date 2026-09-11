@@ -152,6 +152,9 @@ autoindent: .byte 0		; auto-indent enable flag (0=don't auto-indent)
 
 forcenewl: .byte 0		; nonzero if linedone may leave an invalid line
 
+.ifdef fe3
+.align 2		; JMP (getsvec) must not straddle a 6502 page boundary
+.endif
 getsvec: .word 0		; key handler for gets
 
 .CODE

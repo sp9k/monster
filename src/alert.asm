@@ -52,7 +52,7 @@ ALERT_PROMPT_MAX = 23		; sizeof("press [restore] to stop")
 
 ;*******************************************************************************
 ; the window's variables are kept out of RAM123, which is too tight to grow
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .segment "SHAREBSS2"
 .else
 .BSS

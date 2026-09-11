@@ -323,11 +323,14 @@ num_chars = (*-charmap)/8
 .define cols $1100, $11c0, $1280, $1340, $1400, $14c0, $1580, $1640, $1700, \
   $17c0, $1880, $1940, $1a00, $1ac0, $1b80, $1c40, $1d00, $1dc0, $1e80, $1f40
 .linecont -
+.ifdef fe3
+.segment "FASTTEXT"
+.endif
 bmcolumnslo: .lobytes cols
 bmcolumnshi: .hibytes cols
 
 ;*******************************************************************************
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .segment "FASTTEXT"
 charaddrlo:
 .repeat  num_chars, i
@@ -340,7 +343,7 @@ charaddrlo:
 	.res num_chars
 .endif
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 charaddrhi:
 .repeat num_chars, i
 	.byte >((charmap)+(i*8))

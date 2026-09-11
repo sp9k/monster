@@ -45,6 +45,9 @@ name     = $100
 
 ;*******************************************************************************
 .DATA
+.ifdef fe3
+.segment "FE3CONST"
+.endif
 ; these strings are modified depending on the address mode
 ; ESCAPE_BYTE replaces the ESCAPE_VALUE for zeropage symbols
 sym_line:
@@ -63,6 +66,16 @@ sort_by_name_msg: .byte "f1 sort by name",0
 sort_by_addr_msg: .byte "f1 sort by addr",0
 
 .CODE
+.ifdef fe3
+; The formats live in MAIN on FE3. Patch them in that bank, which is also
+; where text::render reads them; EXPR's BLK3 is a different physical RAM.
+.proc set_value_format
+	sta sym_line+4
+	sta sym_line_no_file+4
+	rts
+.endproc
+.endif
+
 ;*******************************************************************************
 ; MAIN-bank entry point
 .export __symview_enter
@@ -222,8 +235,13 @@ print_item = print_item_impl
 @abs:	lda addr+1
 	pha
 	lda #ESCAPE_VALUE	; 2 bytes (absolute)
-:	sta sym_line+4
+:
+.ifdef fe3
+	CALLMAIN set_value_format
+.else
+	sta sym_line+4
 	sta sym_line_no_file+4
+.endif
 
 @print: ; push the label's id
 	lda lbl

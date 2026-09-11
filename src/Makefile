@@ -10,7 +10,7 @@ DEFAULT_DEVICE=8
 # emulators
 X64=x64sc
 
-# name of the UltiMem flash image to produce
+# default cartridge image (overridden by the target below)
 CART_IMAGE=monster.bin
 CART_TOOL=make-ultimem-cart.py
 
@@ -26,18 +26,22 @@ ASMFLAGS=--asm-define $(TARGET) --asm-define $(REGION) --asm-define $(SCREEN_MOD
 
 # target specific configuration
 ifeq ($(TARGET),vic20)
-# the vic20 build always targets the UltiMem expansion
-ASMFLAGS+=--asm-define ultimem
+EXPANSION ?= ultimem
+ASMFLAGS+=--asm-define $(EXPANSION)
 # UltiMem Profile extension (1) or stock ULTIMEM (0)
 #ULTIMEM_P?=1
 ULTIMEM_P?=0
 
-ifeq ($(ULTIMEM_P),1)
+ifeq ($(EXPANSION):$(ULTIMEM_P),ultimem:1)
 ASMFLAGS+=--asm-define ultimem_p
 endif
 
-LINK_FILE=link-vic20-ultimem
-EXP_SRC=$(wildcard vic20/ultimem/*.asm)
+LINK_FILE=link-vic20-$(EXPANSION)
+EXP_SRC=$(wildcard vic20/$(EXPANSION)/*.asm)
+ifeq ($(EXPANSION),fe3)
+CART_IMAGE=monster-fe3.bin
+CART_TOOL=make-fe3-cart.py
+endif
 endif
 ifeq ($(TARGET),c64)
 LINK_FILE=link-c64
@@ -85,19 +89,50 @@ all: test.d81
 cart: $(CART_IMAGE)
 ultimem: $(CART_IMAGE)
 
+.PHONY: fe3 fe3-disk test-fe3 test-fe3-disk disk
+fe3:
+	$(MAKE) cart TARGET=vic20 EXPANSION=fe3
+
+fe3-disk:
+	$(MAKE) disk TARGET=vic20 EXPANSION=fe3
+
+test-fe3:
+	$(MAKE) cart TARGET=vic20 EXPANSION=fe3 CL65='$(CL65) -g'
+	$(PYTHON) test_fe3.py
+
+test-fe3-disk:
+	$(MAKE) disk TARGET=vic20 EXPANSION=fe3 CL65='$(CL65) -g'
+	$(PYTHON) test_fe3_disk.py
+
 flasher: flasher.prg $(CART_IMAGE)
 
 suite: $(TEST_IMAGE)
 
-# c64 only: build the boot disk
+ifeq ($(TARGET):$(EXPANSION),vic20:fe3)
+disk: monster-fe3.d64
+
+# Use the cartridge's bank layout unchanged. Only the temporary loader moves
+# to BASIC's expanded load address; all runtime areas retain their addresses.
+monster-fe3-disk.prg: FORCE $(BOOTSRC) $(SRC) $(LINK_FILE)-cart.config
+	$(CL65) -t $(TARGET) -o $@ $(ASMFLAGS) -C $(LINK_FILE)-cart.config -Wl -D,__FE3_BOOT_START__=4609 $(BOOTSRC) $(SRC) -Ln labels-fe3-disk.txt -m map-fe3-disk.txt
+
+monster-fe3.d64: monster-fe3-disk.prg make-fe3-disk.py
+	$(PYTHON) make-fe3-disk.py $< labels-fe3-disk.txt fe3-disk $@ --c1541 $(C1541)
+
+else
+# c64: build the boot disk
 disk: boot.prg monster-disk.prg
 	$(C1541) -format test,1 d81 test.d81 -attach test.d81 -write boot.prg
+endif
 
 installer.prg: installer/install.asm
 	$(CL65) -t $(TARGET) -o $@ -C installer/link-installer.config $^
 
-monster-cart.prg: $(BOOTSRC) $(SRC)
-	$(CL65) -t $(TARGET) -o $@ --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $^ -Ln labels.txt -v -m map.txt
+monster-cart.prg: FORCE $(BOOTSRC) $(SRC)
+	$(CL65) -t $(TARGET) -o $@ --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $(BOOTSRC) $(SRC) -Ln labels.txt -v -m map.txt
+
+.PHONY: FORCE
+FORCE:
 
 monster-cart-test.prg: $(BOOTSRC) $(SRC) $(UNIT)
 	$(CL65) -t $(TARGET) -o $@ --asm-define TEST --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $^ -Ln labels.txt -v -m map.txt
@@ -108,7 +143,7 @@ $(CART_IMAGE): monster-cart.prg
 	$(PYTHON) $(CART_TOOL) $< $@
 
 $(TEST_IMAGE): monster-cart-test.prg
-	$(PYTHON) make-ultimem-cart.py $< $@
+	$(PYTHON) $(CART_TOOL) $< $@
 
 monster-disk.prg: $(BOOTSRC) $(SRC)
 	$(CL65) -t $(TARGET) -o $@ $(ASMFLAGS) -C $(LINK_FILE)-disk.config $^ -Ln labels.txt -v -m map.txt
@@ -144,5 +179,6 @@ start-cart-c64: monster.crt test-disk
 
 clean:
 	rm -f *.prg *.o test.d81 cyclic.d81 monster.d81
+	rm -f monster-fe3.d64 labels-fe3-disk.txt map-fe3-disk.txt fe3-disk/*.prg
 	rm -f $(CART_IMAGE) $(TEST_IMAGE)
-	rm -f vic20/*.o vic20/ultimem/*.o vic20/hard8x8/*.o vic20/soft4x8/*.o c64/*.o
+	rm -f vic20/*.o vic20/ultimem/*.o vic20/fe3/*.o vic20/hard8x8/*.o vic20/soft4x8/*.o c64/*.o

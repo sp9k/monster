@@ -2617,6 +2617,7 @@ inline_proc is_ws, util::is_whitespace
 	lda #$00
 	sta @numrel
 	sta @numabs
+	ldx numsegments		; logging above clobbered X
 
 @count:	lda segments_type-1,x
 	cmp #TYPE_ABS		; is this an ABS segment?
@@ -2804,11 +2805,12 @@ inline_proc is_ws, util::is_whitespace
 
 	ldxy #@buff
 	RENDER_STR			; render the string
-	CALLMAIN log::out		; and log it
 
+	; log::out inserts newlines, whose error-log callbacks use r4/r5.
+	; Put our return address back on the stack before calling it.
 	lda @ret+1
 	pha
 	lda @ret
 	pha
-	rts
+	JUMPMAIN log::out
 .endproc

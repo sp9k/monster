@@ -560,6 +560,9 @@ tempbuff: .res LINESIZE
 ; cart build, where RODATA is unreadable
 .PUSHSEG
 .segment "DATA"
+.ifdef fe3
+.segment "FE3CONST"
+.endif
 @escvecs_lo: .lobytes escape_vectors
 @escvecs_hi: .hibytes escape_vectors
 .POPSEG
@@ -911,6 +914,9 @@ __text_tabr_dist_a=*+2
 ; DATA (not RODATA): may be read from a banked context on the cart build
 .PUSHSEG
 .segment "DATA"
+.ifdef fe3
+.segment "FE3CONST"
+.endif
 tabs:
 .repeat SCREEN_WIDTH/TAB_WIDTH, i
 	.byte i*TAB_WIDTH

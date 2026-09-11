@@ -517,6 +517,9 @@ result=mem::spare
 ; DATA (not RODATA): may be read from a banked context on the cart build
 .PUSHSEG
 .segment "DATA"
+.ifdef fe3
+.segment "FE3CONST"
+.endif
 @ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', '<', '>'
 	.byte '=', '!'
 @numops = *-@ops

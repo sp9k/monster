@@ -76,6 +76,9 @@ __key_raw: .byte 0	; untransformed raw key value read
 ; on the cart build, where RODATA is unreadable
 .PUSHSEG
 .DATA
+.ifdef fe3
+.segment "FE3CONST"
+.endif
 ; these characters are translated to their corresponding character in
 ; @translated
 ;

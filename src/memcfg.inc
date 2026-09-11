@@ -6,6 +6,8 @@ MEMCFG_INC = 1
 ; blocks to configure.
 .if .defined(vic20) .and .defined(ultimem)
 	.include "vic20/ultimem/memcfg.inc"
+.elseif .defined(vic20) .and .defined(fe3)
+	.include "vic20/fe3/memcfg.inc"
 .endif
 
 .endif

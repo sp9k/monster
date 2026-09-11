@@ -121,7 +121,7 @@ data: .res BUFFER_SIZE
 	ldy cursorzp+1
 	bmi @done	; out of range
 
-.ifndef ultimem
+.if (.defined(ultimem) .or .defined(fe3)) = 0
 	sta24 __src_bank, cursorzp
 .else
 	jsr insert
@@ -533,7 +533,7 @@ data: .res BUFFER_SIZE
 	rts
 .endproc
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .segment "BANKCODE"
 .endif
 ;*******************************************************************************
@@ -544,7 +544,7 @@ data: .res BUFFER_SIZE
 .export __src_atcursor
 .proc __src_atcursor
 	decw cursorzp
-.ifndef ultimem
+.if (.defined(ultimem) .or .defined(fe3)) = 0
 	lda24 __src_bank, cursorzp
 .else
 	jsr activate_source
@@ -556,11 +556,16 @@ data: .res BUFFER_SIZE
 	rts
 .endproc
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 ;*******************************************************************************
 ; ACTIVATE SOURCE
 ; Maps the active source buffer's 3 banks into BLK1/2/3
 .proc activate_source
+.ifdef fe3
+	ldx __src_bank
+	stx $9c02
+	rts
+.else
 .ifdef ultimem_p
 	ldx __src_bank
 	stx $9ff3	; load the source buffer's profile
@@ -576,6 +581,7 @@ data: .res BUFFER_SIZE
 	ldx #$7f
 	stx $9ff2	; RAM in BLK 1/2/3
 	rts
+.endif
 .endif
 .endproc
 
@@ -593,6 +599,11 @@ data: .res BUFFER_SIZE
 ; DEACTIVATE SOURCE
 ; Restores the MAIN bank
 .proc deactivate_source
+.ifdef fe3
+	ldx #FINAL_BANK_MAIN
+	stx $9c02
+	rts
+.else
 .ifdef ultimem_p
 	ldx #FINAL_BANK_MAIN
 	stx $9ff3		; restore the MAIN profile
@@ -607,6 +618,7 @@ data: .res BUFFER_SIZE
 	ldx #$55		; ROM in BLK 1/2/3
 	stx $9ff2
 	rts
+.endif
 .endif
 .endproc
 

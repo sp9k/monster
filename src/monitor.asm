@@ -964,6 +964,9 @@ rowshi:
 @err_nofile:
 	; display error
 	ldxy #strings::nofile
+.ifdef fe3
+	RENDER_STR		; copy MAIN's string before the monitor reads it
+.endif
 	jsr __monitor_puts
 	sec
 	rts
@@ -1001,7 +1004,11 @@ rowshi:
 
 .ifdef vic20
 .PUSHSEG
+.ifdef fe3
+.segment "IRQ"
+.else
 .segment "INTS"
+.endif
 ;*******************************************************************************
 ; MONITOR NMI
 ; The monitor's NMI handler. Sets the INT signal so to gracefully halt long

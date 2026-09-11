@@ -1,3 +1,4 @@
+.include "config.inc"
 .importzp __src_line
 .importzp __src_lines
 
@@ -59,7 +60,11 @@
 ;*******************************************************************************
 ; CONSTANTS
 ; NOTE: these must match the definitions in source.asm
+.ifdef fe3
+MAX_SOURCES = FE3_MAX_SOURCES
+.else
 MAX_SOURCES = 8			; maximum number of user source buffers
+.endif
 LOG_BUFFER  = MAX_SOURCES 	; reserved buffer for logging (not counted in src::numbuffers)
 
 FLAG_DIRTY = 1	; flag that source buffer has been changed since last save

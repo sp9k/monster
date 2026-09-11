@@ -57,7 +57,7 @@ NAV_CHECK_ON_RETURN = ERRLOG_NAV_CHECK_ON_RETURN
 ; line number (LSB/MSB), an owner, and an error code. Owners below $80
 ; are assembly file IDs; $80+buffer identifies a live syntax error.
 ; Source close compacts these buffer IDs along with the source table.
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .segment "SHAREBSS2"
 .else
 .BSS
@@ -74,7 +74,7 @@ __errlog_asmerrors: .byte 0	; assembly error count, independent of visible entri
 .export __errlog_navpending
 __errlog_navpending: .byte NAV_NONE
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .segment "ERRLOG_BSS"
 .endif
 errcodes:   .res MAX_ERRORS
@@ -106,14 +106,14 @@ dismissowners: .res MAX_DISMISSED
 ;  - .XY: the line number to shift
 ;  - .A:  the offset to shift
 ;  - r0:  the file ID of the file to shift within
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 BANKED_SEG "ERRLOG_CODE", FINAL_BANK_ERRLOG
 CUR_BANK .set FINAL_BANK_ERRLOG
 .else
 .CODE
 .endif
 .export __errlog_shift_errorsd
-.ifndef ultimem
+.if (.defined(ultimem) .or .defined(fe3)) = 0
 __errlog_shift_errorsd = shift_errorsd
 .endif
 .proc shift_errorsd
@@ -156,7 +156,7 @@ __errlog_shift_errorsd = shift_errorsd
 ;  - .A:  the offset to shift
 ;  - r0:  the file ID of the file to shift within
 .export __errlog_shift_errorsu
-.ifndef ultimem
+.if (.defined(ultimem) .or .defined(fe3)) = 0
 __errlog_shift_errorsu = shift_errorsu
 .endif
 .proc shift_errorsu
@@ -202,7 +202,7 @@ __errlog_shift_errorsu = shift_errorsu
 ;  - .X: index of the error at the given line (if one exists)
 ;  - .C: set if there is no error at the given line
 .export __errlog_getbyline
-.ifndef ultimem
+.if (.defined(ultimem) .or .defined(fe3)) = 0
 __errlog_getbyline = getbyline
 .endif
 .proc getbyline
@@ -234,7 +234,7 @@ __errlog_getbyline = getbyline
 .endproc
 
 .CODE
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 CUR_BANK .set FINAL_BANK_MAIN
 .endif
 ;*******************************************************************************
@@ -258,7 +258,7 @@ CUR_BANK .set FINAL_BANK_MAIN
 .export __errlog_get_curent
 .export __errlog_set_live
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 ERRLOG_BANK = FINAL_BANK_ERRLOG
 __errlog_shift_errorsd: JUMP ERRLOG_BANK, shift_errorsd
 __errlog_shift_errorsu: JUMP ERRLOG_BANK, shift_errorsu
@@ -267,7 +267,7 @@ __errlog_getbyline:     JUMP ERRLOG_BANK, getbyline
 ERRLOG_BANK = FINAL_BANK_DBGUI
 .endif
 
-.if .defined(ultimem) .or (.defined(CART) .and .defined(c64))
+.if .defined(ultimem) .or .defined(fe3) .or (.defined(CART) .and .defined(c64))
 __errlog_activate:      JUMP ERRLOG_BANK, activate
 __errlog_clear:         JUMP ERRLOG_BANK, clear
 __errlog_reset:         JUMP ERRLOG_BANK, reset
@@ -329,7 +329,7 @@ menu:
 .word numerrs		; pointer to number of errors
 .POPSEG
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 ; The error log has its own ROM and three RAM blocks. Editor, source and
 ; rendering calls cross back through their MAIN entries.
 BANKED_SEG "ERRLOG_CODE", FINAL_BANK_ERRLOG
@@ -978,7 +978,7 @@ getline:
 	ora #LIVE_BUFFER
 	sta @ownerid
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 	jsr getbyline
 .else
 	CALLMAIN __errlog_getbyline

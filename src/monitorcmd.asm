@@ -1585,7 +1585,14 @@ inline_proc hextostr, util::hextostr
 
 	; print the disassembled instruction of ??? if we couldn't disassemble
 	ldxy #strings::question_marks
+.ifdef fe3
+	bcc :+
+	RENDER_STR		; MAIN's string must be shared before mon::puts
+	jmp @print
+:
+.else
 	bcs @print
+.endif
 	ldxy #$100
 @print:	jsr mon::puts
 	RETURN_OK

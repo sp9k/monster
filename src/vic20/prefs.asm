@@ -42,6 +42,9 @@ pal_num: .byte 0
 ; 1: white-on-black
 ; 2: black-on-white
 ; 3: yellow-on-black
+.ifdef fe3
+.segment "FE3CONST"
+.endif
 palettes:
 text_colors:    .byte TEXT_COLOR,           $01, $00, $07
 normal_colors:  .byte DEFAULT_900F,         $08, $19, $08

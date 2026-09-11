@@ -11,6 +11,9 @@
 .include "memory.inc"
 .include "string.inc"
 .include "text.inc"
+.ifdef fe3
+.include "ram.inc"
+.endif
 
 .ifdef c64
 .import __ram_mem01
@@ -449,6 +452,11 @@ NUM_ERRORS=*-errorshi
 ;  -.XY: the address of the error message
 .export __err_get
 .proc __err_get
+.ifdef fe3
+	CALL ERRORS_BANK, fe3_copy_error
+	ldxy #mem::spare+120
+	jmp str::uncompress
+.else
 .ifdef c64
 	; the error text and its tables live under the KERNAL ROM; make them
 	; readable even when called from banked code on the cart build
@@ -498,4 +506,27 @@ NUM_ERRORS=*-errorshi
 .else
 	jmp str::uncompress
 .endif
+.endif
 .endproc
+
+.ifdef fe3
+.segment "ERRORS"
+.proc fe3_copy_error
+	tax
+	cpx #NUM_ERRORS
+	bcc :+
+	ldx #0
+:	lda errorslo,x
+	sta r0
+	lda errorshi,x
+	sta r1
+	ldy #0
+@byte:
+	lda (r0),y
+	sta mem::spare+120,y
+	beq @done
+	iny
+	bne @byte
+@done: rts
+.endproc
+.endif

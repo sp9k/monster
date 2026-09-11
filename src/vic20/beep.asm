@@ -28,7 +28,7 @@ beep_tmr: .byte 0
 	rts
 .endproc
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .segment "BANKCODE"
 .endif
 ;*******************************************************************************

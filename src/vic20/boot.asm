@@ -43,6 +43,7 @@
 .import __BSS_SIZE__
 
 .ifndef CART	; DISK
+.ifndef fe3
 .segment "SETUP"
 ;*******************************************************************************
 ; BASIC header: SYS 4621
@@ -61,6 +62,7 @@
 	sta $9003
 	jmp __boot_start
 
+.endif ; legacy disk header
 ;*******************************************************************************
 ; CART header and boot code
 .else ; CART
@@ -93,13 +95,15 @@ cart_start:
 
 .ifdef ultimem
 	jmp ultim::init
+.elseif .defined(fe3)
+	jmp __fe3_init
 .endif
 
 ;-----------------------
 .segment "SETUP"
 .endif	; CART
 
-.ifndef ultimem
+.if (.defined(ultimem) .or .defined(fe3)) = 0
 ;*******************************************************************************
 ; LOWINIT
 ; Code that is sensitive to initialization order

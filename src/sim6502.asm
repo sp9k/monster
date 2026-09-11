@@ -11,7 +11,7 @@
 .include "watches.inc"
 .include "zeropage.inc"
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .include "vic20/expansion.inc"	; FINAL_BANK_SIM, FINAL_BANK_FASTCOPY
 .endif
 
@@ -236,7 +236,7 @@ tracing: .byte 0
 	lda __sim_via2+via_t2cl
 	sta via_t2_latch+1
 
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 	CALL FINAL_BANK_SIM, calc_frame_cyc	; establish initial frame length
 .else
 	jsr calc_frame_cyc			; establish initial frame length
@@ -276,7 +276,7 @@ tracing: .byte 0
 ; Executes one step of the 6502 simulator
 .export __sim_step
 .proc __sim_step
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 	lda #$00
 	sta __sim_tracing
 	JUMP FINAL_BANK_SIM, step
@@ -293,7 +293,7 @@ tracing: .byte 0
 ; the user's memory if it is set - see dbg::swap_in)
 .export __sim_trace
 .proc __sim_trace
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 	lda #$01
 	sta __sim_tracing
 	JUMP FINAL_BANK_SIM, trace
@@ -303,7 +303,7 @@ tracing: .byte 0
 .endproc
 
 ;*******************************************************************************
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 .segment "SIM"
 .else
 .segment "DEBUGGER"
@@ -3359,6 +3359,16 @@ h_nop_absx:
 ;   - .A: byte loaded from the requested address
 .proc vmem_load
 @target=r0
+.ifdef fe3
+	jsr fe3_visible_address
+	bcc :+
+	stxy @target
+	ldy #0
+	lda (@target),y
+	ldy @target+1
+	rts
+:
+.endif
 .ifdef vic20
 	; redirect reads of the VIA registers ($9110-$912f) to their shadows
 	cpy #>$9100
@@ -3406,6 +3416,37 @@ h_nop_absx:
 @v:	jmp vmem::load ; not in the visible range, load from virtual memory
 .endproc
 
+.ifdef fe3
+; Only internal display RAM and VIC/color registers are physically visible
+; during FE3 tracing. Expansion RAM still needs virtual banked access.
+.proc fe3_visible_address
+	pha
+	lda tracing
+	beq @virtual
+	cpy #$10
+	bcc @virtual
+	cpy #$20
+	bcc @physical
+	cpy #$90
+	bne :+
+	cpx #$10
+	bcc @physical
+:
+	cpy #$94
+	bcc @virtual
+	cpy #$98
+	bcs @virtual
+@physical:
+	pla
+	sec
+	rts
+@virtual:
+	pla
+	clc
+	rts
+.endproc
+.endif
+
 ;*******************************************************************************
 ; VMEM STORE
 ; Stores a byte from virtual memory.  If we are tracing, this may be the
@@ -3415,7 +3456,7 @@ h_nop_absx:
 ;   - .A:  byte to store
 .proc vmem_store
 @target=r0
-.ifdef ultimem
+.if .defined(ultimem) .or .defined(fe3)
 	; mirror writes to the VIA registers ($9110-$912f) into their shadows
 	; to update the simulated timer state; the write then falls through to
 	; virtual memory as usual so the stored value is also visible there
@@ -3441,7 +3482,16 @@ h_nop_absx:
 	rts
 
 ;-------------------------------------------------------------------------------
-@ok:	lsr tracing
+@ok:
+.ifdef fe3
+	cpy #$7f
+	bne @v
+	cpx #$e0	; native handler starts at $7fe0
+	bcs @err
+.endif
+.endif
+.ifdef ultimem
+	lsr tracing
 	bcc @v			; not tracing, always use virtual mem
 	rol tracing		; reset tracing flag
 
@@ -3470,5 +3520,16 @@ h_nop_absx:
 	rts
 .endif
 
-@v:	jmp vmem::store	; not in the visible range, store to virtual memory
+@v:
+.ifdef fe3
+	jsr fe3_visible_address
+	bcc :+
+	stxy @target
+	ldy #0
+	sta (@target),y
+	ldy @target+1
+	rts
+:
+.endif
+	jmp vmem::store	; not in the visible range, store to virtual memory
 .endproc

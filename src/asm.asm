@@ -121,6 +121,9 @@ SEG_CODE = 1	; flag for CODE segment
 SEG_BSS  = 2	; flag for BSS segment (all data must be 0, PC not updated)
 
 .segment "BSS_NOINIT"
+.ifdef fe3
+.segment "MAINBSS_NOINIT"
+.endif
 ;*******************************************************************************
 .export ifstack
 ifstack:   .res MAX_IFS	; TRUE/FALSE values for the active IF blocks
@@ -160,6 +163,9 @@ ifdefcnt:     .byte 0	; number of .IFDEFs recorded in pass 1
 ; Opcode/operand values captured when asm::disassemble is called.
 ; These are cached here for the simulator to avoid refetching unnecessarily.
 .export __asm_raw_opcode
+.ifdef fe3
+.segment "BSS_NOINIT"
+.endif
 .export __asm_raw_operand
 __asm_raw_opcode:  .byte 0
 __asm_raw_operand: .word 0
