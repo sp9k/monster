@@ -46,6 +46,8 @@ MAX_HEIGHT     = 4
 SPLIT_LINE  = ERRLOG_SPLIT_LINE
 BLANK_ABOVE = ERRLOG_BLANK_ABOVE
 BLANK_BELOW = ERRLOG_BLANK_BELOW
+JOIN_LINES   = ERRLOG_JOIN_LINES
+DELETE_ABOVE = ERRLOG_DELETE_ABOVE
 
 NAV_NONE            = ERRLOG_NAV_NONE
 NAV_CHECK_ON_LEAVE  = ERRLOG_NAV_CHECK_ON_LEAVE
@@ -94,6 +96,7 @@ navkey:              .byte 0 ; the key before_key is deciding about
 navdest:             .byte 0 ; buffer after_key must return the editor to
 livechanged:         .byte 0
 insertmode:          .byte 0 ; scoped to the editor's blank-line insertion
+deletemode:          .byte 0 ; scoped to the editor's whole-line deletion
 
 ; Dismissal belongs to a source line, independently of its current error
 ; code. Keep it through edits until RETURN explicitly checks the line again.
@@ -255,6 +258,7 @@ CUR_BANK .set FINAL_BANK_MAIN
 .export __errlog_refresh
 .export __errlog_close_buffer
 .export __errlog_deleted
+.export __errlog_delete_linebreak
 .export __errlog_dismiss
 .export __errlog_undismiss
 .export __errlog_inserted
@@ -282,6 +286,7 @@ __errlog_get_curent:    JUMP ERRLOG_BANK, get_curent
 __errlog_inserted:      JUMP ERRLOG_BANK, inserted
 __errlog_insertion_mode: JUMP ERRLOG_BANK, insertion_mode
 __errlog_deleted:       JUMP ERRLOG_BANK, deleted
+__errlog_delete_linebreak: JUMP ERRLOG_BANK, delete_linebreak
 __errlog_dismiss:       JUMP ERRLOG_BANK, dismiss_current
 __errlog_undismiss:     JUMP ERRLOG_BANK, undismiss_current
 __errlog_close_buffer:  JUMP ERRLOG_BANK, close_buffer
@@ -303,6 +308,7 @@ __errlog_get_curent     = get_curent
 __errlog_inserted       = inserted
 __errlog_insertion_mode = insertion_mode
 __errlog_deleted        = deleted
+__errlog_delete_linebreak = delete_linebreak
 __errlog_dismiss        = dismiss_current
 __errlog_undismiss      = undismiss_current
 __errlog_close_buffer   = close_buffer
@@ -434,6 +440,7 @@ getline:
 	sta __errlog_navpending
 	sta __errlog_editpending
 	sta insertmode
+	sta deletemode
 	rts
 .endproc
 
@@ -1076,12 +1083,35 @@ getline:
 :	dec @line
 @shift:
 	lda #1
-	bne edit_lines		; branch always
+	jmp edit_lines
+.endproc
+
+;*******************************************************************************
+; DELETE LINEBREAK
+; Remove the separator after the editor has cleared a line. Preserve
+; the unchanged neighbor's errors, and reset the mode even for an empty buffer.
+; IN:
+;  - .A: DELETE_ABOVE (first line) or DELETE_BELOW (any later line)
+.proc delete_linebreak
+	sta deletemode
+	jsr clear_line_state
+	lda deletemode
+	cmp #DELETE_ABOVE
+	bne @below
+	CALLMAIN src::delete
+	jmp @done
+@below:
+	CALLMAIN src::backspace
+@done:
+	lda #JOIN_LINES
+	sta deletemode
+	rts
 .endproc
 
 ;*******************************************************************************
 ; DELETED
-; Invalidates mapped errors on the joined lines and shifts later entries up.
+; Invalidates joined text (or just the deleted line for whole-line deletion)
+; and shifts later entries up.
 ; IN:
 ;  - src::activebuff: the buffer being edited
 ;  - src::line: the surviving joined line
@@ -1089,17 +1119,25 @@ getline:
 @line=r0
 @preserve=r3
 	jsr current_owners
-	lda #0
-	sta @preserve		; joins always invalidate the text
+	lda deletemode
+	sta @preserve
+	lda #JOIN_LINES
+	sta deletemode
+
 	ldxy src::line
 	stxy @line
+	lda @preserve
+	cmp #DELETE_ABOVE
+	bne :+
+	decw @line
+:
 	lda #$ff
 	; fall through
 .endproc
 
 ;*******************************************************************************
 ; EDIT LINES
-; Shifts mapped errors and dismissals after a line insertion or deletion.
+; Shifts mapped errors, dismissals and breakpoints after an insertion/deletion.
 ; Invalidate both sides of a join; syntax/assembly results there are stale.
 ; IN:
 ;  - .A:    line offset ($01 for insertion, $ff for deletion)
@@ -1108,57 +1146,140 @@ getline:
 ;  - r4:    primary owner ID
 ;  - r5:    alternate debug file ID ($ff if none)
 .proc edit_lines
-@line=r0
 @offset=r2
-@preserve=r3
 	sta @offset
+	jsr edit_annotations
+	jmp shift_dismissed
+.endproc
+
+;*******************************************************************************
+; EDIT ANNOTATIONS
+; Shifts and/or removes mapped-errors and breakpoints as needed.
+; Other files and address-only breakpoints are unaffected. Scratch inputs are
+; as for edit_lines; an offset of zero removes just the affected line's entries.
+; IN:
+;   - r5: id of file that was edited
+; CLOBBERS:
+;   - zp::util+3: table index (available throughout source edit callbacks)
+.proc edit_annotations
+@fileid=r5
+@index=zp::util+3	; table index saved before map_edited_line uses .XY
 	ldx numerrs
+	beq @breakpoints
+
+;-------------------------------------------------------------------------------
+	dex
+@errors:
+	jsr matches_owner
+	bne @next_error
+	stx @index
+	lda errlineslo,x
+	ldy errlineshi,x
+	tax
+	jsr map_edited_line
+
+	txa
+	ldx @index		; restore the table index without changing carry
+	bcs @remove_error
+	sta errlineslo,x
+	tya
+	sta errlineshi,x
+	jmp @next_error
+@remove_error:
+	jsr remove
+@next_error:
+	dex
+	bpl @errors
+
+;-------------------------------------------------------------------------------
+@breakpoints:
+	lda @fileid
+	cmp #$ff
+	beq @done
+	ldx dbg::numbreakpoints
 	beq @done
 	dex
 
-@loop:	jsr matches_owner	; is error .X affected?
-	bne @next		; if not, continue
-
-	; check if the line is below (needs shifting)
-	lda errlineshi,x
-	cmp @line+1
-	bcc @next
-	bne @later
-	lda errlineslo,x
-	cmp @line
-	bcc @next
-	bne @later
-	lda @preserve
+@l0:	lda dbg::breakpoint_fileids,x
+	cmp @fileid
 	bne @next
-	beq @remove
+	stx @index
+	lda dbg::breakpoint_lineslo,x
+	ldy dbg::breakpoint_lineshi,x
+	tax
+	jsr map_edited_line
 
-@later: ; increment the error's line number
-	lda @offset
-	bmi @up
-	inc errlineslo,x
-	bne @next
-	inc errlineshi,x
+	txa
+	ldx @index
+	bcs @remove_breakpoint
+	sta dbg::breakpoint_lineslo,x
+	tya
+	sta dbg::breakpoint_lineshi,x
 	jmp @next
 
-@up:	; decrement the error's line number
-	lda errlineslo,x
-	bne :+
-	dec errlineshi,x
-:	dec errlineslo,x
-	lda errlineslo,x
-	cmp @line
-	bne @next
-	lda errlineshi,x
-	cmp @line+1
-	bne @next
+@remove_breakpoint:
+	CALLMAIN dbg::removebreakpointbyid
+	ldx @index		; breakpoint removal leaves this scratch byte intact
+@next:	dex
+	bpl @l0
+
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; MAP EDITED LINE
+; Invalidates split/joined lines and shifts later lines.
+; IN:
+;  - .XY:   entry's line number
+;  - r0-r1: affected line
+;  - r2:    offset ($01=INSERT, $ff=DELETE, $00 clear without shifting)
+;  - r3:    nonzero to preserve entries on the affected line
+; OUT:
+;  - .XY: mapped line number
+;  - .C:  set if the entry must be removed
+; CLOBBERS:
+;  - .A
+.proc map_edited_line
+@line=r0
+@offset=r2
+@preserve=r3
+	cpy @line+1
+	bcc @keep
+	bne @later
+	cpx @line
+	bcc @keep
+	bne @later
+	lda @preserve
+	beq @remove
+
+@keep:	RETURN_OK
 
 @remove:
-	; line was "split" or deleted, remove the error
-	jsr remove
+	sec
+	rts
 
-@next:	dex
-	bpl @loop
-@done:	jmp shift_dismissed
+@later: lda @offset
+	beq @keep
+	bmi @up
+	inx
+	bne @mapped
+	iny
+
+@mapped:
+	clc
+	rts
+
+@up:	cpx #0
+	bne :+
+	dey
+:	dex
+	cpy @line+1
+	bne @mapped
+	cpx @line
+	bne @mapped
+	; The second side of a join (or the deleted whole line) shifted onto
+	; the affected line. CPX left carry set: discard its entry.
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1189,19 +1310,47 @@ getline:
 	bcc @next
 	beq @next
 
-@later: lda @offset
+@later: ; increment the dismissal's line #
+	lda @offset
 	bmi @up
 	inc dismisslo,x
 	bne @next
 	inc dismisshi,x
 	jmp @next
 
-@up:	lda dismisslo,x
+@up:	; decrement the dismissal's line #
+	lda dismisslo,x
 	bne :+
 	dec dismisshi,x
 :	dec dismisslo,x
 @next:	dex
 	bpl @loop
+
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; CLEAR LINE STATE
+; Called upon line deletion. Removes all breakpoints/errors belonging to the
+; affected line.
+.proc clear_line_state
+@line=r0
+@offset=r2
+@preserve=r3
+	jsr current_owners
+	ldxy src::line
+	stxy @line
+
+	lda #$00
+	sta @offset
+	sta @preserve
+	jsr edit_annotations
+
+@dismissals:
+	jsr find_dismissed
+	bcs @done
+	jsr remove_dismissed
+	jmp @dismissals
 
 @done:	rts
 .endproc

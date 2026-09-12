@@ -220,6 +220,19 @@ showstate_vec                = showstate
 safety_check_vec             = safety_check
 .endif
 
+.export __debug_refresh
+; Keep the raster IRQ from using the shared display while it is redrawn.
+.PUSHSEG
+.ifdef ultimem
+.segment "GUICODE"
+.endif
+.proc __debug_refresh
+	jsr scr::blank
+	jsr showstate_vec
+	jmp scr::unblank
+.endproc
+.POPSEG
+
 .ifdef ultimem
 .segment "DEBUGGER"
 .else
@@ -1080,83 +1093,6 @@ __debug_step:
 	jsr bsp::save_prog_visual
 	jmp bsp::restore_debug_visual
 .endif
-.endproc
-
-;*******************************************************************************
-; SHIFT BREAKPOINTS D
-; Shifts the line numbers for all breakpoints on lines below the current one
-;  - .XY: the line number to shift
-;  - .A:  the offset to shift
-;  - r0:  the file ID of the file to shift
-.export __debug_shift_breakpointsd
-.proc __debug_shift_breakpointsd
-@fileid=r0
-@line=r1
-@offset=r3
-	stxy @line
-	sta @offset
-	ldx __debug_numbreakpoints
-	beq @done
-	dex
-
-@l0:	lda @fileid
-	cmp __debug_breakpoint_fileids,x
-	bne @next
-	lda __debug_breakpoint_lineshi,x
-	cmp @line+1
-	bcc @next
-	lda __debug_breakpoint_lineslo,x
-	adc #$00
-	cmp @line
-	bcc @next
-	sbc #$01
-	clc
-	adc @offset
-	sta __debug_breakpoint_lineslo,x
-	bcc @next
-	inc __debug_breakpoint_lineshi,x
-@next:	dex
-	bpl @l0
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; SHIFT BREAKPOINTS U
-; Shifts UP the line numbers for all breakpoints on lines below the current one
-; given by the given offset.
-; IN:
-;  - .XY: the line number to shift
-;  - .A:  the offset to shift
-;  - r0:  the file ID of the file to shift within
-.export __debug_shift_breakpointsu
-.proc __debug_shift_breakpointsu
-@fileid=r0
-@line=r1
-@offset=r3
-	stxy @line
-	sta @offset
-	ldx __debug_numbreakpoints
-	beq @done
-	dex
-
-@l0:	lda @fileid
-	cmp __debug_breakpoint_fileids,x
-	bne @next
-	lda __debug_breakpoint_lineshi,x
-	cmp @line+1
-	bcc @next
-	lda __debug_breakpoint_lineslo,x
-	cmp @line
-	beq @next
-	bcc @next
-	sec
-	sbc @offset
-	sta __debug_breakpoint_lineslo,x
-	bcs @next
-	dec __debug_breakpoint_lineshi,x
-@next:	dex
-	bpl @l0
-@done:	rts
 .endproc
 
 ;*******************************************************************************

@@ -1652,12 +1652,14 @@ cancel = enter_command
 	jmp @l0
 
 @sof:	; at start of the buffer, DELETE the newline (connecting the NEXT line)
-	jsr src::delete
+	lda #errlog::DELETE_ABOVE
+	jsr errlog::delete_linebreak
 	jmp @cont
 
 @moveup:
 	; BACKSPACE to delete the newline character connecting the PREVIOUS line
-	jsr src::backspace
+	lda #errlog::DELETE_BELOW
+	jsr errlog::delete_linebreak
 	jsr src::down
 	bcc @cont
 
@@ -1676,17 +1678,11 @@ cancel = enter_command
 	jsr src::home
 	jsr gotoindex0
 
-	; Removing the separator also invalidates mapped errors on the preceding
-	; source line. Reconcile that row without shifting its text or colors.
-	lda zp::cury
-	beq :+
-	sec
-	sbc #$01
-	jsr edit_render_row
-
-:	lda #MODE_VISUAL_LINE
+	lda #MODE_VISUAL_LINE
 	sta selection_type	; set copy mode to LINE
-	jmp print_current_line
+	jsr print_current_line
+	jsr errlog::refresh
+	JUMPMAIN gui::refresh
 .endproc
 
 ;*******************************************************************************
@@ -2802,7 +2798,7 @@ cancel = enter_command
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
 	next_buffer, prev_buffer, udgedit, leave_insert, go_basic, \
 	mem_config, \
-	gprefs::next_pal, gprefs::prev_pal, toggle_autoformat, \
+	next_palette, prev_palette, toggle_autoformat, \
 	toggle_vis_ws, dismiss_error, force_newline, check_current_line, \
 	next_drive, prev_drive, guigrow, guishrink, maximize_win, next_err, \
 	guitogglehide, next_banner, prev_banner
@@ -2811,6 +2807,31 @@ cancel = enter_command
 @specialvecslo: .lobytes specialvecs
 @specialvecshi: .hibytes specialvecs
 .POPSEG
+.endproc
+
+;*******************************************************************************
+; NEXT PALETTE
+.proc next_palette
+	jsr gprefs::next_pal
+	jmp refresh_palette
+.endproc
+
+;*******************************************************************************
+; PREV PALETTE
+.proc prev_palette
+	jsr gprefs::prev_pal
+	; fall through to refresh_palette
+.endproc
+
+;*******************************************************************************
+; REFRESH PALETTE
+; Redraws the screen after switching palettes
+.proc refresh_palette
+	jsr refresh_buffers
+	lda debugging
+	beq @done
+	JUMPMAIN dbg::refresh
+@done:	rts
 .endproc
 
 ;*******************************************************************************

@@ -7,6 +7,7 @@
 .import __errlog_asmerrors
 .import __errlog_close_buffer
 .import __errlog_deleted
+.import __errlog_delete_linebreak
 .import __errlog_dismiss
 .import __errlog_undismiss
 .import __errlog_getbyline
@@ -31,6 +32,9 @@
 	SPLIT_LINE          = ERRLOG_SPLIT_LINE
 	BLANK_ABOVE         = ERRLOG_BLANK_ABOVE
 	BLANK_BELOW         = ERRLOG_BLANK_BELOW
+	JOIN_LINES          = ERRLOG_JOIN_LINES
+	DELETE_ABOVE        = ERRLOG_DELETE_ABOVE
+	DELETE_BELOW        = ERRLOG_DELETE_BELOW
 	NAV_NONE            = ERRLOG_NAV_NONE
 	NAV_CHECK_ON_LEAVE  = ERRLOG_NAV_CHECK_ON_LEAVE
 	NAV_CHECK_ON_RETURN = ERRLOG_NAV_CHECK_ON_RETURN
@@ -46,6 +50,7 @@
 	asmerrors      = __errlog_asmerrors
 	close_buffer   = __errlog_close_buffer
 	deleted        = __errlog_deleted
+	delete_linebreak = __errlog_delete_linebreak
 	dismiss        = __errlog_dismiss
 	undismiss      = __errlog_undismiss
 	getbyline      = __errlog_getbyline

@@ -793,7 +793,6 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Callback to handle a line deletion. Various state needs to be shifted when
 ; this occurs (breakpoints for now, TODO: debug info)
 .proc on_line_deleted
-@fileid=r0
 	decw lines
 
 	; update debug info: find all line programs in the current file with
@@ -802,13 +801,6 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	;jsr dbgi::delete_line
 
 	; shift breakpoints and errors
-	jsr edit::currentfile	; .A=file id, .XY=current line
-	bcs @errors		; no file ID: nothing is mapped to this buffer
-	sta @fileid			; file ID for breakpoint shift
-	lda #$01
-	jsr dbg::shift_breakpointsu
-
-@errors:
 	jsr errlog::deleted
 	rts
 .endproc

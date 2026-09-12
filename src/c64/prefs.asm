@@ -15,6 +15,7 @@ SCREEN_ROWS = 24
 .export __prefs_success_color
 .export __prefs_select_col
 .export __prefs_error_color
+.export __prefs_reg_changed_color
 
 .DATA
 .export __prefs_palette
@@ -29,6 +30,7 @@ __prefs_brkoff_color:  .byte BREAKPOINT_OFF_COLOR
 __prefs_success_color: .byte ASM_SUCCESS_COLOR
 __prefs_select_col:    .byte GUI_SELECT_COLOR
 __prefs_error_color:   .byte ERROR_COLOR
+__prefs_reg_changed_color: .byte DEBUG_REG_CHANGED_COLOR
 
 pal_num: .byte 0
 
@@ -44,14 +46,15 @@ palettes:
 text_colors:    .byte TEXT_COLOR,           $01, $00, $07
 normal_colors:  .byte DEFAULT_900F,         $08, $19, $08
 reverse_colors: .byte DEFAULT_RVS,          $00, $11, $00
-brkon_colors:   .byte BREAKPOINT_ON_COLOR,  $98, $99, $98
-brkoff_colors:  .byte BREAKPOINT_OFF_COLOR, $e8, $e9, $e8
+brkon_colors:   .byte BREAKPOINT_ON_COLOR,  $00, $11, $00
+brkoff_colors:  .byte BREAKPOINT_OFF_COLOR, $00, $11, $00
 success_colors: .byte ASM_SUCCESS_COLOR,    $00, $11, $00
-select_color:   .byte GUI_SELECT_COLOR,     $e8, $e9, $e8
-error_colors:   .byte ERROR_COLOR,          ERROR_COLOR, ERROR_COLOR, ERROR_COLOR
+select_color:   .byte GUI_SELECT_COLOR,     $00, $11, $00
+error_colors:   .byte ERROR_COLOR,          $00, $11, $00
+reg_changed_colors: .byte DEBUG_REG_CHANGED_COLOR, $01, $00, $07
 
 NUM_PALETTES = 4
-NUM_TABLES   = 8
+NUM_TABLES   = 9
 
 .CODE
 

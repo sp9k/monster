@@ -1,3 +1,4 @@
+.include "prefs.inc"
 .include "layout.inc"
 .include "macros.inc"
 .include "../settings.inc"
@@ -116,44 +117,44 @@ LINES           = 263
 
 	IO_BEGIN
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda @aff
 	and #OP_REG_A
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+5
 	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+6
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda @aff
 	and #OP_REG_X
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+8
 	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+9
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda @aff
 	and #OP_REG_Y
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+11
 	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+12
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda @aff
 	and #OP_STACK
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+14
 	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+15
 
 	; if memory was WRITTEN to, highlight it as well
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda @aff
 	and #OP_STORE
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+26
 	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+27
 	stx COLMEM_ADDR+(40*REGS_COLOR_ROW)+28
