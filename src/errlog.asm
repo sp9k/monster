@@ -46,6 +46,8 @@ MAX_HEIGHT     = 4
 SPLIT_LINE  = ERRLOG_SPLIT_LINE
 BLANK_ABOVE = ERRLOG_BLANK_ABOVE
 BLANK_BELOW = ERRLOG_BLANK_BELOW
+JOIN_LINES   = ERRLOG_JOIN_LINES
+DELETE_ABOVE = ERRLOG_DELETE_ABOVE
 
 NAV_NONE            = ERRLOG_NAV_NONE
 NAV_CHECK_ON_LEAVE  = ERRLOG_NAV_CHECK_ON_LEAVE
@@ -94,6 +96,7 @@ navkey:              .byte 0 ; the key before_key is deciding about
 navdest:             .byte 0 ; buffer after_key must return the editor to
 livechanged:         .byte 0
 insertmode:          .byte 0 ; scoped to the editor's blank-line insertion
+deletemode:          .byte 0 ; scoped to the editor's whole-line deletion
 
 ; Dismissal belongs to a source line, independently of its current error
 ; code. Keep it through edits until RETURN explicitly checks the line again.
@@ -255,6 +258,7 @@ CUR_BANK .set FINAL_BANK_MAIN
 .export __errlog_refresh
 .export __errlog_close_buffer
 .export __errlog_deleted
+.export __errlog_delete_linebreak
 .export __errlog_dismiss
 .export __errlog_undismiss
 .export __errlog_inserted
@@ -282,6 +286,7 @@ __errlog_get_curent:    JUMP ERRLOG_BANK, get_curent
 __errlog_inserted:      JUMP ERRLOG_BANK, inserted
 __errlog_insertion_mode: JUMP ERRLOG_BANK, insertion_mode
 __errlog_deleted:       JUMP ERRLOG_BANK, deleted
+__errlog_delete_linebreak: JUMP ERRLOG_BANK, delete_linebreak
 __errlog_dismiss:       JUMP ERRLOG_BANK, dismiss_current
 __errlog_undismiss:     JUMP ERRLOG_BANK, undismiss_current
 __errlog_close_buffer:  JUMP ERRLOG_BANK, close_buffer
@@ -303,6 +308,7 @@ __errlog_get_curent     = get_curent
 __errlog_inserted       = inserted
 __errlog_insertion_mode = insertion_mode
 __errlog_deleted        = deleted
+__errlog_delete_linebreak = delete_linebreak
 __errlog_dismiss        = dismiss_current
 __errlog_undismiss      = undismiss_current
 __errlog_close_buffer   = close_buffer
@@ -434,6 +440,7 @@ getline:
 	sta __errlog_navpending
 	sta __errlog_editpending
 	sta insertmode
+	sta deletemode
 	rts
 .endproc
 
@@ -1080,8 +1087,29 @@ getline:
 .endproc
 
 ;*******************************************************************************
+; DELETE LINEBREAK
+; Remove the separator after the editor has cleared a line. Preserve
+; the unchanged neighbor's errors, and reset the mode even for an empty buffer.
+; IN:
+;  - .A: DELETE_ABOVE (first line) or DELETE_BELOW (any later line)
+.proc delete_linebreak
+	sta deletemode
+	cmp #DELETE_ABOVE
+	bne @below
+	CALLMAIN src::delete
+	jmp @done
+@below:
+	CALLMAIN src::backspace
+@done:
+	lda #JOIN_LINES
+	sta deletemode
+	rts
+.endproc
+
+;*******************************************************************************
 ; DELETED
-; Invalidates mapped errors on the joined lines and shifts later entries up.
+; Invalidates joined text (or just the deleted line for whole-line deletion)
+; and shifts later entries up.
 ; IN:
 ;  - src::activebuff: the buffer being edited
 ;  - src::line: the surviving joined line
@@ -1089,10 +1117,18 @@ getline:
 @line=r0
 @preserve=r3
 	jsr current_owners
-	lda #0
-	sta @preserve		; joins always invalidate the text
+	lda deletemode
+	sta @preserve
+	lda #JOIN_LINES
+	sta deletemode
+
 	ldxy src::line
 	stxy @line
+	lda @preserve
+	cmp #DELETE_ABOVE
+	bne :+
+	decw @line
+:
 	lda #$ff
 	; fall through
 .endproc

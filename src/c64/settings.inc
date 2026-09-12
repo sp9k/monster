@@ -34,13 +34,13 @@ BORDER_COLOR	 = $00|$08     		; border color for the editor
 BG_COLOR	 = $00	      		; bg color for the editor
 DEFAULT_900F            = (BG_COLOR<<4 | BORDER_COLOR)
 DEFAULT_RVS             = DEFAULT_900F^$08
-GUI_SELECT_COLOR        = ($07 << 4) | BORDER_COLOR
-BREAKPOINT_ON_COLOR     = ($09<<4 | BORDER_COLOR)
-BREAKPOINT_OFF_COLOR    = ($0e<<4 | BORDER_COLOR)
-ERROR_COLOR	        = ($09<<4 | BORDER_COLOR)	; $900f color of error highlight
-DEBUG_LINE_COLOR        = ($70|BORDER_COLOR)		; row cursor color during debug
-ASM_SUCCESS_COLOR       = ($0d<<4 | BORDER_COLOR)	; color for asm done message
-DEBUG_REG_CHANGED_COLOR = 2				; color for register that was changed during STEP
+GUI_SELECT_COLOR        = DEFAULT_RVS
+BREAKPOINT_ON_COLOR     = DEFAULT_RVS
+BREAKPOINT_OFF_COLOR    = DEFAULT_RVS
+ERROR_COLOR	        = DEFAULT_RVS	; $900f color of error highlight
+DEBUG_LINE_COLOR        = DEFAULT_RVS	; row cursor color during debug
+ASM_SUCCESS_COLOR       = DEFAULT_RVS	; color for asm done message
+DEBUG_REG_CHANGED_COLOR = TEXT_COLOR	; color for register that was changed during STEP
 .endif
 
 ;*******************************************************************************

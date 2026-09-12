@@ -1,3 +1,4 @@
+.include "../prefs.inc"
 .include "../settings.inc"
 .include "../../asmflags.inc"
 .include "../../debug.inc"
@@ -397,42 +398,42 @@ VIA_T2CH = $9		; T2 counter hi
 	lda __debug_interface
 	bne @colordone
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_REG_A
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(21*$b)+3
 	stx COLMEM_ADDR+(21*$b)+4
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_REG_X
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(21*$b)+5
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_REG_Y
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(21*$b)+6
 	stx COLMEM_ADDR+(21*$b)+7
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_STACK
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(21*$b)+8
 
 	; if memory was WRITTEN to, highlight it as well
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_STORE
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(22*$b)+13
 	stx COLMEM_ADDR+(22*$b)+14
 

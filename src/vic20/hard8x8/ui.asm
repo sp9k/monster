@@ -1,3 +1,4 @@
+.include "../prefs.inc"
 .include "layout.inc"
 .include "../settings.inc"
 .include "../../asmflags.inc"
@@ -98,44 +99,44 @@ COLMEM_ADDR=$9400
 	lda __debug_interface
 	bne @colordone		; if monitor is active, skip color
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_REG_A
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+1))+CONTENT_COL+5
 	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+1))+CONTENT_COL+6
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_REG_X
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+1))+CONTENT_COL+8
 	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+1))+CONTENT_COL+9
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_REG_Y
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+1))+CONTENT_COL+11
 	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+1))+CONTENT_COL+12
 
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_STACK
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+1))+CONTENT_COL+14
 	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+1))+CONTENT_COL+15
 
 	; if memory was WRITTEN to, highlight it as well
-	ldx #TEXT_COLOR
+	ldx prefs::text_color
 	lda sim::affected
 	and #OP_STORE
 	beq :+
-	ldx #DEBUG_REG_CHANGED_COLOR
+	ldx prefs::reg_changed_color
 :	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+3))+CONTENT_COL+9
 	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+3))+CONTENT_COL+10
 	stx COLMEM_ADDR+(PHYS_COLS*(REGISTERS_LINE+3))+CONTENT_COL+11
@@ -628,7 +629,7 @@ ROW3=66
 	bpl :-
 
 	; clear any stale register-changed highlight color in the view's rows
-	lda #TEXT_COLOR
+	lda prefs::text_color
 	ldy #SCREEN_WIDTH-1
 @clrcol:
 	sta COLMEM_ADDR+(PHYS_COLS*REGISTERS_LINE)+CONTENT_COL,y

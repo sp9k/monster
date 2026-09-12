@@ -14,6 +14,11 @@ ERRLOG_SPLIT_LINE  = 0	; text is split: invalidate the original line
 ERRLOG_BLANK_ABOVE = 1	; blank line opens above: preserve the original
 ERRLOG_BLANK_BELOW = 2	; blank line opens below: preserve the original
 
+; Whole-line deletion preserves the neighboring line at the join.
+ERRLOG_JOIN_LINES   = 0	; ordinary join: invalidate both lines
+ERRLOG_DELETE_ABOVE = 1	; delete the first line, preserving the next
+ERRLOG_DELETE_BELOW = 2	; delete a line, preserving the preceding line
+
 ;*******************************************************************************
 ; PENDING VALIDATION STATES
 ; Whether the key being handled may check the line that it leaves

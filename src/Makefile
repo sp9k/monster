@@ -7,6 +7,9 @@ SCREEN_MODE ?= soft4x8
 # default device # (for cart image)
 DEFAULT_DEVICE=8
 
+# input drive for the standalone UltiMem flasher
+FLASHER_DEVICE ?= 10
+
 # emulators
 X64=x64sc
 
@@ -65,8 +68,8 @@ TARGET_SRC=$(filter-out $(BOOTSRC), $(wildcard $(TARGET)/*.asm))
 MODE_SRC=$(wildcard $(TARGET)/$(SCREEN_MODE)/*.asm)
 
 # platform independent source files
-# flasher.asm is a standalone utility and must not be linked into Monster.
-PI_SRC=$(filter-out flasher.asm,$(wildcard *.asm))
+# Standalone utilities must not be linked into Monster.
+PI_SRC=$(filter-out flasher.asm ramtest.asm,$(wildcard *.asm))
 
 SRC=$(TARGET_SRC) $(PI_SRC) $(MODE_SRC) $(EXP_SRC)
 
@@ -85,7 +88,9 @@ all: test.d81
 cart: $(CART_IMAGE)
 ultimem: $(CART_IMAGE)
 
-flasher: flasher.prg $(CART_IMAGE)
+flasher: flasher.prg $(CART_IMAGE) flasher.d81
+
+ramtest: ramtest.prg ramtest.d81
 
 suite: $(TEST_IMAGE)
 
@@ -115,10 +120,22 @@ monster-disk.prg: $(BOOTSRC) $(SRC)
 
 # Runs in an unexpanded VIC-20 and streams only the populated 8 KiB banks from
 # the padded 8 MiB image.  Derive the count from the linker's bank-laid output.
-flasher.prg: flasher.asm monster-cart.prg
+flasher.prg: flasher.asm monster-cart.prg Makefile
 	$(CL65) -t vic20 -o $@ -C vic20-asm.cfg \
-		--asm-define DEFAULT_DEVICE=$(DEFAULT_DEVICE) \
+		--asm-define DEFAULT_DEVICE=$(FLASHER_DEVICE) \
 		--asm-define IMAGE_BLOCKS=$$(($$(wc -c < monster-cart.prg) / 8192)) $<
+
+flasher.d81: flasher.prg monster-cart.prg Makefile
+	$(C1541) -format "monster flash,mf" d81 $@ -attach $@ \
+		-write flasher.prg flasher.prg -write monster-cart.prg monster.bin
+
+# Same non-destructive bank check as the flasher, without a flash image.
+ramtest.prg: ramtest.asm Makefile
+	$(CL65) -t vic20 -o $@ -C vic20-asm.cfg $<
+
+ramtest.d81: ramtest.prg Makefile
+	$(C1541) -format "ultimem ram,ur" d81 $@ -attach $@ \
+		-write ramtest.prg ramtest.prg
 
 # Split the image around the $$D000-$$DFFF I/O gap so the exomizer
 # decruncher has free RAM to work in (see makeboot-c64.py).
@@ -143,6 +160,6 @@ start-cart-c64: monster.crt test-disk
 	$(X64) -default -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384 -cartcrt monster.crt -moncommands moncommands -8 test.d81
 
 clean:
-	rm -f *.prg *.o test.d81 cyclic.d81 monster.d81
+	rm -f *.prg *.o test.d81 cyclic.d81 monster.d81 flasher.d81 ramtest.d81
 	rm -f $(CART_IMAGE) $(TEST_IMAGE)
 	rm -f vic20/*.o vic20/ultimem/*.o vic20/hard8x8/*.o vic20/soft4x8/*.o c64/*.o

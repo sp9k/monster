@@ -20,6 +20,7 @@
 .import __debug_is_brk
 .import __debug_numbreakpoints
 .import __debug_reenter
+.import __debug_refresh
 .import __debug_remove_breakpoint
 .import __debug_removebreakpointbyid
 .import __debug_restore_debug_low
@@ -64,6 +65,7 @@
 	interface            = __debug_interface
 	numbreakpoints       = __debug_numbreakpoints
 	reenter              = __debug_reenter
+	refresh              = __debug_refresh
 	removebreakpoint     = __debug_remove_breakpoint
 	removebreakpointbyid = __debug_removebreakpointbyid
 	restore_debug_low    = __debug_restore_debug_low

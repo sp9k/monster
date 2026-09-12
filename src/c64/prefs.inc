@@ -6,6 +6,7 @@
 .import __prefs_success_color
 .import __prefs_select_col
 .import __prefs_error_color
+.import __prefs_reg_changed_color
 .import __prefs_palette
 
 .scope prefs
@@ -18,4 +19,5 @@
 	success_color = __prefs_success_color
 	select_color  = __prefs_select_col
 	error_color   = __prefs_error_color
+	reg_changed_color = __prefs_reg_changed_color
 .endscope

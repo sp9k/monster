@@ -42,7 +42,6 @@ SCREEN_ROWS = 12	; number of physical rows per column
 
 ;*******************************************************************************
 HL_MARKER       = $3e		; '>' current-line indicator glyph
-HL_MARKER_COLOR = TEXT_COLOR	; match the editor text color
 
 
 .segment "SETUP"
@@ -104,7 +103,7 @@ HL_MARKER_COLOR = TEXT_COLOR	; match the editor text color
 ; CLRCOLOR
 ; Reverts all color memory to the given color
 ; IN:
-;  - .A: the color to fill the screen with (currently ignored; uses TEXT_COLOR)
+;  - .A: ignored; uses the active palette's text color
 .export __screen_clrcolor
 .proc __screen_clrcolor
 @dst=r0
@@ -122,7 +121,7 @@ HL_MARKER_COLOR = TEXT_COLOR	; match the editor text color
 	adc #>COLMEM_OFFSET
 	sta @dst+1
 
-	lda #TEXT_COLOR
+	lda prefs::text_color
 	ldy #NUM_COLS-1
 :	sta (@dst),y
 	dey
@@ -360,10 +359,6 @@ BRK_NONE = $a0			; reverse space (blends into border)
 BRK_OFF  = $02			; lowercase b (disabled breakpoint)
 BRK_ON   = $42			; capital 'B' (enabled breakpoint)
 
-GUTTER_BG_COLOR  = BORDER_COLOR & $07	; border color
-BRK_OFF_COLOR    = $02			; red
-BRK_ON_COLOR     = $02			; red
-
 ;*******************************************************************************
 ; DRAW GUTTER ROW
 ; Redraws the breakpoint gutter cell (physical column 0) for a single row from
@@ -415,7 +410,7 @@ BRK_ON_COLOR     = $02			; red
 	lda prefs::normal_color			; default to border color
 	cpy #$00
 	beq :+
-	lda gutter_colors,y
+	lda prefs::reg_changed_color
 :	eor prefs::text_color
 	sta mem::blink_dclr		; color delta
 
@@ -442,7 +437,7 @@ BRK_ON_COLOR     = $02			; red
 	lda prefs::normal_color
 	cpy #$00
 	beq @setcolor
-	lda gutter_colors,y
+	lda prefs::reg_changed_color
 	jmp @setcolor
 
 ;-------------------------------------------------------------------------------
@@ -450,7 +445,7 @@ BRK_ON_COLOR     = $02			; red
 @markeronly:
 	lda #HL_MARKER
 	sta @glyph
-	lda #HL_MARKER_COLOR
+	lda prefs::text_color
 	jmp @setcolor
 
 ;-------------------------------------------------------------------------------
@@ -465,7 +460,7 @@ BRK_ON_COLOR     = $02			; red
 	and #$07			; use just border color (low 3 bits)
 	jmp @setcolor
 @brkclr:
-	lda gutter_colors,y
+	lda prefs::reg_changed_color
 
 ;-------------------------------------------------------------------------------
 @setcolor:
@@ -503,9 +498,8 @@ BRK_ON_COLOR     = $02			; red
 .endproc
 
 ;*******************************************************************************
-; gutter glyphs and colors, indexed by mem::breakpoint_rows (0/1/2)
+; gutter glyphs, indexed by mem::breakpoint_rows (0/1/2)
 gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
-gutter_colors: .byte GUTTER_BG_COLOR, BRK_OFF_COLOR, BRK_ON_COLOR
 
 ;*******************************************************************************
 ; DRAW GUTTER

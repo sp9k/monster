@@ -219,6 +219,19 @@ showstate_vec                = showstate
 safety_check_vec             = safety_check
 .endif
 
+.export __debug_refresh
+; Keep the raster IRQ from using the shared display while it is redrawn.
+.PUSHSEG
+.ifdef ultimem
+.segment "GUICODE"
+.endif
+.proc __debug_refresh
+	jsr scr::blank
+	jsr showstate_vec
+	jmp scr::unblank
+.endproc
+.POPSEG
+
 .ifdef ultimem
 .segment "DEBUGGER"
 .else
