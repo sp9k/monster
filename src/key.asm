@@ -1,4 +1,6 @@
 .include "errors.inc"
+.include "edit.inc"
+.include "runtime.inc"
 .include "keycodes.inc"
 .include "macros.inc"
 .include "zeropage.inc"
@@ -11,6 +13,27 @@ CURSOR_LR_MASK = 2
 .export __key_raw
 __key_raw: .byte 0	; untransformed raw key value read
 
+.export __key_restore_pending
+__key_restore_pending: .byte 0
+
+.segment "IRQ"
+
+;*******************************************************************************
+; KEY RESTORE NMI
+; Flags that the editor should retore itself and close all windows
+.export __key_restore_nmi
+.proc __key_restore_nmi
+	pha
+	lda #$01
+	sta __key_restore_pending
+	sta edit::sigint
+.ifdef vic20
+	bit $9111	; acknowledge CA1 so another RESTORE can fire
+.endif
+	pla
+	rti
+.endproc
+
 .CODE
 
 ;*******************************************************************************
@@ -21,7 +44,15 @@ __key_raw: .byte 0	; untransformed raw key value read
 ;  - .Z: set if no key is pressed
 .export __key_getch
 .proc __key_getch
-	lda $c6		; get keyboard buffer length
+	jsr run::install_restore
+
+	lda __key_restore_pending
+	beq :+
+	lda #K_QUIT	; force abort prompts before RESTORE is handled
+	sta __key_raw
+	rts
+
+:	lda $c6		; get keyboard buffer length
 	beq @ret	; if buffer empty, return
 
 .ifdef vic20
@@ -103,6 +134,31 @@ __key_raw: .byte 0	; untransformed raw key value read
 .endif
 @num_translate=*-@translated
 .POPSEG
+.endproc
+
+;*******************************************************************************
+; GET UI
+; Reads input for the active UI (window or editor).
+.export __key_getui
+.proc __key_getui
+	jsr __key_getch
+	ldx __key_restore_pending	; did user request editor restoration?
+	beq @done			; if not, that's it
+
+	lda #K_RESTORE
+	sta __key_raw
+@done:	cmp #$00
+	rts
+.endproc
+
+;*******************************************************************************
+; WAIT UI
+; Waits for a key, handling RESTORE as needed
+.export __key_waitui
+.proc __key_waitui
+:	jsr __key_getui
+	beq :-
+	rts
 .endproc
 
 ;*******************************************************************************

@@ -7,6 +7,7 @@
 .include "../edit.inc"
 .include "../guis.inc"
 .include "../irq.inc"
+.include "../key.inc"
 .include "../macros.inc"
 .include "../monitor.inc"
 .include "../ram.inc"
@@ -29,6 +30,17 @@
 ;*******************************************************************************
 nop_handler:
 	rti
+
+;*******************************************************************************
+; INSTALL RESTORE
+; Installs an NMI handler that flags for the editor to restore to its full size
+.export __run_install_restore
+.proc __run_install_restore
+	ldxy #key::restore_nmi
+	stxy $0318
+	stxy $fffa
+	jmp nmi::enable
+.endproc
 
 ;*******************************************************************************
 ; INSTALL SIGINT

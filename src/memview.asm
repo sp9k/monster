@@ -172,7 +172,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	ldxy memaddr
 	stxy @src
 
-	jsr key::waitch
+	jsr key::waitui
 	pha
 	jsr cur::off
 	pla
@@ -192,7 +192,12 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 @quit:	jmp @done
 
 @chkclose:
-	cmp #K_WIN_CLOSE
+	cmp #K_RESTORE
+	bne :+
+	lda #GUI_RET_CLOSEALL
+	rts
+
+:	cmp #K_WIN_CLOSE
 	bne @chkcycle
 	lda #GUI_RET_CLOSE	; close this window
 	rts
@@ -422,6 +427,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	sta cur::mode
 	lda #TEXT_REPLACE
 	sta text::insertmode
+	bcs @reset		; input cancelled
 
 	jsr util::parsehex	; parse the user's given hex string
 	bcs @find		; if invalid hex, retry
@@ -538,6 +544,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 	ldxy #key::gethex
 	CALLMAIN edit::gets
+	bcs :+			; cancelled- keep the original address
 
 	ldxy #mem::linebuffer+TITLE_ADDR_START+TITLE_VAL_OFFSET-1
 	stxy zp::line

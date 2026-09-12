@@ -604,7 +604,7 @@ blank   = scr::blank
 
 @debugloop_gui:
 	jsr text::update
-	jsr key::waitch
+	jsr key::waitui
 
 	pha
 	jsr cur::off
@@ -841,11 +841,7 @@ blank   = scr::blank
 ; EDIT SOURCE
 ; Closes all windows and reenables (almost) fullscreen editing
 .proc edit_source
-	jsr gui::closeall
-	lda #$00
-	sta mon::windowed	; the monitor window (if any) is closed
-	lda #DEBUG_MESSAGE_LINE-1
-	jmp edit::resize
+	jmp gui::dismissall
 .endproc
 
 ;*******************************************************************************
@@ -2110,7 +2106,6 @@ __debug_step:
 ; within the debugger
 commands:
 	.byte K_QUIT_DEBUGGER
-	.byte K_QUIT
 	.byte K_STEP
 	.byte K_STEPOVER
 	.byte K_GO
@@ -2118,7 +2113,7 @@ commands:
 	.byte K_STEPOUT
 	.byte K_STEPOUT_LIMITED
 	.byte K_TRACE
-	.byte K_SRCVIEW
+	.byte K_RESTORE
 	.byte K_MEMVIEW
 	.byte K_BRKVIEW
 	.byte K_WATCHVIEW
@@ -2131,7 +2126,7 @@ commands:
 num_commands=*-commands
 
 .linecont +
-.define command_vectors quit, edit_source, __debug_step, __debug_step_over, \
+.define command_vectors quit, __debug_step, __debug_step_over, \
 	__debug_go, jump, __debug_stepout_limited, __debug_step_out, \
 	__debug_trace, edit_source, edit_mem, edit_breakpoints, \
 	__debug_edit_watches, __debug_swap_user_mem, reset_stopwatch, \

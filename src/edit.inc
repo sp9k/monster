@@ -23,32 +23,34 @@
 .import __edit_sigint
 .import __edit_src2screen
 .import __edit_statusrow
+.import __edit_update_progress
 
 .scope edit
-	base           = __edit_base
-	binary_flag    = __edit_binary_flag
-	clear          = __edit_clear
-	currentfile    = __edit_current_file
-	debugging      = __edit_debugging
-	gets           = __edit_gets
-	gotoline       = __edit_gotoline
-	handlekey      = __edit_handle_key
-	height         = __edit_height
-	highlight_en   = __edit_highlight_en
-	highlight_line = __edit_highlight_line
-	init           = __edit_init
-	load           = __edit_load
-	refresh        = __edit_refresh
-	redrawline     = __edit_redrawline
-	refreshline    = __edit_refreshline
-	render_row     = __edit_render_row
-	resize         = __edit_resize
-	run            = __edit_run
-	setbreakpoint  = __edit_set_breakpoint
-	sethighlight   = __edit_sethighlight
-	sigint         = __edit_sigint
-	src2screen     = __edit_src2screen
-	status_row     = __edit_statusrow
+	base            = __edit_base
+	binary_flag     = __edit_binary_flag
+	clear           = __edit_clear
+	currentfile     = __edit_current_file
+	debugging       = __edit_debugging
+	gets            = __edit_gets
+	gotoline        = __edit_gotoline
+	handlekey       = __edit_handle_key
+	height          = __edit_height
+	highlight_en    = __edit_highlight_en
+	highlight_line  = __edit_highlight_line
+	init            = __edit_init
+	load            = __edit_load
+	refresh         = __edit_refresh
+	redrawline      = __edit_redrawline
+	refreshline     = __edit_refreshline
+	render_row      = __edit_render_row
+	resize          = __edit_resize
+	run             = __edit_run
+	setbreakpoint   = __edit_set_breakpoint
+	sethighlight    = __edit_sethighlight
+	sigint          = __edit_sigint
+	src2screen      = __edit_src2screen
+	status_row      = __edit_statusrow
+	update_progress = __edit_update_progress
 .endscope
 
 ;*******************************************************************************

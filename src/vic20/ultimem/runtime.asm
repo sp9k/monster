@@ -16,6 +16,7 @@
 .include "../../edit.inc"
 .include "../../guis.inc"
 .include "../../irq.inc"
+.include "../../key.inc"
 .include "../../macros.inc"
 .include "../../monitor.inc"
 .include "../../ram.inc"
@@ -54,6 +55,22 @@ ret:     .word 0
 save9002: .byte 0
 
 .CODE
+
+;*******************************************************************************
+; INSTALL RESTORE
+; Installs the NMI handler used in the UI to request the editor be restored to
+; its full size
+.export __run_install_restore
+.proc __run_install_restore
+	lda #$7f
+	sta $911e		; disable sources before changing the NMI vector
+	bit $9111		; ack CA1
+	ldxy #key::restore_nmi
+	stxy $0318
+	lda #$82
+	sta $911e
+	rts
+.endproc
 
 ;*******************************************************************************
 ; INSTALL SIGINT

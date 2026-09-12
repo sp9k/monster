@@ -713,4 +713,5 @@ the monitor prompt.
 | {c64-keys}`C= + J` | `SHRINK WINDOW`      | shrinks the monitor window by one row in windowed mode               |
 | {c64-keys}`C= + Z` | `MAXIMIZE WINDOW`    | toggles the monitor window between maximized and its last size       |
 | {c64-keys}`C= + Q` | `CLOSE WINDOW`       | closes the monitor window (windowed mode only)                       |
+| {c64-key}`RESTORE` | `CLOSE ALL WINDOWS`  | closes every window and returns to the source editor                |
 | {c64-keys}`C= + W` | `NEXT WINDOW`        | leaves the monitor open and cycles to the next window                |

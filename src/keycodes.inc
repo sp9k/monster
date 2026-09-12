@@ -18,6 +18,7 @@ K_UDG_TOGGLE_MODE  = $6d	; m
 K_UDG_CLEAR        = $93	; SHIFT + CLR/HOME
 
 ; GLOBAL INTERFACE KEYS
+K_RESTORE       = $ff	; internal RESTORE event (not real keyboard code)
 K_RETURN        = $0d	; RETURN
 K_FORCE_NEWLINE = $8d	; SHIFT + RETURN
 K_QUIT          = $03	; STOP
@@ -74,7 +75,6 @@ K_PREV_BANNER    = $eb	; CTRL + : (previous ";;;" comment banner)
 
 ;*******************************************************************************
 ; DEBUGGER KEYS
-K_SRCVIEW		= $85	; F1
 K_MEMVIEW		= $8c	; F8 (SHIFT + F7)
 K_BRKVIEW		= $87	; F5
 K_WATCHVIEW		= $8b	; F6

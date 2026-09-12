@@ -119,10 +119,10 @@ __str_saving: .byte "saving...",0
 __str_aborted: .byte "aborted",0
 
 .export __str_assembling
-__str_assembling: .byte "assembling...",0
+__str_assembling: .byte "  assembling...",0
 
 .export __str_linking
-__str_linking: .byte "linking...",0
+__str_linking: .byte "  linking...",0
 
 .export __str_watches_title
 __str_watches_title: .byte "watches",0

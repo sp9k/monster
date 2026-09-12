@@ -71,7 +71,6 @@ respective Key in the table below.
 
 |  KEY                  | NAME            |   DESCRIPTION                                                                           |
 |-----------------------|-----------------|-----------------------------------------------------------------------------------------|
-| {c64-key}`F1`         | SOURCE VIEW     | maximizes the screen area for viewing the source code                                   |
 | {c64-key}`F2`         | REGISTER EDITOR | enters the register editor                                                              |
 | {c64-key}`F5`         | BREAK VIEW      | displays the breakpoints that have been set and allows them to be enabled/disabled      |
 | {c64-key}`F6`         | WATCH VIEW      | displays the watches that have been set (see the _Watch Viewer_ section)                |
@@ -83,10 +82,11 @@ respective Key in the table below.
 | {c64-key}`T`          | TRACE           | like GO but the debugger takes control between each instruction                         |
 | {c64-keys}`C= + G`    | GO              | continues execution from the current program counter                                                          |
 | {c64-keys}`C= + P`    | JUMP TO         | sets the PC to the address corresponding to the line the cursor is on                   |
+| {c64-key}`RESTORE`    | CLOSE WINDOWS   | closes every open window, restoring the editor to its full size                         |
 | {c64-keys}`C= + R`    | RESET STOPWATCH | resets the value of the stopwatch to 0                                                  |
 | {c64-keys}`C= + X`    | QUIT DEBUGGER   | Prompts the user for confirmation then quits the debugger upon receiving it             |
-| {c64-key}`RUN/STOP`   | SOURCE VIEW     | closes every open window and gives the whole screen back to the source view (also available with F1) |
-| {c64-key}`SPACE`      | SHOW FRAME      | displays the current state of the user program until any key is pressed                  |
+| {c64-key}`RUN/STOP`   | SOURCE VIEW     | returns focus from a window to the source editor                                        |
+| {c64-key}`SPACE`      | SHOW FRAME      | displays the current state of the user program until any key is pressed                 |
 | {c64-key}`Up-arrow`   | GOTO BREAK      | navigates to the address that the debugger is currently paused at                       |
 
 ## Register editor
@@ -193,9 +193,10 @@ Each viewer also contains an editor, which is activated with the keys enumerated
 below next to their corresponding editor.
 
 Pressing {c64-key}`RUN/STOP` will return the user from the auxiliary editor to the
-source code editor; the view stays open below it.  To close the active view outright,
-press {c64-keys}`C= + Q` while it has focus.  {c64-key}`F1` closes every open view at once to
-maximize the source editor's screen size.
+source editor (the window will stay open below it).  To _close_ the window,
+press {c64-keys}`C= + Q` while it is focused.
+
+{c64-key}`RESTORE` closes every open window and returns focus to the editor.
 
 ### Memory viewer
 

@@ -14,11 +14,11 @@ commands.
 | `NEXT WIN` | {c64-keys}`C= + W` | Cycles to the next available window (if already in the editor, enters the active window)
 | `EXIT    ` | {c64-key}`RUN/STOP`| If a window is active, returns focus to the editor.  The window is left open, its rows still onscreen
 | `CLOSE   ` | {c64-keys}`C= + Q` | Closes the active window.  Focus moves to the next open window, or back to the editor if it was the last one
+| `CLOSE ALL` | {c64-key}`RESTORE` | Closes every window and returns focus to the source editor, from the editor or any focused window
 | `HIDE    ` | {c64-keys}`C= + H` | Toggles the display of windows entirely
 
 Note that `EXIT` only gives focus back to the editor; the window remains open above the
-status row.  To restore the full-screen editor, either use `CLOSE` or hide the window
-area entirely with `HIDE`.
+status row.  Use `CLOSE ALL` to restore the fullscreen editor or hide the windows with `HIDE`.
 
 `CLOSE` acts on whatever has focus: it closes the active window when a window is focused,
 and the current source buffer when the editor is focused (see the _EDITOR_ section).

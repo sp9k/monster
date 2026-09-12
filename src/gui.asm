@@ -49,6 +49,7 @@
 .include "beep.inc"
 .include "config.inc"
 .include "cursor.inc"
+.include "debug.inc"
 .include "draw.inc"
 .include "edit.inc"
 .include "guis.inc"
@@ -57,6 +58,7 @@
 .include "layout.inc"
 .include "macros.inc"
 .include "memory.inc"
+.include "monitor.inc"
 .include "screen.inc"
 .include "settings.inc"
 .include "string.inc"
@@ -711,7 +713,7 @@ __gui_refresh:
 ; OUT:
 ;   - .A: the GUI_RET_x code to return to the manager
 .proc list_enter
-@loop:	jsr key::waitch
+@loop:	jsr key::waitui
 	pha
 
 	; unhighlight the selection in case we move
@@ -727,7 +729,12 @@ __gui_refresh:
 	cmp #K_QUIT
 	beq @quit
 
-	cmp #K_WIN_CLOSE
+	cmp #K_RESTORE
+	bne :+
+	lda #GUI_RET_CLOSEALL
+	rts
+
+:	cmp #K_WIN_CLOSE
 	bne :+
 	lda #GUI_RET_CLOSE
 	rts
@@ -851,7 +858,12 @@ __gui_refresh:
 	beq @cycle
 	cmp #GUI_RET_SWITCH
 	beq @loop
-	cmp #GUI_RET_CLOSE
+	cmp #GUI_RET_CLOSEALL
+	bne :+
+	jsr __gui_dismissall
+	jmp @quit
+
+:	cmp #GUI_RET_CLOSE
 	bne @quit
 
 	; GUI_RET_CLOSE: pop the window and focus the one below it
@@ -1378,5 +1390,26 @@ __gui_refresh:
 	sta __gui_active_type
 	sta infocus
 	sta hidden
+	sta mon::windowed
+	sta key::restore_pending
 	rts
+.endproc
+
+;*******************************************************************************
+; DISMISS ALL
+; Closes every window
+.export __gui_dismissall
+.proc __gui_dismissall
+	lda infocus
+	pha
+
+	jsr __gui_closeall
+	; lda #$00
+	sta dbg::interface	; flag that GUI debug interface is now active
+	pla
+
+	sta infocus
+	lda baserow
+	sec
+	jmp update_editor
 .endproc

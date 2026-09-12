@@ -58,6 +58,7 @@
 .include "config.inc"
 .include "ctx.inc"
 .include "debuginfo.inc"
+.include "edit.inc"
 .include "errors.inc"
 .include "errlog.inc"
 .include "expr.inc"
@@ -784,6 +785,8 @@ BANKED_CODE "ASMBANK"
 	RETURN_ERR ERR_LINE_TOO_LONG	; line doesn't fit the asm buffer
 
 @copied:
+	jsr edit::update_progress
+
 	ldy #$00
 	sty mem::asmbuffer+MAX_LINE_LEN
 

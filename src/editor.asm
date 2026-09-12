@@ -66,6 +66,9 @@
 
 .ifdef vic20
 .include "vic20/udgedit.inc"
+.ifdef soft4x8
+.include "vic20/soft4x8/bitmap.inc"
+.endif
 CUR_BANK .set FINAL_BANK_MAIN
 .endif
 
@@ -131,6 +134,8 @@ __edit_binary_flag: .byte 0	; flag used by some commands
 
 cmdreps:      .byte 0		; number of times to REPEAT current command
 bufferedkeys: .byte 0		; number of keys "buffered" for current command
+
+progress_count: .byte 0
 
 .export __edit_highlight_en
 .export __edit_highlight_line
@@ -200,6 +205,7 @@ guienter:      JUMPMAIN gui::enter
 guigrow:       JUMPMAIN gui::grow
 guishrink:     JUMPMAIN gui::shrink
 guitogglehide: JUMPMAIN gui::togglehide
+guidismissall: JUMPMAIN gui::dismissall
 
 BANKED_SEG "EDITCODE", FINAL_BANK_EDIT
 
@@ -225,6 +231,7 @@ guienter      = gui::enter
 guigrow       = gui::grow
 guishrink     = gui::shrink
 guitogglehide = gui::togglehide
+guidismissall = gui::dismissall
 .endif
 
 ;*******************************************************************************
@@ -287,7 +294,7 @@ guitogglehide = gui::togglehide
 	jsr use_replace_cursor
 	jsr enter_command
 
-main:	jsr key::getch
+main:	jsr key::getui
 	beq @done
 	cmp #K_RETURN
 	bne :+
@@ -482,6 +489,7 @@ main:	jsr key::getch
 
 :	ldxy #strings::assembling
 	jsr blank
+	jsr start_progress
 
 	jsr clear_errors	; close errlog (if open)
 	CALLMAIN dbgi::init
@@ -695,6 +703,7 @@ main:	jsr key::getch
 
 	ldxy #strings::assembling
 	jsr blank
+	jsr start_progress
 
 	jsr run::install_sigint	; reset SIGINT flag
 
@@ -1278,8 +1287,6 @@ cancel = enter_command
 ; Closes all open windows and restores the editor to occupy the full screen
 .proc close_windows
 	CALLMAIN gui::closeall		; close any open windows
-	lda #$00
-	sta mon::windowed		; the monitor window (if any) is closed
 	; fall through to reset_size
 .endproc
 
@@ -2780,6 +2787,7 @@ cancel = enter_command
 	.byte K_WIN_MAXIMIZE	; C= + z (maximize/restore the active window)
 	.byte K_NEXT_ERR	; C= + e (next error)
 	.byte K_WIN_HIDE	; C= + h (toggle rendering of the windows)
+	.byte K_RESTORE	; RESTORE (close all windows)
 	.byte K_NEXT_BANNER	; CTRL + ; (next comment banner)
 	.byte K_PREV_BANNER	; CTRL + : (previous comment banner)
 @num_special_keys=*-@specialkeys
@@ -2798,7 +2806,7 @@ cancel = enter_command
 	next_palette, prev_palette, toggle_autoformat, \
 	toggle_vis_ws, dismiss_error, force_newline, check_current_line, \
 	next_drive, prev_drive, guigrow, guishrink, maximize_win, next_err, \
-	guitogglehide, next_banner, prev_banner
+	guitogglehide, guidismissall, next_banner, prev_banner
 .linecont -
 
 @specialvecslo: .lobytes specialvecs
@@ -6049,6 +6057,38 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 .endproc
 
 ;*******************************************************************************
+; UPDATE PROGRESS
+; Called per instruction during assembly or <TODO> during linking
+.export __edit_update_progress
+.proc __edit_update_progress
+.if .defined(vic20) .and .defined(soft4x8)
+@bm=r0
+	lda status_row
+	asl
+	asl
+	asl
+	adc progress_count
+	inc progress_count
+	tay
+
+	lda progress_count
+	and #$07
+	sta progress_count
+
+	lda bm::columnslo
+	sta @bm
+	lda bm::columnshi
+	sta @bm+1
+
+	lda (@bm),y
+	eor #$ff
+	sta (@bm),y
+.else
+.endif
+	rts
+.endproc
+
+;*******************************************************************************
 ; HIGHLIGHT
 ; If the row that should be highlighted is visible, highlight it
 .proc highlight
@@ -6480,6 +6520,15 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 
 @done:	lda #$00
 	sta highlight_status
+	rts
+.endproc
+
+;*******************************************************************************
+; START PROGRESS
+; Enables progress display during assembly and linking (TODO)
+.proc start_progress
+	lda #$00
+	sta progress_count
 	rts
 .endproc
 

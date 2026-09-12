@@ -2,6 +2,7 @@
 .import __gui_baserow
 .import __gui_close
 .import __gui_closeall
+.import __gui_dismissall
 .import __gui_cursave_x
 .import __gui_cursave_y
 .import __gui_enter
@@ -18,6 +19,7 @@
 	baserow		= __gui_baserow
 	close		= __gui_close
 	closeall	= __gui_closeall
+	dismissall	= __gui_dismissall
 	cursave_x	= __gui_cursave_x
 	cursave_y	= __gui_cursave_y
 	enter		= __gui_enter

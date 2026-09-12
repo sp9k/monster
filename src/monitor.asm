@@ -66,7 +66,7 @@ __monitor_windowed: .byte 0
 ; set (by the key handler) when the user asks to cycle to the next window
 cyclereq: .byte 0
 
-; set (by the key handler) when the user asks to close the monitor window
+; GUI_RET_CLOSE or GUI_RET_CLOSEALL requested by the key handler (0 if none)
 closereq: .byte 0
 
 .segment "CONSOLE_VARS"
@@ -147,7 +147,7 @@ __monitor_window:
 ; Handles the key (called by the keyboard gets handler)
 .export __monitor_getch
 .proc __monitor_getch
-	jsr key::getch
+	jsr key::getui
 	beq @done
 
 	; handle special keys
@@ -179,11 +179,17 @@ __monitor_window:
 	jsr text::drawline	; redraw the input line being edited
 	jmp @handled
 
+:	cmp #K_RESTORE
+	bne :+
+	lda #GUI_RET_CLOSEALL	; if RESTORE- flag to close EVERYTHING
+	bne @close
+
 :	cmp #K_WIN_CLOSE
 	bne :+
 	lda __monitor_windowed
 	beq @handled		; not in a window: nothing to close
-	inc closereq
+	lda #GUI_RET_CLOSE
+@close:	sta closereq
 	lda #K_QUIT		; force the input to end
 	rts
 
@@ -496,11 +502,12 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	; did user ask to close the window?
 	lda closereq
 	beq @chkcycle
+	pha
 	lda #$00
 	sta closereq
 	sta __monitor_windowed	; the window is closing
 	sta dbg::interface	; exit TUI interface (if debugging)
-	lda #GUI_RET_CLOSE
+	pla			; restore closereq (CLOSE or CLOSE ALL)
 	jmp @leave
 
 @chkcycle:
@@ -562,6 +569,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	jmp @prompt
 
 @run:	; run the command
+	jsr install_nmi		; install INT signal NMI
 	ldxy #CMD_BUFF
 	jsr moncmd::run
 	ror @err		; save error bit

@@ -18,12 +18,12 @@ COLOR_FAILURE = 3
 COLOR_ERROR   = 7	; palette index for the error-highlight row color
 
 .scope draw
-	hline          = __draw_hline
-	hiline         = __draw_hiline
-	resetline      = __draw_resetline
-	rvs_line       = __draw_rvs_line
-	rvs_underline  = __draw_rvs_underline
-	scrollcolorsu  = __draw_scrollcolorsu
-	scrollcolorsd  = __draw_scrollcolorsd
-	refresh_colors = __draw_refresh_colors
+	hline           = __draw_hline
+	hiline          = __draw_hiline
+	resetline       = __draw_resetline
+	rvs_line        = __draw_rvs_line
+	rvs_underline   = __draw_rvs_underline
+	scrollcolorsu   = __draw_scrollcolorsu
+	scrollcolorsd   = __draw_scrollcolorsd
+	refresh_colors  = __draw_refresh_colors
 .endscope

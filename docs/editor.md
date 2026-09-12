@@ -31,6 +31,7 @@ below for more info on modes).
 | {c64-key}`Minus`           | `FILE VIEWER   `| list directory, shows the files on the current disk                                             |
 | {c64-keys}`C= + N`         | `NEW BUFFER    `| creates a new source buffer and sets it as the active buffer                                    |
 | {c64-keys}`C= + Q`         | `CLOSE BUFFER  `| closes the current buffer and opens the next one that is open (if a window has focus, closes that window instead) |
+| {c64-key}`RESTORE`         | `CLOSE WINDOWS `| closes all windows and restores the source editor area                                          |
 | {c64-keys}`C= + Y`         | `SHOW SYMBOLS  `| lists the symbol table for the assembled program                                                |
 | {c64-keys}`C= + M`         | `SHOW MACROS   `| lists the macros that are defined and allows viewing their definitions                          |
 | {c64-keys}`C= + E`         | `NEXT ERROR    `| navigates to the next error in the active buffer, wrapping at the end                           |
