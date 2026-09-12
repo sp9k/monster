@@ -300,22 +300,8 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 ; Callback to handle a line insertion. Various state needs to be shifted when
 ; this occurs (breakpoints, etc.)
 .proc on_line_inserted
-@fileid=r0
 	; TODO: shift debug info line programs after the current line
 
-	; shift breakpoints; line to shift from is current line+1
-	; edit::currentfile lives in MIDRAM: on the cart build this callback can
-	; run from a banked context (e.g. the log writing to the LOG buffer)
-	CALLMAIN edit::currentfile	; .A=file id, .XY=current line
-	bcs @errors		; no file ID: nothing is mapped to this buffer
-	inx
-	bne :+
-	iny
-:	sta @fileid			; file ID for breakpoint shift
-	lda #$01
-	jsr dbg::shift_breakpointsd
-
-@errors:
 	CALLMAIN errlog::inserted
 	rts
 .endproc

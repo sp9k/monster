@@ -1677,7 +1677,9 @@ cancel = enter_command
 
 	lda #MODE_VISUAL_LINE
 	sta selection_type	; set copy mode to LINE
-	jmp print_current_line
+	jsr print_current_line
+	jsr errlog::refresh
+	JUMPMAIN gui::refresh
 .endproc
 
 ;*******************************************************************************

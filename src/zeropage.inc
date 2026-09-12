@@ -124,7 +124,7 @@ tmp15 = $e5
 tmp16 = $e6
 tmp17 = $e7
 
-; $e8-$ea is utility storage
+; $e8-$eb is utility storage
 util = $e8
 
 ; "inline" procedure storage

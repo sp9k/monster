@@ -30,8 +30,6 @@
 .import __debug_save_user_zp
 .import __debug_setbreakpoint
 .import __debug_save_prog_state
-.import __debug_shift_breakpointsd
-.import __debug_shift_breakpointsu
 .import __debug_start
 .import __debug_step
 .import __debug_step_out
@@ -73,8 +71,6 @@
 	restore_user_zp      = __debug_restore_user_zp
 	save_debug_zp        = __debug_save_debug_zp
 	save_user_zp         = __debug_save_user_zp
-	shift_breakpointsd   = __debug_shift_breakpointsd
-	shift_breakpointsu   = __debug_shift_breakpointsu
 	start                = __debug_start
 	step                 = __debug_step
 	step_out             = __debug_step_out

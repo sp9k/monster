@@ -513,22 +513,10 @@ data: .res BUFFER_SIZE
 ; Callback to handle a line insertion. Various state needs to be shifted when
 ; this occurs (breakpoints, etc.)
 .proc on_line_inserted
-@fileid=r0
 	; TODO:
 	; update debug info: find all line programs in the current file with
 	; start lines greater than the current line and increment those
 
-	; shift breakpoints and errors, line to shift is current line+1
-	jsr edit::currentfile	; .A=file id, .XY=current line
-	bcs @errors		; no file ID: nothing is mapped to this buffer
-	inx
-	bne :+
-	iny
-:	sta @fileid			; file ID for breakpoint shift
-	lda #$01
-	jsr dbg::shift_breakpointsd
-
-@errors:
 	CALLMAIN errlog::inserted
 	rts
 .endproc
