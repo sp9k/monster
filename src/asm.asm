@@ -2862,7 +2862,12 @@ include_entry:
 	clc			; don't include a file when verifying
 :	rts
 
-@inc:	; log the name of the file being assembled
+@inc:	lda edit::sigint	; check if user wants out
+	beq :+
+	lda #$00
+	RETURN_OK
+
+:	; log the name of the file being assembled
 	ldxy @fname
 	jsr log::out
 
@@ -2931,6 +2936,8 @@ include_entry:
 
 ; read a line from file
 @doline:
+	lda edit::sigint
+	jne @close		; unwind every active include
 	ldxy #mem::spare
 	lda zp::file
 	jsr file::getline	; read a line from the file
@@ -2943,7 +2950,9 @@ include_entry:
 :	jmp @close		; and stop assembling this file
 
 ; assemble the line
-@asm:	ldxy #mem::spare
+@asm:	lda edit::sigint	; check if user signaled to abort assembly
+	bne @close		; if they did, cleanup and quit
+	ldxy #mem::spare
 	lda zp::file
 	pha
 	lda file::lines_read	; save the # of physical lines this getline read;

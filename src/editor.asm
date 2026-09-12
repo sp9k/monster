@@ -509,6 +509,8 @@ main:	jsr key::getui
 	bcs @logerr
 
 	CALLMAIN obj::close_section	; close final OBJ section
+	lda __edit_sigint
+	bne @done
 
 	; make sure all .IF/.MAC/.REP blocks were closed
 	jsr asm::endpass
@@ -752,6 +754,8 @@ main:	jsr key::getui
 
 @ok:	jsr src::end
 	bne @pass1loop
+	lda __edit_sigint
+	jne @done
 
 	; make sure all .IF/.MAC/.REP blocks were closed
 	jsr asm::endpass
