@@ -9,10 +9,19 @@
 .import __link_pad_fragment
 .import __link_segaddr_by_id
 .import __link_set_segment_type
+.import __link_update_progress
+
+; Shared helpers for object.asm; both modules execute in FINAL_BANK_LINKER.
+.import __link_log_msg
+.import __link_log_banner
+.import __link_strcmp
 
 .scope link
 	init                     = __link_init
 	link                     = __link_link
+	log_msg                  = __link_log_msg
+	log_banner               = __link_log_banner
+	strcmp                   = __link_strcmp
 	objfiles                 = __link_objfiles
 	parse                    = __link_parse
 	fragment                 = __link_fragment
@@ -24,4 +33,5 @@
 	segaddr_by_id            = __link_segaddr_by_id
 	segid_by_name            = __link_get_segment_by_name
 	set_segtype              = __link_set_segment_type
+	update_progress          = __link_update_progress
 .endscope

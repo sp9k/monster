@@ -63,7 +63,6 @@
 .include "file.inc"
 .include "kernal.inc"
 .include "labels.inc"
-.include "log.inc"
 .include "limits.inc"
 .include "linker.inc"
 .include "macros.inc"
@@ -1448,7 +1447,8 @@ __obj_split_fragment:
 	sta @remaining
 	lda segments_relocsizehi,x
 	sta @remaining+1
-@next:	lda @remaining
+@next:	jsr link::update_progress
+	lda @remaining
 	ora @remaining+1
 	jeq @done
 	lda @remaining+1
@@ -1756,6 +1756,7 @@ __obj_get_fragment_run:
 	sta @i
 
 @load_segments:
+	jsr link::update_progress
 	ldy #$00
 @segname:
 	; read the SEGMENT name
@@ -1864,7 +1865,7 @@ __obj_get_fragment_run:
 @i=zp::tmp10
 @namebuff=$100
 	jsr load_info
-	bcs @ret
+	jcs @ret
 
 ; add the IMPORTS to the global symbol table (as placeholders if the
 ; symbols are not yet defined)
@@ -1875,6 +1876,7 @@ __obj_get_fragment_run:
 	beq @exports
 
 @import_loop:
+	jsr link::update_progress
 	jsr load_import
 	bcs @ret
 
@@ -1894,6 +1896,7 @@ __obj_get_fragment_run:
 	beq @locals
 
 @export_loop:
+	jsr link::update_progress
 	jsr load_export
 	bcs @ret
 
@@ -1922,6 +1925,7 @@ __obj_get_fragment_run:
 	ldxy numlocals
 	stxy @i			; 16-bit counter for LOCALs
 @local_loop:
+	jsr link::update_progress
 	iszero @i
 	beq @locals_done
 	jsr load_local
@@ -2214,6 +2218,7 @@ __obj_get_fragment_run:
 	sta @i
 	sta @i+1
 @load_imports:
+	jsr link::update_progress
 	; get the name of a symbol
 	ldy #$00
 :	jsr krn::chrin
@@ -2263,6 +2268,7 @@ __obj_get_fragment_run:
 	beq @locals
 
 @skip_export:
+	jsr link::update_progress
 	jsr @eat_symbol		; skip name, segment id, and offset
 	inc @i
 	lda @i
@@ -2273,6 +2279,7 @@ __obj_get_fragment_run:
 	ldxy numlocals
 	stxy @i			; 16-bit counter for LOCALs
 @skip_local:
+	jsr link::update_progress
 	iszero @i
 	beq @load_segments
 	jsr @eat_symbol		; skip name, segment id, and offset
@@ -2290,6 +2297,7 @@ __obj_get_fragment_run:
 	jeq @dbginfo		; no segments; continue to the debug info
 
 @load_segment:
+	jsr link::update_progress
 	ldx seg_idx
 	lda __obj_fragment_ids,x
 	jsr link::pad_fragment
@@ -2310,14 +2318,14 @@ __obj_get_fragment_run:
 	inx				; +1 (SEGMENTs are 1-based)
 	txa
 	jsr __obj_get_segment_name_by_id
-	jsr log_msg
+	jsr link::log_msg
 
 	pla
 	pha
 	jsr is_bss
 	bne :+
 	ldxy #@reloc_na
-	jsr log_msg
+	jsr link::log_msg
 	jmp @obj
 
 :	jsr krn::chrin
@@ -2329,7 +2337,7 @@ __obj_get_fragment_run:
 	sta segments_relocsizehi,y	; get relocation table size MSB
 
 	ldxy #@reloc_log
-	jsr log_msg
+	jsr link::log_msg
 
 @obj:	; get the address to write the object code to
 	ldx seg_idx
@@ -2353,7 +2361,7 @@ __obj_get_fragment_run:
 	lda @seg+1
 	pha
 	ldxy #@obj_log
-	jsr log_msg
+	jsr link::log_msg
 
 	; check segment TYPE, if it is BSS, no obj/relocation code to load
 	pla			; restore TYPE byte
@@ -2365,6 +2373,7 @@ __obj_get_fragment_run:
 	beq @reltab
 
 @objcode:
+	jsr link::update_progress
 	; finally, load the object code for the segment to vmem
 	jsr krn::chrin
 	ldxy @seg		; address to store to
@@ -2483,7 +2492,7 @@ __obj_get_fragment_run:
 	sta @latest
 	cmp numsegments
 	beq @end
-@loop:	jsr strcmp
+@loop:	jsr link::strcmp
 	bne @next
 	lda @cnt
 	clc
@@ -2510,29 +2519,6 @@ __obj_get_fragment_run:
 .endproc
 
 ;*******************************************************************************
-; STRCMP
-; Compares the strings in (zp::str0) and (zp::str2) up to a length of .A
-; IN:
-;  zp::str0: one of the strings to compare
-;  zp::str1: the other string to compare
-; OUT:
-;  .Z: set if the strings are equal
-.proc strcmp
-	ldy #$00
-@l0:	lda (zp::str0),y
-	beq :+
-	jsr is_ws
-	beq :+
-	cmp (zp::str2),y
-	bne @ret
-	iny
-	bne @l0
-
-:	lda (zp::str2),y	; make sure strings terminate at same index
-@ret:	rts
-.endproc
-
-;*******************************************************************************
 ; VMEM LOAD
 ; Calls vmem::load
 .proc vmem_load
@@ -2545,10 +2531,6 @@ __obj_get_fragment_run:
 .proc vmem_store
 	JUMPMAIN vmem::store
 .endproc
-
-;*******************************************************************************
-; INLINE HELPERS
-inline_proc is_ws, util::is_whitespace
 
 ;*******************************************************************************
 ; IS BSS
@@ -2609,10 +2591,10 @@ inline_proc is_ws, util::is_whitespace
 	bne @cont
 	rts
 
-@cont:	jsr log_banner
+@cont:	jsr link::log_banner
 	ldxy #@segments
-	jsr log_msg
-	jsr log_banner
+	jsr link::log_msg
+	jsr link::log_banner
 
 	lda #$00
 	sta @numrel
@@ -2632,7 +2614,7 @@ inline_proc is_ws, util::is_whitespace
 
 	; output all absolute segments
 	ldxy #@abs_title
-	jsr log_msg
+	jsr link::log_msg
 
 	lda #$00
 	sta @i
@@ -2655,7 +2637,7 @@ inline_proc is_ws, util::is_whitespace
 	lda segments_starthi,x
 	pha
 	ldxy #@abs_seg
-	jsr log_msg		; write segment range to log
+	jsr link::log_msg		; write segment range to log
 
 :	inc @i
 	lda @i
@@ -2667,7 +2649,7 @@ inline_proc is_ws, util::is_whitespace
 
 	; output all REL segments
 	ldxy #@rel_title
-	jsr log_msg
+	jsr link::log_msg
 
 	lda #$00
 	sta @i
@@ -2703,7 +2685,7 @@ inline_proc is_ws, util::is_whitespace
 	pha
 
 	ldxy #@rel_seg
-	jsr log_msg		; write section range to log
+	jsr link::log_msg		; write section range to log
 
 @next:	inc @i
 	lda @i
@@ -2731,32 +2713,32 @@ inline_proc is_ws, util::is_whitespace
 ; Logs the number of LOCAL, IMPORT, and EXPORT symbols in the active object
 ; state.
 .proc log_symbols
-	jsr log_banner
+	jsr link::log_banner
 	ldxy #@symbols
-	jsr log_msg
-	jsr log_banner
+	jsr link::log_msg
+	jsr link::log_banner
 
 	lda numlocals
 	pha
 	lda numlocals+1
 	pha
 	ldxy #@locals
-	jsr log_msg
+	jsr link::log_msg
 
 	lda numimports
 	pha
 	lda numimports+1
 	pha
 	ldxy #@imports
-	jsr log_msg
+	jsr link::log_msg
 
 	lda numexports
 	pha
 	lda #$00
 	pha
 	ldxy #@exports
-	jsr log_msg
-	jmp log_banner
+	jsr link::log_msg
+	jmp link::log_banner
 
 ;-------------------------------------------------------------------------------
 @symbols:
@@ -2769,46 +2751,4 @@ inline_proc is_ws, util::is_whitespace
 @locals:  .byte "locals:  ", ESCAPE_VALUE_DEC,0
 @imports: .byte "imports: ", ESCAPE_VALUE_DEC,0
 @exports: .byte "exports: ", ESCAPE_VALUE_DEC,0
-.endproc
-
-;*******************************************************************************
-; LOG BANNER
-; Logs a '*' banner
-.proc log_banner
-	JUMPMAIN log::banner
-.endproc
-
-;*******************************************************************************
-; LOG MSG
-; Copies the provided string to shared RAM and logs it
-; IN:
-;   - .XY: address of string to log
-.proc log_msg
-@ret=r4
-@str=r4
-@buff=$100
-	stxy @str
-
-	; copy the string to RAM
-	ldy #$ff
-:	iny
-	lda (@str),y
-	sta @buff,y
-	cmp #$00
-	bne :-
-
-	pla
-	sta @ret
-	pla
-	sta @ret+1
-
-	ldxy #@buff
-	RENDER_STR			; render the string
-	CALLMAIN log::out		; and log it
-
-	lda @ret+1
-	pha
-	lda @ret
-	pha
-	rts
 .endproc

@@ -1656,12 +1656,12 @@ getline:
 	ldxy navpos
 	CALLMAIN src::goto
 	lda navdest
-	CALLMAIN src::setbuff
+	CALLMAIN src::forceset
 	CALLMAIN src::popgoto
 	CALLMAIN text::restorebuff
-	plp			; restore the syntax result
+	plp				; restore the syntax result
 
-	lda livechanged		; .C is untouched by LDA
+	lda livechanged			; .C is untouched by LDA
 	beq @done
 	bcc @valid
 	jmp show

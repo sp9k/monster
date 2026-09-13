@@ -6060,7 +6060,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 
 ;*******************************************************************************
 ; UPDATE PROGRESS
-; Called per instruction during assembly or <TODO> during linking
+; Called per instruction during assembly and as work advances during linking
 .export __edit_update_progress
 .proc __edit_update_progress
 .if .defined(vic20) .and .defined(soft4x8)

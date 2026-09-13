@@ -9,6 +9,7 @@
 .include "asm.inc"
 .include "config.inc"
 .include "debuginfo.inc"
+.include "edit.inc"
 .include "errors.inc"
 .include "file.inc"
 .include "kernal.inc"
@@ -185,7 +186,7 @@ segments_runaddrhi: .res MAX_SEGMENTS
 
 segment_names: .res MAX_SEGMENT_NAME_LEN*MAX_SEGMENTS
 
-; Absolute SEGMENT ranges collected from object headers.  Each record is
+; absolute SEGMENT ranges collected from object headers.  Each record is
 ; start, stop (two little-endian words).  The maximum follows from the object
 ; and per-object SEGMENT limits.
 absolute_ranges: .res MAX_OBJS*MAX_SEGMENTS*4
@@ -335,6 +336,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	ldxy #@filebuff
 	stxy @buff
 @readfile:
+	jsr update_progress
 	ldxy @buff
 	cmpw #@filebuff_end		; is the buffer full?
 	bcs @toobig
@@ -966,7 +968,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	sta @i
 	sta @i+1
 
-@l0:	ldxy @i
+@l0:	jsr update_progress
+	ldxy @i
 	CALLMAIN lbl::getsegment		; get segment ID
 	cmp #SEG_UNDEF				; is segment UNDEFINED?
 	beq @err				; if so, error
@@ -997,7 +1000,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	sta @i
 	sta @i+1
 
-@l0:	ldxy @i
+@l0:
+	jsr update_progress
+	ldxy @i
 	CALLMAIN lbl::getsegment	; get the label's segment ID
 	cmp #SEG_UNDEF			; undefined? (import nobody exported)
 	beq @next			; leave it (caught by validation later)
@@ -1077,6 +1082,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ;-------------------------------------------------------------------------------
 ; set LOAD and RUN addresses for SEGMENT by looking up current cursor values
 @segment:
+	jsr update_progress
 	ldx @seg
 	cpx numsegments
 	jcs @validate
@@ -1135,6 +1141,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 ;-------------------------------------------------------------------------------
 @fragment:
+	jsr update_progress
 	ldx @frag
 	cpx num_fragments
 	jcs @finish
@@ -1274,7 +1281,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 @cursor = r2
 @fill   = rd
 
-@loop:	lda @cursor
+@loop:
+	jsr update_progress
+	lda @cursor
 	cmp @stop
 	lda @cursor+1
 	sbc @stop+1
@@ -1288,6 +1297,27 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	jmp @loop
 
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; UPDATE PROGRESS
+; Calls the editor's UPDATE PROGRESS routine to indicate that the linker
+; is still working.
+.export __link_update_progress
+__link_update_progress:
+.proc update_progress
+	lda r0
+	pha
+	lda r1
+	pha
+
+	CALL FINAL_BANK_EDIT, edit::update_progress
+
+	pla
+	sta r1
+	pla
+	sta r0
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1487,6 +1517,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	sta asm::top+1
 
 @fill:	; stop when fill pointer reaches the SECTION's END
+	jsr update_progress
 	ldx @section
 	lda @addr
 	cmp sections_stoplo,x
@@ -1736,6 +1767,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	jsr log_banner
 
 @pass1: ; log the filename being assembled
+	jsr update_progress
 	ldxy @objfile
 	CALLMAIN log::out
 
@@ -1817,7 +1849,8 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ; PASS2
 ; iterate over each object file again, but this time link it to to produce the
 ; final binary.
-@pass2: ldxy @objfile
+@pass2: jsr update_progress
+	ldxy @objfile
 	CALLMAIN log::out
 
 	ldxy @objfile
@@ -2469,6 +2502,8 @@ __link_get_segment_by_name:
 ;  zp::str2: the other string to compare
 ; OUT:
 ;  .Z: set if the strings are equal
+.export __link_strcmp
+__link_strcmp:
 .proc strcmp
 	ldy #$00
 @l0:	lda (zp::str0),y
@@ -2584,6 +2619,7 @@ __link_get_segment_by_name:
 	sta @i
 
 @segloop:
+	jsr update_progress
 	ldy #$00
 :	lda (@name),y
 	beq :+
@@ -2667,6 +2703,7 @@ __link_get_segment_by_name:
 	beq @done
 
 @symloop:
+	jsr update_progress
 	ldxy #@symbuff
 	stxy r0
 	ldxy @i
@@ -2738,7 +2775,8 @@ __link_get_segment_by_name:
 	lda #$00
 	sta @i
 
-@l0:	ldx @i
+@l0:	jsr update_progress
+	ldx @i
 	; skip empty segments (they can't overlap anything)
 	lda segments_sizelo,x
 	ora segments_sizehi,x
@@ -2793,6 +2831,7 @@ __link_get_segment_by_name:
 	ldxy #absolute_ranges
 	stxy @ptr
 @absolute_loop:
+	jsr update_progress
 	ldxy @ptr
 	cmpw absolute_end
 	beq @ok
@@ -2975,6 +3014,8 @@ __link_get_segment_by_name:
 ; Copies the provided string to shared RAM and logs it
 ; IN:
 ;   - .XY: address of string to log
+.export __link_log_msg
+__link_log_msg:
 .proc log_msg
 @ret=r4
 @str=r4
@@ -2996,18 +3037,18 @@ __link_get_segment_by_name:
 
 	ldxy #@buff
 	RENDER_STR			; render the string
-	CALLMAIN log::out		; and log it
-
 	lda @ret+1
 	pha
 	lda @ret
 	pha
-	rts
+	JUMPMAIN log::out
 .endproc
 
 ;*******************************************************************************
 ; LOG BANNER
 ; Logs a '*' banner
+.export __link_log_banner
+__link_log_banner:
 .proc log_banner
 	JUMPMAIN log::banner
 .endproc
