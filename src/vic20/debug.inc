@@ -60,8 +60,9 @@
 	sta $9122		; VIA2 DDRB: all outputs (keyboard columns)
 	lda #$fe
 	sta $911c		; VIA1 PCR: cassette motor off, CA1 neg. edge
-	lda #$de
-	sta $912c		; VIA2 PCR: serial CLK/DATA out released
+
+	lda #$dc
+	sta $912c		; VIA2 PCR: release serial CLK/DATA
 .endmacro
 
 ;*******************************************************************************

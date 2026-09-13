@@ -6698,6 +6698,8 @@ rw_commands:
 ; commands below this work will work while in "readonly" mode (debugger)
 num_rw_commands=*-rw_commands
 
+;-------------------------------------------------------------------------------
+; these commands are handled in RO/RW modes
 ro_commands:
 	.byte K_DIR		; - (show directory)
 	.byte $68		; h (left)
@@ -6726,6 +6728,7 @@ ro_commands:
 	.byte K_HELP		; ? (help)
 numcommands=*-commands
 
+;-------------------------------------------------------------------------------
 ; command tables for COMMAND mode key commands
 .linecont +
 .define cmd_vecs \
