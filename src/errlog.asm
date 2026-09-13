@@ -95,6 +95,7 @@ navrow:              .byte 0
 navkey:              .byte 0 ; the key before_key is deciding about
 navdest:             .byte 0 ; buffer after_key must return the editor to
 livechanged:         .byte 0
+newlinemode:         .byte 0 ; last RETURN insertion, for validation rollback
 insertmode:          .byte 0 ; scoped to the editor's blank-line insertion
 deletemode:          .byte 0 ; scoped to the editor's whole-line deletion
 
@@ -262,8 +263,10 @@ CUR_BANK .set FINAL_BANK_MAIN
 .export __errlog_dismiss
 .export __errlog_undismiss
 .export __errlog_inserted
+.export __errlog_newline
+.export __errlog_cancel_newline
 .export __errlog_insertion_mode
-.export __errlog_get_curent
+.export __errlog_get_current
 .export __errlog_set_live
 
 .ifdef ultimem
@@ -282,8 +285,10 @@ __errlog_reset:         JUMP ERRLOG_BANK, reset
 __errlog_log:           JUMP ERRLOG_BANK, logerr
 __errlog_next:          JUMP ERRLOG_BANK, next
 __errlog_set_live:       JUMP ERRLOG_BANK, set_live
-__errlog_get_curent:    JUMP ERRLOG_BANK, get_curent
+__errlog_get_current:    JUMP ERRLOG_BANK, get_current
 __errlog_inserted:      JUMP ERRLOG_BANK, inserted
+__errlog_newline:       JUMP ERRLOG_BANK, newline
+__errlog_cancel_newline: JUMP ERRLOG_BANK, cancel_newline
 __errlog_insertion_mode: JUMP ERRLOG_BANK, insertion_mode
 __errlog_deleted:       JUMP ERRLOG_BANK, deleted
 __errlog_delete_linebreak: JUMP ERRLOG_BANK, delete_linebreak
@@ -304,8 +309,10 @@ __errlog_reset          = reset
 __errlog_log            = logerr
 __errlog_next           = next
 __errlog_set_live        = set_live
-__errlog_get_curent     = get_curent
+__errlog_get_current     = get_current
 __errlog_inserted       = inserted
+__errlog_newline        = newline
+__errlog_cancel_newline = cancel_newline
 __errlog_insertion_mode = insertion_mode
 __errlog_deleted        = deleted
 __errlog_delete_linebreak = delete_linebreak
@@ -719,12 +726,12 @@ getline:
 ; Query mapped errors at the current source line, including unnamed buffers.
 ; IN:
 ;  - src::activebuff: the buffer to check
-;  - src::line: the source line to check
+;  - src::line:       the source line to check
 ; OUT:
 ;  - .A: error code (if one exists)
 ;  - .X: index of the error (if one exists)
 ;  - .C: set if the line has no mapped error
-.proc get_curent
+.proc get_current
 	jsr current_owners
 	ldx numerrs
 	beq @missing
@@ -936,7 +943,7 @@ getline:
 ;  - src::activebuff: the buffer containing the mapped errors
 ;  - src::line: the source line whose mapped errors to dismiss
 .proc dismiss_current
-@loop:	jsr get_curent
+@loop:	jsr get_current
 	bcs @done
 	jsr dismiss_selected
 	bcc @loop
@@ -1044,6 +1051,83 @@ getline:
 ;  - .A: SPLIT_LINE, BLANK_ABOVE, or BLANK_BELOW
 .proc insertion_mode
 	sta insertmode
+	rts
+.endproc
+
+;*******************************************************************************
+; NEWLINE
+; Inserts a newline and preserves the original one
+; RETURN preserves the original line when it only opens a blank line above
+; or below it. Splitting actual text still invalidates the split line.
+; IN:
+;  - mem::linebuffer and the editor cursor: current line and insertion point
+.proc newline
+@clear: jsr get_current
+	bcs @classify		; if no error on line, continue
+	jsr remove		; remove error for the line
+	jmp @clear		; repeat til all errors are removed
+
+@classify:
+	CALLMAIN text::char_index
+	cmp #$00			; was last char read a 0?
+	beq @below			; if last char read was 0 -> end of line
+
+	; find first non-whitespace char
+@prefix:
+	cpy #$00
+	beq @above		; only whitespace before cursor: shift down
+	dey
+	lda mem::linebuffer,y
+	cmp #' '
+	beq @prefix		; eat whitespace
+	cmp #$09
+	beq @prefix		; eat whitespace
+	lda #SPLIT_LINE
+	beq @insert		; branch always
+
+@above: lda #BLANK_ABOVE	; newline is at beginning of line
+	skw
+@below: lda #BLANK_BELOW	; newline is at end of line
+@insert:
+	sta newlinemode
+	sta insertmode
+	lda #$0d
+	CALLMAIN src::insert	; insert the newline character
+
+	; reset the insertmode for the newline
+	lda #SPLIT_LINE
+	sta insertmode
+
+	; did we insert at start of line?
+	lda newlinemode
+	cmp #BLANK_ABOVE
+	bne @done
+	lda zp::curx
+	bne @done
+
+	; newline at start of line, clear its contents
+	ldx zp::cury
+	sta mem::breakpoint_rows,x	; clear breakpoint in cleared row
+	CALLMAIN draw::resetline
+	lda zp::cury
+	CALLMAIN scr::clrline		; physically clear it to
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; CANCEL NEWLINE
+; Called if validation fails to undo a newline that was inserted.
+.proc cancel_newline
+	lda #JOIN_LINES
+	ldx newlinemode
+	cpx #BLANK_BELOW		; was newline applied at end of line?
+	bne :+
+	lda #ERRLOG_DELETE_BELOW	; set mode to preserve breakpoint
+:	sta deletemode
+
+	CALLMAIN src::backspace		; delete newline
+	lda #JOIN_LINES
+	sta deletemode			; reset deletemode
 	rts
 .endproc
 

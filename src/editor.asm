@@ -359,7 +359,7 @@ main:	jsr key::getui
 ; Called when a line is navigated to
 .proc line_navigated
 	jsr clear_message
-	jsr errlog::get_curent		; .C clear if an error is on this line
+	jsr errlog::get_current		; .C clear if an error is on this line
 	bcs @done
 	jsr err::get			; .A=code -> .XY=message
 	jsr text::info
@@ -4205,8 +4205,7 @@ goto_buffer:
 	bne :+
 	jmp begin_next_line	; if READONLY, just go down a line
 
-:	lda #$0d
-	jsr src::insert
+:	jsr errlog::newline	; create a newline and sync errors/breakpoints
 
 	; save the character at the location we're terminating in case we need
 	; to undo this operation
@@ -4253,7 +4252,7 @@ goto_buffer:
 	txa
 	pha			; save error
 	jsr print_current_line
-	jsr src::backspace	; delete the newline that was added
+	jsr errlog::cancel_newline ; delete the newline that was added
 
 	; Joining invalidates the temporary mapped error. Restore the prefix's
 	; result without checking the suffix that the user has not finished.
@@ -5362,7 +5361,7 @@ goto_buffer:
 	sta mem::breakpoint_rows,x
 
 	; if there's an error on this line, color the row
-	jsr errlog::get_curent
+	jsr errlog::get_current
 	bcs @noerr			; no error on this line
 	pla
 	tax				; .X = row

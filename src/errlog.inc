@@ -11,8 +11,10 @@
 .import __errlog_dismiss
 .import __errlog_undismiss
 .import __errlog_getbyline
-.import __errlog_get_curent
+.import __errlog_get_current
 .import __errlog_inserted
+.import __errlog_newline
+.import __errlog_cancel_newline
 .import __errlog_insertion_mode
 .import __errlog_log
 .import __errlog_next
@@ -54,8 +56,10 @@
 	dismiss        = __errlog_dismiss
 	undismiss      = __errlog_undismiss
 	getbyline      = __errlog_getbyline
-	get_curent     = __errlog_get_curent
+	get_current     = __errlog_get_current
 	inserted       = __errlog_inserted
+	newline        = __errlog_newline
+	cancel_newline = __errlog_cancel_newline
 	insertion_mode = __errlog_insertion_mode
 	log            = __errlog_log
 	next           = __errlog_next
