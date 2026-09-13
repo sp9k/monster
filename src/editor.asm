@@ -890,14 +890,12 @@ main:	jsr key::getui
 @success:
 	; write object state to log
 	CALL FINAL_BANK_LINKER, obj::log_state
+	CALLMAIN lbl::index	; index labels for debugging, etc.
 
 	ldxy #@success_msg
 
 @print: RENDER_STR		; .XY = rendered string
 	jsr alert::show		; display result in a popup modal
-
-	CALLMAIN lbl::index		; index labels for debugging, etc.
-
 	jsr log::close
 	RETURN_OK
 
