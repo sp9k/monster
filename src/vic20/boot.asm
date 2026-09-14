@@ -223,7 +223,6 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 	sei
 
 	; clear row colors
-	lda #DEFAULT_900F
 	ldx #24-1
 :	lda #DEFAULT_900F
 	sta mem::rowcolors,x
@@ -298,11 +297,15 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 	jmp @init
 
 @restore:
+	jsr recover_zp
 	jsr scr::clrcolor
 	jmp @enter
 .endif
 
-@init:	jsr src::init
+@init:
+	lda #$00
+	sta dbg::user_program_active
+	jsr src::init
 	jsr src::new
 	jsr dbgi::initonce
 	jsr asm::reset
@@ -358,3 +361,30 @@ recover_reset:
 	.byte RECOVER_MSG, 0
 .POPSEG
 .endif
+
+
+.CODE
+;*******************************************************************************
+; RECOVER ZP
+; Determines if the recovery process needs to restore the zeropage state from
+; the saved copy (if the user program was running) and does so if required.
+.proc recover_zp
+	lda dbg::user_program_active
+	beq @done 
+
+	; RESET occurred while user progream was running, restore the
+	; debugger's ZP
+	sei
+	jsr dbg::restore_debug_zp
+
+	lda #$00
+	sta zp::banksp
+	sta zp::numfiles
+	sta $c6
+	lda #DEFAULT_DEVICE
+	sta zp::device
+	lda #MODE_COMMAND
+	sta zp::editor_mode
+
+@done:	rts
+.endproc

@@ -26,6 +26,7 @@
 .import __debug_restore_debug_low
 .import __debug_restore_debug_zp
 .import __debug_restore_user_zp
+.import __debug_user_program_active
 .import __debug_save_debug_zp
 .import __debug_save_user_zp
 .import __debug_setbreakpoint
@@ -69,6 +70,7 @@
 	restore_debug_low    = __debug_restore_debug_low
 	restore_debug_zp     = __debug_restore_debug_zp
 	restore_user_zp      = __debug_restore_user_zp
+	user_program_active  = __debug_user_program_active
 	save_debug_zp        = __debug_save_debug_zp
 	save_user_zp         = __debug_save_user_zp
 	start                = __debug_start

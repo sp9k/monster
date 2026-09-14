@@ -126,6 +126,9 @@ breakpoints_active: .byte 0	; if !0 breakpoints are installed
 .segment "BSS_NOINIT"
 .export progvecs
 progvecs: .res DBGVECS_SIZE
+
+.export __debug_user_program_active
+__debug_user_program_active: .byte 0
 .POPSEG
 
 show_extended_state: .byte 0	; if !0, show extra info about machine state
@@ -1217,6 +1220,9 @@ __debug_step:
 @ret=mem::sparevec
 	stxy @ret
 
+	lda #$01
+	sta __debug_user_program_active
+
 .ifdef ultimem
 @BLK5_OFFSET=$a000-$2000
 	; bank in the area containing prog00
@@ -1280,6 +1286,9 @@ __debug_step:
 	sta $00,x
 	dex
 	bne :-
+
+	lda #$00
+	sta __debug_user_program_active
 
 .ifdef ultimem
 	; reset BLK5 RAM area

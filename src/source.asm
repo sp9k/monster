@@ -1029,17 +1029,6 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .endproc
 
 ;*******************************************************************************
-; GAPLEN
-; Returns the length of the gap
-; OUT:
-;  - .XY: the length of the gap
-.proc gaplen
-	ldxy poststartzp
-	sub16 cursorzp
-	rts
-.endproc
-
-;*******************************************************************************
 ; BEFORE_NEWL
 ; Checks if src::after_cursor is a newline ($0d) or if the cursor is at the end
 ; of the buffer.

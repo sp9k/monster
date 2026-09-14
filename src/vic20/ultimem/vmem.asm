@@ -231,40 +231,10 @@ BASE=$2000
 ;   - .C: set if the address is NOT writable
 .export __vmem_writable
 .proc __vmem_writable
-	cpy #$80
-	bcc @done	; [$00, $8000) -> writable
-	cpy #$c0
-	bcs @done	; [$c000, $ffff) -> not writable
 	cpy #$a0
-	bcs @writable
-	sec		; [$8000, $a000) -> not writable
+	bcs @high
+	cpy #$80	; below $a000: only [$00, $8000) is writable
 	rts
-@writable:
-	clc
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; IS INTERNAL ADDRESS
-; Returns with .Z set if the given address is outside of the address ranges
-; [$2000,$8000] or [$a000,$ffff]
-;
-; IN:
-;  - .XY: the address to test
-; OUT:
-;  - .Z: set if the address in [$00,$2000] or [$8000,$a000]
-.export is_internal_address
-.proc is_internal_address
-	cpy #$20
-	bcc @internal
-	cpy #$80
-	bcc @external
-	cmpw #$9500
-	bcc @internal
-@external:
-	lda #$ff
-	rts
-@internal:
-	lda #$00
+@high:	cpy #$c0	; at/above $a000: only [$a000, $c000) is writable
 	rts
 .endproc
