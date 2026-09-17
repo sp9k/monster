@@ -72,7 +72,7 @@ io_output_dev   = $9a	; output device #
 
 bank      = $9b 	; bank to operate on for some ram:: routines
 banktmp   = bank+1	; bank temp/arg storage for ram:: routines
-bankstack = banktmp+3	; small call stack for ram::call (bank bytes only)
+; $9f-$a5: used by JiffYDOS
 
 bankoffset = $a6	; offset for relative reads/writes
 bankaddr0  = $a7

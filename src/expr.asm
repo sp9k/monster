@@ -52,7 +52,7 @@ PC_SYMBOL_ID   = $ffff	; magic value for '*' (in eval result)
 VAL_ABS   = 0
 VAL_REL   = 1
 VAL_FLOAT = 2
-VAL_DIFF  = 3
+VAL_DIFF  = 3	; base - base + constant
 
 ;*******************************************************************************
 ; How the evaluator finishes a result.  By default an expression must reduce to
@@ -106,6 +106,10 @@ __expr_segment: .byte 0
 .export __expr_symbol
 __expr_symbol: .word 0
 
+; negative base for VAL_DIFF: fragment ID, or label ID with bit 15 set.
+.export __expr_negative
+__expr_negative: .word 0
+
 .export __expr_postproc
 __expr_postproc: .byte 0
 
@@ -130,13 +134,15 @@ __expr_floatstr: .res 24
 ;   +2 kind        +3 segment ID
 ;   +4 symbol LSB  +5 symbol MSB
 ;   +6 postproc
-;   +7 float value (only if kind is VAL_FLOAT)
+;   +7 negative base LSB  +8 negative base MSB (VAL_DIFF only)
+;   +9 float value (only if kind is VAL_FLOAT)
 .if FP_SUPPORTED
-OPERAND_SIZE = 7+FP_SIZE
+OPERAND_SIZE = 9+FP_SIZE
 .else
-OPERAND_SIZE = 7
+OPERAND_SIZE = 9
 .endif
 operands: .res $100
+
 
 .if FP_SUPPORTED
 ;*******************************************************************************
@@ -240,6 +246,8 @@ __expr_eval_bank:
 @val1        = m::dividend
 @val2        = m::divisor
 @result_size = zp::expr+6
+@negative  = zp::expr+10
+@negative2 = zp::expr+8
 @kind1       = r4
 @segment1    = r5
 @symbol1     = r6		; 2 bytes
@@ -290,7 +298,7 @@ __expr_eval_bank:
 	sta __expr_kind
 .if FP_SUPPORTED
 	cmp #VAL_FLOAT
-	beq @float_result
+	jeq @float_result
 .endif
 	cmp #VAL_ABS
 	bne @rel_result
@@ -310,6 +318,8 @@ __expr_eval_bank:
 	lda @kind
 	cmp #VAL_DIFF
 	bne :+
+	ldxy @negative
+	stxy __expr_negative
 	lda #$02
 	jmp @rel_done
 :
@@ -488,7 +498,7 @@ __expr_eval_bank:
 	jsr @pushval		; store value and metadata
 	jmp @evalloop		; continue processing
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; handle unary operator
 @eval_unary:
 	lda __expr_rpnlist,x	; get the operator
@@ -657,12 +667,16 @@ __expr_eval_bank:
 	sta @operands+5,x	; store symbol ID MSB
 	lda @postproc
 	sta @operands+6,x	; store postproc
+	lda @negative
+	sta @operands+7,x
+	lda @negative+1
+	sta @operands+8,x
 
 .if FP_SUPPORTED
 	; store the float value (only meaningful for VAL_FLOAT operands)
 	ldy #$00
 :	lda fbuff,y
-	sta @operands+7,x
+	sta @operands+9,x
 	inx
 	iny
 	cpy #FP_SIZE
@@ -677,7 +691,7 @@ __expr_eval_bank:
 	;clc
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; handle binary operator
 @eval_binary:
 	lda __expr_rpnlist,x	; get the operator
@@ -689,6 +703,8 @@ __expr_eval_bank:
 	jsr @popval
 	bcs @err
 	stxy @val2
+	ldxy @negative
+	stxy @negative2
 .if FP_SUPPORTED
 	ldy #FP_SIZE-1
 :	lda fbuff,y
@@ -993,7 +1009,7 @@ __expr_eval_bank:
 	; recover the packed float that travelled with this entry
 	ldx @sp
 	ldy #$00
-:	lda @operands+7,x
+:	lda @operands+9,x
 	sta fbuff,y
 	inx
 	iny
@@ -1012,13 +1028,17 @@ __expr_eval_bank:
 	sta @symbol+1
 	lda @operands+6,x	; get post processing
 	sta @postproc
+	lda @operands+7,x
+	sta @negative
+	lda @operands+8,x
+	sta @negative+1
 	ldy @operands+1,x	; get MSB
 	lda @operands,x		; and LSB
 	tax
 	clc			; ok
 	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; REDUCE OPERATION ADDITION
 ; Determines the @segment and @symbol for the two active operands
 ; Also validates that the combination of ABS/REL modes is valid
@@ -1037,6 +1057,8 @@ __expr_eval_bank:
 	RETURN_OK
 
 @add_a_abs_b_rel:
+	ldxy @negative2
+	stxy @negative
 	; A=ABS, B=REL, result is REL with b's symbol and segment
 	; (the shared vars hold A's metadata from the last pop, so ALL of
 	; kind/segment/symbol must be replaced with B's)
@@ -1068,7 +1090,7 @@ __expr_eval_bank:
 	sta @symbol+1
 :	RETURN_OK
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 ; REDUCE OPERATION SUBTRACTION
 ; Validates/reduces the segment/symbol/and kind for a subtraction operation
 ; Also validates that the combination of ABS/REL modes is valid
@@ -1110,10 +1132,10 @@ __expr_eval_bank:
 @sub_a_rel_b_rel:
 	lda @kind1
 	cmp #VAL_REL
-	bne @bad_difference
+	jne @bad_difference
 	lda @kind2
 	cmp #VAL_REL
-	bne @bad_difference
+	jne @bad_difference
 	; a post-processed ('<'/'>') value cannot take part in a symbol
 	; difference
 	lda @postproc
@@ -1127,10 +1149,10 @@ __expr_eval_bank:
 	; reduce (pass 2 revalidates with both symbols resolved)
 	lda @segment1
 	cmp #SEG_UNDEF
-	beq @unresolved_difference
+	beq @symbol_difference
 	lda @segment2
 	cmp #SEG_UNDEF
-	beq @unresolved_difference
+	beq @symbol_difference
 
 	; the difference of two symbols reduces to a constant if and only if
 	; they are in the same segment (the segment base cancels out)
@@ -1138,25 +1160,62 @@ __expr_eval_bank:
 	cmp @segment2
 	beq :+		; same segment -> reduce to ABS constant
 
-	; keep IDs for both FRAGMENT bases, final value fully resolved by linker
-	; @symbol contains the id of the FRAGMENT that will be subtracted
+	; both bases are known fragments. Their offsets are already in the
+	; numeric addend; only the bases remain for the linker to subtract.
+	jmp @defer_difference
+
+:	lda #VAL_ABS
+	sta @kind	; same fragment: the bases cancel
+	RETURN_OK
+
+@symbol_difference:
+	; make sure both symbols are resolved (will only succeed in pass 2)
+	lda @segment1
+	bne :+
+	ldxy @symbol1
+	cmpw #SYM_UNRESOLVED
+	beq @unresolved_difference	; symbol 1 unresolved -> can't defer
+
+:	lda @segment2
+	bne @defer_difference
+	ldxy @symbol2
+	cmpw #SYM_UNRESOLVED
+	beq @unresolved_difference	; both symbols unresolved -> can't defer
+
+@defer_difference:
+	lda @segment1
 	sta @segment
+	ldxy @symbol1
+	stxy @symbol
 	lda @segment2
-	sta @symbol
+	cmp #SEG_UNDEF
+	beq @negative_symbol
+
+	; subtracting local FRAGMENT
+	sta @negative			; @negative=fragment ID
 	lda #$00
-	sta @symbol+1	; fragment IDs are always <$100
+	sta @negative+1			; clear bit 15 (negative FRAGMENT)
+	beq @difference_done
+
+@negative_symbol:
+	lda @symbol2
+	sta @negative			; @negative=symbol ID
+	lda @symbol2+1
+	ora #$80			; set bit 15 (negative imported SYMBOL)
+	sta @negative+1
+
+@difference_done:
 	lda #VAL_DIFF
 	sta @kind
 	RETURN_OK
 
-:	lda #VAL_ABS
-	sta @kind	; set kind to absolute
-	RETURN_OK	; and we're done
-
 @unresolved_difference:
 	lda zp::pass
 	cmp #$01
-	beq :-		; pass 1 forward reference; revalidate on pass 2
+	jne @bad_difference
+	lda #VAL_ABS
+	sta @kind	; pass 1 forward reference; revalidate on pass 2
+	RETURN_OK
 @bad_difference:
 	sec
 	rts

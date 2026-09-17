@@ -19,12 +19,13 @@
 .import __expr_rpnlistlen
 .import __expr_segment
 .import __expr_symbol
+.import __expr_negative
 .import __expr_value
 
 VAL_ABS   = 0
 VAL_REL   = 1
 VAL_FLOAT = 2
-VAL_DIFF  = 3	; positive fragment - negative fragment + constant
+VAL_DIFF  = 3
 
 POSTPROC_NONE = 0
 POSTPROC_LSB  = 1
@@ -51,6 +52,7 @@ POSTPROC_MSB  = 2
 	rpnlistlen = __expr_rpnlistlen
 	segment    = __expr_segment
 	symbol     = __expr_symbol
+	negative   = __expr_negative
 	postproc   = __expr_postproc
 	value      = __expr_value
 .endscope

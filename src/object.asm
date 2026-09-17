@@ -43,8 +43,9 @@
 ;       bit 1:    fragment (else import)
 ;       bits 2-3: byte selection
 ;       bit 4:    PC-relative branch
-;       bit 5:    fragment difference
-;   If FLAGS & $3c: ADDEND HIGH[1]; if FLAGS & $20: NEGATIVE FRAGMENT[1].
+;       bit 5:    base difference
+;   If FLAGS & $3c: ADDEND HIGH[1]; if FLAGS & $20: NEGATIVE BASE ID[1].
+;   Bit 7 of NEGATIVE BASE ID selects an import; low 7 bits are its index.
 ;   The low addend is in OBJCODE; word operands also carry its high byte.
 ;   Branches subtract the final RUN address immediately after the operand.
 ;   A fragment target of SEG_ABS means a zero base (literal branch target).
@@ -736,7 +737,7 @@ __obj_split_fragment:
 ; mode       1   type of relocation: 1=section-relative, 0=symbol-relative
 ; postproc  2-3  post-processing (0=NONE, 1=LSB, 2=MSB)
 ; pcrel      4   subtract the RUN address after the branch operand
-; difference 5   subtract another fragment's RUN base
+; difference 5   subtract another base
 @encode_size:
 	lda expr::postproc
 	asl
@@ -826,7 +827,20 @@ __obj_split_fragment:
 	lda @sz
 	and #$20
 	beq @advance
-	lda expr::symbol	; negative fragment of a deferred difference
+	bit expr::negative+1
+	bpl @negative_fragment
+	ldx expr::negative
+	lda expr::negative+1
+	and #$7f
+	tay
+	jsr get_import_id
+	bcs @err
+	ldy #$06		; flags/offset/target/high addend precede it
+	ora #$80		; high bit distinguishes imports from fragments
+	bne @write_negative
+@negative_fragment:
+	lda expr::negative
+@write_negative:
 	STOREB_Y @rel
 	iny
 
@@ -1431,7 +1445,7 @@ __obj_split_fragment:
 .proc apply_relocation
 @negative_base = r0
 ; The loader has finished with its per-table scratch before calling here.
-; KERNAL input, checked_run_base, lbl::getaddr and vmem preserve r2-rf and
+; KERNAL input, get_fragment_run_base, lbl::getaddr and vmem preserve r2-rf and
 ; tmp10/tmp11; r0/r1 remain available to callees and the subtraction below.
 @record    = r2             ; r2-r6: flags, offset, target
 @remaining = r7             ; r7-r8
@@ -1475,17 +1489,13 @@ __obj_split_fragment:
 	and #$02
 	beq @symbol
 	lda @record+3
-	jsr checked_run_base
+	jsr get_fragment_run_base
 	jcs @bad
 	jmp @resolved
 @symbol:
 	ldx @record+3
-	cpx numimports
+	jsr get_import_address
 	jcs @bad
-	ldy import_label_idshi,x
-	lda import_label_idslo,x
-	tax
-	CALLMAIN lbl::getaddr
 @resolved:
 	stxy @value
 	lda @record
@@ -1493,8 +1503,22 @@ __obj_split_fragment:
 	beq @site
 	jsr krn::chrin
 	inc @length
-	jsr checked_run_base
+	tax
+	bpl @negative_fragment		; bit 7 clear -> subtract FRAGMENT base
+
+	; subtract import
+	and #$7f			; get IMPORT id
+	tax
+	jsr get_import_address
 	jcs @bad
+	jmp @subtract_base
+
+@negative_fragment:
+	jsr get_fragment_run_base
+	jcs @bad
+
+@subtract_base:
+	; subtract the resolved import or fragment-base
 	stxy @negative_base
 	lda @value
 	sec
@@ -1503,6 +1527,7 @@ __obj_split_fragment:
 	lda @value+1
 	sbc @negative_base+1
 	sta @value+1
+
 @site:	ldx @local
 	lda segments_startlo,x
 	clc
@@ -1520,7 +1545,8 @@ __obj_split_fragment:
 	adc @record+2
 	sta @runsite+1
 	jcs @bad
-	; Fetch both addend bytes before adding, so no call can disturb carry.
+
+	; get both addend bytes
 	lda @record
 	and #$01
 	beq @add
@@ -1530,6 +1556,7 @@ __obj_split_fragment:
 	iny
 :	jsr vmem_load
 	sta @addendhi
+
 @add:	ldxy @siteaddr
 	jsr vmem_load
 	clc
@@ -1617,6 +1644,27 @@ __obj_split_fragment:
 .endproc
 
 ;*******************************************************************************
+; GET IMPORT ADDRESS
+; Get an imported symbol's resolved address via its global label ID.
+; IN:
+;   - .X: zero-based object-local IMPORT index
+; OUT:
+;   - .XY: final symbol address (RUN address for relocatable labels), if valid
+;   - .C: clear on success, set on invalid IMPORT index
+.proc get_import_address
+	cpx numimports
+	bcs @bad
+	ldy import_label_idshi,x
+	lda import_label_idslo,x
+	tax
+	CALLMAIN lbl::getaddr
+	clc
+	rts
+@bad:	sec
+	rts
+.endproc
+
+;*******************************************************************************
 ; GET SEGMENT RUN BASE
 ; IN:
 ;  - .A: 1-based object local FRAGMENT ID
@@ -1633,14 +1681,14 @@ __obj_get_fragment_run:
 .endproc
 
 ;*******************************************************************************
-; CHECKED RUN BASE
+; GET FRAGMENT RUN BASE
 ; Translates the provided object-local FRAGMENT ID to its final RUN address
 ; IN:
-;   - .A: fragment ID
+;   - .A: 1-based object-local FRAGMENT ID (or SEG_ABS)
 ; OUT:
-;   - .XY: base of the SEGMENT
+;   - .XY: fragment's RUN base, or $0000 for SEG_ABS
 ;   - .C:  set on invalid fragment ID
-.proc checked_run_base
+.proc get_fragment_run_base
 	cmp #SEG_ABS
 	bne :+
 	ldxy #$0000		; absolute branch target (no extra offset)

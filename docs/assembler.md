@@ -103,6 +103,21 @@ prefixed with a '#' (e.g. `LDA #(2+4)`)
 
 Labels are supported in expressions and will evaluate to their address when assembled.
 
+When assembling to object files, the difference of two local labels, imported symbols, or one of each,
+can be used.  Differences that cannot be resolved during assembly are deferred for the linker.
+For example:
+
+```
+.import Sprites
+.import EndOfSprites
+.seg "CODE"
+    ldx #(EndOfSprites-Sprites)
+    .dw EndOfSprites-Sprites+4
+```
+
+The deferred difference may also have a constant offset (+ or -) and a byte-selector (`<` or `>`).
+An error will occur if the linker expects a byte operand, but the resolved value is >255 (e.g. `lda #(sprites_end-sprites)`)
+
 ````{example}
 ```
 lda #<LABEL1

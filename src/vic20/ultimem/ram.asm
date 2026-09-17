@@ -15,6 +15,9 @@
 .import __ram_src
 .import __ram_dst
 
+.segment "SHAREBSS"
+bankstack: .res 16
+
 .segment "BANKCODE"
 
 ;*******************************************************************************
@@ -229,7 +232,7 @@
 	lda __ultimem_bank	; get current bank
 	ldx zp::banksp
 	inc zp::banksp
-	sta zp::bankstack,x	; save current bank
+	sta bankstack,x		; save current bank
 	rts
 .endproc
 
@@ -240,6 +243,6 @@
 .proc __ultimem_pop_bank
 	dec zp::banksp
 	ldx zp::banksp
-	lda zp::bankstack,x		; get the caller's bank
+	lda bankstack,x			; get the caller's bank
 	jmp __ultimem_select_bank	; restore bank
 .endproc

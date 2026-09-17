@@ -238,7 +238,7 @@ The following table describes the relocation record format in detail.
 | offset            |  2   | offset from SEGMENT to relocate
 | symbol/segment id |  2   | the symbol index in the symbol table (for symbol-relative relocation) or segment for segment-relative
 | addend MSB*       |  1   | explicit MSB for post-processing, PC-relative branches, or differences
-| negative fragment* | 1  | fragment whose RUN base is subtracted for a difference
+| negative base*    |  1   | bit 7 defines meaning of bits 0-6: if clear: fragment ID; set: IMPORT index
 
 \* see details below for when this field is included
 
@@ -249,8 +249,8 @@ The following table describes the relocation record format in detail.
 | size       |   0    | size of target value to modify 0=1 byte, 1=2 bytes
 | mode       |   1    | base: 0=imported symbol, 1=object-local fragment
 | postproc   |  2-3   | post-processing to apply after adding addend (0=NONE, 1=LSB, 2=MSB)
-| PC-relative | 4    | subtract the RUN address after the branch operand; check signed byte range
-| difference | 5     | subtract the negative fragment's RUN base before adding the addend
+| PC-relative|   4    | if set, subtract the RUN address after the branch operand
+| difference |   5    | if set, subtract "negative base" before adding the addend
 
 To apply the relocation table for a SEGMENT, we walk the table, go to the address of that SEGMENT's
 base + the offset for each table entry, and depending on the value of "mode" in the "info" field:
@@ -258,7 +258,10 @@ base + the offset for each table entry, and depending on the value of "mode" in 
  - 0 (symbol relative): look up the imported symbol's final address.
  - 1 (fragment relative): look up the fragment's RUN base ($ff denotes a zero base for an absolute branch target).
 
-Subtract the negative fragment base if present, then add the addend. The site
+If the symbol has a negative base, we subtract it, following that the addend is added.
+Bit 7 of the "difference" byte specifies whether we're dealing with a FRAGMENT or IMPORT.
+The linker looks up the value for whichever it is and subtracts it to compute the difference.
+
 offset is relative to the containing fragment's LOAD base when patching bytes
 and its RUN base when calculating a branch displacement.
 
