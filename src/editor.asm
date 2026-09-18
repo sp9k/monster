@@ -5108,53 +5108,9 @@ goto_buffer:
 ;
 ; If the editor is not in visual mode, this routine does nothing
 .proc ccdown_highlight
-@togglecur=r7
-@tmp=r8
-	lda mode
-	cmp #MODE_VISUAL
-	bne @done
-
-	lda #$00
-	sta @togglecur
-
-	jsr cmp_vis_start
-	beq @eq
-	bcs @sel
-
-@desel:	; highlight from [cur-x, end-of-line]
-	jsr text::rendered_line_len
-	ldy zp::curx
-	jmp @rvs
-
-@sel:	; highlight from [0, cur-x]
-	inc @togglecur
-	ldx zp::curx
-	beq @toggle	; col 0: just toggle the cursor
-	tay		; .Y = 0
-	beq @rvs	; BRAnch always
-
-@eq:	; highlight between cur-x and visual-start-x
-	ldy zp::curx
-	cpy visual_start_x
-	beq @toggle
-	bcc :+
-
-	; swap .X and .Y
-	ldy visual_start_x
-	ldx zp::curx
-	inc @togglecur
-	bne @rvs
-
-:	ldx visual_start_x
-	inx
-
-@rvs:	lda zp::cury
-	jsr scr::rvsline_part
-	lda @togglecur
-	beq @done
-@toggle:
-	jsr cur::toggle
-@done:	RETURN_OK
+	; Both directions toggle the same span on the destination line. Only
+	; whether that span is being selected or deselected differs.
+	jmp ccup_highlight
 .endproc
 
 

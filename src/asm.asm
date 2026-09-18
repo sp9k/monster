@@ -792,24 +792,23 @@ BANKED_CODE "ASMBANK"
 
 	ldxy #asmbuffer
 	stxy zp::line
-	jsr str::toupper_unquoted	; uppercase all non-enquoted characters
-
 	jsr line::process_ws
 	beq noasm			; empty line -> done
+	cmp #';'
+	beq @checkifs
+	ldxy zp::line
+	jsr str::toupper_unquoted	; normalize syntax up to first comment
 
 ;-------------------------------------------------------------------------------
 ; check if we're in an .IF (FALSE) and if we are, return
 @checkifs:
 	lda zp::verify
 	bne assemble_with_ctx	; if verifying, .IF state is stale - ignore it
-	lda ifstacksp
-	beq assemble_with_ctx	; no active .IF
-	ldx #$00
-:	inx
-	lda ifstack-1,x
+	ldx ifstacksp
+:	dex
+	bmi assemble_with_ctx	; no active .IF, or all conditions were true
+	lda ifstack,x
 	beq @if_false
-	cpx ifstacksp
-	beq assemble_with_ctx
 	bne :-
 
 @if_false:
@@ -1900,16 +1899,14 @@ BANKED_CODE "ASMBANK"
 
 @search:
 	; read the opcode from line into a buffer
-	ldx #$02
-	dey			; .Y = 2
+	ldy #$02
 @l0:	lda (zp::line),y
-	sta @buff,x
+	sta @buff,y
 	dey
-	dex
 	bpl @l0
 	iny			; .Y = 0 (first opcode ID)
-	inx			; .X = 0 (first table offset)
 
+	ldx #$00
 @loop:	; does opcode match?
 	lda opcodes,x
 	cmp @buff+0

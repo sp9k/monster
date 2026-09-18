@@ -249,40 +249,31 @@
 .export __util_todec
 .proc __util_todec
 result=mem::spare
-	lda #'0'
-	sta result
-	sta result+1
-	sta result+2
-	sta result+3
-	sta result+4
-@l1000s:
-	sub16 #1000
-	bcc @do100s
-	inc result+1
-	lda result+1
-	cmp #'9'+1
-	bcc @l1000s
-	lda #'0'
-	sta result+1
-	inc result
-	bne @l1000s
+	stx result+5
+	ldx #$00
 
-@do100s:
-	add16 #1000
-@l100s:	sub16 #100
-	bcc @do10s
-	inc result+2
-	bne @l100s
-
-@do10s:	add16 #100
-@l10s:	sub16 #10
-	bcc @do1s
-	inc result+3
-	bne @l10s
-
-@do1s:	txa
+@digit: lda #'0'
+	sta result,x
+@subtract:
+	lda result+5
+	sec
+	sbc @powerslo,x
+	pha
+	tya
+	sbc @powershi,x
+	bcc @next
+	tay
+	pla
+	sta result+5
+	inc result,x
+	bne @subtract		; at most 9 subtractions per digit
+@next:	pla			; clean up
+	inx
+	cpx #4
+	bne @digit
+	lda result+5
 	clc
-	adc #10+'0'
+	adc #'0'
 	sta result+4
 
 ; skip leading zeroes
@@ -304,6 +295,11 @@ result=mem::spare
 	lda #$00
 	sta result,y
 	rts
+
+;-------------------------------------------------------------------------------
+@powerslo: .lobytes 10000, 1000, 100, 10
+@powershi: .hibytes 10000, 1000, 100, 10
+
 .endproc
 
 ;*******************************************************************************

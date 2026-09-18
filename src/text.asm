@@ -456,17 +456,11 @@ tempbuff: .res LINESIZE
 @esc_byte:
 	stx @savex
 	sty @savey
-
-	pla
-	jsr util::hextostr
-	txa
-	ldx @savex
-	pha
-	tya
-	jsr @appendch
-	pla
-	jsr @appendch
-	jmp @valdone
+@byte:	pla
+	jsr @hexbyte
+@valdone:
+	ldy @savey
+	jmp @cont
 
 ;-------------------------------------------------------------------------------
 @esc_value_dec:
@@ -494,19 +488,14 @@ tempbuff: .res LINESIZE
 @esc_value:
 	stx @savex
 	sty @savey
-
 	pla
-	jsr util::hextostr
-	txa
-	ldx @savex
-	pha
-	tya
-	jsr @appendch
-	pla
-	jsr @appendch
+	jsr @hexbyte
 	stx @savex
+	jmp @byte
 
-	pla
+;-------------------------------------------------------------------------------
+; append the byte in .A as two hex digits
+@hexbyte:
 	jsr util::hextostr
 	txa
 	ldx @savex
@@ -514,11 +503,7 @@ tempbuff: .res LINESIZE
 	tya
 	jsr @appendch
 	pla
-	jsr @appendch
-
-@valdone:
-	ldy @savey
-	jmp @cont
+	jmp @appendch
 
 ;-------------------------------------------------------------------------------
 @esc_string:

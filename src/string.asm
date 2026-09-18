@@ -173,8 +173,8 @@ SLASH = SPECIAL_CHARS_START+2
 ;*******************************************************************************
 ; TOUPPER UNQUOTED
 ; Uppercases the given string, but preserves double-quoted strings and
-; single-character literals.  Used in assembly so that include files, etc.
-; are not blindly uppercased.
+; single-character literals, and stops at an unquoted ';' comment. Used in
+; assembly so that include filenames, literal bytes, and comments keep case.
 ; IN:
 ;   - .XY = zero-terminated line
 ;  CLOBBERS:
@@ -189,6 +189,8 @@ SLASH = SPECIAL_CHARS_START+2
 	ldy #$00
 @loop:	lda (@str),y
 	beq @done
+	cmp #';'
+	beq @done		; if we hit a comment -> we're done
 	sta @quote
 	cmp #'"'
 	beq @string		; if ", continue to skip to its matching "
