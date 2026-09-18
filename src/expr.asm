@@ -246,8 +246,8 @@ __expr_eval_bank:
 @val1        = m::dividend
 @val2        = m::divisor
 @result_size = zp::expr+6
-@negative  = zp::expr+10
-@negative2 = zp::expr+8
+@negative    = zp::expr+10
+@negative2   = zp::expr+8
 @kind1       = r4
 @segment1    = r5
 @symbol1     = r6		; 2 bytes

@@ -1889,41 +1889,48 @@ BANKED_CODE "ASMBANK"
 ;   - .A: if line contains an opcode, the index of it in the assembler's table
 ;   - .C: set if the string is not an opcode
 .proc isopcode
-@optab = r0
-@op    = r2
-	ldxy #opcodes
-	stxy @optab
-	lda #$00
-	sta @op
-
-@l0:	ldy #$02
-@l1:	lda (zp::line),y
-	cmp (@optab),y
-	bne @next
-	dey
-	bpl @l1
-
-	; make sure there are no trailing characters
+@buff = r0
+	; sanity check that input is 3 characters (index 3 is a separator)
 	ldy #$03
 	lda (zp::line),y
 	jsr islineterminator_or_separator
-	beq @done
+	beq @search
 	jsr util::is_whitespace
 	bne @err
-@done:	lda @op
-	RETURN_OK
 
-@next:	lda @optab
-	clc
-	adc #$03
-	sta @optab
-	bcc :+
-	inc @optab+1
-:	inc @op
-	lda @op
-	cmp #NUM_OPCODES
-	bcc @l0
+@search:
+	; read the opcode from line into a buffer
+	ldx #$02
+	dey			; .Y = 2
+@l0:	lda (zp::line),y
+	sta @buff,x
+	dey
+	dex
+	bpl @l0
+	iny			; .Y = 0 (first opcode ID)
+	inx			; .X = 0 (first table offset)
+
+@loop:	; does opcode match?
+	lda opcodes,x
+	cmp @buff+0
+	bne @next
+	lda opcodes+1,x
+	cmp @buff+1
+	bne @next
+	lda opcodes+2,x
+	cmp @buff+2
+	beq @done		; match found -> done
+
+@next:	inx
+	inx
+	inx
+	iny
+	cpx #NUM_OPCODES*3
+	bcc @loop
 @err:	RETURN_ERR ERR_ILLEGAL_OPCODE
+
+@done:	tya
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
