@@ -13,6 +13,8 @@
 .include "errors.inc"
 .include "file.inc"
 .include "kernal.inc"
+.include "key.inc"
+.include "keycodes.inc"
 .include "labels.inc"
 .include "limits.inc"
 .include "line.inc"
@@ -21,6 +23,7 @@
 .include "math.inc"
 .include "memory.inc"
 .include "object.inc"
+.include "screen.inc"
 .include "string.inc"
 .include "strings.inc"
 .include "util.inc"
@@ -1292,7 +1295,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	bcs @loop
 	lda @fill
 	ldxy @cursor
-	CALLMAIN vmem::store
+	jsr vmem::store
 	incw @cursor
 	jmp @loop
 
@@ -1536,7 +1539,7 @@ __link_update_progress:
 @store_zero:
 	lda #$00
 	ldxy @addr
-	CALLMAIN vmem::store
+	jsr vmem::store
 	incw @addr
 	jmp @fill
 
@@ -1734,7 +1737,6 @@ __link_update_progress:
 	ldx numsegments
 	bne @init
 	RETURN_ERR ERR_NO_SEGMENTS	; nothing to link into
-@ret:	rts
 
 @init:  ; initialize state:
 	; labels (global symbol table)
@@ -1892,13 +1894,13 @@ __link_update_progress:
 	jsr fill_sections	; fill any sections that are marked "FILL"
 
 	jsr validate_symbols
-	jcs log_error
+	bcs log_error
 
-	jsr generate_map	; produce the map file
-	jcs log_error
+	CALLMAIN lbl::index	; finish symbol sorting before offering the map
+	jsr prompt_map
+	bcs log_error
 	RETURN_OK
 
-@done:	rts
 
 @resolving_symbols: .byte "resolving symbols",0
 .endproc
@@ -2219,61 +2221,10 @@ __link_update_progress:
 ;  - .A: the ID of the section
 ;  - .C: set if no segment exists by the given name
 .proc get_section_by_name
-@name=zp::str0
-@other=zp::str2
-@cnt=r0
-	stxy @name
+	stxy zp::str0
 	ldxy #section_names
-	stxy @other
-
-	lda #$00
-	sta @cnt
-
-@l0:	lda #$08
-	jsr strcmp
-	beq @found
-	lda @other
-	clc
-	adc #$08
-	sta @other
-	bcc :+
-	inc @other+1
-:	ldx @cnt
-	inx
-	stx @cnt
-	cpx numsections
-	bcc @l0
-
-@notfound:
-	;sec
-	rts
-
-@found: lda @cnt
-	RETURN_OK
-.endproc
-
-
-
-;*******************************************************************************
-; SEGADDR BY ID
-; Returns the (current) base address for the given SEGMENT id.
-; IN:
-;   - .A: global (linker) segment id to get the base address of
-; OUT:
-;   - .A:  the TYPE byte (BSS, RW, ZP, or ABS)
-;   - .XY: the base address for the requested segment within objfile
-.export __link_segaddr_by_id
-.proc __link_segaddr_by_id
-@tab=r2
-	; get the segment-address table for the file
-	tay
-	lda segments_type-1,y		; get TYPE
-	pha
-	ldx segments_addrlo-1,y
-	lda segments_addrhi-1,y
-	tay
-	pla				; restore TYPE byte
-	RETURN_OK
+	lda numsections
+	jmp find_name
 .endproc
 
 
@@ -2312,17 +2263,38 @@ __link_update_progress:
 .export __link_get_segment_by_name
 __link_get_segment_by_name:
 .proc get_segment_by_name
-@name=zp::str0
-@other=zp::str2
-@cnt=r0
-	stxy @name
+	stxy zp::str0
 	ldxy #segment_names
-	stxy @other
+	lda numsegments
+	jsr find_name
+	bcs @missing
+	adc #$01		; IDs for segments are 1-based
+	rts
+@missing:
+	lda #ERR_UNKNOWN_SEGMENT
+	rts
+.endproc
 
-	lda #$00
-	sta @cnt
-@l0:	lda #$08
-	jsr strcmp
+;*******************************************************************************
+; FIND NAME
+; Seeks the given table of strings for the string to find.
+; IN:
+;   - .A:       max number of items to search
+;   - .XY:      address of table to seek for name in
+;   - zp::str0: address of string to look for in table
+; OUT:
+;   - .A: 0-based index
+;   - .C: set if not found
+.proc find_name
+@other=zp::str2
+@limit=r0
+	stxy @other
+	sta @limit
+	ldx #$00
+
+@loop:	cpx @limit
+	bcs @done
+	jsr strcmp		; preserves X
 	beq @found
 	lda @other
 	clc
@@ -2330,22 +2302,11 @@ __link_get_segment_by_name:
 	sta @other
 	bcc :+
 	inc @other+1
-:	ldx @cnt
-	inx
-	stx @cnt
-	cpx numsegments
-	bcc @l0
-
-@notfound:
-	;sec
-	lda #ERR_UNKNOWN_SEGMENT
-	rts
-
-@found: lda @cnt
+:	inx
+	bne @loop
+@found: txa
 	clc
-	adc #$01		; get 1-based id
-	;clc
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2569,6 +2530,46 @@ __link_strcmp:
 	beq :+
 	cmp #' '
 :	rts
+.endproc
+
+;*******************************************************************************
+; PRINT STATUS
+; Display a shared or MAIN-bank string on the editor's status row.
+.proc print_status
+	lda edit::status_row
+	CALLMAIN text::print
+	rts
+.endproc
+
+map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
+
+;*******************************************************************************
+; PROMPT MAP
+; Offer the optional map after the linked image has been validated.
+; Unblank first so IRQ keyboard scanning runs while waiting for an answer.
+.proc prompt_map
+	CALLMAIN scr::unblank
+	ldxy #map_question
+	jsr copy_msg
+	jsr print_status
+	CALLMAIN key::flush		; ignore input typed during linking
+@key:	CALLMAIN key::waitch
+	cmp #K_QUIT
+	beq @skip
+	and #$df			; accept either case
+	cmp #$59			; 'y'
+	beq @map
+	cmp #$4e			; 'n'
+	bne @key
+
+@skip:	ldxy #strings::null
+	jsr print_status
+	RETURN_OK
+
+@map:	ldxy #strings::saving
+	jsr print_status
+	CALLMAIN scr::blank
+	; fall through to generate_map
 .endproc
 
 ;*******************************************************************************
@@ -2934,8 +2935,7 @@ __link_strcmp:
 	dey
 	bne :-
 	lda #$0d
-	jsr krn::chrout
-	rts
+	jmp krn::chrout
 .endproc
 
 ;*******************************************************************************
@@ -2946,8 +2946,17 @@ __link_strcmp:
 .proc putbyte
 	lda #'$'
 	jsr krn::chrout
-
 	txa
+
+	; fall through to puthex
+.endproc
+
+;*******************************************************************************
+; PUTHEX
+; Writes two hex digits to the open file
+; IN:
+;   - .A: byte to write out (as hex digits)
+.proc puthex
 	CALLMAIN util::hextostr
 	tya
 	jsr krn::chrout
@@ -2957,27 +2966,17 @@ __link_strcmp:
 
 ;*******************************************************************************
 ; PUTWORD
-; Outputs the given word as a hex value
+; Outputs the given word in a '$' prefixed hex value
 ; IN:
-;   - .XY: the value to output
+;   - .XY: the word to ouput in hex digits
 .proc putword
-	lda #'$'
-	jsr krn::chrout
-
 	txa
 	pha
 	tya
-	CALLMAIN util::hextostr
-	tya
-	jsr krn::chrout
-	txa
-	jsr krn::chrout
+	tax
+	jsr putbyte
 	pla
-	CALLMAIN util::hextostr
-	tya
-	jsr krn::chrout
-	txa
-	jmp krn::chrout
+	jmp puthex
 .endproc
 
 ;*******************************************************************************
@@ -3010,6 +3009,26 @@ __link_strcmp:
 .endproc
 
 ;*******************************************************************************
+; COPY MSG
+; Copies the given message to shared RAM for display
+; IN:
+;   - .XY: message
+; OUT:
+;   - .XY: copy of message in shared RAM
+.proc copy_msg
+@str=r4
+@buff=$100
+	stxy @str
+	ldy #$ff
+:	iny
+	lda (@str),y
+	sta @buff,y
+	bne :-
+	ldxy #@buff
+	rts
+.endproc
+
+;*******************************************************************************
 ; LOG MSG
 ; Copies the provided string to shared RAM and logs it
 ; IN:
@@ -3018,24 +3037,13 @@ __link_strcmp:
 __link_log_msg:
 .proc log_msg
 @ret=r4
-@str=r4
-@buff=$100
-	stxy @str
-
-	; copy the string to RAM
-	ldy #$ff
-:	iny
-	lda (@str),y
-	sta @buff,y
-	cmp #$00
-	bne :-
+	jsr copy_msg
 
 	pla
 	sta @ret
 	pla
 	sta @ret+1
 
-	ldxy #@buff
 	RENDER_STR			; render the string
 	lda @ret+1
 	pha

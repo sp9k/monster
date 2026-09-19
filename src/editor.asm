@@ -576,7 +576,6 @@ main:	jsr key::getui
 	bcs @err
 
 @done:	jsr log::close
-	CALLMAIN lbl::index
 	jmp unblank
 
 @err:	pha			; save the error

@@ -1298,7 +1298,7 @@ __obj_split_fragment:
 
 :	; dump the object code for the section
 	ldxy @sec		; address to load
-	jsr vmem_load		; load a byte of object code
+	jsr vmem::load		; load a byte of object code
 	jsr krn::chrout		; and dump it
 	incw @sec
 	decw @sz
@@ -1554,11 +1554,11 @@ __obj_split_fragment:
 	inx
 	bne :+
 	iny
-:	jsr vmem_load
+:	jsr vmem::load
 	sta @addendhi
 
 @add:	ldxy @siteaddr
-	jsr vmem_load
+	jsr vmem::load
 	clc
 	adc @value
 	sta @value
@@ -1608,7 +1608,7 @@ __obj_split_fragment:
 	bne :+
 	iny
 :	lda @value+1
-	jsr vmem_store
+	jsr vmem::store
 
 @storebyte:
 	lda @value
@@ -1625,7 +1625,7 @@ __obj_split_fragment:
 	bcc @storebyte
 
 @write:	ldxy @siteaddr
-	jsr vmem_store
+	jsr vmem::store
 	lda @remaining
 	sec
 	sbc @length
@@ -2425,7 +2425,7 @@ __obj_get_fragment_run:
 	; finally, load the object code for the segment to vmem
 	jsr krn::chrin
 	ldxy @seg		; address to store to
-	jsr vmem_store		; store a byte of object code
+	jsr vmem::store		; store a byte of object code
 	incw @seg
 
 	lda @sz
@@ -2564,20 +2564,6 @@ __obj_get_fragment_run:
 @missing:
 	sec
 	rts
-.endproc
-
-;*******************************************************************************
-; VMEM LOAD
-; Calls vmem::load
-.proc vmem_load
-	JUMPMAIN vmem::load
-.endproc
-
-;*******************************************************************************
-; VMEM STORE
-; Calls vmem::store
-.proc vmem_store
-	JUMPMAIN vmem::store
 .endproc
 
 ;*******************************************************************************
