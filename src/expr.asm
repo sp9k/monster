@@ -2029,7 +2029,18 @@ __expr_float_format:
 .if FP_SUPPORTED
 .proc get_function
 @entry=zp::expr+6
-	ldx #$00
+	; sanity check that first character is a letter- if not, not a func
+	ldy #$00
+	lda (zp::line),y
+	cmp #'a'
+	bcc @not_function
+	cmp #'z'+1
+	bcc @scan
+@not_function:
+	sec
+	rts
+
+@scan:	ldx #$00
 @next:	stx @entry
 	ldy #$00
 @match:	lda fnames,x
@@ -2477,20 +2488,39 @@ fnames:
 ;  - .Z: set if the char in .A is an operator ('+', '-', etc.)
 .proc isoperator
 @xsave=zp::util+2
+	; sanity check that operator is in range of operator characters
+	cmp #'!'
+	bcc @no
+	cmp #'^'+1
+	bcs @no
 	stx @xsave
-	ldx #@numops-1
-:	cmp @ops,x
-	beq @end
-	dex
-	bpl :-
-@end:	php
+	tax
+	lda @lut-'!',x
+	php
+	txa
 	ldx @xsave
 	plp
 	rts
 
-@ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', '<', '>'
-	.byte '=', '!'
-@numops = *-@ops
+@no:	cmp #'!'		; out of range: .Z clear, even for NUL
+	rts
+
+;-------------------------------------------------------------------------------
+; lookup table for operator test; 0=operator
+@lut:
+.repeat '^'-'!'+1, i
+.if (i+'!' = '(') || (i+'!' = ')') || (i+'!' = '[') || (i+'!' = ']')
+	.byte 0
+.elseif (i+'!' = '+') || (i+'!' = '-') || (i+'!' = '*') || (i+'!' = '/')
+	.byte 0
+.elseif (i+'!' = '^') || (i+'!' = '&') || (i+'!' = '.')
+	.byte 0
+.elseif (i+'!' = '<') || (i+'!' = '>') || (i+'!' = '=') || (i+'!' = '!')
+	.byte 0
+.else
+	.byte 1
+.endif
+.endrepeat
 .endproc
 
 ;*******************************************************************************
