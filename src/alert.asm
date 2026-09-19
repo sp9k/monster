@@ -23,20 +23,8 @@
 ; Margin size, width, etc.
 ALERT_HEIGHT = 4		; border, message, prompt, border
 
-.if LINESIZE >= 40
-ALERT_MARGIN = 4
-.else
-ALERT_MARGIN = 2
-.endif
-
-ALERT_WIDTH    = LINESIZE-(ALERT_MARGIN*2)
-ALERT_ROW      = (SCREEN_HEIGHT-ALERT_HEIGHT)/2
-ALERT_TEXT_COL = ALERT_MARGIN+2
-ALERT_TEXT_LEN = ALERT_WIDTH-4
-
-; the columns the left and right borders are drawn in
-ALERT_LCOL = ALERT_MARGIN
-ALERT_RCOL = ALERT_MARGIN+ALERT_WIDTH-1
+.include "alert-layout.inc"
+ALERT_ROW = (SCREEN_HEIGHT-ALERT_HEIGHT)/2
 
 ;*******************************************************************************
 ; PROMPT
@@ -65,6 +53,13 @@ cnt:     .byte 0		; row counter (0 = the window's top row)
 textcol: .byte 0		; column the next text row starts its text at
 rvsstart: .byte 0		; first column of the prompt's reversed field
 rvsstop:  .byte 0		; one past last column
+
+; Frame primitives for custom modals. The caller owns saving/restoring the
+; background and sets text::puts_start/stop to the alert's horizontal bounds.
+.export __alert_border, __alert_textrow, __alert_textcol
+__alert_border = border
+__alert_textrow = textrow
+__alert_textcol = textcol
 
 .export __alert_prompt
 __alert_prompt: .word 0		; the prompt "open" draws under the message

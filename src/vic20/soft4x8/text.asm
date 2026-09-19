@@ -159,7 +159,7 @@ __text_puts:
 	bpl @l1
 
         lda @txtdst
-        ; clc
+        clc             ; the initial window-column skip may leave carry set
         adc #192
         sta @txtdst
 	bcc @nextch

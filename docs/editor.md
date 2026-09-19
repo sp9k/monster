@@ -101,29 +101,27 @@ you came from.
 #### Symbol viewer
 
 The symbol viewer, activated with {c64-keys}`C= + Y`, displays all the labels in the program
-along with their corresponding address.  If no labels are defined, the viewer aborts and reports
-`NO LABELS` in the status bar. Float constants are shown in decimal/scientific notation.
+on two pages. The first, **Values**, shows each symbol's value and name. The other page, **Locations**,
+shows its name and definition as `filename:line`. Press Left/Right or H/L to switch pages.
 
+Float constants are displayed in decimal/scientific notation.
 
-```{figure} screenshots/symview.png
-:alt: The symbol viewer listing symbol values, names, source files, and line numbers, sorted by name
-:align: center
-:width: 75%
-:class: screenshot
+If some label data does not fit on screen, a `>` is shown at the far right edge of the
+overflowing row.  Press SPACE on these rows to display an expanded modal with all its
+info for these cases.
 
-The symbol viewer shows each symbol's value and definition location. Here the symbols are sorted by name
-```
+| KEY                         | NAME        | DESCRIPTION                                                             |
+|-----------------------------|-------------|-------------------------------------------------------------------------|
+| {c64-key}`K`                | `UP`        | moves the selection up (the list scrolls at the top row)                |
+| {c64-key}`J`                | `DOWN`      | moves the selection down (the list scrolls at the bottom row)           |
+| {c64-key}`RETURN`           | `GOTO`      | goes to the line where the selected symbol is defined (needs debug information from the last assembly) |
+| {c64-key}`H` / {c64-key}`L` | `PAGE`      | switches between Values and Locations (also Left/Right)                 |
+| {c64-key}`SPACE`            | `DETAILS`   | opens full details for the selected symbol; any key returns to the list |
+| {c64-key}`F1`               | `SORT`      | toggles the sort order between alphabetical and by address              |
+| {c64-key}`RUN/STOP`         | `EXIT`      | dismisses the viewer and restores the screen you came from              |
+| {c64-keys}`C= + Q`          | `EXIT`      | same as the RUN/STOP shortcut                                           |
 
-| KEY                   | NAME        | DESCRIPTION                                                      |
-|-----------------------|-------------|------------------------------------------------------------------|
-| {c64-key}`K`          | `UP`        | moves the selection up (the list scrolls at the top row)         |
-| {c64-key}`J`          | `DOWN`      | moves the selection down (the list scrolls at the bottom row)    |
-| {c64-key}`RETURN`     | `GOTO`      | goes to the line where the selected symbol is defined (needs debug information from the last assembly) |
-| {c64-key}`F1`         | `SORT`      | toggles the sort order between alphabetical and by address       |
-| {c64-key}`RUN/STOP`   | `EXIT`      | dismisses the viewer and restores the screen you came from       |
-| {c64-keys}`C= + Q`    | `EXIT`      | same as the RUN/STOP shortcut                                    |
-
-The cursor keys work in place of the `DOWN` and `UP` commands.
+The Up/Down cursor keys work in place of the `UP` and `DOWN` commands.
 
 #### Macro viewer
 
