@@ -16,6 +16,7 @@ X64=x64sc
 # name of the UltiMem flash image to produce
 CART_IMAGE=monster.bin
 CART_TOOL=make-ultimem-cart.py
+CART_PRG=monster-cart.prg
 
 # name of the test suite flash image to produce
 TEST_IMAGE=test.bin
@@ -47,8 +48,9 @@ LINK_FILE=link-c64
 EXP_SRC=
 # the c64 cart build produces a Magic Desk CRT
 CART_IMAGE=monster.crt
+CART_PRG=monster-c64-cart.prg
 CART_TOOL=make-magicdesk-crt.py
-# the c64 boots from disk; its boot image is written to the test disk
+# Legacy disk build: include its boot image when explicitly building test.d81
 BOOT_DEP=boot.prg
 BOOT_WRITE=-write boot.prg
 endif
@@ -83,7 +85,11 @@ TEST_FILES=$(TESTS) $(TEST_INCS) $(TEST_TXTS) tests/link
 # assembling everything on it doesn't trip the deliberate errors
 CYCLIC_TESTS=$(wildcard tests/cyclic/*.s)
 
+ifeq ($(TARGET),c64)
+all: $(CART_IMAGE)
+else
 all: test.d81
+endif
 
 cart: $(CART_IMAGE)
 ultimem: $(CART_IMAGE)
@@ -101,15 +107,25 @@ disk: boot.prg monster-disk.prg
 installer.prg: installer/install.asm
 	$(CL65) -t $(TARGET) -o $@ -C installer/link-installer.config $^
 
-monster-cart.prg: $(BOOTSRC) $(SRC)
-	$(CL65) -t $(TARGET) -o $@ --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $^ -Ln labels.txt -v -m map.txt
+ASM_INCLUDES=$(wildcard *.inc $(TARGET)/*.inc $(TARGET)/$(SCREEN_MODE)/*.inc $(TARGET)/ultimem/*.inc)
+BUILD_OPTIONS=.build-options-$(TARGET)
+.PHONY: FORCE
+FORCE:
+
+$(BUILD_OPTIONS): FORCE
+	@printf '%s\n' '$(ASMFLAGS)' > $@.tmp
+	@cmp -s $@.tmp $@ || cp $@.tmp $@
+	@$(RM) $@.tmp
+
+$(CART_PRG): $(BOOTSRC) $(SRC) $(ASM_INCLUDES) $(LINK_FILE)-cart.config Makefile $(BUILD_OPTIONS)
+	$(CL65) -t $(TARGET) -o $@ --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $(BOOTSRC) $(SRC) -Ln labels.txt -v -m map.txt
 
 monster-cart-test.prg: $(BOOTSRC) $(SRC) $(UNIT)
 	$(CL65) -t $(TARGET) -o $@ --asm-define TEST --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $^ -Ln labels.txt -v -m map.txt
 
 # the linker output is already laid out bank-by-bank for the target's flash
 # (see the MEMORY areas in the link config); pack it into the image format
-$(CART_IMAGE): monster-cart.prg
+$(CART_IMAGE): $(CART_PRG) $(CART_TOOL)
 	$(PYTHON) $(CART_TOOL) $< $@
 
 $(TEST_IMAGE): monster-cart-test.prg

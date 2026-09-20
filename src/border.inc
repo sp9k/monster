@@ -5,7 +5,7 @@ BORDER_INC = 1
 ; BORDER CHARACTERS
 ; The box-drawing glyphs that modal windows (alerts, the help screen, etc.)
 ; frame themselves with.
-.ifdef soft4x8
+.if .defined(vic20) .and .defined(soft4x8)
 ; 4x8 font box-drawing glyphs
 BORDER_VBAR = 128
 BORDER_HBAR = 140

@@ -212,11 +212,6 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 ;  - .XY:      the result of the evaluated expression
 ;  - .C:       clear on success or set on failure
 ;  - zp::line: updated to point beyond the parsed expression
-.if .defined(CART) .and .defined(c64)
-; the assembler is co-banked with the evaluator: it calls eval directly
-.export __expr_eval_bank
-__expr_eval_bank:
-.endif
 .proc eval
 	jsr __expr_parse	; parse the RPN list
 	bcs :-			; -> rts

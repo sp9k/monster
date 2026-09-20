@@ -90,14 +90,7 @@
 CUR_BANK .set FINAL_BANK_MAIN
 .endif
 
-; the expression evaluator is co-banked with the assembler on the cart build,
-; so it is called directly (elsewhere expr::eval is a far-call thunk)
-.if .defined(CART) .and .defined(c64)
-.import __expr_eval_bank
-eval_expr = __expr_eval_bank
-.else
 eval_expr = expr::eval
-.endif
 
 ;*******************************************************************************
 MAX_IFS      = 8 ; max nesting depth for .if/.endif
@@ -724,11 +717,7 @@ BANKED_CODE "ASMBANK"
 	sta __asm_segtype	; reset segment type (TYPE_UNDEF) for the pass
 
 	; ignore whitespace in expressions
-.if .defined(CART) .and .defined(c64)
-	jsr expr::end_on_ws	; co-banked with the evaluator on the cart build
-.else
 	CALL FINAL_BANK_EXPR, expr::end_on_ws
-.endif
 
 	jsr ctx::init		; init the context
 	pla

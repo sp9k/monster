@@ -2603,6 +2603,9 @@ __obj_get_fragment_run:
 ; Emits the active state of the assembled object metadata to the log.
 ; This is used to inform the user about the number/size of their segments after
 ; assembly, etc.
+.ifdef c64
+.CODE
+.endif
 .export __obj_log_state
 .proc __obj_log_state
 	jsr log_segments

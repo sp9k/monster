@@ -50,8 +50,9 @@ codebanks:
 	.byte $ff		; $15 LOG
 	.byte CART_BANK_DBGUI	; $16 DBGUI
 	.byte CART_BANK_FILEDIR	; $17 FILEDIR
-	.byte CART_BANK_ASM	; $18 ASM/EXPR
-	.byte CART_BANK_EDIT	; $19 EDITOR
+	.byte CART_BANK_ASM	; $18 ASM
+	.byte $ff		; $19
+	.byte CART_BANK_EXPR	; $1a EXPR/FP
 .endif
 
 ;*******************************************************************************

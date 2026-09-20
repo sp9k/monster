@@ -38,6 +38,7 @@
 .import __HELP_LOAD__,        __HELP_RUN__,        __HELP_SIZE__
 .import __NMI_HANDLER_LOAD__, __NMI_HANDLER_RUN__, __NMI_HANDLER_SIZE__
 .import __TRAMPOLINE_LOAD__,  __TRAMPOLINE_RUN__,  __TRAMPOLINE_SIZE__
+.import __EDITCODE_LOAD__,    __EDITCODE_RUN__,    __EDITCODE_SIZE__
 .import __BOOTLDR_LOAD__,     __BOOTLDR_RUN__,     __BOOTLDR_SIZE__
 .endif
 
@@ -221,6 +222,7 @@
 ; RELOCS
 ; (load, run, size) for each segment of the resident image
 relocs:
+.word __EDITCODE_LOAD__,    __EDITCODE_RUN__,    __EDITCODE_SIZE__
 .word __DATA_LOAD__,        __DATA_RUN__,        __DATA_SIZE__
 .word __IRQ_LOAD__,         __IRQ_RUN__,         __IRQ_SIZE__
 .word __BANKCODE2_LOAD__,   __BANKCODE2_RUN__,   __BANKCODE2_SIZE__

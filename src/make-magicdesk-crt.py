@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # Packs the linker output (see link-c64-cart.config) into a Magic Desk CRT
 # (type 19): 8 KiB banks at $8000
-# Image is padded to 16 banks
+# Image is padded to 32 banks
 
 import sys
 
 BANK_SIZE = 0x2000
 CRT_TYPE = 19
-PAD_BANKS = 16
+PAD_BANKS = 32
 
 
 def main():

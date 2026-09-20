@@ -39,15 +39,9 @@ FINAL_BANK_LOG          = $15
 FINAL_BANK_DBGUI        = $16
 FINAL_BANK_FILEDIR      = $17
 FINAL_BANK_ASM          = $18
-FINAL_BANK_EXPR         = $18
+FINAL_BANK_EXPR         = $1a
 FINAL_BANK_FP           = FINAL_BANK_EXPR	; FP shares the evaluator's bank
-.ifdef CART
-FINAL_BANK_EDIT         = $19
-.else
-; the disk build has no banked code: the editor is resident like everything
-; else, so calls to it are near
 FINAL_BANK_EDIT         = FINAL_BANK_MAIN
-.endif
 
 ;*******************************************************************************
 ; CUR_BANK

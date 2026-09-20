@@ -18,7 +18,9 @@
 	stx @x
 	sta @a
 
-	lda #$36		; make KERNAL ($e000-$ffff) available
+	; make KERNAL visible
+	lda __ram_mem01
+	ora #$02
 	sta $01
 	jsr inline::setup
 
@@ -54,7 +56,7 @@
 ; CHRIN
 .export __kernal_chrin
 .proc __kernal_chrin
-	KERNAL_JUMP $ffa5
+	KERNAL_JUMP $ffcf
 .endproc
 
 ;*******************************************************************************
