@@ -6,6 +6,7 @@
 ; The main procedure, fmt::line, looks at the given "type" value and indents
 ; or unindents depending on what the line contains.
 ; Labels and directives are unindented (except .ORG), instructions are indented.
+; Also removes trailing whitespace.
 ;*******************************************************************************
 
 .include "asm.inc"
@@ -102,7 +103,6 @@ position = r9
 .export __fmt_line
 .proc __fmt_line
 @linecontent = r6
-@cnt         = r8
 	sta @linecontent	; save format "type"
 	lda __fmt_enable
 	beq @done		; if formatting is disabled, just quit
@@ -113,6 +113,16 @@ position = r9
 
 	jsr @fmt		; format the line
 
+	; remove trailing whitespace
+	jsr src::lineend
+@trim:	jsr src::left
+	bcs @restore
+	jsr util::is_whitespace
+	bne @restore
+	jsr src::delete
+	bcc @trim		; branch always
+
+@restore:
 	; fix cursor position for newly formatted line
 	jsr src::home
 	jsr src::get
@@ -121,11 +131,10 @@ position = r9
 	; characters inserted and deleted during the formatting
 	lda offset
 	beq @done
-	sta @cnt
 
 @l0:	jsr src::right
 	bcs @done
-	dec @cnt
+	dec offset
 	bne @l0
 	rts
 
@@ -137,8 +146,9 @@ position = r9
 
 @removespaces:
 	jsr src::after_cursor
+	bcs @done		; empty final line -> leave it empty
 	cmp #$0d
-	beq @left_aligned
+	beq @done		; empty line -> don't insert indentation
 	jsr util::is_whitespace
 	bne @left_aligned
 
