@@ -91,7 +91,6 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ;   - .A:  number of files returned (or error)
 ;   - .XY: address of the final list terminator
 ;   - .C:  set on error
-
 .proc getbytype
 @ext=r5
 @resultend=r6
@@ -214,7 +213,6 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ; OUT:
 ;   - .C: set on error
 ;   - .A: error code (on error)
-
 .proc dirview
 @line=r8
 @row=ra

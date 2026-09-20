@@ -60,7 +60,7 @@ produce the final result of 7.
 |   `/`    | binary operator to divide one value by another                         |     2      |
 |   `&`    | binary operator: bitwise AND of two values                             |     3      |
 |   `^`    | binary operator: exclusive OR (EOR) of two values                      |     4      |
-|   `.`    | binary operator: bitwise OR of two values                              |     5      |
+|   `\|`   | binary operator: bitwise OR of two values                              |     5      |
 |   `<`    | unary operator: least significant byte of the value                    |     3      |
 |   `>`    | unary operator: most significant byte of the value                     |     3      |
 |   `==`   | binary operator: 1 if the two values are equal, else 0                 |     0      |

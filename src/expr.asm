@@ -13,6 +13,7 @@
 
 .include "asm.inc"
 .include "errors.inc"
+.include "keycodes.inc"
 .include "fp.inc"
 .include "labels.inc"
 .include "limits.inc"
@@ -921,7 +922,7 @@ __expr_eval_bank:
 	tay
 	jmp @pushval
 
-@chkor: cmp #'.'	; OR
+@chkor: cmp #K_PIPE	; OR
 	bne @chkeor
 	jsr @reduce_operation_other
 	bcc :+
@@ -1895,7 +1896,7 @@ __expr_float_format:
 	lda @prios-1,y
 	rts
 
-@priochars: .byte '+', '-', '*', '/', '&', '^', '.', '<', '>'
+@priochars: .byte '+', '-', '*', '/', '&', '^', K_PIPE, '<', '>'
 @prios:	    .byte  1,   1,   2,   2,   3,   4,   5,   3,   3
 @num_prios=*-@prios
 
@@ -2488,6 +2489,8 @@ fnames:
 ;  - .Z: set if the char in .A is an operator ('+', '-', etc.)
 .proc isoperator
 @xsave=zp::util+2
+	cmp #K_PIPE		; ASCII |; ca65 maps the literal to PETSCII $dd
+	beq @yes
 	; sanity check that operator is in range of operator characters
 	cmp #'!'
 	bcc @no
@@ -2503,6 +2506,7 @@ fnames:
 	rts
 
 @no:	cmp #'!'		; out of range: .Z clear, even for NUL
+@yes:
 	rts
 
 ;-------------------------------------------------------------------------------
@@ -2513,7 +2517,7 @@ fnames:
 	.byte 0
 .elseif (i+'!' = '+') || (i+'!' = '-') || (i+'!' = '*') || (i+'!' = '/')
 	.byte 0
-.elseif (i+'!' = '^') || (i+'!' = '&') || (i+'!' = '.')
+.elseif (i+'!' = '^') || (i+'!' = '&')
 	.byte 0
 .elseif (i+'!' = '<') || (i+'!' = '>') || (i+'!' = '=') || (i+'!' = '!')
 	.byte 0

@@ -5,6 +5,7 @@
 ;*******************************************************************************
 
 .include "errors.inc"
+.include "keycodes.inc"
 .include "memory.inc"
 .include "text.inc"
 .include "zeropage.inc"
@@ -513,7 +514,7 @@ result=mem::spare
 ; DATA (not RODATA): may be read from a banked context on the cart build
 .PUSHSEG
 .segment "DATA"
-@ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', '<', '>'
+@ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', K_PIPE, '<', '>'
 	.byte '=', '!'
 @numops = *-@ops
 .POPSEG

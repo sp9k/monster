@@ -27,7 +27,7 @@ start
 	lda #100/5
 
 	; bitwise ops
-	lda #$a0.$07
+	lda #$a0|$07
 	lda #$77&$33
 	lda #$f0^$f3
 

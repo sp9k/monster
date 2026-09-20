@@ -157,8 +157,8 @@ strsave: .res 32		; FOUT uses the bottom of the hardware stack page
 ; IS FLOAT
 ; Checks whether the text at zp::line begins with a float literal.  A float is
 ; a run of digits followed by either a '.' with at least one digit after it, or
-; an 'e'/'E' exponent.  Requiring the digit after the '.' is what keeps '.'
-; usable as the OR operator: "3.14" is a float but "3.X" is still 3 OR X.
+; an 'e'/'E' exponent. A dot within a symbol name is an object prefix.
+; Symbol names cannot begin with a digit, so "3.14" is unambiguous.
 ; A leading-dot fraction such as ".5" is also accepted.
 ; IN:
 ;   - zp::line: the text to test

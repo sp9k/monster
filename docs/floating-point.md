@@ -35,9 +35,6 @@ Integer only operations otherwise always produce an integer result type.
 ```{note}
 - `1/3` is zero, including in `.DF 1/3`. Use `FLOAT(1)/3` or `1.0/3`.
 - `-1` wraps to 65535. Use `-1.0` or `-FLOAT(1)` for a negative float.
-- `^` remains bitwise XOR, not exponentiation.
-- `.` remains bitwise OR where it cannot be a decimal point. Write `3 . 14`
-  for OR; `3.14` is a float. A trailing decimal point alone is not a float marker.
 ```
 
 Byte/word output, addresses, counts, and bitwise operations all require a float to be

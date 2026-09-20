@@ -77,6 +77,7 @@ LIST_NEXT   = 2
 .include "debuginfo.inc"
 .include "config.inc"
 .include "errors.inc"
+.include "keycodes.inc"
 .include "expr.inc"
 .include "fp.inc"
 .include "kernal.inc"
@@ -348,6 +349,8 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	ldx #SCOPE_LEN-1
 	ldy scopesp
 :	lda (@scope),y		; (@scope-scopesp)+scopesp + Y
+	cmp #'.'		; retain filename-stem scope behavior
+	beq @done
 	jsr isseparator
 	beq @done
 	STOREB_Y @scopes	; scopes+scopesp + Y
@@ -1338,8 +1341,8 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 ;*******************************************************************************
 ; IS LOCAL
-; Returns with .Z set if the given label name represents a
-; "local" label (begins with '@')
+; Returns with .Z clear if the given label name represents a
+; scoped label (begins with '@', or '.' for an object-local symbol)
 ; IN:
 ;  - .XY: the label to test
 ; OUT:
@@ -1352,7 +1355,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda (@l),y
 	ldy @l+1
 	cmp #'@'
+	beq @local
+	cmp #'.'
 	bne :+
+@local:
 	lda #$01	; flag that label IS local
 	rts
 :	lda #$00	; flag that label is NOT local
@@ -1522,7 +1528,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	stxy @name
 	ldy #$00
 
-; first character must be a letter or '@'
+; first character must be a letter, '@', or an object-local '.'
 @l0:	lda (@name),y
 	iny
 	jsr iswhitespace
@@ -1530,6 +1536,8 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 	; check first non whitespace char
 	cmp #'@'
+	beq @cont
+	cmp #'.'
 	beq @cont
 	cmp #'a'
 	bcc @err
@@ -1564,11 +1572,15 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda (@name),y
 	jsr isseparator
 	beq @done
+	cmp #'.'		; object qualifier within a symbol name
+	beq @nextchar
 	cmp #'0'
 	bcc @err
 	cmp #'Z'+1
+	bcs @err
+@nextchar:
 	iny
-	bcc @l1
+	bne @l1
 @err:	RETURN_ERR ERR_ILLEGAL_LABEL
 
 @toolong:
@@ -1751,7 +1763,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	ldx @xsave
 	plp
 @done:	rts
-@ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', '.', ',', ':',0
+@ops: 	.byte '(', ')', '+', '-', '*', '/', '[', ']', '^', '&', K_PIPE, ',', ':',0
 	.byte '<', '>', '=', '!'
 @numops = *-@ops
 .endproc

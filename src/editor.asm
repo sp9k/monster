@@ -529,8 +529,8 @@ main:	jsr key::getui
 	jsr asm::include	; assemble the file (pass 2)
 	bcs @logerr
 
-	ldxy zp::virtualpc	; end address (segment-relative in OBJ mode)
-	CALLMAIN dbgi::endblock	; end the final block
+	ldxy zp::virtualpc		; end addr (seg-relative in OBJ mode)
+	CALLMAIN dbgi::endblock		; end the final block
 	CALLMAIN obj::close_section	; close final OBJ section
 @done:	jmp display_result
 
@@ -562,10 +562,10 @@ main:	jsr key::getui
 	bcs @err				; error
 
 	; get all object files on disk
-	ldxy #mem::spareend			; exclusive destination-buffer end
+	ldxy #mem::spareend			; end addr of destination buff
 	stxy r0
 	lda #MAX_OBJS
-	sta r2				; maximum number of filenames
+	sta r2					; max number of filenames
 	lda #$4f				; 'O'
 	ldxy #link::objfiles
 	jsr dir::get_by_type

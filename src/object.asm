@@ -2097,14 +2097,14 @@ __obj_get_fragment_run:
 @namebuff=$120
 	; read symbol name
 	ldy #$00
-	lda #'@'
+	lda #'.'		; object scope delimiter (source locals use '@')
 	sta @namebuff
 :	jsr krn::chrin
 	sta @namebuff+1,y
 	cmp #$00
 	beq @cont
 	iny
-	cpy #MAX_LABEL_NAME_LEN-1	; -1 for the '@' prefix
+	cpy #MAX_LABEL_NAME_LEN-1	; -1 for the '.' prefix
 	bcc :-
 	RETURN_ERR ERR_LABEL_TOO_LONG	; corrupt object file
 
