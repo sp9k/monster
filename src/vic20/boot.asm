@@ -71,6 +71,10 @@
 ; cartridge header
 .byte "a0",$C3,$C2,$CD	; "A0CBM"
 
+.include "../firmware.inc"
+.assert * = $a000+FIRMWARE_OFFSET, error, "firmware header moved"
+.res FIRMWARE_SIZE, $ff ; stamped by make-ultimem-cart.py
+
 ; copy cart binary ($0000-$6000) to RAM
 cart_start:
 	ldx #$ff

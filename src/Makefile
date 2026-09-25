@@ -10,6 +10,10 @@ DEFAULT_DEVICE=8
 # input drive for the standalone UltiMem flasher
 FLASHER_DEVICE ?= 10
 
+# Five-digit monotonic release number, persisted in the ROM update header.
+VERSION := $(strip $(shell cat VERSION))
+UPDATE_IMAGE=monster-$(VERSION).bin
+
 # emulators
 X64=x64sc
 
@@ -31,6 +35,7 @@ ASMFLAGS=--asm-define $(TARGET) --asm-define $(REGION) --asm-define $(SCREEN_MOD
 # target specific configuration
 ifeq ($(TARGET),vic20)
 # the vic20 build always targets the UltiMem expansion
+CART_FLAGS=--version $(VERSION)
 ASMFLAGS+=--asm-define ultimem
 # UltiMem Profile extension (1) or stock ULTIMEM (0)
 #ULTIMEM_P?=1
@@ -71,7 +76,7 @@ MODE_SRC=$(wildcard $(TARGET)/$(SCREEN_MODE)/*.asm)
 
 # platform independent source files
 # Standalone utilities must not be linked into Monster.
-PI_SRC=$(filter-out flasher.asm ramtest.asm,$(wildcard *.asm))
+PI_SRC=$(filter-out flasher.asm updater.asm ramtest.asm,$(wildcard *.asm))
 
 SRC=$(TARGET_SRC) $(PI_SRC) $(MODE_SRC) $(EXP_SRC)
 
@@ -93,8 +98,13 @@ endif
 
 cart: $(CART_IMAGE)
 ultimem: $(CART_IMAGE)
+ifeq ($(TARGET),vic20)
+cart ultimem: $(UPDATE_IMAGE)
+endif
 
 flasher: flasher.prg $(CART_IMAGE) flasher.d81
+
+updater: updater.prg updater.d81
 
 ramtest: ramtest.prg ramtest.d81
 
@@ -113,7 +123,7 @@ BUILD_OPTIONS=.build-options-$(TARGET)
 FORCE:
 
 $(BUILD_OPTIONS): FORCE
-	@printf '%s\n' '$(ASMFLAGS)' > $@.tmp
+	@printf '%s\n' '$(ASMFLAGS) FLASHER_DEVICE=$(FLASHER_DEVICE) VERSION=$(VERSION)' > $@.tmp
 	@cmp -s $@.tmp $@ || cp $@.tmp $@
 	@$(RM) $@.tmp
 
@@ -125,8 +135,8 @@ monster-cart-test.prg: $(BOOTSRC) $(SRC) $(UNIT)
 
 # the linker output is already laid out bank-by-bank for the target's flash
 # (see the MEMORY areas in the link config); pack it into the image format
-$(CART_IMAGE): $(CART_PRG) $(CART_TOOL)
-	$(PYTHON) $(CART_TOOL) $< $@
+$(CART_IMAGE): $(CART_PRG) $(CART_TOOL) VERSION
+	$(PYTHON) $(CART_TOOL) $< $@ $(CART_FLAGS)
 
 $(TEST_IMAGE): monster-cart-test.prg
 	$(PYTHON) make-ultimem-cart.py $< $@
@@ -136,14 +146,26 @@ monster-disk.prg: $(BOOTSRC) $(SRC)
 
 # Runs in an unexpanded VIC-20 and streams only the populated 8 KiB banks from
 # the padded 8 MiB image.  Derive the count from the linker's bank-laid output.
-flasher.prg: flasher.asm monster-cart.prg Makefile
+flasher.prg: flasher.asm monster-cart.prg Makefile $(BUILD_OPTIONS)
 	$(CL65) -t vic20 -o $@ -C vic20-asm.cfg \
 		--asm-define DEFAULT_DEVICE=$(FLASHER_DEVICE) \
 		--asm-define IMAGE_BLOCKS=$$(($$(wc -c < monster-cart.prg) / 8192)) $<
 
-flasher.d81: flasher.prg monster-cart.prg Makefile
+flasher.d81: flasher.prg $(UPDATE_IMAGE) Makefile
 	$(C1541) -format "monster flash,mf" d81 $@ -attach $@ \
-		-write flasher.prg flasher.prg -write monster-cart.prg monster.bin
+		-write flasher.prg flasher.prg -write $(UPDATE_IMAGE) monster.bin
+
+# The disk update is trimmed; padded 8 MiB images remain emulator artifacts.
+$(UPDATE_IMAGE): monster-cart.prg make-ultimem-cart.py VERSION
+	$(PYTHON) make-ultimem-cart.py $< $@ --version $(VERSION) --trimmed
+
+updater.prg: updater.asm updater.inc firmware.inc flasher.asm Makefile $(BUILD_OPTIONS)
+	$(CL65) -t vic20 -o $@ -C vic20-asm.cfg \
+		--asm-define DEFAULT_DEVICE=$(FLASHER_DEVICE) updater.asm
+
+updater.d81: updater.prg $(UPDATE_IMAGE) Makefile
+	$(C1541) -format "monster update,mu" d81 $@ -attach $@ \
+		-write updater.prg updater.prg -write $(UPDATE_IMAGE) monster-$(VERSION).bi
 
 # Same non-destructive bank check as the flasher, without a flash image.
 ramtest.prg: ramtest.asm Makefile
@@ -176,6 +198,6 @@ start-cart-c64: monster.crt test-disk
 	$(X64) -default -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384 -cartcrt monster.crt -moncommands moncommands -8 test.d81
 
 clean:
-	rm -f *.prg *.o test.d81 cyclic.d81 monster.d81 flasher.d81 ramtest.d81
+	rm -f *.prg *.o test.d81 cyclic.d81 monster.d81 flasher.d81 updater.d81 ramtest.d81
 	rm -f $(CART_IMAGE) $(TEST_IMAGE)
 	rm -f vic20/*.o vic20/ultimem/*.o vic20/hard8x8/*.o vic20/soft4x8/*.o c64/*.o
