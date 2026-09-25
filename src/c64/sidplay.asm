@@ -404,7 +404,8 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	jsr krn::readst
 	and #$bf
 	bne @bad
-@ok:	RETURN_OK
+@ok:	pla
+	RETURN_OK
 
 @bad:	pla
 @ioerr:	RETURN_ERR ERR_IO_ERROR
