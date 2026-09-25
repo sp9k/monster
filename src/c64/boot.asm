@@ -32,6 +32,7 @@
 .import __BANKCODE2_LOAD__,   __BANKCODE2_RUN__,   __BANKCODE2_SIZE__
 .import __CODE_LOAD__,        __CODE_RUN__,        __CODE_SIZE__
 .import __RODATA_LOAD__,      __RODATA_RUN__,      __RODATA_SIZE__
+.import __EDITMAIN_LOAD__,    __EDITMAIN_RUN__,    __EDITMAIN_SIZE__
 .import __GUICODE_LOAD__,     __GUICODE_RUN__,     __GUICODE_SIZE__
 .import __DEBUGGER_LOAD__,    __DEBUGGER_RUN__,    __DEBUGGER_SIZE__
 .import __ERRORS_LOAD__,      __ERRORS_RUN__,      __ERRORS_SIZE__
@@ -228,6 +229,7 @@ relocs:
 .word __BANKCODE2_LOAD__,   __BANKCODE2_RUN__,   __BANKCODE2_SIZE__
 .word __CODE_LOAD__,        __CODE_RUN__,        __CODE_SIZE__
 .word __RODATA_LOAD__,      __RODATA_RUN__,      __RODATA_SIZE__
+.word __EDITMAIN_LOAD__,    __EDITMAIN_RUN__,    __EDITMAIN_SIZE__
 .word __GUICODE_LOAD__,     __GUICODE_RUN__,     __GUICODE_SIZE__
 .word __DEBUGGER_LOAD__,    __DEBUGGER_RUN__,    __DEBUGGER_SIZE__
 .word __ERRORS_LOAD__,      __ERRORS_RUN__,      __ERRORS_SIZE__

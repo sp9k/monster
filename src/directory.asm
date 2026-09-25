@@ -24,6 +24,9 @@
 .include "text.inc"
 .include "util.inc"
 .include "zeropage.inc"
+.if .defined(c64) .and .defined(CART)
+.include "c64/sidplay.inc"
+.endif
 
 .ifdef vic20
 CUR_BANK .set FINAL_BANK_MAIN
@@ -61,6 +64,9 @@ DIR_NUM_FILE_ROWS = DIR_MAX_ROW-DIR_FILE_ROW
 .BSS
 .endif
 
+.if .defined(c64) .and .defined(CART)
+sidmode: .byte 0
+.endif
 rowbuf: .res LINESIZE		; row being composed
 
 .CODE
@@ -71,7 +77,15 @@ rowbuf: .res LINESIZE		; row being composed
 
 .if .defined(CART) .and .defined(c64)
 __dir_get_by_type: JUMP FINAL_BANK_FILEDIR, getbytype
-__dir_view:        JUMP FINAL_BANK_FILEDIR, dirview
+__dir_view:
+	lda #$00
+	sta sidmode
+	JUMP FINAL_BANK_FILEDIR, dirview
+.export __dir_sid
+__dir_sid:
+	lda #$01
+	sta sidmode
+	JUMP FINAL_BANK_FILEDIR, dirview
 .else
 __dir_get_by_type = getbytype
 __dir_view        = dirview
@@ -298,6 +312,14 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	; read a filename into (@line)
 	jsr read_filename
 	bcs @cont		; eof -> continue
+.if .defined(c64) .and .defined(CART)
+	ldx sidmode
+	beq :+
+	ldxy @line
+	jsr sidname
+	bcc @getfilenames
+:
+.endif
 	ldxy @line
 	sec			; +1
 	adc @line
@@ -361,6 +383,10 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 ; check the arrow keys (used to select a file)
 @checkdown:
+.ifdef c64
+	ldx @cnt
+	beq @nextkey		; empty list
+.endif
 	jsr key::isdown
 	bne @checkup
 @rowdown:
@@ -463,6 +489,12 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	jsr scr::restore
 	lda @select
 	jsr @getname
+.if .defined(c64) .and .defined(CART)
+	lda sidmode
+	beq :+
+	JUMPMAIN edit::load_sid
+:
+.endif
 	JUMPMAIN edit::load		; load the file
 
 ;-------------------------------------------------------------------------------
@@ -739,3 +771,66 @@ getb:	jsr krn::readst	; call READST
 	sec
 	rts
 .endproc
+
+.if .defined(c64) .and .defined(CART)
+;*******************************************************************************
+; SIDNAME
+; Checks for a .sid or .psid extension with a nonempty basename. Case
+; insensitive
+; IN:
+;   - .A:  filename length
+;   - .XY: address of the filename
+; OUT:
+;   - .A:  original filename length
+;   - .C:  set if the filename matches, clear otherwise
+.proc sidname
+@name=r0
+@length=r2
+	sta @length
+	stxy @name
+	cmp #$05		; strlen(".sid")+1
+	bcc @reject
+
+	; check the final three letters backwards
+	tay
+	dey
+	lda (@name),y
+	and #$5f
+	cmp #$44		; D
+	bne @reject
+	dey
+	lda (@name),y
+	and #$5f
+	cmp #$49		; I
+	bne @reject
+	dey
+	lda (@name),y
+	and #$5f
+	cmp #$53		; S
+	bne @reject
+
+	; before SID, accept either a dot or a P preceded by a dot
+	dey
+	lda (@name),y
+	cmp #'.'
+	beq @match
+	and #$5f
+	cmp #$50		; P
+	bne @reject
+	cpy #2			; leave room for the dot and a nonempty basename
+	bcc @reject
+	dey
+	lda (@name),y
+	cmp #'.'
+	bne @reject
+
+@match:	lda @length
+	sec			; flag SID file
+	rts
+
+@reject:
+	lda @length
+	clc			; not a SID file
+	rts
+.endproc
+.endif

@@ -3,6 +3,7 @@
 ; This file contains C64-specific helpers for things like debugging/tracing
 ;*******************************************************************************
 
+.include "sidplay.inc"
 .include "../macros.inc"
 .include "../sim6502.inc"
 .include "nmi.inc"
@@ -32,6 +33,8 @@ saved_nmi: .res 2
 ; Installs a routine to catch
 .export __bsp_install_tracer
 .proc __bsp_install_tracer
+	jsr __sid_stop
+
 	; remember whose NMI handler we are displacing.  Read it from $0318,
 	; not $fffa: writes to $fffa always land in RAM but reads there see
 	; the KERNAL ROM whenever it is banked in.  install writes both
@@ -112,6 +115,8 @@ saved_nmi: .res 2
 ; SAVE DEBUG STATE
 .export __bsp_save_debug_state
 .proc __bsp_save_debug_state
+	jsr __sid_stop
+
 	; just save everything
 	; TODO: don't be lazy
 	ldxy #$0800

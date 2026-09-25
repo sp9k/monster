@@ -12,6 +12,9 @@
 .import __edit_highlight_line
 .import __edit_init
 .import __edit_load
+.if .defined(c64) .and .defined(CART)
+.import __edit_load_sid
+.endif
 .import __edit_refresh
 .import __edit_redrawline
 .import __edit_refreshline
@@ -39,6 +42,9 @@
 	highlight_line  = __edit_highlight_line
 	init            = __edit_init
 	load            = __edit_load
+.if .defined(c64) .and .defined(CART)
+	load_sid        = __edit_load_sid
+.endif
 	refresh         = __edit_refresh
 	redrawline      = __edit_redrawline
 	refreshline     = __edit_refreshline

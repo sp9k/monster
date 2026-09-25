@@ -74,6 +74,7 @@ CUR_BANK .set FINAL_BANK_MAIN
 
 .ifdef c64
 .include "c64/c64.inc"
+.include "c64/sidplay.inc"
 .endif
 
 ;*******************************************************************************
@@ -207,7 +208,9 @@ guishrink:     JUMPMAIN gui::shrink
 guitogglehide: JUMPMAIN gui::togglehide
 guidismissall: JUMPMAIN gui::dismissall
 
-BANKED_SEG "EDITCODE", FINAL_BANK_EDIT
+; MAIN-only editor code shares RAM beneath BASIC with GUICODE.
+; EDITCODE keeps the remaining code and cross-context data in visible RAM.
+BANKED_SEG "EDITMAIN", FINAL_BANK_EDIT
 
 .else
 __edit_init            = edit_init
@@ -2791,6 +2794,11 @@ cancel = enter_command
 	.byte K_RESTORE	; RESTORE (close all windows)
 	.byte K_NEXT_BANNER	; CTRL + ; (next comment banner)
 	.byte K_PREV_BANNER	; CTRL + : (previous comment banner)
+.if .defined(c64) .and .defined(CART)
+	.byte K_SID_VIEW	; C= + F1 (music browser)
+	.byte K_SID_TOGGLE	; C= + F3 (pause/resume music)
+	.byte K_SID_RESTART	; C= + F5 (restart music)
+.endif
 @num_special_keys=*-@specialkeys
 .linecont +
 .define specialvecs ccleft, ccright, ccup, ccdown, \
@@ -2811,7 +2819,13 @@ cancel = enter_command
 .linecont -
 
 @specialvecslo: .lobytes specialvecs
+.if .defined(c64) .and .defined(CART)
+	.lobytes sidview, __sid_toggle, sidrestart
+.endif
 @specialvecshi: .hibytes specialvecs
+.if .defined(c64) .and .defined(CART)
+	.hibytes sidview, __sid_toggle, sidrestart
+.endif
 .POPSEG
 .endproc
 
@@ -6290,6 +6304,55 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	sta text::insertmode
 	rts
 .endproc
+
+;*******************************************************************************
+; LOAD SID
+; Loads the given SID filename
+; IN:
+;   - .XY: filename of the .(P)SID file to load
+.if .defined(c64) .and .defined(CART)
+.export __edit_load_sid
+.proc __edit_load_sid
+@file=r9
+	stxy @file
+	ldxy #strings::loading
+	jsr blank
+	ldxy @file
+	jsr __sid_load
+
+	php
+	pha
+	jsr unblank
+	jsr ui::update_statusline
+	jsr draw_status_bar
+	pla
+	plp
+	cli
+	rts
+.endproc
+
+;*******************************************************************************
+; SID VIEW
+; Loads the directory viewer with a filter for SID files
+.proc sidview
+	jsr scr::savebuf
+	jsr scr::blank
+	jsr __dir_sid
+	bcc :+
+	jmp report_errcode
+:	rts
+.endproc
+
+;*******************************************************************************
+; SID RESTART
+; Restarts the active SID file's playback
+.proc sidrestart
+	jsr __sid_restart
+	bcc :+
+	jmp report_errcode
+:	rts
+.endproc
+.endif
 
 ;*******************************************************************************
 ; DIR VIEW

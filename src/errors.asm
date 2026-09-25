@@ -348,6 +348,13 @@ err_watch_exists:
 ; .byte "watch already exists",0
 .byte $b8,$54,$1a,$1b,$b,$12,$28,$44,$ce,$c5,$c2,$53,$a4,$c0
 
+err_sid_format:
+; invalid or unsupported sid
+.byte $4b,$96,$0b,$09,$26,$cf,$96,$d5,$74,$d5,$84,$0f,$95,$05,$26,$d3,$49,$00
+err_sid_address:
+; sid address out of range
+.byte $9a,$44,$d8,$44,$24,$85,$9c,$db,$7d,$54,$db,$c6,$dc,$81,$71,$c5,$00
+
 ;*******************************************************************************
 .linecont +
 .define errors \
@@ -433,7 +440,9 @@ err_watch_exists:
 	err_segment_out_of_range, \
 	err_not_integral, \
 	err_invalid_alignment, \
-	err_watch_exists
+	err_watch_exists, \
+	err_sid_format, \
+	err_sid_address
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

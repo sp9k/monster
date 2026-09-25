@@ -136,6 +136,10 @@ ERR_INVALID_ALIGNMENT    = 81
 ; Monitor watch errors
 ERR_WATCH_EXISTS         = 82
 
+; C64 SID loader errors
+ERR_SID_FORMAT           = 83
+ERR_SID_ADDRESS          = 84
+
 ;*******************************************************************************
 ; DOS STATUS CODES
 ; Stands in for the code the drive reports in its error message when that

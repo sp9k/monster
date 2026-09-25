@@ -1,3 +1,4 @@
+.include "sidplay.inc"
 .include "bsp.inc"
 .include "debug.inc"
 .include "reu.inc"
@@ -181,6 +182,7 @@ nop_handler:
 ; GO
 .export __run_go
 .proc __run_go
+	jsr __sid_stop
 	TRACE_ON
 
 	lda #$34	; make all RAM available

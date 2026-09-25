@@ -26,6 +26,9 @@ K_DEL           = $14	; DELETE
 
 ; EDITOR KEYS
 K_GO_BASIC       = $85	; F1
+K_SID_VIEW       = $ec	; C= + f1 (C64)
+K_SID_TOGGLE     = $ed	; C= + f3 (C64)
+K_SID_RESTART    = $ee	; C= + f5 (C64)
 K_MEM_CONFIG     = $89	; F2
 K_ASM_DEBUG      = $b0	; C= + a (assemble with debug info)
 K_DEBUG          = $ac	; C= + d

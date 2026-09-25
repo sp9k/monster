@@ -42,6 +42,10 @@ REU_VMEM_ROM            = $fc0000
 REU_BACKUP_ADDR         = $fb0000
 REU_BACKUP_IO           = $fa0000
 
+; SID player state
+REU_SID_ZP_ADDR         = $f90002
+REU_SID_IMAGE_ADDR      = $f91000
+
 ; address in the REU to save/restore C64 data to
 REU_TMP_ADDR            = $ff0000
 
