@@ -204,6 +204,8 @@
 .endif
 
 	; activate the main CODE bank and begin the app
+	lda #$00
+	sta zp::banksp
 	lda #$4c		; JMP
 	sta zp::jmpaddr
 	sta zp::bankjmpaddr

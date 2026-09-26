@@ -458,6 +458,7 @@ blank   = scr::blank
 	pla
 	sta sim::pc+1
 
+.ifdef vic20
 	; check if an interrupt occurred inside the interrupt handler
 	; if it did, just RTI
 	cmp #$80
@@ -474,6 +475,7 @@ blank   = scr::blank
 	ldy sim::reg_y
 	lda sim::reg_a
 	rti
+.endif
 
 @enter: ; disable anything that could steal control
 	TRACE_OFF
@@ -876,6 +878,10 @@ blank   = scr::blank
 ; SWAP USER MEM
 ; Command that swaps in the user program memory, waits for a keypress, and
 ; returns with the debugger's memory swapped back in
+.PUSHSEG
+.ifdef c64
+.segment "GUICODE"
+.endif
 .export __debug_swap_user_mem
 .proc __debug_swap_user_mem
 	jsr blank
@@ -899,17 +905,33 @@ blank   = scr::blank
 	lda #$00
 	sta $c6		; clear keyboard buffer
 .elseif .defined(c64)
+	IO_BEGIN
+	jsr @release
 :	jsr $ea87
 	lda $c6
 	beq :-
-	lda #$00
-	sta $c6		; clear keyboard buffer
+
+	jsr @release
+	IO_DONE
 .endif
 
 	; restore debugger state
 	jsr bsp::restore_debug_visual
 	jmp unblank
+
+;-------------------------------------------------------------------------------
+.ifdef c64
+@release:
+	jsr $ea87
+	lda #$00
+	sta $c6
+	lda $cb		; SCNKEY reports $40 when no key is down
+	cmp #$40
+	bne @release	; wait for no key to be present
+	rts
+.endif
 .endproc
+.POPSEG
 
 ;*******************************************************************************
 .PUSHSEG
@@ -1174,16 +1196,22 @@ __debug_step:
 	bpl :-
 
 	ldx #$00
-:	lda $00,x
+@copy:
+.ifdef c64
+	; The BRK/NMI handler already captured the user's processor ports.
+	cpx #$02
+	bcc @hi
+.endif
+	lda $00,x
 	sta prog00,x
-	lda $100,x
+@hi:	lda $100,x
 	sta prog00+$100,x
 	lda $200,x
 	sta prog00+$200,x
 	lda $300,x
 	sta prog00+$300,x
 	dex
-	bne :-
+	bne @copy
 
 	; restore BRK/NMI vector in virtual memory
 	ldx #DBGVECS_SIZE-1

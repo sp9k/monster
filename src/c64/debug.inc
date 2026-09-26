@@ -2,6 +2,7 @@
 C64_DEBUG_INC = 1
 
 .include "nmi.inc"
+.global __run_save_high
 
 ;*******************************************************************************
 ; TRACE ON
@@ -20,9 +21,10 @@ C64_DEBUG_INC = 1
 
 ;*******************************************************************************
 ; SAVE IO
-; This macro saves C64 specific I/O (CIAs etc.) upon returning to the
-; debugger from a "GO" command
+; Finish the C64 native return: save upper user RAM and restore the simulator
+; that lives beneath the KERNAL ROM.
 .macro SAVE_IO
+	jsr __run_save_high
 .endmacro
 
 ;*******************************************************************************

@@ -12,7 +12,7 @@ FLASHER_DEVICE ?= 10
 
 # Five-digit monotonic release number, persisted in the ROM update header.
 VERSION := $(strip $(shell cat VERSION))
-UPDATE_IMAGE=monster-$(VERSION).bin
+UPDATE_IMAGE=monster$(VERSION).bin
 
 # emulators
 X64=x64sc
@@ -165,7 +165,7 @@ updater.prg: updater.asm updater.inc firmware.inc flasher.asm Makefile $(BUILD_O
 
 updater.d81: updater.prg $(UPDATE_IMAGE) Makefile
 	$(C1541) -format "monster update,mu" d81 $@ -attach $@ \
-		-write updater.prg updater.prg -write $(UPDATE_IMAGE) monster-$(VERSION).bi
+		-write updater.prg updater.prg -write $(UPDATE_IMAGE) $(UPDATE_IMAGE)
 
 # Same non-destructive bank check as the flasher, without a flash image.
 ramtest.prg: ramtest.asm Makefile

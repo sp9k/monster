@@ -10,9 +10,6 @@ nmis_disabled: .byte 0
 ; Reenables NMI's by acking the one that was held in an unacknowledged state
 .export __nmi_enable
 .proc __nmi_enable
-	lda nmis_disabled
-	beq @done
-
 	IO_BEGIN
 	lda #$7f
 	sta $dd0d
@@ -22,7 +19,7 @@ nmis_disabled: .byte 0
 	lda #$00
 	sta nmis_disabled
 
-@done:	rts
+	rts
 .endproc
 
 ;*******************************************************************************

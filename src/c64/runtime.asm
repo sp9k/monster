@@ -182,6 +182,7 @@ nop_handler:
 ; GO
 .export __run_go
 .proc __run_go
+	sei
 	jsr __sid_stop
 	TRACE_ON
 
@@ -191,7 +192,20 @@ nop_handler:
 	ldxy sim::pc
 	stxy TRAMPOLINE_PC
 
-	; swap in the memory above $e000
+	; restore the user's IRQ vector ($fffe)
+	ldxy #::irq_handler::irq_return+1
+	stxy reu::c64addr
+	ldxy #$fffe
+	stxy reu::reuaddr
+	lda #^REU_VMEM_ADDR
+	sta reu::reuaddr+2
+	ldxy #2
+	stxy reu::txlen
+	jsr reu::load
+
+	; save Monster before replacing its simulator
+	jsr bsp::save_debug_state
+
 	ldxy #$e000
 	stxy reu::c64addr
 	stxy reu::reuaddr
@@ -212,7 +226,6 @@ nop_handler:
 	lda #$34
 	sta $01
 
-	jsr bsp::save_debug_state
 	jsr bsp::restore_prog_visual
 
 	; install the SW/HW NMI handler
@@ -222,6 +235,10 @@ nop_handler:
 	lda #>nmi_handler
 	sta $fffb
 	sta $0319
+	ldxy #brk_handler
+	stxy $0316
+	ldxy #irq_handler
+	stxy $fffe
 
 	; bounce to the user's program
 	ldx sim::reg_sp
@@ -380,9 +397,9 @@ nop_handler:
 
 	; overwrite the JMP address to go to edit handler
 	lda #<nmi_edit
-	sta __NMI_HANDLER_RUN__+nmi_handler_size-2
+	sta ::brk_handler::nmi_return+1
 	lda #>nmi_edit
-	sta __NMI_HANDLER_RUN__+nmi_handler_size-1
+	sta ::brk_handler::nmi_return+2
 	rts
 .endproc
 
@@ -391,6 +408,7 @@ nop_handler:
 ; This is the NMI handler for invoking BASIC from the editor.
 ; It simply saves the state of BASIC and jumps back to the editor main loop
 .proc nmi_edit
+	SAVE_IO
 	;lda $912e
 	;sta sim::via2+$e
 
@@ -501,6 +519,20 @@ nmi_handler:
 	tya
 	pha
 
+;*******************************************************************************
+; BRK HANDLER
+.proc brk_handler
+	ldx $00
+	ldy $01
+
+	lda #$2f
+	sta $00
+	lda #$34
+	sta $01
+
+	stx prog00
+	sty prog00+1
+
 	lda #$36
 	sta $01
 
@@ -519,6 +551,8 @@ nmi_handler:
 	sta $df04+1
 	lda #^REU_VMEM_ADDR
 	sta $df04+2
+	lda #$00
+	sta $df0a
 
 	lda #<(__NMI_HANDLER_RUN__-$800)
 	sta $df07
@@ -535,7 +569,32 @@ nmi_handler:
 
 	lda #$34
 	sta $01
+nmi_return:
 	jmp dbg::reenter
+.endproc
+
+;*******************************************************************************
+; IRQ HANDLER
+; Installed instead of the user's IRQ.  When an IRQ is triggered, checks if it
+; is a BRK and, if it is, dispatches back to the debugger.
+.proc irq_handler
+	pha
+	txa
+	pha
+	tsx
+	lda $103,x
+	and #$10
+	bne irq_brk
+	pla
+	tax
+	pla
+irq_return:
+	jmp $f00d
+irq_brk:
+	tya
+	pha
+	jmp brk_handler
+.endproc
 nmi_handler_size=*-nmi_handler
 
 .segment "TRAMPOLINE"
@@ -571,3 +630,26 @@ TRAMPOLINE_A=*+1
 TRAMPOLINE_PC=*+1
 	jmp $f00d	; jump to the user's program
 trampoline_size=*-trampoline
+
+.CODE
+
+;*******************************************************************************
+; SAVE HIGH
+; Saves the users RAM in the "high" ($e000-$fff7) range and restores the
+; debugger's.
+.export __run_save_high
+.proc __run_save_high
+	ldxy #$e000
+	stxy reu::c64addr
+	stxy reu::reuaddr
+	lda #^REU_VMEM_ADDR
+	sta reu::reuaddr+2
+
+	ldxy #$1ff8
+	stxy reu::txlen
+	jsr reu::store_delayed
+
+	lda #^REU_BACKUP_ADDR
+	sta reu::reuaddr+2
+	jmp reu::load_delayed
+.endproc

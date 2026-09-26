@@ -186,15 +186,8 @@ saved_nmi: .res 2
 	sta reu::reuaddr+2
 	jsr reu::load
 
-	; load the VIC-II registers and color memory
-	ldxy #$d000
-	stxy reu::c64addr
-	stxy reu::reuaddr
 	lda #^REU_BACKUP_IO
-	sta reu::reuaddr+2
-	ldxy #$be8
-	stxy reu::txlen
-	jmp reu::load
+	jmp restore_visual_io
 .endproc
 
 ;*******************************************************************************
@@ -235,13 +228,27 @@ saved_nmi: .res 2
 	stxy reu::txlen
 	jsr reu::load
 
-	; load the VIC-II registers and color memory
+	lda #^REU_VMEM_IO
+	jmp restore_visual_io
+.endproc
+
+;*******************************************************************************
+; RESTORE VISUAL IO
+; Restores the virtual VIC-II I/O range+colormap ($d000-$d040) and ($d400-$dbe8)
+.proc restore_visual_io
+	sta reu::reuaddr+2
 	ldxy #$d000
 	stxy reu::c64addr
 	stxy reu::reuaddr
-	lda #^REU_VMEM_IO
-	sta reu::reuaddr+2
-	ldxy #$be8
+	ldxy #$40
+	stxy reu::txlen
+	jsr reu::load
+
+	; restore $d400-$dbe8
+	ldxy #$d400
+	stxy reu::c64addr
+	stxy reu::reuaddr
+	ldxy #$7e8
 	stxy reu::txlen
 	jmp reu::load
 .endproc
