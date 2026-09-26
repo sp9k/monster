@@ -1852,7 +1852,7 @@ __debug_step:
 	CALL FINAL_BANK_MONITOR, mon::log
 
 	ldxy #mem::linebuffer2	; the rendered message (text::render output)
-	jsr alert::show		; tell the user, and wait for them to acknowledge
+	CALLMAIN alert::show	; tell the user, and wait for them to acknowledge
 	sec
 	rts
 .endproc
