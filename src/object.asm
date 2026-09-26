@@ -24,6 +24,7 @@
 ;   RELATIVE ADDR[2]
 ;   FILE ID[1], LINE[2]    ; index in FILENAMES, one-based source line (0=unknown)
 ; LOCALS[]
+;   Source-scoped @ names are omitted unless explicitly exported above.
 ;   NAME[...]
 ;   FRAGMENT ID[1]
 ;   RELATIVE ADDR[2]
@@ -892,6 +893,20 @@ __obj_split_fragment:
 .endproc
 
 ;*******************************************************************************
+; DUMP SYMBOL NAME
+; Writes the symbol name in $100
+.proc dump_symbol_name
+	ldy #$00
+:	lda $100,y
+	jsr krn::chrout
+	cmp #$00
+	beq @done
+	iny
+	bne :-
+@done:	rts
+.endproc
+
+;*******************************************************************************
 ; DUMP IMPORTS
 ; Stores the names of the imported symbols along with their mapped symbol
 ; indices.
@@ -921,15 +936,9 @@ __obj_split_fragment:
 	CALLMAIN lbl::getname
 
 	; write out the name
-	ldy #$00
-:	lda @buff,y
-	jsr krn::chrout
-	cmp #$00
-	beq @cont
-	iny
-	bne :-
+	jsr dump_symbol_name
 
-@cont:	; write the address mode for the IMPORT (ZP or ABS)
+	; write the address mode for the IMPORT (ZP or ABS)
 	ldxy @idx			; restore the label ID
 	CALLMAIN lbl::addrmode
 	jsr krn::chrout
@@ -970,15 +979,9 @@ __obj_split_fragment:
 	CALLMAIN lbl::getname
 
 	; write out the name
-	ldy #$00
-:	lda @buff,y
-	jsr krn::chrout
-	cmp #$00
-	beq @cont
-	iny
-	bne :-
+	jsr dump_symbol_name
 
-@cont:	; write the SEGMENT id
+	; write the SEGMENT id
 	ldxy @id
 	jsr dump_symbol_value
 	bcs @ret
@@ -993,18 +996,39 @@ __obj_split_fragment:
 .endproc
 
 ;*******************************************************************************
+; COUNT LOCALS
+; Count the number of non-import, non-export symbols, non-procedure local ('@')
+; labels.
+; OUT:
+;   - num_locals: updated to contain the number of locals
+.proc count_locals
+	lda #$00
+	beq visit_locals
+.endproc
+
+;*******************************************************************************
 ; DUMP LOCALS
 ; Dumps the local (not-export, not-import) symbols to the open object file
 .proc dump_locals
+	lda #$01
+	; fall through to visit_locals
+.endproc
+
+;*******************************************************************************
+; VISIT LOCALS
+.proc visit_locals
 @id=zp::tmp12
-@segid=zp::tmp14
+@emit=zp::tmp14
 @buff=$100
+	sta @emit
 	lda #$00
 	sta @id
 	sta @id+1
+	sta numlocals
+	sta numlocals+1
 
 	iszero lbl::num
-	beq @done			; if no exports -> done
+	beq @done			; no symbols
 
 @l0:	; check if the label is already dumped as an export and skip it if so
 	jsr @isexport
@@ -1013,7 +1037,6 @@ __obj_split_fragment:
 	; check if label was dumped as IMPORT (segment is UNDEF)
 	ldxy @id
 	CALLMAIN lbl::getsegment	; get SEGMENT id
-	sta @segid
 	cmp #SEG_UNDEF
 	beq @next
 
@@ -1023,16 +1046,24 @@ __obj_split_fragment:
 	ldxy @id
 	CALLMAIN lbl::getname
 
-	; write out the name
+	; check if local is procedure scoped e.g. MAIN@LOOP
 	ldy #$00
-:	lda @buff,y
-	jsr krn::chrout
-	cmp #$00
-	beq @cont
+@name:	lda @buff,y
+	beq @include
+	cmp #'@'			; is label local to a proc?
+	beq @next			; if so, skip it
 	iny
-	bne :-
+	bne @name
 
-@cont:	; write the SEGMENT id
+@include:
+	incw numlocals
+	lda @emit
+	beq @next			; counting only
+
+	; write out the name
+	jsr dump_symbol_name
+
+	; write the SEGMENT id
 	ldxy @id
 	jsr dump_symbol_value
 	bcs @ret
@@ -1381,9 +1412,6 @@ __obj_split_fragment:
 ;   - .C: set on error
 .export __obj_dump
 .proc __obj_dump
-@tmp=r0
-@src=r0
-@cnt=r2
 	CALL FINAL_BANK_DEBUG, dbgi::preparefiles
 	CALL FINAL_BANK_DEBUG, dbgi::dumpfiles
 	; write the main OBJ header
@@ -1396,23 +1424,11 @@ __obj_split_fragment:
 	lda numimports+1		; # of IMPORTS (MSB)
 	jsr krn::chrout
 
-	; locals = total labels - (numexports + numimports)
-	lda numexports
-	clc
-	adc numimports
-	sta @tmp
-	lda numimports+1
-	adc #$00
-	sta @tmp+1
-
-	lda lbl::num
-	sec
-	sbc @tmp
-	php
+	; exclude scoped '@' labels from both the count and the records
+	jsr count_locals
+	lda numlocals
 	jsr krn::chrout			; write # of LOCALS (LSB)
-	plp
-	lda lbl::num+1
-	sbc @tmp+1
+	lda numlocals+1
 	jsr krn::chrout			; write # of LOCALS (MSB)
 
 	; write the SEGMENTS used (names and sizes)
