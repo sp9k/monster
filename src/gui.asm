@@ -337,11 +337,11 @@ __gui_refresh:
 	beq @list
 	ldy #WIN_V0
 	jsr callvec
-	jmp draw_titles
+	jmp __gui_refresh_titles
 
 @list:	jsr list_loadvars
 	jsr list_draw
-	jmp draw_titles
+	jmp __gui_refresh_titles
 .endproc
 
 ;*******************************************************************************
@@ -455,7 +455,8 @@ __gui_refresh:
 ; above its contents (centered), older windows' titles are drawn above it at the
 ; far left of their rows.
 ; Also updates the active window type.
-.proc draw_titles
+.export __gui_refresh_titles
+.proc __gui_refresh_titles
 @row=zp::guitmp
 @i=zp::guitmp+1
 @off=zp::guitmp+2
@@ -1254,7 +1255,7 @@ __gui_refresh:
 	jsr callvec
 
 @titles:
-	jsr draw_titles	; the title rows moved with the resize
+	jsr __gui_refresh_titles	; the title rows moved with the resize
 	jmp geom
 .endproc
 

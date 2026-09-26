@@ -467,7 +467,8 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	ldx winbot
 	jsr text::scrolldown
 	lda wintop
-	jmp draw_row
+	jsr draw_row
+	jmp refresh_title
 
 @movecur:
 	dec zp::cury
@@ -495,7 +496,8 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	lda winbot
 	jsr text::scrollup
 	lda winbot
-	jmp draw_row
+	jsr draw_row
+	jmp refresh_title
 
 @movecur:
 	inc zp::cury
@@ -552,12 +554,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	bcs :+			; on invalid input, leave address unchanged
 	stxy memaddr
 
-:	lda #']'
-	sta mem::linebuffer+TITLE_ADDR_START+4+TITLE_VAL_OFFSET
-	lda zp::cury
-	jsr text::drawline
-
-	popcur
+:	popcur			; caller redraws the title from memaddr
 	rts
 .endproc
 
@@ -567,8 +564,8 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 .proc refresh
 	lda wintop
 	ldx winbot
-
-	; fall through to draw
+	jsr windraw
+	JUMPMAIN gui::refresh_titles
 .endproc
 
 ;*******************************************************************************
@@ -585,16 +582,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	stx winbot
 	stx @row
 
-	; render the current address into the title
-	lda memaddr
-	jsr util::hextostr
-	stx strings::memview_title+TITLE_ADDR_START+3
-	sty strings::memview_title+TITLE_ADDR_START+2
-
-	lda memaddr+1
-	jsr util::hextostr
-	stx strings::memview_title+TITLE_ADDR_START+1
-	sty strings::memview_title+TITLE_ADDR_START
+	CALLMAIN format_title	; GUICODE is hidden while the DBGUI bank is mapped
 
 @l0:	lda @row
 	jsr draw_row
@@ -605,6 +593,33 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	jmp @l0
 @done:	rts
 .endproc
+
+;*******************************************************************************
+; REFRESH TITLE
+; Refreshes the tile row for the memory viewer
+.proc refresh_title
+	CALLMAIN format_title
+	JUMPMAIN gui::refresh_titles
+.endproc
+
+;*******************************************************************************
+; FORMAT TITLE
+; Renders the base address for the current view
+.PUSHSEG
+.segment "GUICODE"
+.proc format_title
+	lda memaddr
+	jsr util::hextostr
+	stx strings::memview_title+TITLE_ADDR_START+3
+	sty strings::memview_title+TITLE_ADDR_START+2
+
+	lda memaddr+1
+	jsr util::hextostr
+	stx strings::memview_title+TITLE_ADDR_START+1
+	sty strings::memview_title+TITLE_ADDR_START
+	rts
+.endproc
+.POPSEG
 
 ;*******************************************************************************
 ; DRAW ROW

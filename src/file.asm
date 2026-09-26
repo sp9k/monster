@@ -301,7 +301,7 @@ OSPROC __file_readb
 	inc __file_eof
 @ok:	RETURN_OK
 
-@err:	jmp fgeterr
+@err:	jmp __file_geterr
 ENDOSPROC
 
 BANKED_CODE "FILEDIR"

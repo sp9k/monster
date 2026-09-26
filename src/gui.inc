@@ -10,6 +10,7 @@
 .import __gui_maximize
 .import __gui_open
 .import __gui_refresh
+.import __gui_refresh_titles
 .import __gui_select
 .import __gui_shrink
 .import __gui_togglehide
@@ -27,6 +28,7 @@
 	maximize	= __gui_maximize
 	open		= __gui_open
 	refresh		= __gui_refresh
+	refresh_titles	= __gui_refresh_titles
 	select		= __gui_select
 	shrink		= __gui_shrink
 	togglehide	= __gui_togglehide
