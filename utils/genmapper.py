@@ -72,15 +72,15 @@ segments = {
 		blk5 = Rom(10),
 	),
 	"SYMBOLS": Bank(
-		blk1 = Ram(20),
-		blk2 = Ram(21),
-		blk3 = Ram(22),
+		blk1 = Ram(70), # metadata; contiguous symbol store occupies 70..100
+		blk2 = Ram(70), # unused alias
+		blk3 = Ram(70), # temporary paging window, restored after each access
 		blk5 = Rom(11),
 	),
 	"SYMBOL_NAMES": Bank(
-		blk1 = Ram(23),
-		blk2 = Ram(24),
-		blk3 = Ram(25),
+		blk1 = Ram(70), # metadata; contiguous symbol store occupies 70..100
+		blk2 = Ram(70), # unused alias
+		blk3 = Ram(70), # temporary paging window, restored after each access
 		blk5 = Rom(11),
 	),
 	"CTX": Bank(

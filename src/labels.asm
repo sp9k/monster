@@ -9,12 +9,9 @@
 ; alphabetic retrieval and are also indexed by address (value) to allow for
 ; efficient retrieval by address.
 ;
-; Due to the size of labels and the data structures used to manage them,
-; they have a more segmented memory map than most modules.
-; Two logical banks are used:
-; SYMBOLS:      anonymous labels, hash map for labels, label metadata, index of
-;               labels by address/name, and general BSS
-; SYMBOL NAMES: just the names of the symbols
+; The buckets, scopes, and anonymous labels are stored in the SYMBOLS bank.
+; Records, hash-chain nodes, indexes and names are stored in a separate
+; contiguous pool of memory (see symbolpages.asm).
 ;
 ; ------------------------------------------------------------------------------
 ; ANONYMOUS LABELS OVERVIEW
@@ -40,7 +37,7 @@
 ; 5 ID
 ;   symbol id                         (2 bytes)
 ; 7 NAME
-;   address of symbol's name          (2 bytes)
+;   word offset into name pool        (2 bytes)
 ; 9 FILE
 ;   id of file containing label       (1 byte)
 ; 10 LINE
@@ -87,6 +84,7 @@ LIST_NEXT   = 2
 .include "macros.inc"
 .include "target.inc"
 .include "string.inc"
+.include "symbolpages.inc"
 .include "zeropage.inc"
 
 .macpack longbranch
@@ -193,95 +191,25 @@ __label_get_line:          LBLJUMP get_file_and_line
 __label_remap_files:       LBLJUMP remap_files
 
 ;*******************************************************************************
-; LABEL NAMES
-; Table of label names
-.segment "LABELNAMES"
-labelnames: .res MAX_LABELS*MAX_LABEL_NAME_LEN
+; paged address spaces
+labels      = $0010
+label_nodes = $0004
+.assert MAX_LABELS = 4096, error, "paged indexes require 4096 symbols"
+
+label_addresses_sorted     = $2000
+label_addresses_sorted_ids = label_addresses_sorted + MAX_LABELS*2
+label_names_sorted         = label_addresses_sorted_ids + MAX_LABELS*2
+label_names_sorted_ids     = label_names_sorted + MAX_LABELS*2
+
+.export labels, label_nodes, label_names_sorted
 
 .segment "LABEL_BSS"
-
-;*******************************************************************************
-; LABEL BUCKETS
-; List of the linked-lists containing the symbol definitions
-; The values in this list are the "head" nodes of the linked list for the bucket
 .export label_buckets
 label_buckets: .res NUM_BUCKETS*2
-
-;*******************************************************************************
-; LABEL NODES
-; Nodes for the linked lists of each bucket.
-; Each node contains a pointer to a LABEL (see labels) and a NEXT pointer to
-; the next node in the list
-.export label_nodes
-label_nodes: .res MAX_LABELS*SIZEOF_LABEL_LIST_NODE
-
-;*******************************************************************************
-; LABELS
-; List of all the label definitions (see LABEL STRUCT)
-.export labels
-labels: .res MAX_LABELS*SIZEOF_LABEL
-
-;*******************************************************************************
-; SCOPES
-; Stack of "scopes". These are defined by a global (non-local) label definition
-; And they end at the definition of another non-local symbol
-scopes: .res SCOPE_LEN*MAX_SCOPES	; scope stack buffer
-
-;*******************************************************************************
-; LABEL ADDRESSES INDEX
-; Index tables to find labels by address
-; The address of a given label id is label_addresses + (id * 2)
-; Labels are also stored sorted by address in label_addresses_sorted.
-; A corresponding array maps the sorted addresses to their ID.
-;
-; e.g. for the following labels:
-;    | label |  id   |  address |
-;    |-------|-------|----------|
-;    |   A   |   1   |  $1003   |
-;    |   B   |   2   |  $1009   |
-;    |   C   |   3   |  $1000   |
-;
-; the sorted addresses will look like this:
-;    | address_sorted| sorted_id |
-;    |---------------|-----------|
-;    |    $1000      |    3      |
-;    |    $1003      |    1      |
-;    |    $1009      |    2      |
-
-.assert * & $01 = $00, error, "label_addresses_sorted must be word aligned"
-
-;*******************************************************************************
-; LABEL ADDRESSES SORTED
-; Sorted array of addresses.
-; Each element in this array corresponds to the element in the parallel
-; "label_addresses" array (the id for the symbol with this address)
-label_addresses_sorted:     .res MAX_LABELS*2
-label_addresses_sorted_ids: .res MAX_LABELS*2
-
-;*******************************************************************************
-; LABEL NAMES SORTED
-; Sorted array of symbol names.
-; label_names_sorted contains an array of addresses to the names of
-; the corresponding symbol ids array (label_addresses_sorted_ids)
-; These arrays are sorted by the alphanumeric ordering of the label names
-; in ascending order.
-.assert * & $01 = $00, error, "label_names_sorted must be word aligned"
-
-.export label_names_sorted
-label_names_sorted:     .res MAX_LABELS*2
-.export label_names_sorted_ids
-label_names_sorted_ids: .res MAX_LABELS*2
-
-; lbl::load's index rebuild steps between these arrays by their size
-.assert label_addresses_sorted_ids-label_addresses_sorted = MAX_LABELS*2, error, "label index arrays must be contiguous"
-.assert label_names_sorted-label_addresses_sorted_ids = MAX_LABELS*2, error, "label index arrays must be contiguous"
-.assert label_names_sorted_ids-label_names_sorted = MAX_LABELS*2, error, "label index arrays must be contiguous"
-
-;*******************************************************************************
-; ANON ADDRS
-; address table for each anonymous label
+scopes: .res SCOPE_LEN*MAX_SCOPES
 .export anon_addrs
 anon_addrs: .res MAX_ANON*2
+.assert * <= $4000, error, "symbol metadata must fit below the paging window"
 
 ;*******************************************************************************
 ; VARS (shared RAM)
@@ -297,7 +225,11 @@ numanon: .word 0		; total number of anonymous labels
 __label_anon_cursor: .word 0	; next source-order anonymous label in object pass 2
 
 scopesp: .byte 0		; offset of next free scope (0 = no scope)
+name_top: .word 0		; word offset of the next free name-pool entry
 labelvars_size=*-labelvars
+
+pivot_name: .word 0		; word offset of the name buffered for sorting
+pivot_name_valid: .byte 0	; cleared before each name sort
 
 BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
@@ -499,10 +431,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 	; get the ID of the symbol
 	ldy #LABEL_ID
-	LOADB_Y label
+	PAGE_LOAD label, SYM_RECORDS
 	tax			; LSB in X
 	iny
-	LOADB_Y label
+	PAGE_LOAD label, SYM_RECORDS
 	tay			; MSB in Y
 
 	;clc
@@ -518,8 +450,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;   - .A: the address mode (0=ZP, 1=ABS)
 .proc addrmode
 	jsr loadlabel
-	ldy #$00
-	LOADB_Y label		; read the FLAGS byte
+	lda flags
 	and #$01		; mask bit 0 (mode)
 	rts
 .endproc
@@ -555,15 +486,15 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda zp::label_segmentid
 	asl
 	ora zp::label_mode
-	STOREB_Y label
+	PAGE_STORE label, SYM_RECORDS
 
 	; overwrite the current value for the label with zp::value
 	ldy #LABEL_ADDR
 	lda zp::label_value
-	STOREB_Y label
+	PAGE_STORE label, SYM_RECORDS
 	iny
 	lda zp::label_value+1
-	STOREB_Y label
+	PAGE_STORE label, SYM_RECORDS
 
 	; get location of label address in the sorted index
 	lda id
@@ -583,10 +514,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	; overwrite the index's value for the label
 	ldy #$00
 	lda zp::label_value
-	STOREB_Y @addr_index
+	PAGE_STORE @addr_index, SYM_INDEXES
 	iny
 	lda zp::label_value+1
-	STOREB_Y @addr_index
+	PAGE_STORE @addr_index, SYM_INDEXES
 
 	; get location of label id in sorted index
 	lda id
@@ -606,10 +537,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	; write ID to label_addresses_sorted_ids
 	lda id
 	ldy #$00
-	STOREB_Y @addr_index
+	PAGE_STORE @addr_index, SYM_INDEXES
 	lda id+1
 	iny
-	STOREB_Y @addr_index
+	PAGE_STORE @addr_index, SYM_INDEXES
 
 	RETURN_OK
 .endproc
@@ -714,25 +645,24 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	jsr hash_name
 	ldy #LABEL_HASH
 	lda hash
-	STOREB_Y label		; store LSB of hash
+	PAGE_STORE label, SYM_RECORDS		; store LSB of hash
 	iny
 	lda hash+1
-	STOREB_Y label		; store MSB of hash
+	PAGE_STORE label, SYM_RECORDS		; store MSB of hash
 
 	; 2. write the ID for the label (current number of labels)
 	ldy #LABEL_ID
 	lda __label_num
 	sta id
-	STOREB_Y label		; store LSB of label's id
+	PAGE_STORE label, SYM_RECORDS		; store LSB of label's id
 	iny
 	lda __label_num+1
 	sta id+1
-	STOREB_Y label		; store MSB of label's id
+	PAGE_STORE label, SYM_RECORDS		; store MSB of label's id
 
 	; 3. set NAME for the label (string) and NAME field (pointer to it)
 	ldxy @name
 	stxy r0			; r0  = label name to set
-	ldxy id			; .XY = ID of label to (re)name
 	jsr set_name		; set name pointer + string
 
 	; 4. write all ADDR related fields (FLAGS, ADDR)
@@ -1239,104 +1169,92 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 ;*******************************************************************************
 ; SET NAME
-; Writes the NAME for the label and updates the pointer to it in the index
-; array.
+; Allocates a packed name and stores its word offset in the label record and
+; name index. Initializes the parallel name-index ID entry as well.
 ; IN:
-;   - .XY: id of the label to (over)write the NAME of
-;   - r0:  address to the string to write
+;   - label:    byte offset of the new record in SYM_RECORDS
+;   - id:       ID of the new label
+;   - r0:       CPU address of the name string
+;   - name_top: word offset of the next free name-pool entry
+; OUT:
+;   - name_top: advanced past the terminated name, rounded up to a word
 .proc set_name
-@name       = r0
-@addr       = r2
-@id2        = r4
-@name_index = temp+2
-	; get address of the label (id * MAX_LABEL_NAME_LEN)
-	sty @addr+1
-
-	txa
-	asl		; *2
-	sta @id2
-
-	; set id2 to intermediate calc result (id*2)
-	rol @addr+1
-	ldx @addr+1
-	stx @id2+1
-
-	asl		; *4
-	rol @addr+1
-	asl		; *8
-	rol @addr+1
-	asl		; *16
-	rol @addr+1
-	asl		; *32
-	rol @addr+1
-	adc #<labelnames
-	sta @addr
-	lda @addr+1
-	adc #>labelnames
-	sta @addr+1
-
-;------------------------------------------------------------------------------
-	; get address to write the ID for this label in the NAMES index
-	lda @id2
-	;clc
-	adc #<label_names_sorted_ids
-	sta @name_index
-	lda @id2+1
-	adc #>label_names_sorted_ids
-	sta @name_index+1
-
-	; write ID to label_addresses_sorted_ids
-	lda id
-	ldy #$00
-	STOREB_Y @name_index
-	lda id+1
-	iny
-	STOREB_Y @name_index
-
-	; get address to write NAME pointer to in the parallel index array
-	lda @id2
-	;clc
-	adc #<label_names_sorted
-	sta @name_index
-	lda @id2+1
-	adc #>label_names_sorted
-	sta @name_index+1
-
-;------------------------------------------------------------------------------
-	; set the NAME pointer to the address we're storing the NAME to
-	; also duplicate NAME pointer in the name index for future sorting
+@name = r0
+@dest = r2
+@idx = temp+2
+	ldxy name_top
+	stxy @dest
 	ldy #LABEL_NAME
-	lda @addr
-	STOREB_Y label		; write NAME pointer LSB
-	ldy #$00
-	STOREB_Y @name_index	; and also to the index
-
-	ldy #LABEL_NAME+1
-	lda @addr+1
-	STOREB_Y label		; write NAME pointer MSB
-	ldy #$01
-	STOREB_Y @name_index	; and also to the index
-
-;------------------------------------------------------------------------------
-	; switch to SYMBOL NAMES bank
-	SELECT_BANK "SYMBOL_NAMES"
-
-	; store the string (symbol name) data
-	ldy #$00
-@l0:	lda (@name),y
-	jsr is_definition_separator
-	bne :+
-	lda #$00		; terminate the name string
-:	STOREB_Y @addr
-	cmp #$00
-	beq @done		; repeat until string is terminated
+	txa
+	PAGE_STORE label, SYM_RECORDS
 	iny
-	cpy #MAX_LABEL_NAME_LEN	; or until string is max length
-	bcc @l0
+	lda @dest+1
+	PAGE_STORE label, SYM_RECORDS
 
-@done:	; switch back to main SYMBOLS bank
-	SELECT_BANK "SYMBOLS"
-	rts
+	lda id
+	asl
+	sta @idx
+	lda id+1
+	rol
+	sta @idx+1
+	lda @idx
+	clc
+	adc #<label_names_sorted
+	sta @idx
+	lda @idx+1
+	adc #>label_names_sorted
+	sta @idx+1
+	ldy #$00
+	lda @dest
+	PAGE_STORE @idx, SYM_INDEXES
+	iny
+	lda @dest+1
+	PAGE_STORE @idx, SYM_INDEXES
+	lda @idx+1
+	clc
+	adc #>(MAX_LABELS*2)
+	sta @idx+1
+	ldy #$00
+	lda id
+	PAGE_STORE @idx, SYM_INDEXES
+	iny
+	lda id+1
+	PAGE_STORE @idx, SYM_INDEXES
+
+	ldy #$00
+@copy:
+	lda (@name),y
+	jsr isseparator
+	bne :+
+	lda #$00
+:	PAGE_STORE @dest, SYM_NAMES
+	beq @done
+	iny
+	cpy #MAX_LABEL_NAME_LEN-1
+	bcc @copy
+	lda #0
+	PAGE_STORE @dest, SYM_NAMES
+@done:
+	; fall through to advance_name
+.endproc
+
+;*******************************************************************************
+; ADVANCE NAME
+; Advances the name-pool word offset past a terminated name, including padding
+; to the next word boundary: name_top += floor(Y / 2) + 1.
+; IN:
+;   - .Y: byte offset of the terminator (number of name bytes before the NUL)
+; OUT:
+;   - name_top: word offset of the next free name-pool entry
+.proc advance_name
+	tya
+	lsr
+	sec
+	adc name_top
+	sta name_top
+	bcc :+
+	inc name_top+1
+:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1375,13 +1293,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;  - label: points to the label struct that was returned
 .proc by_id
 	jsr loadlabel
-
-	ldy #LABEL_ADDR		; offset to ADDR
-	LOADB_Y label
-	tax
-	iny
-	LOADB_Y label
-	tay
+	ldxy addr
 	rts
 .endproc
 
@@ -1410,10 +1322,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	sta @arr+1
 
 	ldy #$00
-	LOADB_Y @arr
+	PAGE_LOAD @arr, SYM_INDEXES
 	tax
 	iny
-	LOADB_Y @arr
+	PAGE_LOAD @arr, SYM_INDEXES
 	tay
 	rts
 .endproc
@@ -1475,10 +1387,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	decw @cursor
 	decw @cursor
 	ldy #$00
-	LOADB_Y @cursor
+	PAGE_LOAD @cursor, SYM_INDEXES
 	tax
 	iny
-	LOADB_Y @cursor
+	PAGE_LOAD @cursor, SYM_INDEXES
 	tay
 	jmp @candidate
 
@@ -1508,10 +1420,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	adc #>label_addresses_sorted_ids
 	sta @tmp+1
 	ldy #$00
-	LOADB_Y @tmp
+	PAGE_LOAD @tmp, SYM_INDEXES
 	tax
 	iny
-	LOADB_Y @tmp
+	PAGE_LOAD @tmp, SYM_INDEXES
 	tay
 	rts
 .endproc
@@ -1602,13 +1514,15 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .proc get_name
 @dst = r0
 	jsr loadlabel
+	ldxy name
+	lda #$00
+	jsr sympage::copy_name
 
-	; switch to SYMBOL NAMES bank
-	SELECT_BANK "SYMBOL_NAMES"
+	; The paging backend restores the caller's mapping.
 
 	; write the symbol name to its destination
 	ldy #$00
-@l0:	LOADB_Y name
+@l0:	lda sympage::name_buffer,y
 	sta (@dst),y
 	tax			; 0?
 	beq @done		; if so, we're done
@@ -1620,9 +1534,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda #$00
 	sta (@dst),y
 
-@done:	; switch back to main SYMBOLS bank
-	SELECT_BANK "SYMBOLS"
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1635,13 +1547,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;  - .XY:   address of the label
 .proc getaddr
 	jsr loadlabel
-
-	ldy #LABEL_ADDR
-	LOADB_Y label
-	tax
-	iny
-	LOADB_Y label
-	tay
+	ldxy addr
 	rts
 .endproc
 
@@ -1655,17 +1561,8 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;   - .XY: line number within file (zero if no source definition is available)
 .proc get_file_and_line
 	jsr loadlabel
-
-	ldy #LABEL_FILE
-	LOADB_Y label
-	pha
-	iny
-	LOADB_Y label
-	tax
-	iny
-	LOADB_Y label
-	tay
-	pla
+	ldxy lineno
+	lda file_id
 	rts
 .endproc
 
@@ -1678,13 +1575,13 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .proc set_location
 	ldy #LABEL_FILE
 	lda zp::label_fileid
-	STOREB_Y label
+	PAGE_STORE label, SYM_RECORDS
 	iny
 	lda zp::label_lineno
-	STOREB_Y label
+	PAGE_STORE label, SYM_RECORDS
 	iny
 	lda zp::label_lineno+1
-	STOREB_Y label
+	PAGE_STORE label, SYM_RECORDS
 	rts
 .endproc
 
@@ -1707,7 +1604,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 @map:	CALL FINAL_BANK_DEBUG, dbgi::globalfile
 	bcs @ret
 	ldy #LABEL_FILE
-	STOREB_Y label
+	PAGE_STORE label, SYM_RECORDS
 @next:	incw @id
 	jmp @loop
 @done:	clc
@@ -1899,10 +1796,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 :	ldy #$00
 
 	; load A[mid] and compare our target against it
-	LOADB_Y @m
+	PAGE_LOAD @m, SYM_INDEXES
 	sta @a
 	iny
-	LOADB_Y @m
+	PAGE_LOAD @m, SYM_INDEXES
 	sta @a+1
 	jsr @compare_func
 	beq @modlow	; search right through all equal entries
@@ -1943,10 +1840,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	sta @m+1
 
 	ldy #$00
-	LOADB_Y @m
+	PAGE_LOAD @m, SYM_INDEXES
 	tax
 	iny
-	LOADB_Y @m
+	PAGE_LOAD @m, SYM_INDEXES
 	tay
 	RETURN_OK
 
@@ -2003,12 +1900,21 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda __label_num
 	cmp #$02
 	bcs @index_by_addr
+	clc
 	rts			; 0 or 1 labels -> nothing to sort
 
 ;-------------------------------------------------------------------------------
 ; index by address
 @index_by_addr:
+.ifdef vic20
+	lda #SYMBOL_INDEXES_BANK
+	sta $9ffa
+	lda #SYMBOL_INDEXES_BANK+1
+	sta $9ffc
+	ldxy #$4000
+.else
 	ldxy #label_addresses_sorted
+.endif
 	stxy @arr
 	ldxy #setptrs_addr
 	stxy @setptrs_fn
@@ -2018,11 +1924,26 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;-------------------------------------------------------------------------------
 ; index by name
 @index_by_name:
+	lda #$00		; other name operations reuse the shared buffer
+	sta pivot_name_valid
+.ifdef vic20
+	lda #SYMBOL_INDEXES_BANK+2
+	sta $9ffa
+	lda #SYMBOL_INDEXES_BANK+3
+	sta $9ffc
+	ldxy #$4000
+.else
 	ldxy #label_names_sorted
+.endif
 	stxy @arr
 	ldxy #setptrs_name
 	stxy @setptrs_fn
 	ldxy #name_comparator
+
+	jsr @index
+	SELECT_BANK "SYMBOLS"
+	clc
+	rts
 
 	; fall through to @index
 
@@ -2090,20 +2011,36 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 	; @a = array[(@j+@i) / 2]
 	ldy #$00
+.ifdef vic20
 	LOADB_Y @tmp
+.else
+	PAGE_LOAD @tmp, SYM_INDEXES
+.endif
 	sta @a
 	iny
+.ifdef vic20
 	LOADB_Y @tmp
+.else
+	PAGE_LOAD @tmp, SYM_INDEXES
+.endif
 	sta @a+1
 
 @qsloop1:
 	; @b = array[i]
 	; while (@b  > @a) { inc @i }
 	ldy #$00		; compare array[i] and x
+.ifdef vic20
 	LOADB_Y @i
+.else
+	PAGE_LOAD @i, SYM_INDEXES
+.endif
 	sta @b
 	iny
+.ifdef vic20
 	LOADB_Y @i
+.else
+	PAGE_LOAD @i, SYM_INDEXES
+.endif
 	sta @b+1
 
 	jsr @compare_func	; is @a < @b?
@@ -2119,10 +2056,18 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	bne @qsloop1		; branch always
 
 @qs_l1:	ldy #$00		; compare array[j] and x
+.ifdef vic20
 	LOADB_Y @j
+.else
+	PAGE_LOAD @j, SYM_INDEXES
+.endif
 	sta @b
 	iny
+.ifdef vic20
 	LOADB_Y @j
+.else
+	PAGE_LOAD @j, SYM_INDEXES
+.endif
 	sta @b+1
 	jsr @compare_func	; is @a < @b?
 	bcs @qs_l3		; if so, break
@@ -2143,8 +2088,16 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	bcc @qs_l8
 
 @qs_l6:	jsr @setptrs
-	SWAPB_Y @i, @j		; swap array[@i] and array[@j]
-	SWAPB_Y @idi, @idj	; swap ids[@i] and ids[@j]
+.ifdef vic20
+	SWAPB_Y @i, @j
+.else
+	INDEX_SWAP @i, @j
+.endif		; swap array[@i] and array[@j]
+.ifdef vic20
+	SWAPB_Y @idi, @idj
+.else
+	INDEX_SWAP @idi, @idj
+.endif	; swap ids[@i] and ids[@j]
 
 	dey
 	bpl @qs_l6
@@ -2243,38 +2196,59 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ; NAME COMPARATOR
 ; Comparator for the quicksort procedure for sort-by NAME.
 ; IN:
-;   - @a: address of first string to compare (LHS of comparison)
-;   - @b: address of second string to compare (RHS of comparison)
+;   - r4: word offset of the pivot name (LHS of comparison)
+;   - r6: word offset of the candidate name (RHS of comparison)
 ; OUT:
-;   - .C: set if the name @a is alphanumerically AFTER @b
-;   - .Z: set if the @a and @b names are equal
+;   - .C: set if the pivot name sorts after or equals the candidate name
+;   - .Z: set if the names are equal
+; The first half of name_buffer caches the pivot until its word offset changes.
+; index invalidates this cache before sorting; other name operations reuse it.
 .proc name_comparator
 @str_a = r4
 @str_b = r6
 @b     = rc
 @savey = rd
-	SELECT_BANK "SYMBOL_NAMES"
-
 	; compare the two name strings
 	sty @savey
+	lda pivot_name_valid
+	beq @load_pivot
+	lda @str_a
+	cmp pivot_name
+	bne @load_pivot
+	lda @str_a+1
+	cmp pivot_name+1
+	beq @candidate
+
+@load_pivot:
+	ldxy @str_a
+	stxy pivot_name
+	lda #$00
+	jsr sympage::copy_name
+	lda #$01
+	sta pivot_name_valid
+
+@candidate:
+	ldxy @str_b
+	lda #MAX_LABEL_NAME_LEN
+	jsr sympage::copy_name
 	ldy #$00
-@l0:	LOADB_Y @str_b
+@l0:	lda sympage::name_buffer+MAX_LABEL_NAME_LEN,y
 	sta @b
 	beq @end
 
 	; compare str_a[i] with str_b[i]
-	LOADB_Y @str_a
+	lda sympage::name_buffer,y
 	beq @end
 	cmp @b
 	bne @done		; if strings mismatch at this byte, we're done
 @next:	iny			; move to next byte
 	bne @l0			; branch always
 
-@end:	LOADB_Y @str_a
+@end:	lda sympage::name_buffer,y
 	cmp @b			; exact match (strlen(a) = strlen(b))?
 
 @done:	php			; save .C and .Z
-	SELECT_BANK "SYMBOLS"
+
 	ldy @savey
 	plp			; restore .C and .Z
 	rts
@@ -2317,11 +2291,9 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	adc #>labels
 	sta label+1
 
-	; load the whole record (FLAGS, HASH, ADDR, ID, NAME, FILE, LINE) in one
-	; block transfer; the ZP fields are laid out in on-record order (flags at
-	; label+2, hash at label+3, ...) so this is a straight copy
-	LOADBLK label, flags, SIZEOF_LABEL
-	rts
+	; load the complete record into its matching zero-page fields
+	ldxy label
+	jmp sympage::copy_record
 .endproc
 
 ;*******************************************************************************
@@ -2334,17 +2306,23 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .proc hash_name
 @name=r0
 	stxy @name
-
 	ldy #$00
 	sty hash
 	sty hash+1
-
-	clc
-@l0:	rol hash
-	rol hash+1
+@l0:
 	lda (@name),y
 	jsr isseparator
 	beq @done
+	pha
+	ldx #$05
+@rotate:
+	asl hash
+	rol hash+1
+	bcc :+
+	inc hash
+:	dex
+	bne @rotate
+	pla
 	eor hash
 	sta hash
 	iny
@@ -2401,16 +2379,16 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	ldy #LIST_NEXT		; offset to NEXT pointer
 
 	; check if we're already at end of the list, and return .C set if so
-	LOADB_Y list		; get LSB of NEXT pointer
+	PAGE_LOAD list, SYM_NODES		; get LSB of NEXT pointer
 	sta @tmp
 	tax
 	iny
-	LOADB_Y list		; get MSB
+	PAGE_LOAD list, SYM_NODES		; get MSB
 	ora @tmp		; is NEXT pointer value $0000?
 	beq @end		; if so, we're at the end of the list
 
 	; update list pointer to next node
-	LOADB_Y list
+	PAGE_LOAD list, SYM_NODES
 	stx list
 	sta list+1
 	RETURN_OK
@@ -2455,26 +2433,26 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 	ldy #LIST_NEXT
 	lda listtop
-	STOREB_Y list
+	PAGE_STORE list, SYM_NODES
 	iny
 	lda listtop+1
-	STOREB_Y list
+	PAGE_STORE list, SYM_NODES
 
 @set_node:
 	; write the data for this new node (label pointer)
 	ldy #LIST_LABEL
 	lda label
-	STOREB_Y listtop
+	PAGE_STORE listtop, SYM_NODES
 	iny
 	lda label+1
-	STOREB_Y listtop
+	PAGE_STORE listtop, SYM_NODES
 
 	; set NEXT pointer for new node to 0 (TAIL)
 	ldy #LIST_NEXT
 	lda #$00
-	STOREB_Y listtop
+	PAGE_STORE listtop, SYM_NODES
 	iny
-	STOREB_Y listtop
+	PAGE_STORE listtop, SYM_NODES
 
 	; move listtop to next available node
 	lda listtop
@@ -2520,30 +2498,30 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 @l0:	; get address of the label data for this node
 	ldy #LIST_LABEL
-	LOADB_Y list
+	PAGE_LOAD list, SYM_NODES
 	sta @sym
 	iny
-	LOADB_Y list
+	PAGE_LOAD list, SYM_NODES
 	sta @sym+1
 	ora @sym
 	beq @notfound	; if LABEL address is $0000, label doesn't exist in list
 
 	; first: does the HASH match? if not, don't bother comparing the NAME
 	ldy #LABEL_HASH
-	LOADB_Y @sym	; LSB of symbol's hash
+	PAGE_LOAD @sym, SYM_RECORDS	; LSB of symbol's hash
 	cmp hash
 	bne @next
 	iny
-	LOADB_Y @sym	; MSB of symbol's hash
+	PAGE_LOAD @sym, SYM_RECORDS	; MSB of symbol's hash
 	cmp hash+1
 	bne @next
 
 	; hash matches, does the NAME match?
 	ldy #LABEL_NAME
-	LOADB_Y @sym
+	PAGE_LOAD @sym, SYM_RECORDS
 	sta @other
 	iny
-	LOADB_Y @sym
+	PAGE_LOAD @sym, SYM_RECORDS
 	sta @other+1
 	lda @len
 	jsr cmp_name	; do labels match?
@@ -2557,10 +2535,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 @found:	; set the label pointer to the matching label's data
 	ldy #LIST_LABEL
-	LOADB_Y list
+	PAGE_LOAD list, SYM_NODES
 	sta label
 	iny
-	LOADB_Y list
+	PAGE_LOAD list, SYM_NODES
 	sta label+1
 	RETURN_OK
 .endproc
@@ -2592,7 +2570,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	ldy #$00
 	SELECT_BANK "SYMBOLS"
 @record:
-	LOADB_Y @symdata
+	PAGE_LOAD @symdata, SYM_RECORDS
 	cpy #LABEL_FILE
 	bne :+
 	CALL FINAL_BANK_DEBUG, dbgi::localfile
@@ -2609,22 +2587,28 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	bcc @record
 
 	ldy #LABEL_FLAGS
-	LOADB_Y @symdata
+	PAGE_LOAD @symdata, SYM_RECORDS
 	cmp #(SEG_FLOAT << 1)
 	bne @name
 	ldy #LABEL_ADDR
-	LOADB_Y @symdata
+	PAGE_LOAD @symdata, SYM_RECORDS
 	tax
 	iny
-	LOADB_Y @symdata
+	PAGE_LOAD @symdata, SYM_RECORDS
 	tay
 	CALL FINAL_BANK_EXPR, expr::fconst_write
 	bcs @ret
 @name:
+	ldy #LABEL_NAME
+	PAGE_LOAD @symdata, SYM_RECORDS
+	sta @symname
+	iny
+	PAGE_LOAD @symdata, SYM_RECORDS
+	sta @symname+1
 	; write the symbol name
 	ldy #$00
-	SELECT_BANK "SYMBOL_NAMES"
-:	LOADB_Y @symname
+	; name references are decoded by the paging backend
+:	PAGE_LOAD @symname, SYM_NAMES
 	jsr krn::chrout
 	iny
 	cmp #$00
@@ -2684,13 +2668,13 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	ldy #$00
 	SELECT_BANK "SYMBOLS"
 :	jsr @getb
-	STOREB_Y @symdata
+	PAGE_STORE @symdata, SYM_RECORDS
 	iny
 	cpy #SIZEOF_LABEL
 	bcc :-
 
 	ldy #LABEL_FLAGS
-	LOADB_Y @symdata
+	PAGE_LOAD @symdata, SYM_RECORDS
 	and #$fe
 	cmp #(SEG_FLOAT_PACKED << 1)
 	bne @nameptr
@@ -2699,26 +2683,28 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 	tya
 	ldy #LABEL_ADDR+1
-	STOREB_Y @symdata
+	PAGE_STORE @symdata, SYM_RECORDS
 	dey
 	txa
-	STOREB_Y @symdata
+	PAGE_STORE @symdata, SYM_RECORDS
 	ldy #LABEL_FLAGS
 	lda #(SEG_FLOAT << 1)
-	STOREB_Y @symdata
+	PAGE_STORE @symdata, SYM_RECORDS
 @nameptr:
+	ldxy name_top
+	stxy @symname
 	ldy #LABEL_NAME
 	lda @symname
-	STOREB_Y @symdata
+	PAGE_STORE @symdata, SYM_RECORDS
 	iny
 	lda @symname+1
-	STOREB_Y @symdata
+	PAGE_STORE @symdata, SYM_RECORDS
 
 	; load the name of the symbol
 	ldy #$00
-	SELECT_BANK "SYMBOL_NAMES"
+	; name references are decoded by the paging backend
 :	jsr @getb
-	STOREB_Y @symname
+	PAGE_STORE @symname, SYM_NAMES
 	iny
 	cmp #$00
 	beq :+
@@ -2727,7 +2713,9 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda #ERR_IO_ERROR	; unterminated name; symbol table is corrupt
 	jmp @error
 
-:	jsr next_sym
+:	dey			; .Y=terminator offset
+	jsr advance_name
+	jsr next_sym
 
 	lda @cnt
 	bne :+
@@ -2771,7 +2759,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	ldxy @cnt
 	jsr @putidx		; label_names_sorted_ids[id] = id
 
-	; hash label and append it to its hash bucket's list
+	; use the stored hash to append the label to its bucket's list
 	ldxy hash
 	jsr getlist
 	jsr listappend
@@ -2805,10 +2793,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 @putidx:
 	tya
 	ldy #$01
-	STOREB_Y @idx
+	PAGE_STORE @idx, SYM_INDEXES
 	txa
 	dey
-	STOREB_Y @idx
+	PAGE_STORE @idx, SYM_INDEXES
 	lda @idx
 	clc
 	adc #<(MAX_LABELS*2)
@@ -2821,21 +2809,11 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 ;*******************************************************************************
 ; NEXT SYM
-; Advances the @symname pointer to the next symbol name (label) and
-; the @symdata pointer to the next symbol data record
-; OUT:
-;   r0: increased by MAX_LABEL_NAME_LEN
+; Advances r2 to the next fixed-size record
 .proc next_sym
-@symname = r0
 @symdata = r2
-	lda @symname
+	lda @symdata
 	clc
-	adc #MAX_LABEL_NAME_LEN
-	sta @symname
-	bcc :+
-	inc @symname+1
-	clc
-:	lda @symdata
 	adc #SIZEOF_LABEL
 	sta @symdata
 	bcc :+
@@ -2848,7 +2826,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .proc setup_for_load_or_dump
 @symname = r0
 @symdata = r2
-	ldxy #labelnames
+	ldxy #0
 	stxy @symname
 	ldxy #labels
 	stxy @symdata
@@ -2858,10 +2836,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;*******************************************************************************
 ; CMP NAME
 ; Compares the string in (str0) to the label name in (str2)
-; The label name is assumed to be in the SYMBOL NAMES logical bank
+; The stored label name is fetched once from the pool.
 ; IN:
 ;  temp:   one of the strings to compare
-;  temp+2: the other string to compare (in SYMBOL NAMES)
+;  temp+2: packed word-offset reference of the other string
 ;  .A:       the max length to compare
 ; OUT:
 ;  -A: 0 if strings are equal
@@ -2870,17 +2848,23 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .proc cmp_name
 @name  = temp
 @other = temp+2
+	; load the name for the label to check
+	pha
+	ldxy @other
+	lda #$00
+	jsr sympage::copy_name
+	pla
+
 	tax		; save length for the termination check
 	tay		; is length to compare 0?
 	beq @nomatch	; names should not be 0 length
 
-	; activate the SYMBOL NAMES bank for comparison
-	SELECT_BANK "SYMBOL_NAMES"
+	; compare the buffered name without further bank switches.
 
 @l0:	dey
-	bmi @end	; all bytes matched -> verify label ends here
-	LOADB_Y @other	; get byte of the label to compare
-	cmp (@name),y	; compare with our name
+	bmi @end			; all bytes matched -> verify label end
+	lda sympage::name_buffer,y	; get byte of the label to compare
+	cmp (@name),y			; compare with our name
 	beq @l0
 
 @nomatch:
@@ -2889,15 +2873,14 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 @match:	lda #$00
 
 @ret:	pha
-	; restore SYMBOLS bank
-	SELECT_BANK "SYMBOLS"
+
 	pla
 	rts
 
 @end:	; do the labels have the same length?
 	txa		; .Y = compared length
 	tay
-	LOADB_Y @other
+	lda sympage::name_buffer,y
 	beq @match
 	bne @nomatch
 .endproc

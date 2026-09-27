@@ -840,8 +840,6 @@ main:	jsr key::getui
 ; OUT:
 ;   - .C: set on error
 .proc display_result
-	jsr unblank
-
 	jsr clear_message
 	lda #$01
 	sta zp::verify		; re-enable verify
@@ -849,7 +847,8 @@ main:	jsr key::getui
 	lda errlog::asmerrors
 	beq @printresult
 
-@err:	lda errlog::numerrs
+@err:	jsr unblank
+	lda errlog::numerrs
 	beq :+
 	jsr errlog::activate
 
@@ -896,7 +895,17 @@ main:	jsr key::getui
 
 	ldxy #@success_msg
 
-@print: RENDER_STR		; .XY = rendered string
+@print:
+	txa
+	pha
+	tya
+	pha
+	jsr unblank
+	pla
+	tay
+	pla
+	tax
+	RENDER_STR		; .XY = rendered string
 	jsr alert::show		; display result in a popup modal
 	jsr log::close
 	RETURN_OK

@@ -30,8 +30,8 @@ FINAL_BANK_HELP         = $0c
 FINAL_BANK_LINKER       = $0d
 FINAL_BANK_CONSOLE      = $0e
 FINAL_BANK_BUFF         = $0f
-FINAL_BANK_SYMBOLS      = $10
-FINAL_BANK_SYMBOL_NAMES = $11
+FINAL_BANK_SYMBOLS      = $1b
+FINAL_BANK_SYMBOL_NAMES = $1b
 FINAL_BANK_SYMVIEW      = $12
 FINAL_BANK_MONITOR      = $13
 FINAL_BANK_CTX          = $14
@@ -42,6 +42,8 @@ FINAL_BANK_ASM          = $18
 FINAL_BANK_EXPR         = $1a
 FINAL_BANK_FP           = FINAL_BANK_EXPR	; FP shares the evaluator's bank
 FINAL_BANK_EDIT         = FINAL_BANK_MAIN
+
+SYMBOL_RECORDS_REU_BANK = $1c ; records $1c, nodes $1d, indexes $1e, names $1f-$20
 
 ;*******************************************************************************
 ; CUR_BANK

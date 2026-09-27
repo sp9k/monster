@@ -50,7 +50,7 @@ in more detail below.
 | `41`  | NO FILENAME                         | the command requires a filename (e.g. SAVE), but none was given                                                                            |
 | `42`  | NO OPEN SCOPE                        | a local label was defined, but there is no open scope for it to be defined under                                                            |
 | `43`  | LABEL ALREADY DEFINED                | a label with the name of another one already exists                                                                                         |
-| `44`  | TOO MANY LABELS                      | the maximum number of named labels (640) has been exceeded                                                                                  |
+| `44`  | TOO MANY LABELS                      | the maximum number of named labels (4096) has been exceeded                                                                                  |
 | `45`  | LABEL NOT KNOWN IN PASS 1            | the address of a label was incorrectly inferred in pass 1; typically an operand assumed absolute turned out to be zero page                  |
 | `46`  | INVALID COMMAND                      | an invalid monitor command was provided                                                                                                     |
 | `47`  | COPY TOO BIG                         | a copy was attempted that exceeded the maximum size                                                                                         |

@@ -36,6 +36,15 @@ FINAL_BANK_FASTSCROLL_DOWN = $11
 FINAL_BANK_ERRLOG          = $12
 NUM_BANKS                  = $12
 
+; Contiguous symbol storage: physical RAM blocks 70..100 (248 KiB).
+SYMBOL_META_BANK    = 70
+SYMBOL_RECORDS_BANK = 71   ; seven blocks, $0010 + 4096 twelve-byte records
+SYMBOL_NODES_BANK   = 78   ; three blocks, $0004 + 4096 four-byte nodes
+SYMBOL_INDEXES_BANK = 81   ; four blocks, four 4096-word indexes
+SYMBOL_NAMES_BANK   = 85   ; sixteen blocks, 128 KiB packed name pool
+SYMBOL_END_BANK     = 101  ; exclusive
+.assert SYMBOL_END_BANK <= 128, error, "symbol storage exceeds UltiMem RAM"
+
 ERRORS_BANK        = 15	; BLOB0
 SIMDBG_BANK        = 35	; from "VSYS"
 SIMRAM_00_BANK     = 33	; from "VSYS" $0000-$0400
