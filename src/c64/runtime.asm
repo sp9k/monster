@@ -206,12 +206,12 @@ nop_handler:
 	; save Monster before replacing its simulator
 	jsr bsp::save_debug_state
 
-	ldxy #$e000
+	ldxy #$d800
 	stxy reu::c64addr
 	stxy reu::reuaddr
 	lda #^REU_VMEM_ADDR
 	sta reu::reuaddr+2
-	ldxy #$2000-$08
+	ldxy #$2800-$08
 	stxy reu::txlen
 	jsr reu::load_delayed
 
@@ -304,9 +304,10 @@ nop_handler:
 ; straddle the bank boundary (see link-c64-cart.config)
 ; IN:
 ;  - .XY: the flash offset of the template (must be < $2000)
-;  - r0:  the run (destination) address
+;  - @dst: the run (destination) address
 ;  - .A:  the number of bytes to copy
 .proc cart_restore
+@dst=r0			; run address supplied by the installer
 @src=r2
 	php
 	sei
@@ -324,7 +325,7 @@ nop_handler:
 
 	dey
 @l0:	lda (@src),y
-	sta (r0),y
+	sta (@dst),y
 	dey
 	cpy #$ff
 	bne @l0
@@ -340,8 +341,9 @@ nop_handler:
 ; Installs the "trampoline" code at the top of the user and debug RAM
 ; This code lets us switch to the user bank and begin executing code there
 .proc install_trampoline
+@dst=r0			; destination argument for cart_restore
 	ldxy #__TRAMPOLINE_RUN__
-	stxy r0
+	stxy @dst
 	ldx #<__TRAMPOLINE_LOAD__
 	ldy #>__TRAMPOLINE_LOAD__
 	lda #<trampoline_size
@@ -352,8 +354,9 @@ nop_handler:
 ; INSTALL NMI
 ; Installs the NMI handler
 .proc install_nmi
+@dst=r0			; destination argument for cart_restore
 	ldxy #__NMI_HANDLER_RUN__
-	stxy r0
+	stxy @dst
 	ldx #<__NMI_HANDLER_LOAD__
 	ldy #>__NMI_HANDLER_LOAD__
 	lda #<nmi_handler_size
@@ -635,17 +638,16 @@ trampoline_size=*-trampoline
 
 ;*******************************************************************************
 ; SAVE HIGH
-; Saves the users RAM in the "high" ($e000-$fff7) range and restores the
-; debugger's.
+; Saves upper user RAM and restores the simulator ($d800-$fff7)
 .export __run_save_high
 .proc __run_save_high
-	ldxy #$e000
+	ldxy #$d800
 	stxy reu::c64addr
 	stxy reu::reuaddr
 	lda #^REU_VMEM_ADDR
 	sta reu::reuaddr+2
 
-	ldxy #$1ff8
+	ldxy #$27f8
 	stxy reu::txlen
 	jsr reu::store_delayed
 

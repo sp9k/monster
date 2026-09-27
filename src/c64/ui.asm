@@ -1,4 +1,5 @@
 .include "prefs.inc"
+.include "chips.inc"
 .include "layout.inc"
 .include "macros.inc"
 .include "../settings.inc"
@@ -229,13 +230,14 @@ LINES           = 263
 ; Returns a line of data about the current state of the electron gun. This
 ; includes the vertical position (LINE), the cycle within the line (CYC) and
 ; the horizontal pixel position (HPOS = 8*CYC).
-; The C64 simulator does not (yet) simulate the CIA timers, so unlike the
-; VIC-20 no timer values are displayed.
+; Hardware position is independent of the CPU stopwatch.
 ; OUT:
 ;   - mem::linebuffer: line of text containing VIC-II specific data
 ;     matches the format "LINE CYC HPOS"
+.segment "GUICODE"
 .export __ui_machine_state
 .proc __ui_machine_state
+@raster=r5		; 16-bit raster line
 @buff=mem::linebuffer2
 @val=r0			; 16-bit scratch (raster line / HPOS)
 @cyc=r7			; cycle within the current raster line (survives div24_16)
@@ -258,33 +260,18 @@ LINES           = 263
 	sta @buff+9,x		; HPOS
 	dex
 	bpl :-
-	bmi @done		; branch always
+	bmi @cias		; branch always
 
-@line:	; CYC = stopwatch % CYCLES_PER_LINE; total lines = stopwatch / CYCLES_PER_LINE
-	lda sim::stopwatch
-	sta r0
-	lda sim::stopwatch+1
-	sta r1
-	lda sim::stopwatch+2
-	sta r2
-	lda #<CYCLES_PER_LINE
-	sta r3
-	lda #>CYCLES_PER_LINE
-	sta r4
-	jsr util::div24_16	; r0-r2 = total lines, r5 = CYC (< CYCLES_PER_LINE)
-	lda r5
-	sta @cyc		; save CYC (div24_16 will clobber r0-r6 below)
-
-	; LINE = total lines % LINES (dividend already in r0-r2)
-	lda #<LINES
-	sta r3
-	lda #>LINES
-	sta r4
-	jsr util::div24_16	; r5-r6 = LINE
+@line:	lda __chips_cycle
+	sta @cyc
+	lda __chips_line
+	sta @raster
+	lda __chips_line+1
+	sta @raster+1
 
 	; write the LINE number
-	ldx r5
-	ldy r6
+	ldx @raster
+	ldy @raster+1
 	jsr util::todec
 	ldy #0			; column 0
 	jsr @put
@@ -312,8 +299,45 @@ LINES           = 263
 	ldy #9			; column 9
 	jsr @put
 
+@cias:	; CIA timer counters, in hexadecimal (TA/TB for each chip).
+	ldx #$03
+@timers:
+	stx @cyc
+	lda @cols,x
+	sta @val
+	ldy @regs,x
+	lda __chips_cia+1,y
+	jsr util::hextostr
+	txa
+	pha
+	tya
+	ldy @val
+	sta @buff,y
+	pla
+	sta @buff+1,y
+
+	ldx @cyc
+	ldy @regs,x
+	lda __chips_cia,y
+	jsr util::hextostr
+	txa
+	pha
+	tya
+	ldy @val
+	sta @buff+2,y
+	pla
+	sta @buff+3,y
+
+	ldx @cyc
+	dex
+	bpl @timers
+
 @done:	ldxy #@buff
 	rts
+
+;-------------------------------------------------------------------------------
+@regs: .byte 4,6,$14,$16
+@cols: .byte 14,19,24,29
 
 ;-------------------------------------------------------------------------------
 ; copy the 0-terminated decimal string in mem::spare to @buff at the column
@@ -328,6 +352,8 @@ LINES           = 263
 @putdone:
 	rts
 .endproc
+
+.CODE
 
 ;*******************************************************************************
 ; UPDATE STATUSLINE
@@ -473,6 +499,7 @@ LINES           = 263
 ;  - .C:  set if there is no breakpoint for the given ID
 .export __ui_render_breakpoint
 .proc __ui_render_breakpoint
+@nameptr=r0		; destination for lbl::getname
 @offset=zp::tmp14
 @format_str=zp::tmp15
 @namebuff=mem::spare+40
@@ -503,10 +530,10 @@ LINES           = 263
 @getname:
 	lda #>@namebuff
 	pha
-	sta r0+1
+	sta @nameptr+1
 	lda #<@namebuff
 	pha
-	sta r0
+	sta @nameptr
 	jsr lbl::getname
 
 @lineno:

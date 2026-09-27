@@ -1034,6 +1034,11 @@ __debug_step:
 ; perform the step
 @step:
 	jsr sim::step		; execute the STEP
+.ifdef c64
+	php
+	jsr sim::flush_vias
+	plp
+.endif
 	bcc @done		; if ok, continue
 
 	; display the error explaining why we couldn't STEP
@@ -1126,9 +1131,11 @@ __debug_step:
 	dex
 	bne :-
 
-	; keep the raster position in phase with the stopwatch
+	; C64's hardware clock is independent of stopwatch resets
+.ifndef c64
 	sta sim::raster
 	sta sim::raster+1
+.endif
 	rts
 .endproc
 
@@ -1586,7 +1593,7 @@ __debug_step:
 ; IN:
 ;   - .XY: the line # of the breakpoint to set the address for
 ;   - .A:  the file ID for the breakpoint to set
-;   - r0:  the address to store for the breakpoint
+;   - @addr: the address to store for the breakpoint
 ; OUT:
 ;   - .C: set if there is no breakpoint at the given line/file
 .proc brksetaddr
@@ -1755,14 +1762,15 @@ __debug_step:
 ; This procedure is called when STEP (via step, trace, etc.) reads/writes to a
 ; memory location that is being watched
 .proc watch_triggered
+@dst=r0			; destination argument for asm::disassemble
 .ifdef ultimem
 	jsr trace_done		; if user memory is swapped in, swap it out
 .endif
 	; disassemble the instruction that did the access (into $0100)
 	lda #$00
-	sta r0
+	sta @dst
 	lda #$01
-	sta r0+1
+	sta @dst+1
 	ldxy sim::prev_pc
 	lda #$00			; disassemble to string
 	CALLMAIN asm::disassemble
@@ -2078,17 +2086,18 @@ __debug_step:
 ; SHOWBRK
 ; Display the BRK line number or address
 .proc showbrk
+@dst=r0			; destination argument for asm::disassemble
 	lda lineset		; is the line # known?
 	bne @showline		; if so, show it
 
 @showaddr:
 	; push the address we will disassemble into
 	lda #$01
-	sta r0+1
+	sta @dst+1
 	pha
 
 	lda #$00
-	sta r0
+	sta @dst
 	pha
 
 	; we couldn't find the line #; display 6ke address of the BRK

@@ -6,7 +6,7 @@
 
 .import prog00
 
-.BSS
+.DATA
 
 ;*******************************************************************************
 savexy: .word 0
@@ -41,13 +41,27 @@ save01: .byte 0
 @00:	stxy @tmp
 	ldy #$00
 	lda (@tmp),y
+
+	ldx savexy+1
+	bne @done
+	ldx savexy
+	cpx #$01
+	bne @done
+
+	; force input bits in register $00 to read as 1
+	lda prog00
+	eor #$ff		; force INPUT bits '1'
+	and #$07		; AND so that OUTPUT bits are 0
+	ora prog00+1		; OR actual value of register $01
 	jmp @done
 
 :	stxy reu::reuaddr
 	cmp #^REU_VMEM_ROM
 	bne :+
 
-@rom:	lda $01
+@rom:	php
+	sei			; do not enter a KERNAL IRQ with ROM visible
+	lda $01
 	pha
 	lda #$33		; expose ROM
 	sta $01
@@ -57,6 +71,7 @@ save01: .byte 0
 
 	pla
 	sta $01			; restore bank register
+	plp
 
 	txa
 	jmp @done
@@ -132,6 +147,9 @@ save01: .byte 0
 	sta (@addr),y
 	jmp @done
 
+:	cmp #^REU_VMEM_ROM
+	bne :+
+	lda #^REU_VMEM_ADDR
 :	stxy reu::reuaddr
 	sta reu::reuaddr+2
 	pla
@@ -188,59 +206,49 @@ save01: .byte 0
 	lda #FINAL_BANK_MAIN
 	rts
 
-:	; check the bank register to see if virtual address is:
+:	; check the bank register to see if the virtual address is:
 	; - virtual RAM
 	; - virtual I/O
-	;%0xx: Character ROM visible at $D000-$DFFF. (Except for the value %000, see above.)
-	lda prog00+1	; check bank register
-	and #$04	; check bit 2, if set, I/O is active
-	beq @noio
+	; - BASIC, KERNAL, or character ROM
+	; bank-control pins set as inputs are pulled to 1,
+	; regardless of the value stored in the bank register
+	; the cartridge is disabled while the user's program runs
+	lda prog00
+	eor #$ff
+	ora prog00+1
 
-@ioactive:
-	cmpw #$e000
-	bcs @noio
-	cmpw #$d000
-	bcs @io
-
-@noio:	lda prog00+1
-	and #$03	; mask bits 0 and 1
-	beq @bank00
-	cmp #$01
-	beq @bank01
-	cmp #$02
-	beq @bank10
-	bne @bank11
-
-;--------------------------------------
-;%x01: RAM visible at $a000-$bfff and $e000-$ffff
-@bank01:
-	cmpw #$d000
+	cpy #$a0
 	bcc @ram
-	cmpw #$e000
-	bcc @io
-	bcs @ram
-
-;--------------------------------------
-;%x10: RAM visible at $a000-$bfff; KERNAL ROM visible at $e000-$ffff
-@bank10:
-	cmpw #$d000
+	cpy #$c0
+	bcc @basic
+	cpy #$d0
 	bcc @ram
-	cmpw #$e000
-	bcc @io
-	bcs @rom
+	cpy #$e0
+	bcs @kernal
 
-;--------------------------------------
-;%x11: BASIC ROM visible at $a000-$bfff; KERNAL ROM visible at $e000-$ffff
-@bank11:
-	cmpw #$a000
-	bcc @ram
-	cmpw #$c000
-	bcc @rom	; $a000-$bfff: BASIC ROM
-	cmpw #$d000
-	bcc @ram	; $c000-$cfff: always RAM
-	cmpw #$e000
-	bcc @io		; $d000-$dfff: I/O
-	bcs @rom	; $e000-$ffff: KERNAL ROM
+	; $d000-$dfff is all RAM if both LORAM and HIRAM are low, regardless of
+	; CHAREN. Otherwise CHAREN selects I/O or character ROM
+	pha
+	and #$03
+	beq @d000ram
+	pla
+	and #$04
+	bne @io
+	beq @rom
+@d000ram:
+	pla
+	jmp @ram
+
+@basic:
+	and #$03
+	cmp #$03
+	beq @rom
+	bne @ram
+
+@kernal:
+	and #$02
+	bne @rom
+	beq @ram
 
 @io:	lda #^REU_VMEM_IO
 	RETURN_OK
@@ -248,17 +256,14 @@ save01: .byte 0
 @rom:	lda #^REU_VMEM_ROM
 	RETURN_OK
 
-;--------------------------------------
-;%x00: RAM visible in all areas
-@bank00:
 @ram:	lda #^REU_VMEM_ADDR
 	RETURN_OK
 .endproc
 
 ;*******************************************************************************
 ; WRITABLE
-; Checks if the given address is within the valid writable range.
-; Everything but ROM (per the virtual bank register) is writable.
+; Checks whether assembled output will be visible at the given address.
+; Rejects VISIBLE ROM
 ; IN:
 ;   - .XY: the address to check for writability
 ; OUT:
@@ -272,8 +277,15 @@ save01: .byte 0
 	tya
 	pha
 
+	lda $01
+	pha
+	lda #$34
+	sta $01
 	jsr __vmem_translate
-	cmp #^REU_VMEM_ROM
+	tax
+	pla
+	sta $01
+	cpx #^REU_VMEM_ROM
 	beq @rom
 
 @writable:

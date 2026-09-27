@@ -10,6 +10,9 @@
 .include "vmem.inc"
 .include "watches.inc"
 .include "zeropage.inc"
+.ifdef c64
+.include "c64/chips.inc"
+.endif
 
 .ifdef ultimem
 .include "vic20/expansion.inc"	; FINAL_BANK_SIM, FINAL_BANK_FASTCOPY
@@ -118,7 +121,7 @@ __sim_effective_val: .byte 0
 .export __sim_prev_pc
 __sim_prev_pc: .word 0
 
-; depth of simulated (VIA) interrupt handlers currently entered
+; depth of simulated hardware interrupt handlers currently entered
 .export __sim_irq_depth
 __sim_irq_depth: .byte 0
 
@@ -165,7 +168,14 @@ via_t1_armed: .res 2
 via_t2_armed: .res 2
 
 ; cycles executed by the current STEP (amount to tick the VIA timers down by)
+.export __sim_step_cycles
+__sim_step_cycles:
 step_cycles: .byte 0
+.ifdef c64
+; Effective data is read once. Immediate operands and the ALU half of an
+; undocumented RMW reuse that byte instead of causing a second bus access.
+ea_cached: .byte 0
+.endif
 
 ; previous level of the virtual NMI line (VIA1); NMIs are edge-triggered
 nmi_prev: .byte 0
@@ -200,6 +210,9 @@ tracing: .byte 0
 	sta __sim_rti_irq
 	sta __sim_raster
 	sta __sim_raster+1
+.ifdef c64
+	jsr __chips_init
+.endif
 
 .ifdef vic20
 	; copy the user's saved VIA registers ($9110-$912f) to the shadows
@@ -250,6 +263,9 @@ tracing: .byte 0
 ; Writes the VIA shadow registers back to virtual memory ($9110-$912f).
 .export __sim_flush_vias
 .proc __sim_flush_vias
+.ifdef c64
+	jmp __chips_flush
+.endif
 .ifdef vic20
 	ldx #$00
 @copy:	lda vias,x
@@ -749,6 +765,7 @@ cycles_tab:
 ; STEP
 ; Executes one step of the 6502 simulator
 .proc step
+@handler=r0		; instruction handler address
 	lda #$00
 	sta __sim_branch_taken
 	sta __sim_jammed
@@ -756,6 +773,38 @@ cycles_tab:
 	sta __sim_vital_addr_clobbered
 	sta __sim_illegal
 	sta step_cycles
+.ifdef c64
+	jsr __chips_begin
+	lda #$00
+	sta ea_cached
+
+	; check if opcode is BRK/JAM and, if they are, exit without ticking
+	; chip clock
+	ldxy __sim_pc
+	stxy __sim_prev_pc
+	jsr vmem::load
+	tax
+	lda cycles_tab,x
+	bne :+
+	txa
+	and #$1f
+	cmp #$10		; branches have a variable (zero table) cycle count
+	beq :+
+	stx __sim_op
+	lda #$00
+	sta __sim_affected
+	cpx #$00
+	bne @jam
+
+	inc __sim_at_brk
+	sec
+	rts
+@jam:	inc __sim_jammed
+	inc __sim_illegal
+	sec
+	rts
+:
+.endif
 
 	ldxy __sim_pc
 	stxy __sim_prev_pc
@@ -767,9 +816,9 @@ cycles_tab:
 	lda cycles_tab,x		; base cycles (0 for variable-cycle opcodes)
 	jsr add_cycles			; X is preserved
 	lda htab_lo,x
-	sta r0
+	sta @handler
 	lda htab_hi,x
-	sta r1
+	sta @handler+1
 
 	jsr @go				; execute the handler
 
@@ -789,13 +838,24 @@ cycles_tab:
 	beq @update			; if we didn't load or store -> no watch
 
 	pha
+.ifdef c64
+	; Do not reread ICR (or other read-sensitive registers) for a watch.
+	; fetch_ea/store_ea already captured the instruction's actual value.
+.else
 	ldxy __sim_effective_addr
 	jsr vmem_load
 	sta __sim_effective_val
+.endif
 	pla
 
 	ldxy __sim_effective_addr	; .XY = address that was accessed
 	CALLMAIN watch::mark		; check if a watch was triggered
+.ifdef c64
+	php
+	jsr @hardware		; a watch must not discard an already sampled interrupt
+	plp
+	rts
+.endif
 
 .ifdef ultimem
 	lda tracing
@@ -811,6 +871,9 @@ cycles_tab:
 	bcs @done			; if it was, exit
 
 @update:
+.ifdef c64
+	jsr @hardware
+.endif
 .ifdef vic20
 	jsr update_vias			; tick timers, dispatch IRQ/NMI
 	jsr tick_raster			; advance the raster position
@@ -836,8 +899,16 @@ cycles_tab:
 	sec				; err
 	rts
 
+.ifdef c64
+@hardware:
+	jsr __chips_take_interrupt
+	bcc :+
+	jsr do_interrupt
+:	rts
+.endif
+
 @go:
-	jmp (r0)
+	jmp (@handler)
 .endproc
 
 ;*******************************************************************************
@@ -846,6 +917,10 @@ cycles_tab:
 ; IN:
 ;   - .A: amount to add to the stopwatch
 .proc add_cycles
+.ifdef c64
+	; Bus accesses account for their own clocks on the C64.
+	rts
+.else
 	pha
 	clc
 	adc step_cycles
@@ -859,19 +934,21 @@ cycles_tab:
 	bne :+
 	inc __sim_stopwatch+2
 :   rts
+.endif
 .endproc
 
 ;*******************************************************************************
 ; UPD_NZ
 ; Update N and Z bits of __sim_reg_p from current hardware flags
 .proc update_nz
+@flags=r2
 	php
 	pla
 	and #$82		; N(bit7) + Z(bit1)
-	sta r2
+	sta @flags
 	lda __sim_reg_p
 	and #$7d		; clear N and Z
-	ora r2
+	ora @flags
 	sta __sim_reg_p
 	rts
 .endproc
@@ -880,13 +957,14 @@ cycles_tab:
 ; UPD_NZC
 ; Update N, Z, C bits of __sim_reg_p from current hardware flags
 .proc update_nzc
+@flags=r2
 	php
 	pla
 	and #$83		; N(7) + Z(1) + C(0)
-	sta r2
+	sta @flags
 	lda __sim_reg_p
 	and #$7c
-	ora r2
+	ora @flags
 	sta __sim_reg_p
 	rts
 .endproc
@@ -895,13 +973,14 @@ cycles_tab:
 ; UPD_NZVC
 ; Update N, Z, V, C bits of __sim_reg_p from current hardware flags
 .proc update_nzvc
+@flags=r2
 	php
 	pla
 	and #$c3		; N(7) + V(6) + Z(1) + C(0)
-	sta r2
+	sta @flags
 	lda __sim_reg_p
 	and #$3c
-	ora r2
+	ora @flags
 	sta __sim_reg_p
 	rts
 .endproc
@@ -909,7 +988,7 @@ cycles_tab:
 ;*******************************************************************************
 ; READ PC
 ; Read virtual memory byte at __sim_pc + .A (offset 1 or 2)
-; Clobbers .X .Y (vmem_load restores .Y on return); clobbers r0
+; Clobbers .X .Y (vmem_load restores .Y on return) and vmem_load scratch
 ; IN:
 ;   - A: offset from __sim_pc to read
 ; OUT:
@@ -928,6 +1007,15 @@ cycles_tab:
 ; ADVANCE1/2/3
 ; Advances __sim_pc by 1, 2, or 3 bytes
 .proc advance1
+.ifdef c64
+	; Implied/accumulator instructions read the following byte as cycle two.
+	lda step_cycles
+	cmp #1
+	bne :+
+	lda #1
+	jsr read_pc
+:
+.endif
 	inc __sim_pc
 	bne :+
 	inc __sim_pc+1
@@ -957,14 +1045,41 @@ cycles_tab:
 ;*******************************************************************************
 ; FETCH_EA - vmem_load from __sim_effective_addr, returns byte in .A
 .proc fetch_ea
+.ifdef c64
+	lda ea_cached
+	beq :+
+	lda __sim_effective_val
+	rts
+:	inc ea_cached
+	ldxy __sim_effective_addr
+	jsr vmem_load
+	sta __sim_effective_val
+	rts
+.else
 	ldxy __sim_effective_addr
 	jmp vmem_load
+.endif
 .endproc
 
 ;*******************************************************************************
 ; STORE_EA - vmem_store .A to __sim_effective_addr
 .proc store_ea
 	ldxy __sim_effective_addr
+.ifdef c64
+	; NMOS RMW writes the original value on the penultimate cycle, including
+	; RAM/ROM-underlay and $00/$01. Keep the final ALU value for composite ops.
+	php
+	pha
+	lda __sim_affected
+	and #(OP_LOAD|OP_STORE)
+	cmp #(OP_LOAD|OP_STORE)
+	bne :+
+	lda __sim_effective_val
+	jsr vmem_store
+:	pla
+	plp
+	sta __sim_effective_val
+.endif
 	jmp vmem_store
 .endproc
 
@@ -990,6 +1105,10 @@ cycles_tab:
 	lda #1
 	jsr read_pc
 	sta __sim_operand
+.ifdef c64
+	sta __sim_effective_val
+	inc ea_cached
+.endif
 	lda #0
 	sta __sim_operand+1
 	lda __sim_pc
@@ -1028,6 +1147,9 @@ cycles_tab:
 	lda #1
 	jsr read_pc
 	sta __sim_operand
+.ifdef c64
+	jsr dummy_zp
+.endif
 	lda #0
 	sta __sim_operand+1
 	clc
@@ -1048,6 +1170,9 @@ cycles_tab:
 	lda #1
 	jsr read_pc
 	sta __sim_operand
+.ifdef c64
+	jsr dummy_zp
+.endif
 	lda #0
 	sta __sim_operand+1
 	clc
@@ -1084,6 +1209,7 @@ cycles_tab:
 ; OUT:
 ;   - .C: set if page boundary crossed
 .proc am_absx
+@page_cross=r3		; shared with dummy_indexed_y
 	lda #1
 	jsr read_pc
 	sta __sim_operand
@@ -1092,17 +1218,20 @@ cycles_tab:
 	sta __sim_effective_addr
 	lda #0
 	rol				; A = page-cross flag (0 or 1)
-	sta r3
+	sta @page_cross
 	lda #2
 	jsr read_pc
 	sta __sim_operand+1
 	clc
-	adc r3
+	adc @page_cross
 	sta __sim_effective_addr+1
 	lda #MODE_ABS|MODE_X_INDEXED
 	sta __sim_op_mode
 	jsr advance3
-	lsr r3				; .C = page cross
+.ifdef c64
+	jsr dummy_indexed
+.endif
+	lsr @page_cross				; .C = page cross
 	rts
 .endproc
 
@@ -1112,6 +1241,7 @@ cycles_tab:
 ; OUT:
 ;   - .C: set if page boundary crossed
 .proc am_absy
+@page_cross=r3		; shared with dummy_indexed_y
 	lda #1
 	jsr read_pc
 	sta __sim_operand
@@ -1120,17 +1250,20 @@ cycles_tab:
 	sta __sim_effective_addr
 	lda #0
 	rol
-	sta r3
+	sta @page_cross
 	lda #2
 	jsr read_pc
 	sta __sim_operand+1
 	clc
-	adc r3
+	adc @page_cross
 	sta __sim_effective_addr+1
 	lda #MODE_ABS|MODE_Y_INDEXED
 	sta __sim_op_mode
 	jsr advance3
-	lsr r3
+.ifdef c64
+	jsr dummy_indexed
+.endif
+	lsr @page_cross
 	rts
 .endproc
 
@@ -1138,22 +1271,34 @@ cycles_tab:
 ; AM INDX
 ; (ZP),X mode address resolver
 .proc am_indx
+@ptr=r4			; zero-page pointer address
 	lda #1
 	jsr read_pc			; A = ZP base byte
 	sta __sim_operand
+.ifdef c64
+	jsr dummy_zp
+.endif
 	lda #0
 	sta __sim_operand+1
 	clc
 	lda __sim_operand
 	adc __sim_reg_x			; + X, wraps in ZP
-	sta r4				; r4 = ZP index
+	sta @ptr				; @ptr = ZP index
 	ldy #0				; hi byte of ZP addr = $00
-	ldx r4
-	jsr vmem::load			; A = virtual ZP[r4]
+	ldx @ptr
+.ifdef c64
+	jsr vmem_load
+.else
+	jsr vmem::load			; A = virtual ZP[@ptr]
+.endif
 	sta __sim_effective_addr
-	inc r4
-	ldx r4				; .Y restored to 0 by vmem::load
-	jsr vmem::load			; A = virtual ZP[r4+1]
+	inc @ptr
+	ldx @ptr				; .Y restored to 0 by vmem::load
+.ifdef c64
+	jsr vmem_load
+.else
+	jsr vmem::load			; A = virtual ZP[@ptr+1]
+.endif
 	sta __sim_effective_addr+1
 	lda #MODE_ZP|MODE_X_INDEXED|MODE_INDIRECT
 	sta __sim_op_mode
@@ -1166,32 +1311,49 @@ cycles_tab:
 ; OUT:
 ;   - .C: set if page boundary crossed
 .proc am_indy
+@ptr=r4			; zero-page pointer address
+@page_cross=r3		; shared with dummy_indexed_y
 	lda #1
 	jsr read_pc			; A = ZP pointer byte
 	sta __sim_operand
 	lda #0
 	sta __sim_operand+1
 	lda __sim_operand
-	sta r4				; r4 = ZP pointer address
+	sta @ptr				; @ptr = ZP pointer address
 	ldy #0
-	ldx r4
-	jsr vmem::load			; A = virtual ZP[r4] = base addr lo
+	ldx @ptr
+.ifdef c64
+	jsr vmem_load
+.else
+	jsr vmem::load			; A = virtual ZP[@ptr] = base addr lo
+.endif
 	clc
 	adc __sim_reg_y
 	sta __sim_effective_addr
 	lda #0
 	rol				; page-cross flag
-	sta r3
-	inc r4
-	ldx r4				; .Y restored to 0 by vmem::load
-	jsr vmem::load			; A = virtual ZP[r4+1] = base addr hi
+	sta @page_cross
+	inc @ptr
+	ldx @ptr				; .Y restored to 0 by vmem::load
+.ifdef c64
+	jsr vmem_load
+.else
+	jsr vmem::load			; A = virtual ZP[@ptr+1] = base addr hi
+.endif
+.ifdef c64
+	sta indexed_high
+.endif
 	clc
-	adc r3
+	adc @page_cross
 	sta __sim_effective_addr+1
 	lda #MODE_ZP|MODE_Y_INDEXED|MODE_INDIRECT
 	sta __sim_op_mode
 	jsr advance2
-	lsr r3				; .C = page cross
+.ifdef c64
+	ldy indexed_high
+	jsr dummy_indexed_y
+.endif
+	lsr @page_cross				; .C = page cross
 	rts
 .endproc
 
@@ -1220,6 +1382,101 @@ cycles_tab:
 	jmp add_cycles
 .endproc
 
+.ifdef c64
+.pushseg
+.ifdef CART
+.segment "CHIPCODE"
+.endif
+indexed_high: .byte 0
+; Dummy accesses use the same memory/I/O path as useful accesses.
+.proc dummy_zp
+	ldx __sim_operand
+	ldy #0
+	jmp vmem_load
+.endproc
+.export __sim_bus_hold
+.proc __sim_bus_hold
+	; Held RAM reads have no side effects. I/O reads still occur in the BA
+	; warning window before VIC-II takes the address bus away from the CPU.
+	jsr __chips_mapped
+	bcc @done
+	jmp __chips_read
+@done:	rts
+.endproc
+.proc dummy_indexed
+	ldy __sim_operand+1
+	; fall through
+.endproc
+.proc dummy_indexed_y
+@page_cross=r3		; supplied by am_absx/am_absy/am_indy
+	lda @page_cross
+	bne @read
+	lda __sim_affected
+	and #OP_STORE
+	beq @done
+@read:	ldx __sim_effective_addr
+	jsr vmem_load
+@done:	rts
+.endproc
+.proc dummy_stack
+	ldx __sim_reg_sp
+	ldy #1
+	jmp vmem_load
+.endproc
+.proc dummy_next
+	lda #1
+	jmp read_pc
+.endproc
+.proc pull_dummy
+	jsr dummy_next
+	jmp dummy_stack
+.endproc
+; NMOS decimal ARR keeps the binary rotate's N/Z/V, but applies BCD
+; corrections based on the AND input and replaces carry with decimal carry.
+.proc arr_decimal
+@input=r4		; AND result supplied by h_arr_imm
+@nibble=r5		; scratch for decimal corrections
+	lda @input
+	and #$0f
+	sta @nibble
+	and #1
+	clc
+	adc @nibble
+	cmp #6
+	bcc @high
+	lda __sim_reg_a
+	clc
+	adc #6
+	and #$0f
+	sta @nibble
+	lda __sim_reg_a
+	and #$f0
+	ora @nibble
+	sta __sim_reg_a
+@high:	lda __sim_reg_p
+	and #$fe
+	sta __sim_reg_p
+	lda @input
+	and #$f0
+	sta @nibble
+	lda @input
+	and #$10
+	clc
+	adc @nibble
+	bcs @adjust
+	cmp #$60
+	bcc @done
+@adjust:
+	lda __sim_reg_a
+	clc
+	adc #$60
+	sta __sim_reg_a
+	inc __sim_reg_p
+@done:	rts
+.endproc
+.popseg
+.endif
+
 ;*******************************************************************************
 ; VIRTUAL STACK HELPERS - use vmem::store/load so BLK5 (SIM bank) is untouched
 ;*******************************************************************************
@@ -1228,7 +1485,12 @@ vpush:				; push .A onto virtual stack at $01SP, dec SP
 	ldx __sim_reg_sp
 	sty __sim_effective_addr+1	; record access so watches see stack ops
 	stx __sim_effective_addr	; (and don't fire on a stale address)
+.ifdef c64
+	sta __sim_effective_val
+	jsr vmem_store
+.else
 	jsr vmem::store			; .A preserved by vmem::store; ldy/ldx don't touch .A
+.endif
 	dec __sim_reg_sp
 	rts
 
@@ -1238,13 +1500,28 @@ vpull:				; inc SP, pull byte from virtual stack into .A
 	ldx __sim_reg_sp
 	sty __sim_effective_addr+1	; record access so watches see stack ops
 	stx __sim_effective_addr
+.ifdef c64
+	jsr vmem_load
+	sta __sim_effective_val
+	rts
+.else
 	jmp vmem::load
+.endif
 
 ;*******************************************************************************
 ; BRANCH HELPER
 ; IN: .A = condition (0 = not taken, nonzero = taken)
 ;*******************************************************************************
 do_branch:
+@offset=r2
+@sign=r3
+.ifdef c64
+	php
+	lda #1
+	jsr read_pc
+	sta __sim_operand
+	plp
+.endif
 	beq @not_taken
 	inc __sim_branch_taken
 	lda __sim_pc
@@ -1254,27 +1531,38 @@ do_branch:
 	lda __sim_pc+1
 	adc #0
 	sta __sim_next_pc+1
+.ifdef c64
+	ldxy __sim_next_pc
+	jsr vmem_load		; taken branch's third cycle
+	lda __sim_operand
+.else
 	lda #1
 	jsr read_pc			; signed offset byte
-	sta r2
-	lda r2				; reload: vmem_done's ldy savey clobbers N flag
+.endif
+	sta @offset
+	lda @offset				; reload: vmem_done's ldy savey clobbers N flag
 	bpl @pos
 	lda #$ff
 	bne @ext
 @pos:
 	lda #0
 @ext:
-	sta r3				; sign extension byte
+	sta @sign				; sign extension byte
 	lda __sim_next_pc
 	clc
-	adc r2
+	adc @offset
 	sta __sim_pc
 	lda __sim_next_pc+1
-	adc r3
+	adc @sign
 	sta __sim_pc+1
 	lda __sim_pc+1
 	cmp __sim_next_pc+1
 	beq :+
+.ifdef c64
+	ldx __sim_pc
+	ldy __sim_next_pc+1
+	jsr vmem_load		; uncorrected page during branch carry fixup
+.endif
 	lda #4
 	jmp add_cycles
 :   lda #3
@@ -1471,13 +1759,14 @@ h_adc_indy:
 	jmp do_adc
 
 do_adc:
-	sta r4
+@operand=r4
+	sta @operand
 	lda __sim_reg_p
 	and #$fb			; force I=0
 	pha
 	lda __sim_reg_a
 	plp
-	adc r4
+	adc @operand
 	cld			; don't leak virtual D flag to the host
 	pha
 	jsr update_nzvc
@@ -1529,13 +1818,14 @@ h_sbc_indy:
 	jmp do_sbc
 
 do_sbc:
-	sta r4
+@operand=r4
+	sta @operand
 	lda __sim_reg_p
 	and #$fb			; force I=0
 	pha
 	lda __sim_reg_a
 	plp
-	sbc r4
+	sbc @operand
 	cld			; don't leak virtual D flag to the host
 	pha
 	jsr update_nzvc
@@ -1587,9 +1877,10 @@ h_cmp_indy:
 	jmp do_cmp_a
 
 do_cmp_a:
-	sta r4
+@operand=r4
+	sta @operand
 	lda __sim_reg_a
-	cmp r4
+	cmp @operand
 	jmp update_nzc
 
 ;*******************************************************************************
@@ -1611,9 +1902,10 @@ h_cpx_abs:
 	jmp do_cmp_x
 
 do_cmp_x:
-	sta r4
+@operand=r4
+	sta @operand
 	lda __sim_reg_x
-	cmp r4
+	cmp @operand
 	jmp update_nzc
 
 ;*******************************************************************************
@@ -1635,9 +1927,10 @@ h_cpy_abs:
 	jmp do_cmp_y
 
 do_cmp_y:
-	sta r4
+@operand=r4
+	sta @operand
 	lda __sim_reg_y
-	cmp r4
+	cmp @operand
 	jmp update_nzc
 
 ;*******************************************************************************
@@ -1926,11 +2219,12 @@ h_rol_absx:
 	jmp do_rol_mem
 
 do_rol_mem:
-	sta r4
+@value=r4
+	sta @value
 	lda __sim_reg_p
 	and #$fb			; force I=0
 	pha
-	lda r4
+	lda @value
 	plp
 	rol
 	cld			; don't leak virtual D flag to the host
@@ -1976,11 +2270,12 @@ h_ror_absx:
 	jmp do_ror_mem
 
 do_ror_mem:
-	sta r4
+@value=r4
+	sta @value
 	lda __sim_reg_p
 	and #$fb			; force I=0
 	pha
-	lda r4
+	lda @value
 	plp
 	ror
 	cld			; don't leak virtual D flag to the host
@@ -2087,37 +2382,41 @@ h_dey:
 
 ;*******************************************************************************
 ; BIT - N=mem[7], V=mem[6], Z=(A AND mem)==0
-; Uses "bit r4" trick: store memory byte in r4=$f4, then hardware BIT r4.
+; Store the fetched byte in local scratch and use hardware BIT for N/V/Z.
 ;*******************************************************************************
 h_bit_zp:
+@value=r4
+@flags=r2
 	jsr am_zp
 	jsr fetch_ea
-	sta r4
+	sta @value
 	lda __sim_reg_a
-	bit r4				; BIT $f4 - reads ZP[$f4]=r4, sets N,V,Z
+	bit @value				; sets N/V/Z from the fetched byte
 	php
 	pla
 	and #$c2			; N(7) + V(6) + Z(1)
-	sta r2
+	sta @flags
 	lda __sim_reg_p
 	and #$3d
-	ora r2
+	ora @flags
 	sta __sim_reg_p
 	rts
 
 h_bit_abs:
+@value=r4
+@flags=r2
 	jsr am_abs
 	jsr fetch_ea
-	sta r4
+	sta @value
 	lda __sim_reg_a
-	bit r4
+	bit @value
 	php
 	pla
 	and #$c2
-	sta r2
+	sta @flags
 	lda __sim_reg_p
 	and #$3d
-	ora r2
+	ora @flags
 	sta __sim_reg_p
 	rts
 
@@ -2214,6 +2513,9 @@ setp_done:
 ; STACK OPERATIONS
 ;*******************************************************************************
 h_pha:
+.ifdef c64
+	jsr dummy_next
+.endif
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	lda __sim_reg_a
@@ -2221,6 +2523,9 @@ h_pha:
 	jmp advance1
 
 h_pla:
+.ifdef c64
+	jsr pull_dummy
+.endif
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	jsr vpull
@@ -2232,6 +2537,9 @@ nz_done:
 	jmp advance1
 
 h_php:
+.ifdef c64
+	jsr dummy_next
+.endif
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	lda __sim_reg_p
@@ -2240,6 +2548,9 @@ h_php:
 	jmp advance1
 
 h_plp:
+.ifdef c64
+	jsr pull_dummy
+.endif
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	jsr vpull
@@ -2298,34 +2609,36 @@ h_beq:
 ; JUMPS AND CALLS
 ;*******************************************************************************
 h_jmp_abs:
+@target_lo=r4
 	lda #MODE_ABS
 	sta __sim_op_mode
 	lda #1
 	jsr read_pc		; read lo byte while __sim_pc still intact
 	sta __sim_operand
-	sta r4			; stash lo in r4 - do NOT touch __sim_pc yet
+	sta @target_lo			; stash lo in @target_lo - do NOT touch __sim_pc yet
 	lda #2
 	jsr read_pc		; read hi byte (uses original __sim_pc + 2)
 	sta __sim_operand+1
 	sta __sim_pc+1
-	lda r4
+	lda @target_lo
 	sta __sim_pc
 	rts
 
 h_jmp_ind:			; 6502 page-boundary bug emulated
+@ptr=r4			; indirect jump pointer
 	lda #1
 	jsr read_pc
 	sta __sim_operand
-	sta r4
+	sta @ptr
 	lda #2
 	jsr read_pc
 	sta __sim_operand+1
-	sta r5
-	ldxy r4
+	sta @ptr+1
+	ldxy @ptr
 	jsr vmem_load
 	sta __sim_pc
-	inc r4			; wraps to $00 if r4 was $FF (hardware bug)
-	ldxy r4
+	inc @ptr			; wraps to $00 if @ptr was $FF (hardware bug)
+	ldxy @ptr
 	jsr vmem_load
 	sta __sim_pc+1
 	lda #MODE_ABS|MODE_INDIRECT
@@ -2333,52 +2646,76 @@ h_jmp_ind:			; 6502 page-boundary bug emulated
 	rts
 
 h_jsr:
+@target=r4
+@return=r2
 	lda #MODE_ABS
 	sta __sim_op_mode
 	lda #1
 	jsr read_pc
-	sta r4				; target lo
+	sta @target				; target lo
+.ifdef c64
+	jsr dummy_stack
+.else
 	lda #2
 	jsr read_pc
-	sta r5				; target hi
+	sta @target+1				; target hi
+.endif
 	; push return address (PC+2) - hi byte first
 	lda __sim_pc
 	clc
 	adc #2
-	sta r2				; (PC+2) lo
+	sta @return				; (PC+2) lo
 	lda __sim_pc+1
 	adc #0
-	sta r3				; (PC+2) hi
-	lda r3
+	sta @return+1				; (PC+2) hi
+	lda @return+1
 	jsr vpush
-	lda r2
+	lda @return
 	jsr vpush
-	lda r4
+.ifdef c64
+	; The high operand is fetched after the pushes (including when JSR is
+	; executing on the stack and those writes change its own operand).
+	lda #2
+	jsr read_pc
+	sta @target+1
+.endif
+	lda @target
 	sta __sim_operand
-	lda r5
+	lda @target+1
 	sta __sim_operand+1
 	sta __sim_pc+1
-	lda r4
+	lda @target
 	sta __sim_pc
 	rts
 
 h_rts:
+@return=r2
+.ifdef c64
+	jsr pull_dummy
+.endif
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 	jsr vpull			; lo byte
-	sta r2
+	sta @return
 	jsr vpull			; hi byte
-	sta r3
-	lda r2
+	sta @return+1
+.ifdef c64
+	ldxy @return
+	jsr vmem_load		; return-address dummy read before incrementing PC
+.endif
+	lda @return
 	clc
 	adc #1
 	sta __sim_pc
-	lda r3
+	lda @return+1
 	adc #0
 	sta __sim_pc+1
 	rts
 
 h_rti:
+.ifdef c64
+	jsr pull_dummy
+.endif
 	lda #MODE_IMPLIED
 	sta __sim_op_mode
 
@@ -2733,18 +3070,20 @@ h_alr_imm:
 ;   C = bit 7 of (.A & #imm)
 ;   V = bit 7 XOR bit 6 of (.A & #imm)
 ;   N/Z from the result (bit 7 of which is the incoming carry)
-; NOTE: the (quite different) decimal-mode behaviour is not modelled
+; C64 also models the distinct decimal-mode corrections.
 ;*******************************************************************************
 h_arr_imm:
+@input=r4		; AND result, also passed to arr_decimal
+@flags=r5
 	jsr am_imm
 	jsr fetch_ea
 	and __sim_reg_a
-	sta r4			; r4 = .A & #imm
+	sta @input			; @input = .A & #imm
 
 	lda __sim_reg_p
 	and #$fb		; force I=0 so the PLP can't enable interrupts
 	pha
-	lda r4
+	lda @input
 	plp			; restore the virtual carry
 	ror
 	cld			; don't leak the virtual D flag to the host
@@ -2752,25 +3091,31 @@ h_arr_imm:
 	jsr update_nz		; N/Z from the rotated result
 
 	; C = bit 7 of the input
-	lda r4
+	lda @input
 	asl
 	lda #$00
 	rol
-	sta r5
+	sta @flags
 
 	; V = bit 7 XOR bit 6 of the input
-	lda r4
+	lda @input
 	asl			; bit 7 of this is the input's bit 6
-	eor r4
+	eor @input
 	and #$80
 	lsr			; move into the V position ($40)
-	ora r5
+	ora @flags
 
-	sta r5
+	sta @flags
 	lda __sim_reg_p
 	and #$be		; clear V and C
-	ora r5
+	ora @flags
 	sta __sim_reg_p
+.ifdef c64
+	and #$08
+	beq :+
+	jmp arr_decimal
+:
+.endif
 	rts
 
 ;*******************************************************************************
@@ -2779,13 +3124,14 @@ h_arr_imm:
 ; mode, and does not touch V
 ;*******************************************************************************
 h_sbx_imm:
+@operand=r4
 	jsr am_imm
 	jsr fetch_ea
-	sta r4
+	sta @operand
 	lda __sim_reg_a
 	and __sim_reg_x
 	sec
-	sbc r4
+	sbc @operand
 	sta __sim_reg_x
 	jmp update_nzc
 
@@ -2794,13 +3140,14 @@ h_sbx_imm:
 ; CONST is the unstable "magic constant"; see MAGIC_CONST above
 ;*******************************************************************************
 h_ane_imm:
+@operand=r4
 	jsr am_imm
 	jsr fetch_ea
-	sta r4
+	sta @operand
 	lda __sim_reg_a
 	ora #MAGIC_CONST
 	and __sim_reg_x
-	and r4
+	and @operand
 	sta __sim_reg_a
 	jmp update_nz
 
@@ -2808,12 +3155,13 @@ h_ane_imm:
 ; LAX #imm (LXA, OAL, ATX) $ab - .A = .X = (.A | CONST) & #imm
 ;*******************************************************************************
 h_lax_imm:
+@operand=r4
 	jsr am_imm
 	jsr fetch_ea
-	sta r4
+	sta @operand
 	lda __sim_reg_a
 	ora #MAGIC_CONST
-	and r4
+	and @operand
 	sta __sim_reg_a
 	sta __sim_reg_x
 	jmp update_nz
@@ -2861,15 +3209,16 @@ h_tas_absy:
 ;   - .A: the value to store
 ;   - .C: set if the indexing crossed a page boundary
 do_sh:
-	sta r4
+@value=r4
+	sta @value
 	lda __sim_effective_addr+1
 	bcs @cross
 	clc
 	adc #$01		; {H+1}
-	and r4
+	and @value
 	jmp store_ea
 
-@cross:	and r4			; the address' high byte is already {H+1}
+@cross:	and @value			; the address' high byte is already {H+1}
 	sta __sim_effective_addr+1
 	jmp store_ea
 
@@ -3308,6 +3657,8 @@ h_nop_absx:
 .endproc
 
 ;*******************************************************************************
+.endif	; vic20
+
 ; DO INTERRUPT
 ; Performs the 6502's interrupt sequence: pushes the PC and status (with the
 ; BREAK flag clear), sets the I flag, and loads the PC from the given vector.
@@ -3317,6 +3668,12 @@ h_nop_absx:
 .proc do_interrupt
 @vec=r2
 	stxy @vec
+.ifdef c64
+	ldxy __sim_pc
+	jsr vmem_load		; discarded opcode fetch
+	ldxy __sim_pc
+	jsr vmem_load		; second read, PC does not advance
+.endif
 
 	inc __sim_irq_depth	; track handler depth (see h_rti)
 
@@ -3337,6 +3694,10 @@ h_nop_absx:
 
 	; load the PC from the interrupt vector
 	ldxy @vec
+.ifdef c64
+	jsr __chips_nmi_vector
+	stxy @vec
+.endif
 	jsr vmem_load
 	sta __sim_pc
 	incw @vec
@@ -3347,7 +3708,6 @@ h_nop_absx:
 	lda #7			; the interrupt sequence takes 7 cycles
 	jmp add_cycles
 .endproc
-.endif	; vic20
 
 ;*******************************************************************************
 ; VMEM LOAD
@@ -3359,6 +3719,16 @@ h_nop_absx:
 ;   - .A: byte loaded from the requested address
 .proc vmem_load
 @target=r0
+.ifdef c64
+	jsr __chips_read_cycle
+	jsr __chips_mapped
+	bcc :+
+	jsr __chips_read
+	jmp __sim_bus_read_done
+:	jsr vmem::load
+__sim_bus_read_done:
+	jmp __chips_end_cycle
+.else
 .ifdef vic20
 	; redirect reads of the VIA registers ($9110-$912f) to their shadows
 	cpy #>$9100
@@ -3404,6 +3774,7 @@ h_nop_absx:
 .endif
 
 @v:	jmp vmem::load ; not in the visible range, load from virtual memory
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -3415,6 +3786,17 @@ h_nop_absx:
 ;   - .A:  byte to store
 .proc vmem_store
 @target=r0
+.ifdef c64
+	jsr __chips_write_cycle
+
+	jsr __chips_mapped		; are chips mapped?
+	bcc :+				; no -> regular memory write
+	jsr __chips_write		; handle a write to chips
+	jmp __chips_end_cycle
+
+:	jsr vmem::store
+	jmp __chips_end_cycle
+.else
 .ifdef ultimem
 	; mirror writes to the VIA registers ($9110-$912f) into their shadows
 	; to update the simulated timer state; the write then falls through to
@@ -3471,4 +3853,5 @@ h_nop_absx:
 .endif
 
 @v:	jmp vmem::store	; not in the visible range, store to virtual memory
+.endif
 .endproc

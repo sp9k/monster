@@ -4,6 +4,7 @@
 ;*******************************************************************************
 
 .include "sidplay.inc"
+.include "chips.inc"
 .include "../macros.inc"
 .include "../sim6502.inc"
 .include "nmi.inc"
@@ -194,6 +195,7 @@ saved_nmi: .res 2
 ; SAVE PROG VISUAL
 .export __bsp_save_prog_visual
 .proc __bsp_save_prog_visual
+	jsr __chips_invalidate
 	ldxy #$0400
 	stxy reu::c64addr
 	stxy reu::reuaddr
@@ -211,7 +213,8 @@ saved_nmi: .res 2
 	sta reu::reuaddr+2
 	ldxy #$be8
 	stxy reu::txlen
-	jmp reu::store
+	jsr reu::store
+	jmp __chips_capture
 .endproc
 
 ;*******************************************************************************

@@ -41,6 +41,7 @@
 .import __TRAMPOLINE_LOAD__,  __TRAMPOLINE_RUN__,  __TRAMPOLINE_SIZE__
 .import __EDITCODE_LOAD__,    __EDITCODE_RUN__,    __EDITCODE_SIZE__
 .import __BOOTLDR_LOAD__,     __BOOTLDR_RUN__,     __BOOTLDR_SIZE__
+.import __CHIPCODE_LOAD__,    __CHIPCODE_RUN__,    __CHIPCODE_SIZE__
 .endif
 
 .segment "SETUP"
@@ -181,7 +182,26 @@
 	ora @cnt+1
 	beq @next
 	lda (@src),y
+
+	ldx @dst+1
+	cpx #$d0
+	bcc @store
+	cpx #$e0
+	bcs @store	; destination is not under I/O -> store it
+
+	; destination is under I/O - expose the RAM there
+	tax
+	lda #$34
+	sta $01		; expose RAM under I/O
+	txa
 	sta (@dst),y
+	lda #$37
+	sta $01		; restore cart ROM in I/O
+	jmp @advance
+
+@store: sta (@dst),y
+
+@advance:
 	inc @dst
 	bne :+
 	inc @dst+1
@@ -210,9 +230,10 @@
 	bcc :+
 	inc @reloc+1
 :	dec @count
-	bne @entry
+	beq :+
+	jmp @entry
 
-	lda #$00
+:	lda #$00
 	sta $de00	; leave bank 0 selected
 	lda #$34
 	sta $01
@@ -223,6 +244,7 @@
 ; RELOCS
 ; (load, run, size) for each segment of the resident image
 relocs:
+.word __CHIPCODE_LOAD__,    __CHIPCODE_RUN__,    __CHIPCODE_SIZE__
 .word __EDITCODE_LOAD__,    __EDITCODE_RUN__,    __EDITCODE_SIZE__
 .word __DATA_LOAD__,        __DATA_RUN__,        __DATA_SIZE__
 .word __IRQ_LOAD__,         __IRQ_RUN__,         __IRQ_SIZE__
@@ -259,6 +281,7 @@ num_relocs=(*-relocs)/6
 ; region; on the cartridge build it is resident and also serves as the BRK
 ; (warm start) handler.
 start:
+@dst=r0			; HIRAM clear pointer
 	sei
 
 	; enable all RAM
@@ -266,20 +289,24 @@ start:
 	sta $01
 
 ;-------------------------------------------------------------------------------
-; zero the HIRAM BSS ($d000-$dfff)
+; zero HIRAM BSS (stop before CHIPCODE on the cartridge build)
 	lda #$00
 	tay
-	sta r0
+	sta @dst
 	ldx #$d0
-	stx r0+1
+	stx @dst+1
 
 @zerobss:
-	sta (r0),y
+	sta (@dst),y
 	iny
 	bne @zerobss		; 256 bytes per page
-	inc r0+1
-	ldx r0+1
-	cpx #$e0		; stop at $e000 (KERNAL-area code is loaded there)
+	inc @dst+1
+	ldx @dst+1
+.ifdef CART
+	cpx #$d8		; $d800-$dfff contains the loaded hardware simulator
+.else
+	cpx #$e0
+.endif
 	bne @zerobss
 
 	sta zp::banksp		; zero out bank stack pointer
