@@ -27,6 +27,7 @@
 .import __edit_src2screen
 .import __edit_statusrow
 .import __edit_update_progress
+.import __edit_assembly_file
 
 .scope edit
 	base            = __edit_base
@@ -57,6 +58,7 @@
 	src2screen      = __edit_src2screen
 	status_row      = __edit_statusrow
 	update_progress = __edit_update_progress
+	assembly_file   = __edit_assembly_file
 .endscope
 
 ;*******************************************************************************

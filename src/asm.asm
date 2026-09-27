@@ -2926,6 +2926,7 @@ include_entry:
 
 	pha			; save id of the file we're working on
 	sta zp::file
+	CALLMAIN edit::assembly_file
 
 ; read a line from file
 @doline:
@@ -2991,6 +2992,7 @@ include_entry:
 
 	pla			; restore debug file ID
 	sta dbgi::file
+	CALLMAIN edit::assembly_file
 
 	lda zp::gendebuginfo	; only touch debug info when generating it
 	beq @done

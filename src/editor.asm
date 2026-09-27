@@ -490,9 +490,10 @@ main:	jsr key::getui
 	bcc :+
 	rts			; aborted
 
-:	ldxy #strings::assembling
-	jsr blank
-	jsr start_progress
+:	ldxy #@filename
+	lda #$01
+	sta zp::pass
+	jsr assembly_info
 
 	jsr clear_errors	; close errlog (if open)
 	CALLMAIN dbgi::init
@@ -664,6 +665,36 @@ main:	jsr key::getui
 .endproc
 
 ;*******************************************************************************
+; ASSEMBLE BUFFER PASS
+; Assembly loop for assembling one pass
+; OUT:
+;   - .C: set on cancellation, fatal error, or error limit exceeded
+.proc assemble_buffer_pass
+@loop:	lda __edit_sigint
+	bne @abort
+	jsr src::currline
+	stxy asm::linenum
+	jsr src::readline_cont
+
+	ldxy #mem::linebuffer
+	lda #FINAL_BANK_MAIN
+	jsr asm::tokenize
+	bcc @next
+	jsr errlog::log
+	bcs @done		; fatal error or error limit
+
+@next:	jsr src::end
+	bne @loop
+	lda __edit_sigint	; also catch an interrupt on the final line
+	bne @abort
+	clc
+@done:	rts
+
+@abort:	sec
+	rts
+.endproc
+
+;*******************************************************************************
 ; COMMAND_ASM
 ; Assembles the entire source of the active source buffer
 ; OUT:
@@ -705,9 +736,10 @@ main:	jsr key::getui
 	sta zp::gendebuginfo	; enable debug info
 	sta asm::mode		; and object code relocation generation
 
-	ldxy #strings::assembling
-	jsr blank
-	jsr start_progress
+	jsr src::current_filename
+	lda #$01
+	sta zp::pass
+	jsr assembly_info
 
 	jsr run::install_sigint	; reset SIGINT flag
 
@@ -737,27 +769,8 @@ main:	jsr key::getui
 @pass1: lda #$01
 	jsr asm::startpass
 
-@pass1loop:
-	jsr src::currline
-	stxy asm::linenum
-
-	; check if user interrupted assembly
-	lda __edit_sigint
-	jne @done
-
-	jsr src::readline_cont
-	ldxy #mem::linebuffer
-	lda #FINAL_BANK_MAIN
-	jsr asm::tokenize
-	bcc @ok
-
-	jsr errlog::log
-	bcs @done		; if max errors reached, abort
-
-@ok:	jsr src::end
-	bne @pass1loop
-	lda __edit_sigint
-	jne @done
+	jsr assemble_buffer_pass
+	bcs @done
 
 	; make sure all .IF/.MAC/.REP blocks were closed
 	jsr asm::endpass
@@ -794,29 +807,12 @@ main:	jsr key::getui
 	jmp @done		; can't get buffer name is fatal, go to end
 :	CALLMAIN dbgi::setfile
 
-@cont:	inc zp::pass		; pass 2
-	jsr src::rewind
+@cont:	jsr src::rewind
 	lda #$02
 	jsr asm::startpass
+	jsr __edit_assembly_file
 
-@pass2loop:
-	lda __edit_sigint
-	bne @done
-
-	jsr src::currline
-	stxy asm::linenum
-
-	jsr src::readline_cont
-	ldxy #mem::linebuffer
-	lda #FINAL_BANK_MAIN
-	jsr asm::tokenize
-	bcc @next		; no error, continue
-	jsr errlog::log		; if error, add it to errors log
-	bcs @done		; if we've hit error threshold, exit
-
-@next:	jsr src::end		; check if we're at the end of the source
-	bne @pass2loop		; repeat if not
-	beq @done		; branch always (done)
+	jsr assemble_buffer_pass
 
 @done:	ldxy zp::virtualpc	; block addresses are in virtualpc-space
 	CALLMAIN dbgi::endblock	; end the final debug info block
@@ -6042,30 +6038,40 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 .proc __edit_update_progress
 .if .defined(vic20) .and .defined(soft4x8)
 @bm=r0
-	lda status_row
-	asl
-	asl
-	asl
-	adc progress_count
-	inc progress_count
-	tay
-
-	lda progress_count
-	and #$07
-	sta progress_count
-
-	lda bm::columnslo
-	sta @bm
-	lda bm::columnshi
-	sta @bm+1
-
+	jsr get_progress_addr
+	ldy progress_count
 	lda (@bm),y
 	eor #$ff
 	sta (@bm),y
+	iny
+	tya
+	and #$07
+	sta progress_count
 .else
 .endif
 	rts
 .endproc
+
+;*******************************************************************************
+; GET PROGRESS ADDR
+; Returns the address of the progress character cell
+; OUT:
+;   - r0: address of the cell to use for the progress indicator
+.if .defined(vic20) .and .defined(soft4x8)
+.proc get_progress_addr
+@bm=r0
+	lda status_row
+	asl
+	asl
+	asl
+	;clc
+	adc bm::columnslo
+	sta @bm
+	lda bm::columnshi
+	sta @bm+1
+	rts
+.endproc
+.endif
 
 ;*******************************************************************************
 ; HIGHLIGHT
@@ -6208,9 +6214,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	jsr log::banner
 
 	ldxy #@files
-	RENDER_STR
-	jsr log::out
-	jsr log::banner
+	jsr ::log_pass2::print_banner
 
 	lda #$00
 	sta @i
@@ -6288,8 +6292,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 .export sync_cur
 .proc sync_cur
 	lda zp::srcx
-	jsr text::index2cursor
-	stx zp::curx
+	jsr gotoindex
 	RETURN_OK
 .endproc
 
@@ -6301,8 +6304,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 ; end of the TAB character
 .proc use_replace_cursor
 	lda #TEXT_REPLACE
-	sta text::insertmode
-	rts
+	skw			; skip the LDA #TEXT_INSERT
 .endproc
 
 ;*******************************************************************************
@@ -6391,11 +6393,11 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	lda jumplist_lo+1,x
 	sta jumplist_lo,x
 	inx
-	cpx jumpptr
+	cpx #MAX_JUMPS
 	bcc :-
 
-	dec jumpptr
-	ldx #MAX_JUMPS-1
+	dex			; the last slot receives the new jump
+	stx jumpptr
 
 ; add the new jump to the end of the jumplist
 @cont:	lda src::line
@@ -6555,7 +6557,17 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 ; START PROGRESS
 ; Enables progress display during assembly and linking (TODO)
 .proc start_progress
+.if .defined(vic20) .and .defined(soft4x8)
+@bm=r0
+	jsr get_progress_addr
 	lda #$00
+	ldy #$07
+:	sta (@bm),y
+	dey
+	bpl :-
+.else
+	lda #$00
+.endif
 	sta progress_count
 	rts
 .endproc
@@ -6575,6 +6587,39 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 ; UNBLANK
 ; Restores the default screen
 unblank = scr::unblank
+
+;*******************************************************************************
+; ASSEMBLY FILE
+; Refreshes assembly status when entering or returning from an include.
+.export __edit_assembly_file
+.proc __edit_assembly_file
+	lda dbgi::file
+	CALLMAIN dbgi::get_filename
+	bcs ::assembly_info::done
+
+	; fall through with the filename
+.endproc
+
+;*******************************************************************************
+; ASSEMBLY INFO
+; Displays the current pass and filename being assembled
+; IN:
+;   - zp::pass: pass # (1 or 2)
+;   - .XY:      filename
+.proc assembly_info
+	tya
+	pha
+	txa
+	pha
+	lda zp::pass
+	ora #'0'
+	pha
+	ldxy #strings::assembling
+	jsr print_info
+	jsr scr::blank
+	jmp start_progress
+done:	rts
+.endproc
 
 ;*******************************************************************************
 ; PRINT_INFO
@@ -6629,9 +6674,7 @@ unblank = scr::unblank
 
 	jsr log::banner
 	ldxy #strings::pass1
-	RENDER_STR
-	jsr log::out
-	jmp log::banner
+	jmp ::log_pass2::print_banner
 .endproc
 
 ;*******************************************************************************
@@ -6640,6 +6683,7 @@ unblank = scr::unblank
 .proc log_pass2
 	jsr log::banner
 	ldxy #strings::pass2
+print_banner:
 	RENDER_STR
 	jsr log::out
 	jmp log::banner
@@ -6666,8 +6710,7 @@ unblank = scr::unblank
 	jsr ui::update_statusline
 	pla
 	pha
-	ldx #$00
-	sta mem::statusline+KEYBUFFER_COL,x
+	sta mem::statusline+KEYBUFFER_COL
 	jsr draw_status_bar
 	inc bufferedkeys
 	pla

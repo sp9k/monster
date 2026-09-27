@@ -241,8 +241,12 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 @fptrshi=@namebuff-(128)	; room for 128 files
 	jsr open_dir
 	bcc :+
+	pha			; screen restoration clobbers the drive error and flags
 	jsr scr::unblank
-	jmp scr::restore
+	jsr scr::restore
+	pla
+	sec
+	rts
 
 :	sta @file
 

@@ -15,7 +15,7 @@ __str_machine_state:
 .ifdef vic20
 .byte "line cyc hpos  v1t1  v1t2  v2t1  v2t2",0
 .else
-.byte "line cyc hpos",0
+.byte "line cyc hpos c1ta c1tb c2ta c2tb",0
 .endif
 
 .export __str_buffers
@@ -31,7 +31,9 @@ __str_nolabels: .byte "no labels",0
 __str_nolog: .byte "no log",0
 
 .export __str_nomacros
-__str_nomacros: .byte "no macros",0
+.export __str_macros
+__str_nomacros: .byte "no "
+__str_macros: .byte "macros",0
 
 .export __str_null
 __str_null = *-1
@@ -119,7 +121,7 @@ __str_saving: .byte "saving...",0
 __str_aborted: .byte "aborted",0
 
 .export __str_assembling
-__str_assembling: .byte "  assembling...",0
+__str_assembling: .byte "  pass ",ESCAPE_CHAR,": assembling ",ESCAPE_STRING,0
 
 .export __str_linking
 __str_linking: .byte "  linking...",0
@@ -132,9 +134,6 @@ __str_dir: .byte "$",0
 
 .export __str_dumping
 __str_dumping: .byte "dumping...",0
-
-.export __str_macros
-__str_macros: .byte "macros",0
 
 .export __str_link
 __str_link: .byte "link",0
@@ -153,22 +152,18 @@ __str_watches_range_line: .byte ESCAPE_BYTE, ESCAPE_CHAR, " $", ESCAPE_VALUE, "-
 __str_errors: .byte "errors",0
 
 .export __str_tracing
+.export __str_tracing_stop
+__str_tracing: .byte "tracing.. "
+__str_tracing_stop:
 .ifdef hard8x8
 ; the 22 column screen can't fit the long form of the message
-__str_tracing: .byte "tracing.. restore=stop",0
+.byte "restore=stop",0
 .else
-__str_tracing: .byte "tracing.. press [restore] to stop",0
+.byte "press [restore] to stop",0
 .endif
 
 .export __str_tracing_msg
 __str_tracing_msg: .byte "tracing...",0
-
-.export __str_tracing_stop
-.ifdef hard8x8
-__str_tracing_stop: .byte "restore=stop",0
-.else
-__str_tracing_stop: .byte "press [restore] to stop",0
-.endif
 
 .export __str_pass1
 __str_pass1:
