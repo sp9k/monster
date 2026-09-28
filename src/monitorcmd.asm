@@ -37,6 +37,10 @@
 
 .include "ram.inc"
 
+.ifdef vic20
+.include "vic20/flash.inc"
+.endif
+
 .segment "CONSOLE_VARS"
 
 .export __dbgcmd_default_addr
@@ -1181,7 +1185,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @offset=zp::debuggertmp+2
 @lbl=zp::debuggertmp+2
 @addr=zp::debuggertmp+4
-@namebuff=mem::spare+40
+@namebuff=lbl::namebuffer
 	; check if an offset was given
 	ldy #$00
 	lda (zp::line),y
@@ -1671,40 +1675,60 @@ inline_proc hextostr, util::hextostr
 .endproc
 
 ;*******************************************************************************
+; UPDATE
+; Checks the disk for a Monster binary file and opens the flasher confirmation
+; if found.
+; OUT:
+;   - .C: set if no update file was found
+.ifdef vic20
+.proc flash_update
+	ldy #$00
+	lda (zp::line),y
+	beq :+
+
+	RETURN_ERR ERR_INVALID_COMMAND
+:	JUMP FINAL_BANK_FLASH, flash::launch
+.endproc
+.endif
+
+;*******************************************************************************
 ; COMMANDS
 commands:
-.byte "clear",0	; clear the terminal
-.byte "wa",0	; watch add
-.byte "wal",0	; watch add load
-.byte "was",0	; watch add store
-.byte "wr",0	; watch remove
-.byte "w",0	; list watches
-.byte "b",0	; list breakpoints
-.byte "ba",0	; breakpoint add by addr
-.byte "bl",0	; breakpoint add by line
-.byte "br",0	; breakpoint remove
-.byte "f",0	; fill memory in the given address range with the given data
-.byte "dump",0	; dumps the given address range
-.byte "move",0	; move memory from the given address range to the target address
-.byte "new",0	; reinitializes BASIC
-.byte "g",0	; goto given expression/address
-.byte "c",0	; compare the memory in the two given ranges
-.byte "h",0	; hunts the given address range for the given data
-.byte "r",0	; shows the contents of the registers (if debugging)
-.byte "d",0	; disassembles from the given address
-.byte "a",0	; assembles the given instruction given address
-.byte "m",0	; show contents of memory at the given address
-.byte "t",0	; start TRACE'ing
-.byte "x",0	; quit the debugger
-.byte "z",0	; step to the next instruction (if debugging)
-.byte "n",0	; step over the next instruction (if debugging)
-.byte "g",0	; go (continue program execution) (if debugging)
-.byte "bt",0	; backtrace (if debugging)
-.byte "zo",0	; step out of current subroutine (if debugging)
-.byte "p",0	; poke a single byte to the given address
-.byte "s",0	; save memory
-.byte "files",0	; shows all files that are loaded in debug-info
-.byte "?",0	; evaluate an integer or floating point expression
+.byte "clear",0    ; clear the terminal
+.byte "wa",0	   ; watch add
+.byte "wal",0	   ; watch add load
+.byte "was",0	   ; watch add store
+.byte "wr",0	   ; watch remove
+.byte "w",0	   ; list watches
+.byte "b",0	   ; list breakpoints
+.byte "ba",0	   ; breakpoint add by addr
+.byte "bl",0	   ; breakpoint add by line
+.byte "br",0	   ; breakpoint remove
+.byte "f",0	   ; fill memory in the given address range with the given data
+.byte "dump",0	   ; dumps the given address range
+.byte "move",0	   ; move memory from the given address range to the target address
+.byte "new",0	   ; reinitializes BASIC
+.byte "g",0	   ; goto given expression/address
+.byte "c",0	   ; compare the memory in the two given ranges
+.byte "h",0	   ; hunts the given address range for the given data
+.byte "r",0	   ; shows the contents of the registers (if debugging)
+.byte "d",0	   ; disassembles from the given address
+.byte "a",0	   ; assembles the given instruction given address
+.byte "m",0	   ; show contents of memory at the given address
+.byte "t",0	   ; start TRACE'ing
+.byte "x",0	   ; quit the debugger
+.byte "z",0	   ; step to the next instruction (if debugging)
+.byte "n",0	   ; step over the next instruction (if debugging)
+.byte "g",0	   ; go (continue program execution) (if debugging)
+.byte "bt",0	   ; backtrace (if debugging)
+.byte "zo",0	   ; step out of current subroutine (if debugging)
+.byte "p",0	   ; poke a single byte to the given address
+.byte "s",0	   ; save memory
+.byte "files",0	   ; shows all files that are loaded in debug-info
+.byte "?",0	   ; evaluate an integer or floating point expression
+.ifdef vic20
+.byte "update",0   ; leave Monster and run the updater
+.endif
 
 .linecont +
 .define command_vectors clear, add_watch, add_watch_load, add_watch_store, \
@@ -1714,5 +1738,11 @@ commands:
 	step_over, go, backtrace, step_out, poke, savemem, show_files, evaluate_value
 .linecont -
 commandslo: .lobytes command_vectors
+.ifdef vic20
+	.lobytes flash_update
+.endif
 commandshi: .hibytes command_vectors
+.ifdef vic20
+	.hibytes flash_update
+.endif
 num_commands=*-commandshi

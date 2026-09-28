@@ -502,7 +502,7 @@ LINES           = 263
 @nameptr=r0		; destination for lbl::getname
 @offset=zp::tmp14
 @format_str=zp::tmp15
-@namebuff=mem::spare+40
+@namebuff=lbl::namebuffer
 	sta @offset
 	tax
 

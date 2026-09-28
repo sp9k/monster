@@ -512,7 +512,7 @@ VIA_T2CH = $9		; T2 counter hi
 .proc __ui_render_breakpoint
 @offset=zp::tmp14
 @format_str=zp::tmp15
-@namebuff=mem::spare+40
+@namebuff=lbl::namebuffer
 	sta @offset
 	tax
 

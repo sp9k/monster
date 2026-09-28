@@ -5404,6 +5404,8 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 ;*******************************************************************************
 ; SET BANNER SEARCH
 ; Loads the find buffer with the comment banner marker (";;;")
+.pushseg
+.CODE
 .proc set_banner_search
 	lda #';'
 	sta mem::findbuff
@@ -5413,6 +5415,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	sta mem::findbuff+3
 	rts
 .endproc
+.popseg
 
 ;*******************************************************************************
 ; COMMAND_FIND
@@ -6214,7 +6217,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	jsr log::banner
 
 	ldxy #@files
-	jsr ::log_pass2::print_banner
+	jsr print_log_banner
 
 	lda #$00
 	sta @i
@@ -6555,7 +6558,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 
 ;*******************************************************************************
 ; START PROGRESS
-; Enables progress display during assembly and linking (TODO)
+; Enables progress display during assembly and linking
 .proc start_progress
 .if .defined(vic20) .and .defined(soft4x8)
 @bm=r0
@@ -6595,7 +6598,7 @@ unblank = scr::unblank
 .proc __edit_assembly_file
 	lda dbgi::file
 	CALLMAIN dbgi::get_filename
-	bcs ::assembly_info::done
+	bcs assembly_info_done
 
 	; fall through with the filename
 .endproc
@@ -6618,7 +6621,31 @@ unblank = scr::unblank
 	jsr print_info
 	jsr scr::blank
 	jmp start_progress
-done:	rts
+::assembly_info_done:
+	rts
+.endproc
+
+;*******************************************************************************
+; LINKING FILE
+; Displays the current linker pass and object filename
+; IN:
+;   - .A:  pass # (1 or 2)
+;   - .XY: filename
+.export __edit_linking_file
+.proc __edit_linking_file
+	sta r0
+	tya
+	pha
+	txa
+	pha
+	lda r0
+	ora #'0'
+	pha
+	ldxy #strings::linking_file
+	jsr print_info
+	; Status rendering touches the glyph borrowed by the blanked gutter.
+	jsr scr::blank
+	jmp start_progress
 .endproc
 
 ;*******************************************************************************
@@ -6674,7 +6701,7 @@ done:	rts
 
 	jsr log::banner
 	ldxy #strings::pass1
-	jmp ::log_pass2::print_banner
+	jmp print_log_banner
 .endproc
 
 ;*******************************************************************************
@@ -6683,7 +6710,7 @@ done:	rts
 .proc log_pass2
 	jsr log::banner
 	ldxy #strings::pass2
-print_banner:
+::print_log_banner:
 	RENDER_STR
 	jsr log::out
 	jmp log::banner

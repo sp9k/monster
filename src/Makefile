@@ -47,6 +47,9 @@ endif
 
 LINK_FILE=link-vic20-ultimem
 EXP_SRC=$(wildcard vic20/ultimem/*.asm)
+# flashrom.asm includes the standalone writer in the cartridge's RAM payload.
+CART_EXTRA_DEPS=flasher.asm
+CART_EXTRA_OBJECTS=updater-ram.o
 endif
 ifeq ($(TARGET),c64)
 LINK_FILE=link-c64
@@ -76,7 +79,7 @@ MODE_SRC=$(wildcard $(TARGET)/$(SCREEN_MODE)/*.asm)
 
 # platform independent source files
 # Standalone utilities must not be linked into Monster.
-PI_SRC=$(filter-out flasher.asm updater.asm ramtest.asm,$(wildcard *.asm))
+PI_SRC=$(filter-out flasher.asm updater.asm updater-main.asm ramtest.asm,$(wildcard *.asm))
 
 SRC=$(TARGET_SRC) $(PI_SRC) $(MODE_SRC) $(EXP_SRC)
 
@@ -127,11 +130,11 @@ $(BUILD_OPTIONS): FORCE
 	@cmp -s $@.tmp $@ || cp $@.tmp $@
 	@$(RM) $@.tmp
 
-$(CART_PRG): $(BOOTSRC) $(SRC) $(ASM_INCLUDES) $(LINK_FILE)-cart.config Makefile $(BUILD_OPTIONS)
-	$(CL65) -t $(TARGET) -o $@ --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $(BOOTSRC) $(SRC) -Ln labels.txt -v -m map.txt
+$(CART_PRG): $(BOOTSRC) $(SRC) $(ASM_INCLUDES) $(CART_EXTRA_DEPS) $(CART_EXTRA_OBJECTS) $(LINK_FILE)-cart.config Makefile $(BUILD_OPTIONS)
+	$(CL65) -t $(TARGET) -o $@ --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $(BOOTSRC) $(SRC) $(CART_EXTRA_OBJECTS) -Ln labels.txt -v -m map.txt
 
-monster-cart-test.prg: $(BOOTSRC) $(SRC) $(UNIT)
-	$(CL65) -t $(TARGET) -o $@ --asm-define TEST --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $^ -Ln labels.txt -v -m map.txt
+monster-cart-test.prg: $(BOOTSRC) $(SRC) $(UNIT) $(ASM_INCLUDES) $(CART_EXTRA_DEPS) $(CART_EXTRA_OBJECTS) $(LINK_FILE)-cart.config
+	$(CL65) -t $(TARGET) -o $@ --asm-define TEST --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $(BOOTSRC) $(SRC) $(UNIT) $(CART_EXTRA_OBJECTS) -Ln labels.txt -v -m map.txt
 
 # the linker output is already laid out bank-by-bank for the target's flash
 # (see the MEMORY areas in the link config); pack it into the image format
@@ -146,9 +149,10 @@ monster-disk.prg: $(BOOTSRC) $(SRC)
 
 # Runs in an unexpanded VIC-20 and streams only the populated 8 KiB banks from
 # the padded 8 MiB image.  Derive the count from the linker's bank-laid output.
-flasher.prg: flasher.asm monster-cart.prg Makefile $(BUILD_OPTIONS)
+flasher.prg: flasher.asm firmware.inc macros.inc zeropage.inc monster-cart.prg Makefile $(BUILD_OPTIONS)
 	$(CL65) -t vic20 -o $@ -C vic20-asm.cfg \
 		--asm-define DEFAULT_DEVICE=$(FLASHER_DEVICE) \
+		--asm-define STANDALONE_FLASHER \
 		--asm-define IMAGE_BLOCKS=$$(($$(wc -c < monster-cart.prg) / 8192)) $<
 
 flasher.d81: flasher.prg $(UPDATE_IMAGE) Makefile
@@ -159,9 +163,15 @@ flasher.d81: flasher.prg $(UPDATE_IMAGE) Makefile
 $(UPDATE_IMAGE): monster-cart.prg make-ultimem-cart.py VERSION
 	$(PYTHON) make-ultimem-cart.py $< $@ --version $(VERSION) --trimmed
 
-updater.prg: updater.asm updater.inc firmware.inc flasher.asm Makefile $(BUILD_OPTIONS)
+updater-ram.o: updater.asm flashio.inc firmware.inc macros.inc zeropage.inc Makefile
+	$(CL65) -t vic20 -c -o $@ updater.asm
+
+updater-standalone.o: updater.asm flashio.inc firmware.inc macros.inc zeropage.inc Makefile
+	$(CL65) -t vic20 -c --asm-define STANDALONE_FLASHER -o $@ updater.asm
+
+updater.prg: updater-main.asm updater-standalone.o updater.inc flashio.inc firmware.inc flasher.asm macros.inc zeropage.inc Makefile $(BUILD_OPTIONS)
 	$(CL65) -t vic20 -o $@ -C vic20-asm.cfg \
-		--asm-define DEFAULT_DEVICE=$(FLASHER_DEVICE) updater.asm
+		--asm-define DEFAULT_DEVICE=$(FLASHER_DEVICE) updater-main.asm updater-standalone.o
 
 updater.d81: updater.prg $(UPDATE_IMAGE) Makefile
 	$(C1541) -format "monster update,mu" d81 $@ -attach $@ \

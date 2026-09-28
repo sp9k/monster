@@ -45,9 +45,10 @@ SEG_FLOAT_PACKED = $7d
 
 SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 
-.define MAX_LABEL_NAME_LEN 32
+.import __sympage_name_buffer
 
 .scope lbl
+	namebuffer        = __sympage_name_buffer ; 256-byte shared I/O scratch
 	anon_cursor       = __label_anon_cursor
 	add               = __label_add
 	addanon           = __label_addanon

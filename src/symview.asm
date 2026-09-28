@@ -57,7 +57,7 @@ mode     = zp::tmp15		; mode (0=ZP, 1=ABS)
 draw_stop = zp::tmp16		; row past the end of the current redraw
 selection = zp::tmp17		; selected row on the current list page
 page_top = r8			; index of the first symbol on the current page
-name     = $100
+name     = lbl::namebuffer
 
 ;*******************************************************************************
 ; Shared scratchpad registers used throughout viewer routines
@@ -155,7 +155,7 @@ DETAIL_PROMPT_COL = ALERT_TEXT_COL+DETAIL_PROMPT_PAD
 ;   - filename: pointer to name of the file containing the symbol (if any)
 ;   - line:     line number that contains the symbol
 ;   - .XY:      ID of the label at the given index (determined by sortby)
-;   - $100:     buffer containing symbol name
+;   - lbl::namebuffer: complete symbol name
 .proc get_item_impl
 @namedst = r0           ; destination pointer required by lbl::getname
 	lda sortby
@@ -174,12 +174,13 @@ DETAIL_PROMPT_COL = ALERT_TEXT_COL+DETAIL_PROMPT_PAD
 	; destination buffer for getname
 	lda #<name
 	sta @namedst
-	sta filename		; default filename to nothing
+	lda #0		; default filename to nothing
+	sta filename
 	sta filename+1
 
 	lda #>name
 	sta @namedst+1
-	CALLMAIN lbl::getname	; read the symbol name into buffer ($100)
+	CALLMAIN lbl::getname	; read the complete symbol name
 
 	ldxy lbl
 	CALLMAIN lbl::get_line	; definition location, independent of symbol value

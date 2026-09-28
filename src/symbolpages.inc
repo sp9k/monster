@@ -3,15 +3,15 @@
 .import __sympage_load
 .import __sympage_store
 .import __sympage_copy_record
-.import __sympage_copy_name
 .import __sympage_name_buffer
+.import __sympage_scope_buffer
 
 .scope sympage
 	load        = __sympage_load
 	store       = __sympage_store
 	copy_record = __sympage_copy_record
-	copy_name   = __sympage_copy_name
 	name_buffer = __sympage_name_buffer
+	scope_buffer = __sympage_scope_buffer
 .endscope
 
 ;*******************************************************************************

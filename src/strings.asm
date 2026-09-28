@@ -126,6 +126,9 @@ __str_assembling: .byte "  pass ",ESCAPE_CHAR,": assembling ",ESCAPE_STRING,0
 .export __str_linking
 __str_linking: .byte "  linking...",0
 
+.export __str_linking_file
+__str_linking_file: .byte "  pass ",ESCAPE_CHAR,": linking ",ESCAPE_STRING,0
+
 .export __str_watches_title
 __str_watches_title: .byte "watches",0
 

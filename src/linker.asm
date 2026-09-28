@@ -45,7 +45,6 @@ MAX_SECTIONS         = 8	; max number of memory sections
 MAX_SECTION_NAME_LEN = 8	; max length of a single section name
 MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
 
-MAX_SYMBOL_NAME_LEN = 32
 MAX_SYMBOLS         = 128	; max # of symbols per object file
 
 SYM_IMPORT_BYTE     = 1
@@ -1719,6 +1718,17 @@ __link_update_progress:
 .endproc
 
 ;*******************************************************************************
+; Display and log the current object filename for either linker pass.
+.proc report_linking_file
+@objfile=zp::link+2
+	ldxy @objfile
+	lda linkpass
+	CALL FINAL_BANK_EDIT, edit::linking_file
+	ldxy @objfile
+	JUMPMAIN log::out
+.endproc
+
+;*******************************************************************************
 ; LINK
 ; Links all files that were added to the linker (link::addfile) and produces
 ; the linked executable as a file with the given name.
@@ -1768,10 +1778,8 @@ __link_update_progress:
 	CALLMAIN log::out
 	jsr log_banner
 
-@pass1: ; log the filename being assembled
-	jsr update_progress
-	ldxy @objfile
-	CALLMAIN log::out
+@pass1: ; display and log the object filename for this pass
+	jsr report_linking_file
 
 	; load the next .O (object) file in the object list
 	ldxy @objfile
@@ -1851,9 +1859,7 @@ __link_update_progress:
 ; PASS2
 ; iterate over each object file again, but this time link it to to produce the
 ; final binary.
-@pass2: jsr update_progress
-	ldxy @objfile
-	CALLMAIN log::out
+@pass2: jsr report_linking_file
 
 	ldxy @objfile
 	jsr link_object		; link the object file
@@ -2580,7 +2586,7 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 @i=r2
 @tmp=r4
 @name=r6
-@symbuff=$100
+@symbuff=lbl::namebuffer
 	; check if there is already a MAP file
 	ldxy #@filename
 	CALLMAIN file::exists
@@ -2712,16 +2718,14 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 	ldxy #@symbuff
 	jsr puts
 
-	; write 32-len(labelname)+1 spaces
-	sty @tmp
-	lda #32
-	sec
-	sbc @tmp
-	tay
+	; Pad short names to column 33; long names get one separating space.
 	lda #' '
 :	jsr krn::chrout
-	dey
-	bpl :-
+	cpy #32
+	bcs @symbol_addr
+	iny
+	bne :-
+@symbol_addr:
 
 	; write the label's address
 	ldxy @i

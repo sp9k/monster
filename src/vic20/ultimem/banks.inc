@@ -34,7 +34,8 @@ FINAL_BANK_USER            = $0f
 FINAL_BANK_FASTSCROLL_UP   = $10
 FINAL_BANK_FASTSCROLL_DOWN = $11
 FINAL_BANK_ERRLOG          = $12
-NUM_BANKS                  = $12
+FINAL_BANK_FLASH           = $13
+NUM_BANKS                  = $13
 
 ; Contiguous symbol storage: physical RAM blocks 70..100 (248 KiB).
 SYMBOL_META_BANK    = 70
@@ -59,6 +60,7 @@ FINAL_BANK_SOURCE0 = 40	; 8 source buffers * 3 blocks each (40-63)
 FINAL_BANK_LOG     = 64
 ERRLOG_RAM_BANK    = 67
 ERRLOG_ROM_BANK    = 28
+FLASH_CHECK_RAM_BANK = 101 ; private disk-validation workspace, not image staging
 
 ;*******************************************************************************
 ; MEMORY CONFIGURATION BLOCKS

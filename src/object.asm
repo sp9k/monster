@@ -88,8 +88,6 @@ MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
 
 MAX_SYMBOL_INDEXES = $200	; max number of symbols that may be referenced
 
-MAX_SYMBOL_NAME_LEN = 32
-
 SYM_IMPORT_BYTE     = 1
 SYM_IMPORT_WORD     = 2
 SYM_REL_EXPORT_BYTE = 3
@@ -894,10 +892,10 @@ __obj_split_fragment:
 
 ;*******************************************************************************
 ; DUMP SYMBOL NAME
-; Writes the symbol name in $100
+; Writes the complete NUL-terminated name in the shared symbol buffer
 .proc dump_symbol_name
 	ldy #$00
-:	lda $100,y
+:	lda lbl::namebuffer,y
 	jsr krn::chrout
 	cmp #$00
 	beq @done
@@ -917,7 +915,7 @@ __obj_split_fragment:
 .proc dump_imports
 @i=zp::tmp10
 @idx=zp::tmp12
-@buff=$100
+@buff=lbl::namebuffer
 	lda #$00
 	sta @i
 	sta @i+1
@@ -961,7 +959,7 @@ __obj_split_fragment:
 .proc dump_exports
 @i=zp::tmp10
 @id=zp::tmp12
-@buff=$100
+@buff=lbl::namebuffer
 	lda #$00
 	sta @i
 	cmp numexports
@@ -1019,7 +1017,7 @@ __obj_split_fragment:
 .proc visit_locals
 @id=zp::tmp12
 @emit=zp::tmp14
-@buff=$100
+@buff=lbl::namebuffer
 	sta @emit
 	lda #$00
 	sta @id
@@ -2012,7 +2010,7 @@ __obj_get_fragment_run:
 ; OUT:
 ;   - .C: set on error
 .proc load_import
-@namebuff=$120
+@namebuff=lbl::namebuffer
 	; get the name of a symbol
 	ldy #$00
 	sty zp::label_value	; dummy value (0)
@@ -2025,8 +2023,7 @@ __obj_get_fragment_run:
 	sta @namebuff,y
 	beq @cont
 	iny
-	cpy #MAX_LABEL_NAME_LEN
-	bcc :-
+	bne :-
 	RETURN_ERR ERR_LABEL_TOO_LONG		; corrupt object file
 
 @cont:	jsr krn::chrin				; get info byte (address mode)
@@ -2062,15 +2059,14 @@ __obj_get_fragment_run:
 ; OUT:
 ;   - .C: set on error
 .proc load_export
-@namebuff=$120
+@namebuff=lbl::namebuffer
 	; get the name of a symbol
 	ldy #$00
 :	jsr krn::chrin
 	sta @namebuff,y
 	beq @addexport
 	iny
-	cpy #MAX_LABEL_NAME_LEN
-	bcc :-
+	bne :-
 	RETURN_ERR ERR_LABEL_TOO_LONG		; corrupt object file
 
 @addexport:
@@ -2110,7 +2106,7 @@ __obj_get_fragment_run:
 ; OUT:
 ;   - .C: set on error
 .proc load_local
-@namebuff=$120
+@namebuff=lbl::namebuffer
 	; read symbol name
 	ldy #$00
 	lda #'.'		; object scope delimiter (source locals use '@')
@@ -2120,7 +2116,7 @@ __obj_get_fragment_run:
 	cmp #$00
 	beq @cont
 	iny
-	cpy #MAX_LABEL_NAME_LEN-1	; -1 for the '.' prefix
+	cpy #$ff		; room for the object-local prefix and terminator
 	bcc :-
 	RETURN_ERR ERR_LABEL_TOO_LONG	; corrupt object file
 

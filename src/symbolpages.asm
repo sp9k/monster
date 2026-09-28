@@ -7,6 +7,7 @@
 
 .include "config.inc"
 .include "limits.inc"
+.include "memory.inc"
 .include "macros.inc"
 .include "ram.inc"
 .include "target.inc"
@@ -16,15 +17,14 @@
 .export __sympage_load
 .export __sympage_store
 .export __sympage_copy_record
-.export __sympage_copy_name
 .export __sympage_name_buffer
+.export __sympage_scope_buffer
 
 ;*******************************************************************************
 ; mirrors labels.asm.
 flags = zp::labels+2
 
 SIZEOF_LABEL       = 12
-MAX_LABEL_NAME_LEN = 32
 
 ;*******************************************************************************
 ; Memory pool for symbol records, nodes, and indices
@@ -188,7 +188,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lsr
 	clc
 	adc page_extra
-	adc ::copy_symbol::page_banks,x
+	adc page_banks,x
 	sta $9ffc
 
 	lda @data+1
@@ -263,7 +263,10 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .segment "DATA"
 .endif
 
-__sympage_name_buffer:   .res MAX_LABEL_NAME_LEN*2
+__sympage_name_buffer  = __mem_spare+$200
+__sympage_scope_buffer = __mem_spare+$300
+.assert SPARESIZE >= $400, error, "symbol scratch requires four shared pages"
+.assert MAX_OBJS*17+1 <= $200, error, "object filenames overlap symbol scratch"
 
 page_mapping2: .byte 0
 page_count:    .byte 0
@@ -292,33 +295,6 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 	lda #SYM_RECORDS
 	jmp copy_symbol
-.endproc
-
-;*******************************************************************************
-; COPY NAME
-; Loads the symbol name at the given offset into shared memory for processing.
-; IN:
-;   - .A:  destination buffer offset (0 or MAX_LABEL_NAME_LEN)
-;   - .XY: word offset of the name in the 128 KiB SYM_NAMES pool
-; OUT:
-;   - sympage::name_buffer+.A: symbol name
-.proc __sympage_copy_name
-@src = zp::bankaddr1
-@dst = zp::bankaddr0
-	stxy @src
-	clc
-	adc #<__sympage_name_buffer
-	sta @dst
-
-	lda #>__sympage_name_buffer
-	adc #0
-	sta @dst+1
-
-	lda #MAX_LABEL_NAME_LEN
-	sta page_count
-
-	lda #SYM_NAMES
-	; fall through to copy_symbol
 .endproc
 
 ;*******************************************************************************
@@ -427,7 +403,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 ;-------------------------------------------------------------------------------
 .ifdef vic20
-page_banks:
+::page_banks:
 	.byte SYMBOL_RECORDS_BANK, SYMBOL_NODES_BANK
 	.byte SYMBOL_INDEXES_BANK-1, SYMBOL_NAMES_BANK
 .endif

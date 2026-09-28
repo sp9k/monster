@@ -108,14 +108,13 @@ temp    = zp::labels+$14	; temporary scratchpad
 
 ;*******************************************************************************
 ; CONSTANTS
-SCOPE_LEN  = 12		; size of a namespace (scope) entry (name + terminator)
+SCOPE_LEN  = 17		; size of a namespace (scope) entry (name + terminator)
 
 ; NOTE: BE CAREFUL CHANGING THIS
 ; BUCKETING LOGIC RELIES ON AN EXACT SIZE (BITS 8-11)
 ; INITIALIZATION ALSO RELIES ON PAGE ALIGNED SIZE (e.g. $1000)
 NUM_BUCKETS = 2048	; number of buckets for the symbol hash map
 
-MAX_LABEL_NAME_LEN = 32
 MAX_SCOPES         = 4
 
 SIZEOF_LABEL           = 12
@@ -224,12 +223,10 @@ numanon: .word 0		; total number of anonymous labels
 .export __label_anon_cursor
 __label_anon_cursor: .word 0	; next source-order anonymous label in object pass 2
 
-scopesp: .byte 0		; offset of next free scope (0 = no scope)
-name_top: .word 0		; word offset of the next free name-pool entry
+scopesp:   .byte 0		; offset of next free scope (0 = no scope)
+name_full: .byte 0		; all 128 KiB of name storage allocated
+name_top:  .word 0		; word offset of the next free name-pool entry
 labelvars_size=*-labelvars
-
-pivot_name: .word 0		; word offset of the name buffered for sorting
-pivot_name_valid: .byte 0	; cleared before each name sort
 
 BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
@@ -312,47 +309,55 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;  - .XY: pointer to the buffer containing the scope namespaced label
 ;  - .C: set if there is no open scope
 .proc prepend_scope
-@buff   = $100
-@lbl    = temp
+@lbl = temp
 @scopes = temp+2
+@len = r0
+@prefix = r1
 	stxy @lbl
+	lda scopesp
+	beq @noscope
 	ldxy #scopes
 	stxy @scopes
-
-	ldx #$00
-	lda scopesp			; check if there is a scope defined
-	bne :+				; if so, continue
-	RETURN_ERR ERR_NO_OPEN_SCOPE
-
-:	sec				; .Y = offset of the active scope
+	lda scopesp
+	sec
 	sbc #SCOPE_LEN
 	tay
-
-@l0:	; write the scope to the buffer
-	LOADB_Y @scopes
-	beq :+
-	sta @buff,x
-	iny
+	ldx #0
+@scope:	LOADB_Y @scopes
+	beq @length
+	sta sympage::scope_buffer,x
 	inx
-	cpx #SCOPE_LEN
-	bne @l0
-
-:	; copy the label after the scope we just added to the buffer
-	ldy #$00
-@l1:	lda (@lbl),y
+	iny
+	bne @scope
+@length:
+	stx @prefix
+	ldy #0
+@scan:	lda (@lbl),y
 	jsr isseparator
-	beq @done
-	sta @buff,x
+	beq @copy
 	iny
+	bne @scan
+	RETURN_ERR ERR_LABEL_TOO_LONG
+@copy:	sty @len
+	tya
+	clc
+	adc @prefix
+	bcs @long
+	ldy #0
+@chars:	cpy @len
+	beq @done
+	lda (@lbl),y
+	sta sympage::scope_buffer,x
 	inx
-	cpx #MAX_LABEL_LEN
-	bne @l1
-	RETURN_OK			; maxed out scope buffer, return
-
-@done:	lda #$00
-	sta @buff,x
-	ldxy #@buff
+	iny
+	bne @chars
+@done:	lda #0
+	sta sympage::scope_buffer,x
+	ldxy #sympage::scope_buffer
 	RETURN_OK
+@long:	RETURN_ERR ERR_LABEL_TOO_LONG
+@noscope:
+	RETURN_ERR ERR_NO_OPEN_SCOPE
 .endproc
 
 ;*******************************************************************************
@@ -664,6 +669,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	ldxy @name
 	stxy r0			; r0  = label name to set
 	jsr set_name		; set name pointer + string
+	bcs @ret		; packed name pool exhausted
 
 	; 4. write all ADDR related fields (FLAGS, ADDR)
 	jsr set_addr
@@ -1178,11 +1184,27 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;   - name_top: word offset of the next free name-pool entry
 ; OUT:
 ;   - name_top: advanced past the terminated name, rounded up to a word
+;   - .C: set if the input is unterminated or the name pool is full
 .proc set_name
 @name = r0
 @dest = r2
 @idx = temp+2
-	ldxy name_top
+	; check the complete name before writing any bytes to the pool
+	ldy #$00
+@length:
+	lda (@name),y
+	jsr isseparator
+	beq @reserve
+	iny
+	bne @length
+	RETURN_ERR ERR_LABEL_TOO_LONG
+
+@reserve:
+	jsr check_name_space
+	bcc :+
+	rts
+
+:	ldxy name_top
 	stxy @dest
 	ldy #LABEL_NAME
 	txa
@@ -1230,10 +1252,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 :	PAGE_STORE @dest, SYM_NAMES
 	beq @done
 	iny
-	cpy #MAX_LABEL_NAME_LEN-1
-	bcc @copy
-	lda #0
-	PAGE_STORE @dest, SYM_NAMES
+	bne @copy
 @done:
 	; fall through to advance_name
 .endproc
@@ -1252,9 +1271,36 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	sec
 	adc name_top
 	sta name_top
-	bcc :+
+	bcc @done
 	inc name_top+1
-:	rts
+	bne @done
+	inc name_full
+@done:	clc
+	rts
+.endproc
+
+;*******************************************************************************
+; CHECK NAME SPACE
+; Check if the given name fits in memory
+; OUT:
+;   - .C: set if we are out of memory in the name memory pool
+.proc check_name_space
+	lda name_full
+	bne @full
+	tya
+	lsr
+	sec
+	adc name_top
+	tax
+	lda name_top+1
+	adc #0
+	bcc @ok
+	bne @full
+	cpx #0
+	beq @ok
+@full:	RETURN_ERR ERR_OOM
+@ok:	clc
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1477,11 +1523,8 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	bcc @err
 
 	; following characters must be between '0' and 'Z'
-@cont:	ldx #$00
-@l1:	inx
-	cpx #(MAX_LABEL_LEN/2)+1
-	bcs @toolong
-	lda (@name),y
+@cont:
+@l1:	lda (@name),y
 	jsr isseparator
 	beq @done
 	cmp #'.'		; object qualifier within a symbol name
@@ -1493,12 +1536,11 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 @nextchar:
 	iny
 	bne @l1
+	beq @toolong		; unterminated byte-indexed input
 @err:	RETURN_ERR ERR_ILLEGAL_LABEL
 
 @toolong:
-	lda #ERR_LABEL_TOO_LONG
-	;sec
-	rts
+	RETURN_ERR ERR_LABEL_TOO_LONG
 @done:	RETURN_OK
 .endproc
 
@@ -1507,33 +1549,19 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ; Copies the name of the label ID given to the provided buffer
 ; IN:
 ;  - .XY: the ID of the label to get the name of
-;  - r0:  the address to copy to
+;  - r0:  destination with room for a page (normally lbl::namebuffer)
 ; OUT:
 ;  - (r0): the label name
 ;  - .Y:   the length of the copied label
 .proc get_name
 @dst = r0
 	jsr loadlabel
-	ldxy name
-	lda #$00
-	jsr sympage::copy_name
-
-	; The paging backend restores the caller's mapping.
-
-	; write the symbol name to its destination
-	ldy #$00
-@l0:	lda sympage::name_buffer,y
+	ldy #0
+@copy:	PAGE_LOAD name, SYM_NAMES
 	sta (@dst),y
-	tax			; 0?
-	beq @done		; if so, we're done
+	beq @done
 	iny
-	cpy #MAX_LABEL_LEN
-	bcc @l0
-
-	; terminate the (max length) buffer
-	lda #$00
-	sta (@dst),y
-
+	bne @copy
 @done:	rts
 .endproc
 
@@ -1924,8 +1952,6 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;-------------------------------------------------------------------------------
 ; index by name
 @index_by_name:
-	lda #$00		; other name operations reuse the shared buffer
-	sta pivot_name_valid
 .ifdef vic20
 	lda #SYMBOL_INDEXES_BANK+2
 	sta $9ffa
@@ -2201,56 +2227,27 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ; OUT:
 ;   - .C: set if the pivot name sorts after or equals the candidate name
 ;   - .Z: set if the names are equal
-; The first half of name_buffer caches the pivot until its word offset changes.
-; index invalidates this cache before sorting; other name operations reuse it.
+; Compare NUL-terminated names directly in the pool; no fixed-size cache.
 .proc name_comparator
 @str_a = r4
 @str_b = r6
-@b     = rc
+@b = rc
 @savey = rd
-	; compare the two name strings
 	sty @savey
-	lda pivot_name_valid
-	beq @load_pivot
-	lda @str_a
-	cmp pivot_name
-	bne @load_pivot
-	lda @str_a+1
-	cmp pivot_name+1
-	beq @candidate
-
-@load_pivot:
-	ldxy @str_a
-	stxy pivot_name
-	lda #$00
-	jsr sympage::copy_name
-	lda #$01
-	sta pivot_name_valid
-
-@candidate:
-	ldxy @str_b
-	lda #MAX_LABEL_NAME_LEN
-	jsr sympage::copy_name
-	ldy #$00
-@l0:	lda sympage::name_buffer+MAX_LABEL_NAME_LEN,y
+	ldy #0
+@loop:	PAGE_LOAD @str_b, SYM_NAMES
 	sta @b
-	beq @end
-
-	; compare str_a[i] with str_b[i]
-	lda sympage::name_buffer,y
-	beq @end
+	PAGE_LOAD @str_a, SYM_NAMES
 	cmp @b
-	bne @done		; if strings mismatch at this byte, we're done
-@next:	iny			; move to next byte
-	bne @l0			; branch always
-
-@end:	lda sympage::name_buffer,y
-	cmp @b			; exact match (strlen(a) = strlen(b))?
-
-@done:	php			; save .C and .Z
-
+	bne @done
+	cmp #0
+	beq @equal
+	iny
+	bne @loop
+@equal:	sec
+@done:	php
 	ldy @savey
-	plp			; restore .C and .Z
+	plp
 	rts
 .endproc
 
@@ -2487,13 +2484,13 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	stxy @name
 
 	; get the length to compare
-	ldy #$ff		; -1
-:	iny
-	bmi @notfound
-	lda (@name),y
+	ldy #0
+:	lda (@name),y
 	jsr isseparator
 	beq @cont
+	iny
 	bne :-
+	beq @notfound
 @cont:	sty @len
 
 @l0:	; get address of the label data for this node
@@ -2700,20 +2697,27 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda @symname+1
 	PAGE_STORE @symdata, SYM_RECORDS
 
-	; load the name of the symbol
-	ldy #$00
-	; name references are decoded by the paging backend
-:	jsr @getb
-	PAGE_STORE @symname, SYM_NAMES
+	; Read a terminated name into shared scratch before reserving pool space.
+	ldy #0
+@readname:
+	jsr @getb
+	sta sympage::name_buffer,y
+	beq @checkspace
 	iny
-	cmp #$00
-	beq :+
-	cpy #MAX_LABEL_NAME_LEN
-	bcc :-
-	lda #ERR_IO_ERROR	; unterminated name; symbol table is corrupt
+	bne @readname
+	lda #ERR_IO_ERROR	; unterminated byte-indexed name
 	jmp @error
-
-:	dey			; .Y=terminator offset
+@checkspace:
+	jsr check_name_space
+	jcs @error
+	ldy #0
+@storename:
+	lda sympage::name_buffer,y
+	PAGE_STORE @symname, SYM_NAMES
+	beq @nameend
+	iny
+	bne @storename
+@nameend:
 	jsr advance_name
 	jsr next_sym
 
@@ -2836,7 +2840,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;*******************************************************************************
 ; CMP NAME
 ; Compares the string in (str0) to the label name in (str2)
-; The stored label name is fetched once from the pool.
+; Compare the complete stored name directly in the paged pool.
 ; IN:
 ;  temp:   one of the strings to compare
 ;  temp+2: packed word-offset reference of the other string
@@ -2846,41 +2850,22 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ;  .Z: set if the strings are equal
 .export cmp_name
 .proc cmp_name
-@name  = temp
+@name = temp
 @other = temp+2
-	; load the name for the label to check
-	pha
-	ldxy @other
-	lda #$00
-	jsr sympage::copy_name
-	pla
-
-	tax		; save length for the termination check
-	tay		; is length to compare 0?
-	beq @nomatch	; names should not be 0 length
-
-	; compare the buffered name without further bank switches.
-
-@l0:	dey
-	bmi @end			; all bytes matched -> verify label end
-	lda sympage::name_buffer,y	; get byte of the label to compare
-	cmp (@name),y			; compare with our name
-	beq @l0
-
+	tax
+	beq @nomatch
+	tay
+	PAGE_LOAD @other, SYM_NAMES
+	bne @nomatch		; stored name must end at the requested length
+@loop:	dey
+	PAGE_LOAD @other, SYM_NAMES
+	cmp (@name),y
+	bne @nomatch
+	dex
+	bne @loop
+	lda #0
+	rts
 @nomatch:
 	lda #$ff
-	skw
-@match:	lda #$00
-
-@ret:	pha
-
-	pla
 	rts
-
-@end:	; do the labels have the same length?
-	txa		; .Y = compared length
-	tay
-	lda sympage::name_buffer,y
-	beq @match
-	bne @nomatch
 .endproc

@@ -22,6 +22,7 @@
 .import __str_jam_detected
 .import __str_link
 .import __str_linking
+.import __str_linking_file
 .import __str_loading
 .import __str_machine_state
 .import __str_nolabels
@@ -77,6 +78,7 @@
 	file_open_failed        = __str_file_open_failed
 	link                    = __str_link
 	linking                 = __str_linking
+	linking_file            = __str_linking_file
 	loading                 = __str_loading
 	machine_state           = __str_machine_state
 	macros                  = __str_macros

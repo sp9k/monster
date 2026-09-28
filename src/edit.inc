@@ -28,6 +28,7 @@
 .import __edit_statusrow
 .import __edit_update_progress
 .import __edit_assembly_file
+.import __edit_linking_file
 
 .scope edit
 	base            = __edit_base
@@ -59,6 +60,7 @@
 	status_row      = __edit_statusrow
 	update_progress = __edit_update_progress
 	assembly_file   = __edit_assembly_file
+	linking_file    = __edit_linking_file
 .endscope
 
 ;*******************************************************************************
