@@ -1300,7 +1300,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	.import src_copyline
 	jsr src_copyline
 .else
-	jsr ram::copyline	; may copy garbage
+	jsr ram::copyrow	; may copy garbage
 .endif
 	pla			; restore end of line index
 	tay
@@ -1309,7 +1309,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; normal line, copy until next newline
 @normal:
 	lda __src_bank
-	jsr ram::copyline
+	jsr ram::copyrow	; display-facing read, bounded by LINESIZE
 
 @done:	; terminate the buffer
 	lda #$00

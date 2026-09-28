@@ -207,6 +207,16 @@ start-disk-jiffy64: test.d81
 start-cart-c64: monster.crt test-disk
 	$(X64) -default -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384 -cartcrt monster.crt -moncommands moncommands -8 test.d81
 
+.PHONY: test-selfhost test-label-names test-source-lines
+test-selfhost:
+	$(PYTHON) tests/selfhost/check.py all
+
+test-label-names:
+	$(PYTHON) tests/selfhost/check.py all --names
+
+test-source-lines:
+	$(PYTHON) tests/selfhost/check.py all --lines
+
 clean:
 	rm -f *.prg *.o test.d81 cyclic.d81 monster.d81 flasher.d81 updater.d81 ramtest.d81
 	rm -f $(CART_IMAGE) $(TEST_IMAGE)

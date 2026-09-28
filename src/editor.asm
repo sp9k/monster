@@ -4566,7 +4566,6 @@ goto_buffer:
 
 @chkvis:
 	; if we are in VISUAL mode, highlight to the beginning of the line
-	lda mode
 	cmp #MODE_VISUAL
 	bne @up
 
@@ -4653,10 +4652,7 @@ goto_buffer:
 	lda mode
 	cmp #MODE_VISUAL_LINE
 	bne @movex
-	jsr text::rendered_line_len
-	ldy #$00
-	lda zp::cury
-	jsr scr::rvsline_part
+	jsr rvs_current_line
 	RETURN_OK
 
 @movex: jsr sync_cur		; update physical cursor based on source one
@@ -5336,18 +5332,15 @@ goto_buffer:
 
 	; if there's an error on this line, color the row
 	jsr errlog::get_current
-	bcs @noerr			; no error on this line
 	pla
 	tax				; .X = row
 	pha				; keep the row on the stack
+	bcs @noerr			; no error on this line
 	lda #COLOR_ERROR
 	jsr draw::hline			; color the row (+gutter for hard8x8)
 	jmp @drawtext
 
-@noerr:	pla
-	tax				; .X = row
-	pha				; keep the row on the stack
-	jsr draw::resetline		; reset color (and/or gutter)
+@noerr:	jsr draw::resetline		; reset color (and/or gutter)
 
 @drawtext:
 	pla				; restore the row

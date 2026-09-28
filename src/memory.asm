@@ -35,6 +35,10 @@ __mem_ctxbuffer = $140+40	; buffer for a line of context during assembly
 .export __statusline
 __statusline = __mem_spare+80
 
+; the Ultimem shared I/O RAM window.
+.ifdef ultimem
+.segment "SHAREBSS2"
+.endif
 .export __statusinfo
 __statusinfo: .res 20
 
@@ -46,6 +50,9 @@ __linesave: .res 40
 
 .export __mem_coloron
 __mem_coloron: .byte 0
+.ifdef ultimem
+.BSS
+.endif
 
 .export __mem_rowcolors
 __mem_rowcolors: .res SCREEN_HEIGHT
@@ -87,7 +94,12 @@ __mem_init_sig: .res 4
 ; This allows the buffer to be manipulated from any bank
 .segment "LINEBUFF"
 
+.ifdef hard8x8
+; The debugger also uses this buffer for four 22-column display rows.
+LINEBUFFER_SIZE = .max(MAX_LINE_LEN+3, LINESIZE*4+3)
+.else
 LINEBUFFER_SIZE = MAX_LINE_LEN+3
+.endif
 
 .export __linebuffer
 __linebuffer:
@@ -100,8 +112,4 @@ __linebuffer2:
 
 .export __mem_asmbuffer
 __mem_asmbuffer:
-.ifdef hard8x8
-	.res LINESIZE*4+1
-.else
-	.res LINESIZE+1
-.endif
+	.res MAX_LINE_LEN+1

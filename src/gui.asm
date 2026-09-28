@@ -273,14 +273,14 @@ recoffs:
 .proc swapcur
 	lda infocus
 	beq @done
-	ldx zp::curx
-	lda __gui_cursave_x
-	stx __gui_cursave_x
-	sta zp::curx
-	ldx zp::cury
-	lda __gui_cursave_y
-	stx __gui_cursave_y
-	sta zp::cury
+	; exchange Y, then X
+	ldx #$01
+:	lda zp::curx,x
+	ldy __gui_cursave_x,x
+	sta __gui_cursave_x,x
+	sty zp::curx,x
+	dex
+	bpl :-
 @done:	rts
 .endproc
 

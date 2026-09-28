@@ -17,20 +17,20 @@ MAX_BUFFER_NAME_LEN = 16	; max length of names for each buffer
 ; Vic 20 (hard)
 TAB_WIDTH = 4
 LINESIZE  = 22
-MAX_LINE_LEN = LINESIZE*4   ; max logical line length
 
 .elseif .defined(vic20) .and .defined(soft4x8)
 ; Vic 20 (soft40)
 TAB_WIDTH = 10
 LINESIZE  = 40
-MAX_LINE_LEN = LINESIZE     ; max logical line length
 
 .elseif .defined(c64)
 ; C64
 TAB_WIDTH = 10
 LINESIZE  = 40
-MAX_LINE_LEN = LINESIZE     ; max logical line length
 .endif
+
+; Source capacity is independent of the visible editor row width.
+MAX_LINE_LEN = 80
 
 ; line continuation character
 .ifdef hard8x8

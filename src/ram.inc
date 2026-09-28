@@ -21,6 +21,7 @@ DBGVECS_SIZE = 4
 .import __ram_copy
 .import __ram_memcpy
 .import __ram_copy_line
+.import __ram_copy_row
 .import __ram_store_byte
 .import __ram_bank_store_rel
 .import __ram_load_byte
@@ -32,6 +33,7 @@ DBGVECS_SIZE = 4
 .scope ram
 	call      = __ram_call
 	copyline  = __ram_copy_line
+	copyrow   = __ram_copy_row
 
 	store     = __ram_store_byte
 	store_off = __ram_bank_store_rel

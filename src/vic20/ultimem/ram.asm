@@ -15,8 +15,9 @@
 .import __ram_src
 .import __ram_dst
 
-.segment "SHAREBSS"
-bankstack: .res 16
+.segment "SHAREBSS2"
+bankstack:  .res 16
+copy_limit: .byte 0
 
 .segment "BANKCODE"
 
@@ -119,7 +120,7 @@ bankstack: .res 16
 
 ;*******************************************************************************
 ; COPY LINE
-; Copies up to LINESIZE bytes from zp::bankaddr0 to zp::bankaddr1 stopping at
+; Copies up to MAX_LINE_LEN bytes from zp::bankaddr0 to zp::bankaddr1 stopping at
 ; the first $0d or $00
 ; IN:
 ;  - .A:            the bank to perform the copy within
@@ -130,12 +131,21 @@ bankstack: .res 16
 ;   - .A: the last byte copied
 ;   - .C: set if the source line was longer than MAX_LINE_LEN (truncated)
 .export __ram_copy_line
+.export __ram_copy_row
+.proc __ram_copy_row
+	ldx #LINESIZE
+	bne copy_line_bounded
+.endproc
 .proc __ram_copy_line
+	ldx #MAX_LINE_LEN
+.endproc
+.proc copy_line_bounded
+	stx copy_limit
 	ldx __ultimem_bank		; get current bank
 	jsr __ultimem_select_bank	; set bank to copy within
 
 	ldy #$00
-:	cpy #MAX_LINE_LEN
+:	cpy copy_limit
 	bcs @last			; at the limit: classify, don't store
 	lda (zp::bankaddr0),y
 	sta (zp::bankaddr1),y

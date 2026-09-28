@@ -163,7 +163,7 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 
 	; make sure there is room for the line (and the terminating 0,0)
 	lda @dst+1
-	cmp #>(macros_end-LINESIZE-3)
+	cmp #>(macros_end-MAX_LINE_LEN-3)
 	bcc @copyline
 	RETURN_ERR ERR_OOM
 

@@ -58,6 +58,7 @@ codebanks:
 
 ;*******************************************************************************
 .BSS
+copy_limit: .byte 0
 ; COPY SRC/DST
 ; These 24-bit addresses are used by __ram_copy
 .export __ram_src
@@ -201,7 +202,7 @@ __ram_dst = reu::move_dst
 ; This is called by __ram_copy_line when the bank is "MAIN"
 .proc copy_line_main
 	ldy #$00
-:	cpy #MAX_LINE_LEN
+:	cpy copy_limit
 	bcs @last		; at the limit: classify without storing
 	lda (zp::bankaddr0),y
 	sta (zp::bankaddr1),y
@@ -225,8 +226,8 @@ __ram_dst = reu::move_dst
 
 ;*******************************************************************************
 ; COPY LINE
-; Copies up to LINESIZE bytes from zp::bankaddr0 to zp::bankaddr1 stopping at
-; the first $0d or $00
+; Copies up to MAX_LINE_LEN bytes from zp::bankaddr0 to zp::bankaddr1 stopping
+; at the first $0d or $00
 ; IN:
 ;  - .A:            the bank to perform the copy within
 ;  - zp::bankaddr0: the source address to copy from
@@ -236,15 +237,24 @@ __ram_dst = reu::move_dst
 ;  - .A: the last byte copied
 ;  - .C: set if the source line was longer than MAX_LINE_LEN (truncated)
 .export	__ram_copy_line
+.export __ram_copy_row
+.proc __ram_copy_row
+	ldx #LINESIZE
+	bne copy_line_bounded
+.endproc
 .proc __ram_copy_line
+	ldx #MAX_LINE_LEN
+.endproc
+.proc copy_line_bounded
 @src=zp::bankaddr0
 @dst=zp::bankaddr1
+	stx copy_limit
 	cmp #FINAL_BANK_MAIN
 	beq copy_line_main
 	sta reu::reuaddr+2
 
 	ldy #$00
-:	cpy #MAX_LINE_LEN
+:	cpy copy_limit
 	bcs @last		; at the limit: classify without storing
 	jsr reu::loadb_off
 	.byte @src
