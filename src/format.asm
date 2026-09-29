@@ -12,6 +12,8 @@
 .include "asm.inc"
 .include "codes.inc"
 .include "config.inc"
+.include "ram.inc"
+.macpack longbranch
 .include "linebuffer.inc"
 .include "macros.inc"
 .include "memory.inc"
@@ -31,6 +33,11 @@ offset = r7
 position = r9
 
 .CODE
+.export __fmt_word_space, __fmt_line
+__fmt_word_space: JUMP FINAL_BANK_VSCREEN, format_word_space
+__fmt_line: JUMP FINAL_BANK_VSCREEN, format_line
+.segment "VSCREEN"
+SET_CUR_BANK FINAL_BANK_VSCREEN
 
 ;*******************************************************************************
 ; WORD SPACE
@@ -40,13 +47,12 @@ position = r9
 ;  - zp::verify: must be !0
 ; OUT:
 ;  - .C: set if the line was unindented (caller must sync/redraw the cursor)
-.export __fmt_word_space
-.proc __fmt_word_space
+.proc format_word_space
 @end=r5
 	lda __fmt_enable
-	beq @done
+	jeq @done
 
-	jsr text::char_index
+	CALLMAIN text::char_index
 	sty @end
 
 	; find first word on the line
@@ -54,19 +60,19 @@ position = r9
 :	cpy @end
 	bcs @done
 	lda mem::linebuffer,y
-	jsr util::is_whitespace
+	CALLMAIN util::is_whitespace
 	bne @name
 	iny
 	bne :-
 
 @name:	cpy #$00		; is first word at index 0?
-	beq @done		; yes -> already left aligned
+	jeq @done		; yes -> already left aligned
 	ldx #$00
 
 @copy:	; copy first word to asmbuffer
 	lda mem::linebuffer,y
-	jsr util::is_whitespace
-	beq @done		; end of word -> done
+	CALLMAIN util::is_whitespace
+	jeq @done		; end of word -> done
 	sta mem::asmbuffer,x
 	inx
 	iny
@@ -78,16 +84,16 @@ position = r9
 
 	; assemble the word to see if it's a label or directive
 	ldxy #mem::asmbuffer
-	jsr str::toupper
+	CALLMAIN str::toupper
 	stxy zp::line
-	jsr asm::word_type
+	CALLMAIN asm::word_type
 	bcs @done
 
 	; if first word is a label or directive, format it immediately
 	and #ASM_LABEL|ASM_DIRECTIVE
-	beq @done
+	jeq @done
 	lda #ASM_DIRECTIVE	; treat as DIRECTIVE (JUST strip indentation)
-	jsr __fmt_line		; remove indentation
+	jsr format_line		; remove indentation
 	sec			; flag for caller to redraw
 	rts
 
@@ -100,39 +106,38 @@ position = r9
 ; Formats the linebuffer according to the given content type.
 ; IN:
 ;  - .A: the "type" to format see (codes.inc) e.g. ASM_OPCODE, etc.
-.export __fmt_line
-.proc __fmt_line
+.proc format_line
 @linecontent = r6
 	sta @linecontent	; save format "type"
 	lda __fmt_enable
-	beq @done		; if formatting is disabled, just quit
+	jeq @done		; if formatting is disabled, just quit
 
 	; get current character index of cursor
-	jsr text::char_index
+	CALLMAIN text::char_index
 	sty offset		; save character index
 
 	jsr @fmt		; format the line
 
 	; remove trailing whitespace
-	jsr src::lineend
-@trim:	jsr src::left
+	CALLMAIN src::lineend
+@trim:	CALLMAIN src::left
 	bcs @restore
-	jsr util::is_whitespace
+	CALLMAIN util::is_whitespace
 	bne @restore
-	jsr src::delete
+	CALLMAIN src::delete
 	bcc @trim		; branch always
 
 @restore:
 	; fix cursor position for newly formatted line
-	jsr src::home
-	jsr src::get
+	CALLMAIN src::home
+	CALLMAIN src::getwide
 
 	; touch up source and cursor position, accounting for all the
 	; characters inserted and deleted during the formatting
 	lda offset
-	beq @done
+	jeq @done
 
-@l0:	jsr src::right
+@l0:	CALLMAIN src::right
 	bcs @done
 	dec offset
 	bne @l0
@@ -140,26 +145,26 @@ position = r9
 
 ;-------------------------------------------------------------------------------
 @fmt:	; remove spaces from start of line
-	jsr src::home
+	CALLMAIN src::home
 	lda #0
 	sta position		; source character index being formatted
 
 @removespaces:
-	jsr src::after_cursor
+	CALLMAIN src::after_cursor
 	bcs @done		; empty final line -> leave it empty
 	cmp #$0d
-	beq @done		; empty line -> don't insert indentation
-	jsr util::is_whitespace
+	jeq @done		; empty line -> don't insert indentation
+	CALLMAIN util::is_whitespace
 	bne @left_aligned
 
 	lda offset
 	beq :+			; a cursor in leading whitespace stops at column zero
 	dec offset
 :
-	jsr src::delete		; delete whitespace character
+	CALLMAIN src::delete		; delete whitespace character
 	ldx #$00
-	ldy #LINESIZE-1
-	jsr linebuff::shl
+	ldy #MAX_LINE_LEN-1
+	CALLMAIN linebuff::shl
 	beq @removespaces	; branch always
 
 @left_aligned:
@@ -182,7 +187,7 @@ position = r9
 ; line buffer. Adjust the saved cursor only if the TAB precedes it.
 .proc indent
 	lda #$09
-	jsr src::insert		; insert a TAB at start of line
+	CALLMAIN src::insert		; insert a TAB at start of line
 
 	lda position
 	cmp offset
@@ -193,7 +198,7 @@ position = r9
 	jsr refresh
 
 	; check the size of the line now that it has a TAB
-	jsr text::rendered_line_len
+	CALLMAIN text::rendered_line_len
 	bcs @undo
 	rts
 
@@ -203,7 +208,7 @@ position = r9
 	bcs @remove		; only undo a cursor adjustment that was made above
 	dec offset
 @remove:
-	jmp src::backspace	; delete the TAB
+	JUMPMAIN src::backspace	; delete the TAB
 .endproc
 
 ;*******************************************************************************
@@ -211,27 +216,27 @@ position = r9
 ; Formats linebuffer as a label.
 .proc label
 	; read past the label
-@l0:	jsr src::right_rep
+@l0:	CALLMAIN src::right_rep
 	bcs @done			; nothing on the line after the label
 	inc position
 	; TODO: check invalid label characters
 
-	jsr util::is_whitespace
+	CALLMAIN util::is_whitespace
 	bne @l0
 
 	; delete all whitespace until the opcode/macro/etc.
-@l1:	jsr src::after_cursor
+@l1:	CALLMAIN src::after_cursor
 	bcs @done		; no chars left -> done
 	cmp #$0d
-	beq @done		; newline -> done
-	jsr util::is_whitespace
+	jeq @done		; newline -> done
+	CALLMAIN util::is_whitespace
 	bne indent		; non-whitespace -> separate with tab
 	lda position
 	cmp offset
 	bcs :+			; deleting after the saved cursor does not move it
 	dec offset
 :
-	jsr src::delete		; delete whitespaced
+	CALLMAIN src::delete		; delete whitespaced
 	bcc @l1
 
 @done:	; fall through to refresh
@@ -241,8 +246,8 @@ position = r9
 ; REFRESH
 ; Refreshses the line
 .proc refresh
-	jsr src::pushp
-	jsr src::home
-	jsr src::get
-	jmp src::popgoto
+	CALLMAIN src::pushp
+	CALLMAIN src::home
+	CALLMAIN src::getwide
+	JUMPMAIN src::popgoto
 .endproc

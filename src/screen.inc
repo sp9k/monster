@@ -14,6 +14,7 @@ SCREEN_INC = 1
 .import __screen_restore
 .import __screen_restore_row
 .import __screen_rvsline_part
+.import __screen_rvsline_part_physical
 .import __screen_save_row
 .import __screen_unblank
 
@@ -25,6 +26,7 @@ SCREEN_INC = 1
 .scope scr
 	blank        = __screen_blank
 	rvsline_part = __screen_rvsline_part
+	rvsline_part_physical = __screen_rvsline_part_physical
 	clr          = __screen_clr
 	clrcolor     = __screen_clrcolor
 	clrrowcolors =	__screen_clr_row_colors

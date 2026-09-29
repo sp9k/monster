@@ -1,3 +1,4 @@
+.include "../../config.inc"
 .include "banks.inc"
 .include "../ram.inc"
 .include "../../kernal.inc"
@@ -30,6 +31,7 @@
 
 .import __BSS_LOAD__
 .import __BSS_SIZE__
+.import __VIEW_SHARED_RUN__, __VIEW_SHARED_SIZE__
 
 .import enter
 .ifdef ultimem_p
@@ -176,6 +178,17 @@
 	ldx r0+1
 	cpx #>(__BSS_LOAD__+__BSS_SIZE__)
 	bne @zerobss
+
+	; clear viewport state, GUI line backup, bank stack, and status text
+.export __ultimem_clear_view_shared
+__ultimem_clear_view_shared:
+	.assert __VIEW_SHARED_SIZE__ > 0, lderror, "empty shared RAM"
+	.assert __VIEW_SHARED_SIZE__ < 256, lderror, "shared RAM exceeds one page"
+	lda #0
+	ldx #<__VIEW_SHARED_SIZE__
+:	dex
+	sta __VIEW_SHARED_RUN__,x
+	bne :-
 
 	sei
 	lda #$7f

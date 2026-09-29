@@ -10,6 +10,7 @@
 .import __edit_handle_key
 .import __edit_highlight_en
 .import __edit_highlight_line
+.import __edit_highlight_file
 .import __edit_init
 .import __edit_load
 .if .defined(c64) .and .defined(CART)
@@ -26,6 +27,7 @@
 .import __edit_sigint
 .import __edit_src2screen
 .import __edit_statusrow
+.import __edit_sync_cur
 .import __edit_update_progress
 .import __edit_assembly_file
 .import __edit_linking_file
@@ -42,6 +44,7 @@
 	height          = __edit_height
 	highlight_en    = __edit_highlight_en
 	highlight_line  = __edit_highlight_line
+	highlight_file  = __edit_highlight_file
 	init            = __edit_init
 	load            = __edit_load
 .if .defined(c64) .and .defined(CART)
@@ -58,6 +61,7 @@
 	sigint          = __edit_sigint
 	src2screen      = __edit_src2screen
 	status_row      = __edit_statusrow
+	sync_cur        = __edit_sync_cur
 	update_progress = __edit_update_progress
 	assembly_file   = __edit_assembly_file
 	linking_file    = __edit_linking_file

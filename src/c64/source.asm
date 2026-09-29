@@ -30,6 +30,28 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 
 .CODE
 ;*******************************************************************************
+; COPY LINE
+; Copies a counted span from the source bank to a resident buffer.
+; IN:
+;   - .A: source REU bank
+;   - .Y: last byte index (inclusive)
+;   - zp::bankaddr0: source offset
+;   - zp::bankaddr1: destination address
+.export src_copyline
+.proc src_copyline
+	sta reu::reuaddr+2
+	iny
+	sty reu::txlen
+	lda #0
+	sta reu::txlen+1
+	ldxy zp::bankaddr0
+	stxy reu::reuaddr
+	ldxy zp::bankaddr1
+	stxy reu::c64addr
+	jmp reu::load
+.endproc
+
+;*******************************************************************************
 ; INIT BUFF
 ; Initializes a new source buffer by setting its pointers to the
 ; start/end of the gap and clearing the buffer's REU bank.

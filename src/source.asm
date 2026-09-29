@@ -36,6 +36,7 @@
 .import __src_start
 
 .import sync_x
+.import src_copyline
 
 ;*******************************************************************************
 ; CONSTANTS
@@ -1270,48 +1271,79 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ;  - (.XY): a line of text from the cursor position
 .export __src_getin
 .proc __src_getin
+@target=zp::bankaddr1
+	stxy @target
+	ldx #LINESIZE
+	bne get_line		; branch always
+.endproc
+
+;*******************************************************************************
+; GET WIDE
+; Reads up to MAX_LINE_LEN characters from the source cursor into linebuffer,
+; including columns outside the editor viewport. Does not move the cursor.
+; OUT:
+;  - mem::linebuffer: NUL-terminated source text
+.export __src_getwide
+.proc __src_getwide
+@target=zp::bankaddr1
+	ldxy #mem::linebuffer
+	stxy @target
+	ldx #MAX_LINE_LEN
+.endproc
+
+;*******************************************************************************
+; GET LINE
+; Copies source text up to the requested limit, newline, or buffer end.
+; Terminates the copied text and leaves the source cursor unchanged.
+; IN:
+;  - .X: maximum number of characters
+;  - zp::bankaddr1: destination buffer
+; OUT:
+;  - .Y: number of characters copied
+;  - .C: clear
+.proc get_line
 @src=zp::bankaddr0
 @target=zp::bankaddr1
-	stxy @target		; dest
+@limit=zp::banktmp
+	stx @limit
 	ldxy poststartzp
-	stxy @src		; source
+	stxy @src
 
-	jsr __src_on_last_line	; on last line already?
+	jsr __src_on_last_line
 	bne @normal
 
-; last line, copy rest of chars in the buffer
-@lastline:
+	; clamp the final line to the destination's limit
 	ldxy end
-	sub16 poststartzp	; bytes to copy
-	tya			; more than 255 bytes on the line?
+	sub16 poststartzp
+	tya
 	bne @clamp
-	txa
-	cmp #LINESIZE+1
+	cpx @limit
 	bcc @golast
-@clamp:	lda #LINESIZE		; clamp to the size of the line buffer
+@clamp:	ldx @limit
 @golast:
-	tay			; .Y = bytes to copy
-	beq @done		; if no bytes to copy, return
+	txa
+	tay
+	beq @done
 	pha
-
 	dey
 	lda __src_bank
-.ifdef ultimem
-	.import src_copyline
 	jsr src_copyline
-.else
-	jsr ram::copyrow	; may copy garbage
-.endif
-	pla			; restore end of line index
+	pla			; restore the terminator's index
 	tay
 	bne @done		; branch always
 
-; normal line, copy until next newline
+;-------------------------------------------------------------------------------
 @normal:
+	lda @limit
+	cmp #LINESIZE
+	beq @row
 	lda __src_bank
-	jsr ram::copyrow	; display-facing read, bounded by LINESIZE
+	jsr ram::copyline
+	jmp @done
+@row:	lda __src_bank
+	jsr ram::copyrow
 
-@done:	; terminate the buffer
+@done:	; terminate the copied text
 	lda #$00
 	sta (@target),y
 	RETURN_OK

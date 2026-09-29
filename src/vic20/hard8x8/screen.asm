@@ -6,6 +6,7 @@
 .include "../fastcopy.inc"
 .include "../prefs.inc"
 .include "../../config.inc"
+.include "../../viewport.inc"
 .include "../../draw.inc"
 .include "../../irq.inc"
 .include "../../macros.inc"
@@ -34,10 +35,6 @@ COLMEM_OFFSET = COLMEM_ADDR - SCREEN_ADDR
 .define NUM_COLS 22	; number of 8-pixel columns
 .define NUM_ROWS 23	; number of 8-pixel rows
 
-; address of "virtual screen"
-VSCREEN_ADDR = $1a00
-VSCREEN_W = 40
-
 SCREEN_ROWS = 12	; number of physical rows per column
 
 ;*******************************************************************************
@@ -58,6 +55,8 @@ HL_MARKER       = $3e		; '>' current-line indicator glyph
 ;*******************************************************************************
 ; INIT
 .export __screen_init
+.pushseg
+.RODATA
 .proc __screen_init
 	jsr $e5c3		; set up base screen matrix
 
@@ -74,6 +73,7 @@ HL_MARKER       = $3e		; '>' current-line indicator glyph
 
 	jmp __screen_draw_gutter
 .endproc
+.popseg
 
 .CODE
 ;*******************************************************************************
@@ -200,6 +200,22 @@ HL_MARKER       = $3e		; '>' current-line indicator glyph
 ;  - .X: the last column to reverse
 .export __screen_rvsline_part
 .proc __screen_rvsline_part
+	bit zp::editor_height
+	bmi @physical
+	cmp zp::editor_height
+	beq @source
+	bcc @source
+@physical:
+	jmp __screen_rvsline_part_physical
+@source:
+	jmp viewport::reverse
+.endproc
+
+;*******************************************************************************
+; REVERSE LINE PART PHYSICAL
+; Reverses the visible columns in [Y, X) on row A.
+.export __screen_rvsline_part_physical
+.proc __screen_rvsline_part_physical
 @dst=r0
 @start=r2
 @stop=r3
@@ -319,6 +335,7 @@ HL_MARKER       = $3e		; '>' current-line indicator glyph
 ; You should call bm::save first with the buffer you want to restore
 .export __screen_restore
 .proc __screen_restore
+	jsr viewport::invalidate
 	; restore the character matrix from the off-screen VSCREEN buffer
 	CALL FINAL_BANK_VSCREEN, __vscreen_restore
 
@@ -559,6 +576,8 @@ gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
 ; OUT:
 ;  - .XY: the address
 .export __screen_char_addr
+.pushseg
+.RODATA
 .proc __screen_char_addr
 	tax
 	ldy __screen_rowshi,x
@@ -566,6 +585,7 @@ gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
 	tax
 	rts
 .endproc
+.popseg
 
 ;*******************************************************************************
 ; SCROLLUP
@@ -589,6 +609,12 @@ gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
 ;  - .Y: the number of rows to scroll by
 .export __text_scrollupn
 .proc __text_scrollupn
+	JUMP FINAL_BANK_VSCREEN, scrollupn
+.endproc
+
+.pushseg
+.segment "VSCREEN"
+.proc scrollupn
 @src=zp::text
 @dst=zp::text+2
 @cnt=zp::text+4
@@ -603,26 +629,22 @@ gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
 	bcc @done		; range is smaller than scroll amount
 	sta @cnt		; # of rows to copy (-1)
 
-	lda __screen_rowslo,x
+	lda scroll_rowslo,x
 	sta @dst
-	lda __screen_rowshi,x
+	lda scroll_rowshi,x
 	sta @dst+1
 
 	txa
 	clc
 	adc @n
 	tax
-	lda __screen_rowslo,x
+	lda scroll_rowslo,x
 	sta @src
-	lda __screen_rowshi,x
+	lda scroll_rowshi,x
 	sta @src+1
 
 	ldx @cnt
-@l0:	ldy #NUM_COLS-1
-@l1:	lda (@src),y
-	sta (@dst),y
-	dey
-	bpl @l1
+@l0:	jsr copy_scroll_row
 
 @next:	lda @src
 	clc
@@ -641,6 +663,7 @@ gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
 	bpl @l0
 @done:	rts
 .endproc
+.popseg
 
 ;*******************************************************************************
 ; SCROLLDOWN
@@ -664,6 +687,12 @@ gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
 ;  - .Y: the number of characters to scroll each row by
 .export __text_scrolldownn
 .proc __text_scrolldownn
+	JUMP FINAL_BANK_VSCREEN, scrolldownn
+.endproc
+
+.pushseg
+.segment "VSCREEN"
+.proc scrolldownn
 @src=zp::text
 @dst=zp::text+2
 @rowstart=zp::text+4
@@ -682,24 +711,20 @@ gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
 	bcc @done		; range smaller than the scroll amount
 	tax
 
-@l0:	lda __screen_rowslo,x
+@l0:	lda scroll_rowslo,x
 	sta @src
-	lda __screen_rowshi,x
+	lda scroll_rowshi,x
 	sta @src+1
 	txa
 	clc
 	adc @offset
 	tay			; dst = src + offset (always <= last)
-	lda __screen_rowslo,y
+	lda scroll_rowslo,y
 	sta @dst
-	lda __screen_rowshi,y
+	lda scroll_rowshi,y
 	sta @dst+1
 
-	ldy #NUM_COLS-1
-@l1:	lda (@src),y
-	sta (@dst),y
-	dey
-	bpl @l1
+	jsr copy_scroll_row
 
 	dex		; decrement row counter
 	bmi @done
@@ -708,6 +733,7 @@ gutter_glyphs: .byte BRK_NONE,        BRK_OFF,       BRK_ON
 
 @done:	rts
 .endproc
+.popseg
 
 ;*******************************************************************************
 ; SCROLLRIGHTN
@@ -798,6 +824,8 @@ __text_puts:
 ;   - .A: the ASCII code to convert
 ; OUT:
 ;   - .A: the screen code that corresponds to the given char
+.pushseg
+.RODATA
 .proc asc2scr
 @savex=zp::text+7
 	stx @savex
@@ -837,6 +865,7 @@ __text_puts:
 .POPSEG
 
 .endproc
+.popseg
 
 .RODATA
 ;*******************************************************************************
@@ -870,37 +899,33 @@ __text_puts:
 	SCREEN_ADDR+PHYS_COLS*22+CONTENT_COL
 .linecont -
 
-.linecont +
-.define vrows \
-	VSCREEN_ADDR+VSCREEN_W*0,  \
-	VSCREEN_ADDR+VSCREEN_W*1,  \
-	VSCREEN_ADDR+VSCREEN_W*2,  \
-	VSCREEN_ADDR+VSCREEN_W*3,  \
-	VSCREEN_ADDR+VSCREEN_W*4,  \
-	VSCREEN_ADDR+VSCREEN_W*5,  \
-	VSCREEN_ADDR+VSCREEN_W*6,  \
-	VSCREEN_ADDR+VSCREEN_W*7,  \
-	VSCREEN_ADDR+VSCREEN_W*8,  \
-	VSCREEN_ADDR+VSCREEN_W*9,  \
-	VSCREEN_ADDR+VSCREEN_W*10, \
-	VSCREEN_ADDR+VSCREEN_W*11, \
-	VSCREEN_ADDR+VSCREEN_W*12, \
-	VSCREEN_ADDR+VSCREEN_W*13, \
-	VSCREEN_ADDR+VSCREEN_W*14, \
-	VSCREEN_ADDR+VSCREEN_W*15, \
-	VSCREEN_ADDR+VSCREEN_W*16, \
-	VSCREEN_ADDR+VSCREEN_W*17, \
-	VSCREEN_ADDR+VSCREEN_W*18, \
-	VSCREEN_ADDR+VSCREEN_W*19, \
-	VSCREEN_ADDR+VSCREEN_W*20, \
-	VSCREEN_ADDR+VSCREEN_W*21, \
-	VSCREEN_ADDR+VSCREEN_W*22
-.linecont -
-
 .export __screen_rowslo
 .export __screen_rowshi
 __screen_rowslo: .lobytes rows
 __screen_rowshi: .hibytes rows
 
-vrowslo: .lobytes vrows
-vrowshi: .hibytes vrows
+
+;*******************************************************************************
+; SCROLL ROW ADDRESSES
+.pushseg
+.segment "VSCREEN"
+scroll_rowslo: .lobytes rows
+scroll_rowshi: .hibytes rows
+.popseg
+
+;*******************************************************************************
+; COPY SCROLL ROW
+; Copies the content columns, preserving the gutter and row index in X.
+.pushseg
+.segment "VSCREEN"
+.proc copy_scroll_row
+@src=zp::text
+@dst=zp::text+2
+	ldy #NUM_COLS-1
+:	lda (@src),y
+	sta (@dst),y
+	dey
+	bpl :-
+	rts
+.endproc
+.popseg

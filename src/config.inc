@@ -31,6 +31,23 @@ LINESIZE  = 40
 
 ; Source capacity is independent of the visible editor row width.
 MAX_LINE_LEN = 80
+.if .defined(vic20) .and .defined(hard8x8)
+VIEW_SCROLL_STEP = 2
+.else
+VIEW_SCROLL_STEP = 10
+.endif
+
+.if .defined(vic20) .and .defined(soft4x8)
+VIEW_SCROLL_ALIGN = 2
+.else
+VIEW_SCROLL_ALIGN = 1
+.endif
+
+.if .defined(vic20) .and .defined(soft4x8)
+VIS_WS_CHAR = 131
+.else
+VIS_WS_CHAR = $de
+.endif
 
 ; line continuation character
 .ifdef hard8x8

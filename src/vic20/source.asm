@@ -606,9 +606,9 @@ data: .res BUFFER_SIZE
 @src=zp::bankaddr0
 @target=zp::bankaddr1
 	jsr activate_source
-	cpy #LINESIZE
+	cpy #MAX_LINE_LEN
 	bcc :+
-	ldy #LINESIZE-1
+	ldy #MAX_LINE_LEN-1
 :	COPY_Y @src, @target
 	jmp deactivate_source
 .endproc

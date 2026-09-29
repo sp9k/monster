@@ -81,8 +81,7 @@
 ;*******************************************************************************
 ; CONSTANTS (see limits.inc for others)
 ; max number of memory sections per OBJ file.
-; Must be >= MAX_SEGMENTS (limits.inc): every SEGMENT has at least one
-; SECTION and the per-object segment tables are sized by MAX_SECTIONS
+; Sizes the per-object fragment and section tables.
 MAX_SECTIONS         = MAX_FRAGMENTS
 MAX_SEGMENT_NAME_LEN = 8	; max length of a single segment name
 
@@ -206,8 +205,10 @@ __obj_segments_alignhi:
 segments_alignhi:  .res MAX_SECTIONS
 
 __obj_segments_fill: .res MAX_SECTIONS
-.export __obj_segments_fill, __obj_fragment_ids
-__obj_fragment_ids: .res MAX_SECTIONS
+.export __obj_segments_fill, __obj_fragment_ptrlo, __obj_fragment_ptrhi
+; Two-byte references to global records, indexed by local fragment ID minus 1.
+__obj_fragment_ptrlo: .res MAX_SECTIONS
+__obj_fragment_ptrhi: .res MAX_SECTIONS
 
 force_fragment: .byte 0
 
@@ -1760,6 +1761,7 @@ __obj_get_fragment_run:
 ; OUT:
 ;   - .C: set on error
 .proc load_info
+@fragptr=r0
 @i=r4
 @name=r6
 @symoff=r8
@@ -1885,17 +1887,24 @@ __obj_get_fragment_run:
 	ldx @i
 	jsr link::fragment		; register (pass 1) / locate (pass 2)
 	bcs @ret
-	ldy @i
-	sta __obj_fragment_ids,y
-	tax
-	lda link::fragment_loadlo-1,x
-	sta segments_startlo,y
-	lda link::fragment_loadhi-1,x
-	sta segments_starthi,y
-	lda link::fragment_runlo-1,x
-	sta segments_runlo,y
-	lda link::fragment_runhi-1,x
-	sta segments_runhi,y
+	stxy @fragptr
+	ldx @i
+	lda @fragptr
+	sta __obj_fragment_ptrlo,x
+	lda @fragptr+1
+	sta __obj_fragment_ptrhi,x
+	ldy #FR_LOADLO
+	lda (@fragptr),y
+	sta segments_startlo,x
+	iny
+	lda (@fragptr),y
+	sta segments_starthi,x
+	ldy #FR_RUNLO
+	lda (@fragptr),y
+	sta segments_runlo,x
+	iny
+	lda (@fragptr),y
+	sta segments_runhi,x
 
 @next:	; move name pointer to next location
 	lda @name
@@ -2090,10 +2099,12 @@ __obj_get_fragment_run:
 @set:	; overwrite symbol with the new (corrected) segment id
 	; TODO: this is pretty heavy. make a label util to overwrite info
 	ldxy #@namebuff
-	JUMPMAIN lbl::set
+	CALLMAIN lbl::set
+	jmp link::own_symbol
 
 @add:	ldxy #@namebuff
-	JUMPMAIN lbl::add
+	CALLMAIN lbl::add
+	jmp link::own_symbol
 .endproc
 
 ;*******************************************************************************
@@ -2124,7 +2135,8 @@ __obj_get_fragment_run:
 	bcs @ret
 
 	ldxy #@namebuff
-	JUMPMAIN lbl::add
+	CALLMAIN lbl::add
+	jmp link::own_symbol
 @ret:	rts
 .endproc
 
@@ -2167,8 +2179,7 @@ __obj_get_fragment_run:
 	lda segments_type-1,x
 	jsr type_to_mode
 	sta zp::label_mode			; set address mode for label
-	lda __obj_fragment_ids-1,x		; global fragment til
-						; layout resolves it
+	txa			; retain the object-local fragment ID until layout
 	sta zp::label_segmentid
 	lda #$00
 	sta @offset
@@ -2359,7 +2370,9 @@ __obj_get_fragment_run:
 @load_segment:
 	jsr link::update_progress
 	ldx seg_idx
-	lda __obj_fragment_ids,x
+	ldy __obj_fragment_ptrhi,x
+	lda __obj_fragment_ptrlo,x
+	tax
 	jsr link::pad_fragment
 	jsr krn::chrin			; eat "info" byte for SEGMENT
 	pha

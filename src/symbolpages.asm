@@ -32,6 +32,10 @@ SIZEOF_LABEL       = 12
 .res $10 + MAX_LABELS*SIZEOF_LABEL
 .segment "SYMBOL_NODE_STORAGE"
 .res 4 + MAX_LABELS*4
+; Stores one object-owner byte per symbol after the hash nodes.
+.assert SYM_LINK_OWNERS = 4 + MAX_LABELS*4, error, "link ownership offset"
+.res MAX_LABELS
+.assert SYM_LINK_OWNERS + MAX_LABELS <= $6000, error, "link ownership exceeds node pool"
 .segment "SYMBOL_INDEX_STORAGE"
 .ifdef c64
 .res $2000		; C64 offset by $2000
@@ -266,7 +270,9 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 __sympage_name_buffer  = __mem_spare+$200
 __sympage_scope_buffer = __mem_spare+$300
 .assert SPARESIZE >= $400, error, "symbol scratch requires four shared pages"
+.ifndef vic20
 .assert MAX_OBJS*17+1 <= $200, error, "object filenames overlap symbol scratch"
+.endif
 
 page_mapping2: .byte 0
 page_count:    .byte 0
@@ -407,4 +413,65 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	.byte SYMBOL_RECORDS_BANK, SYMBOL_NODES_BANK
 	.byte SYMBOL_INDEXES_BANK-1, SYMBOL_NAMES_BANK
 .endif
+.endproc
+
+;*******************************************************************************
+; LINK OWNER PTR
+; Converts a symbol ID to its object-owner offset in the node pool.
+; IN:
+;   - .XY: symbol ID
+; OUT:
+;   - r0: offset of the symbol's owner byte
+;   - .Y: zero
+; PRESERVES:
+;   - .A
+BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
+.proc link_owner_ptr
+@owner=r0
+	stxy @owner
+	pha
+	clc
+	lda @owner
+	adc #<SYM_LINK_OWNERS
+	sta @owner
+	lda @owner+1
+	adc #>SYM_LINK_OWNERS
+	sta @owner+1
+	pla
+	ldy #0
+	rts
+.endproc
+
+;*******************************************************************************
+; LINK OWNER SET
+; Records the object that defines a symbol during the first link pass.
+; IN:
+;   - .XY: symbol ID
+;   - .A: one-based object ID
+; OUT:
+;   - .C: clear
+.export __sympage_link_owner_set
+.proc __sympage_link_owner_set
+@owner=r0
+	jsr link_owner_ptr
+	jsr __sympage_store
+	.byte @owner, SYM_NODES
+	clc
+	rts
+.endproc
+
+;*******************************************************************************
+; LINK OWNER GET
+; Reads the object that defines a symbol.
+; IN:
+;   - .XY: symbol ID
+; OUT:
+;   - .A: one-based object ID
+.export __sympage_link_owner_get
+.proc __sympage_link_owner_get
+@owner=r0
+	jsr link_owner_ptr
+	jsr __sympage_load
+	.byte @owner, SYM_NODES
+	rts
 .endproc

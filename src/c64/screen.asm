@@ -2,10 +2,11 @@
 ; SCREEN.ASM
 ;*******************************************************************************
 
-.include "macros.inc"
 .include "prefs.inc"
 .include "reu.inc"
 .include "../config.inc"
+.include "ram.inc"
+.include "../viewport.inc"
 .include "../draw.inc"
 .include "../irq.inc"
 .include "../layout.inc"
@@ -216,6 +217,22 @@ __screen_draw_gutter_row:
 ;  - .X: the last column to reverse
 .export __screen_rvsline_part
 .proc __screen_rvsline_part
+	bit zp::editor_height
+	bmi @physical
+	cmp zp::editor_height
+	beq @source
+	bcc @source
+@physical:
+	jmp __screen_rvsline_part_physical
+@source:
+	jmp viewport::reverse
+.endproc
+
+;*******************************************************************************
+; REVERSE LINE PART PHYSICAL
+; Reverses the visible columns in [Y, X) on row A.
+.export __screen_rvsline_part_physical
+.proc __screen_rvsline_part_physical
 @dst=r0
 @start=r2
 @stop=r3
@@ -240,24 +257,18 @@ __screen_draw_gutter_row:
 	sta @dst+1
 
 	ldy @stop
-	beq @col0
-	cpy @start
-	beq @col0		; start==stop: reverse only the char at @start
 	cpy #NUM_COLS+1
 	bcc :+
 	ldy #NUM_COLS
-:	dey
-@l0:	lda (@dst),y
-	eor #$80
-	sta (@dst),y
-	dey
-	cpy @start
-	bne @l0
-
-@col0:	; do last char
+:	sty @stop
+	ldy @start
+@l0:	cpy @stop
+	bcs @done
 	lda (@dst),y
 	eor #$80
 	sta (@dst),y
+	iny
+	bne @l0
 
 @done:	rts
 .endproc
@@ -322,6 +333,7 @@ __screen_draw_gutter_row:
 ; You should call bm::save first with the buffer you want to restore
 .export __screen_restore
 .proc __screen_restore
+	jsr viewport::invalidate
 @buff=r0
 @bm=r2
 	; restore the per-row colors
@@ -420,6 +432,12 @@ __screen_draw_gutter_row:
 ;  - .Y: the number of rows to scroll by
 .export __text_scrollupn
 .proc __text_scrollupn
+	JUMP FINAL_BANK_VSCREEN, scrollupn
+.endproc
+
+.pushseg
+.segment "VSCREEN"
+.proc scrollupn
 @src=zp::text
 @dst=zp::text+2
 @cnt=zp::text+4
@@ -434,18 +452,18 @@ __screen_draw_gutter_row:
 	bcc @done		; range is smaller than scroll amount
 	sta @cnt		; # of rows to copy (-1)
 
-	lda __screen_rowslo,x
+	lda scroll_rowslo,x
 	sta @dst
-	lda __screen_rowshi,x
+	lda scroll_rowshi,x
 	sta @dst+1
 
 	txa
 	clc
 	adc @n
 	tax
-	lda __screen_rowslo,x
+	lda scroll_rowslo,x
 	sta @src
-	lda __screen_rowshi,x
+	lda scroll_rowshi,x
 	sta @src+1
 
 	ldx @cnt
@@ -472,6 +490,7 @@ __screen_draw_gutter_row:
 	bpl @l0
 @done:	rts
 .endproc
+.popseg
 
 ;*******************************************************************************
 ; SCROLLDOWN
@@ -495,6 +514,12 @@ __screen_draw_gutter_row:
 ;  - .Y: the number of characters to scroll each row by
 .export __text_scrolldownn
 .proc __text_scrolldownn
+	JUMP FINAL_BANK_VSCREEN, scrolldownn
+.endproc
+
+.pushseg
+.segment "VSCREEN"
+.proc scrolldownn
 @src=zp::text
 @dst=zp::text+2
 @rowstart=zp::text+4
@@ -513,17 +538,17 @@ __screen_draw_gutter_row:
 	bcc @done		; range smaller than the scroll amount
 	tax
 
-@l0:	lda __screen_rowslo,x
+@l0:	lda scroll_rowslo,x
 	sta @src
-	lda __screen_rowshi,x
+	lda scroll_rowshi,x
 	sta @src+1
 	txa
 	clc
 	adc @offset
 	tay			; dst = src + offset (always <= last)
-	lda __screen_rowslo,y
+	lda scroll_rowslo,y
 	sta @dst
-	lda __screen_rowshi,y
+	lda scroll_rowshi,y
 	sta @dst+1
 
 	ldy #NUM_COLS-1
@@ -539,6 +564,7 @@ __screen_draw_gutter_row:
 
 @done:	rts
 .endproc
+.popseg
 
 ;*******************************************************************************
 ; PUTCH
@@ -739,3 +765,11 @@ __screen_rowshi: .hibytes rows
 .export __screen_crowshi
 __screen_crowslo: .lobytes crows
 __screen_crowshi: .hibytes crows
+
+;*******************************************************************************
+; SCROLL ROW ADDRESSES
+.pushseg
+.segment "VSCREEN"
+scroll_rowslo: .lobytes rows
+scroll_rowshi: .hibytes rows
+.popseg

@@ -195,10 +195,20 @@ maxy: .byte 0
 ; If moving right would move the cursor outside its limits, has no effect
 .export __cur_right
 .proc __cur_right
+	lda zp::editor_height
+	bmi @physical
+	cmp zp::cury
+	bcc @physical
+	lda zp::curx
+	cmp #MAX_LINE_LEN
+	bcs @done
+	bcc @advance
+@physical:
 	lda zp::curx
 	cmp #LINESIZE
 	bcs @done
 
+@advance:
 	jsr text::char_index
 	lda mem::linebuffer,y
 	cmp #$09		; TAB

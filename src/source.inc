@@ -19,6 +19,7 @@
 .import __src_force_set
 .import __src_get
 .import __src_getin
+.import __src_getwide
 .import __src_getflags
 .import __src_goto
 .import __src_get_filename
@@ -88,6 +89,7 @@ GAPSIZE = 20	; size of gap in gap buffer
 	forceset       = __src_force_set
 	get            = __src_get
 	getin          = __src_getin
+	getwide        = __src_getwide
 	getflags       = __src_getflags
 	goto           = __src_goto
 	home           = __src_home

@@ -69,13 +69,19 @@ sidmode: .byte 0
 .endif
 rowbuf: .res LINESIZE		; row being composed
 
+.ifdef vic20
+; selects linker RAM while getbytype collects object filenames.
+object_list = r9
+.endif
+
 .CODE
 ;*******************************************************************************
 ; MAIN-bank entry points
-.export __dir_get_by_type
+.export __dir_get_by_type, __dir_get_objects
 .export __dir_view
 
 .if .defined(CART) .and .defined(c64)
+__dir_get_objects = __dir_get_by_type
 __dir_get_by_type: JUMP FINAL_BANK_FILEDIR, getbytype
 __dir_view:
 	lda #$00
@@ -87,7 +93,24 @@ __dir_sid:
 	sta sidmode
 	JUMP FINAL_BANK_FILEDIR, dirview
 .else
+.ifdef vic20
+.pushseg
+.segment "DATA"
+;*******************************************************************************
+; GET OBJECTS
+; Reads matching filenames into linker RAM.
+; Uses the same arguments and results as GET BY TYPE.
+__dir_get_objects:
+	pha
+	lda #1
+	sta object_list
+	pla
+	jmp getbytype
+.popseg
+.else
+__dir_get_objects = getbytype
 __dir_get_by_type = getbytype
+.endif
 __dir_view        = dirview
 .endif
 
@@ -105,7 +128,20 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ;   - .A:  number of files returned (or error)
 ;   - .XY: address of the final list terminator
 ;   - .C:  set on error
+.ifdef vic20
+.pushseg
+.segment "DATA"
+__dir_get_by_type:
+	pha
+	lda #0
+	sta object_list
+	pla
+	jmp getbytype
+.popseg
+.endif
 .proc getbytype
+@end=r0
+@limit=r2
 @ext=r5
 @resultend=r6
 @file=r8
@@ -116,9 +152,9 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 @buff=$100
 	sta @ext
 	stxy @resultptr
-	lda r2
+	lda @limit
 	sta @max
-	ldxy r0
+	ldxy @end
 	stxy @resultend
 
 	ldxy @resultptr
@@ -174,7 +210,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	inc @cnt		; count the match
 	ldy #$00
 @l1:	lda @buff,y
-	sta (@resultptr),y
+	jsr @store_result
 	beq @next
 	iny
 	bne @l1
@@ -193,7 +229,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	pha
 	ldy #$00
 	tya
-	sta (@resultptr),y	; leave a valid partial list
+	jsr @store_result	; leave a valid partial list
 	lda @file
 	jsr file::close
 	pla
@@ -202,7 +238,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 @done:	ldy #$00
 	tya
-	sta (@resultptr),y	; terminate list
+	jsr @store_result	; terminate list
 
 	lda @file
 	jsr file::close
@@ -215,6 +251,41 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 
 @nofiles:
 	RETURN_ERR ERR_FILE_NOT_FOUND
+
+.ifdef vic20
+.pushseg
+.segment "DATA"
+.endif
+;-------------------------------------------------------------------------------
+; STORE RESULT
+; Writes a filename byte to the caller's buffer or linker RAM.
+; IN:
+;   - .A: byte to write
+;   - .Y: offset in the current filename
+; PRESERVES:
+;   - .A, .Y, .Z
+@store_result:
+.ifdef vic20
+	pha
+	lda object_list
+	beq @direct
+	sty zp::bankoffset
+	pla
+	sta zp::bankval
+	ldxy @resultptr
+	lda #FINAL_BANK_LINKER
+	jsr ram::store_off
+	ldy zp::bankoffset
+	lda zp::bankval
+	rts
+@direct:
+	pla
+.endif
+	sta (@resultptr),y
+	rts
+.ifdef vic20
+.popseg
+.endif
 .endproc
 
 ;*******************************************************************************

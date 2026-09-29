@@ -3,7 +3,8 @@
 .import __obj_add_reloc
 .import __obj_add_section
 .import __obj_split_fragment
-.import __obj_fragment_ids
+.import __obj_fragment_ptrlo
+.import __obj_fragment_ptrhi
 .import __obj_segments_alignlo
 .import __obj_segments_alignhi
 .import __obj_segments_fill
@@ -36,7 +37,8 @@
 	addreloc               = __obj_add_reloc
 	add_section            = __obj_add_section
 	split_fragment         = __obj_split_fragment
-	fragment_ids           = __obj_fragment_ids
+	fragment_ptrlo         = __obj_fragment_ptrlo
+	fragment_ptrhi         = __obj_fragment_ptrhi
 	alignlo                = __obj_segments_alignlo
 	alignhi                = __obj_segments_alignhi
 	fill                   = __obj_segments_fill

@@ -15,7 +15,7 @@
 .import __ram_src
 .import __ram_dst
 
-.segment "SHAREBSS2"
+.segment "VIEW_SHARED"
 bankstack:  .res 16
 copy_limit: .byte 0
 

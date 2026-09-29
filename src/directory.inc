@@ -1,9 +1,11 @@
 .import __dir_get_by_type
+.import __dir_get_objects
 .import __dir_view
 
 .scope dir
 	view        = __dir_view
 	get_by_type = __dir_get_by_type
+	get_objects = __dir_get_objects
 .endscope
 
 .if .defined(c64) .and .defined(CART)

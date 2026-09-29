@@ -6,6 +6,7 @@
 ;*******************************************************************************
 
 .include "../../config.inc"
+.include "../../viewport.inc"
 .include "../../edit.inc"
 .include "../../macros.inc"
 .include "../../memory.inc"
@@ -74,7 +75,12 @@ R_REPLACE_MASK = $0f	; mask for right half of 8x8 char in REPLACE mode
 __cur_toggle:
 @dst=r0
 @mask=r2
+	lda zp::curx
+	pha
 	ldx zp::curx
+	jsr viewport::physical_x
+	bcs @hidden
+	stx zp::curx
 	ldy zp::cury
 
 	cpx #40
@@ -108,6 +114,10 @@ __cur_toggle:
 	eor __cur_status
 	sta __cur_status
 
-@done:  ldx zp::curx
+@hidden:
+@done:
+	pla
+	sta zp::curx
+	ldx zp::curx
 	ldy zp::cury
 	rts

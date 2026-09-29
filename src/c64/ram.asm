@@ -51,7 +51,7 @@ codebanks:
 	.byte CART_BANK_DBGUI	; $16 DBGUI
 	.byte CART_BANK_FILEDIR	; $17 FILEDIR
 	.byte CART_BANK_ASM	; $18 ASM
-	.byte $ff		; $19
+	.byte CART_BANK_VSCREEN	; $19 VSCREEN
 	.byte CART_BANK_EXPR	; $1a EXPR/FP
 	.byte CART_BANK_LABELS	; $1b paged symbol metadata
 .endif

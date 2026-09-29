@@ -5,6 +5,7 @@
 ; as code to render it.
 ;*******************************************************************************
 
+.include "../../viewport.inc"
 .include "screen.inc"
 .include "../../config.inc"
 .include "../../edit.inc"
@@ -33,13 +34,19 @@ R_REPLACE_MASK = $0f	; mask for right half of 8x8 char in REPLACE mode
 .export __cur_toggle
 .proc __cur_toggle
 @dst=r0
+	ldx zp::curx
+	jsr viewport::physical_x
+	bcs @done
+	txa
+	pha
 	ldx zp::cury
 	lda scr::rowslo,x
 	sta @dst
 	lda scr::rowshi,x
 	sta @dst+1
 
-	ldy zp::curx
+	pla
+	tay
 	cpy #LINESIZE
 	bne :+
 	dey			; clamp the end-of-line cursor to the last screen column
@@ -52,5 +59,5 @@ R_REPLACE_MASK = $0f	; mask for right half of 8x8 char in REPLACE mode
 	eor __cur_status
 	sta __cur_status
 
-	rts
+@done:	rts
 .endproc

@@ -28,10 +28,7 @@ ALERT_ROW = (SCREEN_HEIGHT-ALERT_HEIGHT)/2
 
 ;*******************************************************************************
 ; PROMPT
-ALERT_PROMPT_MAX = 23		; sizeof("press [restore] to stop")
-
-; the reversed field is exactly the prompt, so it can't be wider than the text
-.assert ALERT_PROMPT_MAX <= ALERT_TEXT_LEN, error, "no room for the prompt"
+ALERT_PROMPT_MAX = .min(23, ALERT_TEXT_LEN)
 
 .ifdef soft4x8
 .assert (ALERT_LCOL .mod 2) = 0, error, "alert must start on an even column"

@@ -17,6 +17,7 @@
 .include "keycodes.inc"
 .include "labels.inc"
 .include "limits.inc"
+.include "linkfragments.inc"
 .include "line.inc"
 .include "log.inc"
 .include "macros.inc"
@@ -26,6 +27,7 @@
 .include "screen.inc"
 .include "string.inc"
 .include "strings.inc"
+.include "symbolpages.inc"
 .include "util.inc"
 .include "target.inc"
 .include "text.inc"
@@ -74,6 +76,7 @@ SEGMENT_PROPS_REQUIRED = SEGMENT_PROP_LOAD
 ; SEGPTR is the cursor to the .PRG or .D file (where we are WRITIING)
 objptr=zp::link
 segptr=zp::link+2
+link_filename=mem::spare+$180 ; shared across calls, below symbol scratch
 
 ;*******************************************************************************
 ; OBJFILES
@@ -83,7 +86,18 @@ segptr=zp::link+2
 ;   "FILE1.O",0,"FILE2.O",0,0
 
 .export __link_objfiles
+.ifdef vic20
+.segment "LINKER_BSS"
+__link_objfiles: .res MAX_OBJS*17+1
+.else
 __link_objfiles=mem::spare
+.endif
+.export __link_objfiles_end
+__link_objfiles_end = __link_objfiles + MAX_OBJS*17+1
+.ifndef vic20
+.assert MAX_OBJS*17+1 <= $180, error, "object list overlaps shared filename"
+.endif
+.assert $180+17 <= $200, error, "shared filename overlaps symbol scratch"
 
 ;*******************************************************************************
 .segment "LINKER_VARS"
@@ -104,24 +118,13 @@ numsymbols:  .byte 0
 
 .segment "LINKER_BSS"
 
-; Fragments are collected in object/header order before layout.  Their IDs
-; temporarily occupy labels' segment fields until resolve_symbols runs.
-num_fragments: .res 1
-object_fragbase: .res MAX_OBJS
-fragment_segment: .res MAX_LINK_FRAGMENTS
-fragment_sizelo: .res MAX_LINK_FRAGMENTS
-fragment_sizehi: .res MAX_LINK_FRAGMENTS
-fragment_alignlo: .res MAX_LINK_FRAGMENTS
-fragment_alignhi: .res MAX_LINK_FRAGMENTS
-fragment_fill: .res MAX_LINK_FRAGMENTS
-fragment_padlo: .res MAX_LINK_FRAGMENTS
-fragment_padhi: .res MAX_LINK_FRAGMENTS
-.export __link_fragment_loadlo, __link_fragment_loadhi
-.export __link_fragment_runlo, __link_fragment_runhi
-__link_fragment_loadlo: .res MAX_LINK_FRAGMENTS
-__link_fragment_loadhi: .res MAX_LINK_FRAGMENTS
-__link_fragment_runlo: .res MAX_LINK_FRAGMENTS
-__link_fragment_runhi: .res MAX_LINK_FRAGMENTS
+; Stores fragment records in object/header order. Each object's base pointer
+; locates its first record; symbol owners select the corresponding object.
+fragments_top: .word 0		; first unused record throughout both link passes
+object_fragbase_lo: .res MAX_OBJS
+object_fragbase_hi: .res MAX_OBJS
+fragments: .res MAX_LINK_FRAGMENTS*FR_BYTES
+fragments_end = *
 
 ;*******************************************************************************
 ; SECTIONS
@@ -188,11 +191,17 @@ segments_runaddrhi: .res MAX_SEGMENTS
 
 segment_names: .res MAX_SEGMENT_NAME_LEN*MAX_SEGMENTS
 
-; absolute SEGMENT ranges collected from object headers.  Each record is
-; start, stop (two little-endian words).  The maximum follows from the object
-; and per-object SEGMENT limits.
-absolute_ranges: .res MAX_OBJS*MAX_SEGMENTS*4
+; Stores absolute SEGMENT ranges as start/stop word pairs, one per fragment.
+.if .defined(c64) .and .defined(CART)
+.pushseg
+; Stores absolute ranges in always-visible high RAM.
+.segment "LINKER_RANGES"
+.endif
+absolute_ranges: .res MAX_LINK_FRAGMENTS*4
 absolute_ranges_end = *
+.if .defined(c64) .and .defined(CART)
+.popseg
+.endif
 
 .export segments_load
 .export segments_run
@@ -312,8 +321,9 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ;  - .C: set if the file could not be successfully opened or parsed
 .export __link_parse
 .proc __link_parse
-@filebuff=mem::spare
-@filebuff_end=mem::spareend
+; Stores LINK text in the fragment buffer while parsing the configuration.
+@filebuff=fragments
+@filebuff_end=fragments_end
 @segments_declared=r8
 @sections_declared=r9
 @buff=ra
@@ -430,7 +440,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_ERR ERR_DUPLICATE_BLOCK	; MEMORY block already declared
 
 :	; read past "MEMORY" declaration
-	CALLMAIN line::process_word
+	jsr process_word
 	inc @sections_declared
 
 	; look for the '['
@@ -462,7 +472,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_ERR ERR_DUPLICATE_BLOCK	; SEGMENTS block already declared
 
 :	; read past "SEGMENTS"
-	CALLMAIN line::process_word
+	jsr process_word
 	inc @segments_declared
 
 	; look for the '['
@@ -986,66 +996,70 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 
 ;*******************************************************************************
 ; RESOLVE SYMBOLS
-; Finalizes the values of the relocatable symbols registered during pass 1 by
-; adding the (now known) origin of their SEGMENT to their segment-relative
-; values.
-; ABS symbols and (still) UNDEFINED symbols are unaffected.
-; This must be called after calc_seg_origins and before pass 2.
+; Adds each symbol's fragment RUN address to its offset after layout.
+; Uses the owning object and local fragment ID to locate the fragment.
+; Skips absolute, floating-point, and undefined symbols.
 .proc resolve_symbols
+@fragment=r0
 @i=zp::tmp10
 @seg=zp::tmp12
 @mode=zp::tmp13
+@base=zp::tmp14
 	iszero lbl::num
-	beq @done
-
-	lda #$00
+	jeq @done
+	lda #0
 	sta @i
 	sta @i+1
-
-@l0:
+@loop:
 	jsr update_progress
 	ldxy @i
-	CALLMAIN lbl::getsegment	; get the label's segment ID
-	cmp #SEG_UNDEF			; undefined? (import nobody exported)
-	beq @next			; leave it (caught by validation later)
-	cmp #SEG_ABS			; absolute?
-	beq @next			; if so, the value is already final
+	CALLMAIN lbl::getsegment
+	cmp #SEG_UNDEF
+	beq @next
+	cmp #SEG_ABS
+	beq @next
 	cmp #SEG_FLOAT
-	beq @next			; numeric value, not a segment-relative address
+	beq @next
 	sta @seg
-
 	ldxy @i
-	CALLMAIN lbl::addrmode		; get the address mode
-	sta @mode			; (keep it unchanged)
-
+	CALL FINAL_BANK_SYMBOLS, sympage::link_owner_get
+	tay
+	lda @seg
+	sec
+	sbc #1
+	jsr object_fragment_ptr
+	ldy #FR_RUNLO
+	lda (@fragment),y
+	sta @base
+	iny
+	lda (@fragment),y
+	sta @base+1
 	ldxy @i
-	CALLMAIN lbl::getaddr		; .XY = segment-relative value
-
-	; value = segment RUN origin + segment-relative value
-	; (symbols name the address the code will execute at, not where it loads)
+	CALLMAIN lbl::addrmode
+	sta @mode
+	ldxy @i
+	CALLMAIN lbl::getaddr
 	txa
-	ldx @seg
 	clc
-	adc __link_fragment_runlo-1,x
+	adc @base
 	sta zp::label_value
 	tya
-	adc __link_fragment_runhi-1,x
+	adc @base+1
 	sta zp::label_value+1
-	ldx @seg
-	lda fragment_segment-1,x
+	; mark the resolved symbol as absolute
+	lda #SEG_ABS
 	sta zp::label_segmentid
 	lda @mode
 	sta zp::label_mode
-
 	ldxy @i
-	CALLMAIN lbl::setaddr		; write back the finalized value
-
-@next:	incw @i
+	CALLMAIN lbl::setaddr
+@next:
+	incw @i
 	ldxy @i
 	cmpw lbl::num
-	bne @l0
-
-@done:	RETURN_OK
+	bne @loop
+@done:
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -1138,25 +1152,28 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	sta segments_runaddrlo,x
 	lda @run+1
 	sta segments_runaddrhi,x
-	lda #$00
-	sta @frag
+	ldxy #fragments
+	stxy @frag
 
 ;-------------------------------------------------------------------------------
 @fragment:
 	jsr update_progress
-	ldx @frag
-	cpx num_fragments
+	ldxy @frag
+	cmpw fragments_top
 	jcs @finish
-	lda fragment_segment,x
+	ldy #FR_SEGMENT
+	lda (@frag),y
 	sec
 	sbc #$01
 	cmp @seg
 	jne @next
 
 	; apply fragment-level alignment (.align directives in the obj code)
-	lda fragment_alignlo,x
+	ldy #FR_ALIGNLO
+	lda (@frag),y
 	sta m::arg
-	lda fragment_alignhi,x
+	ldy #FR_ALIGNHI
+	lda (@frag),y
 	sta m::arg+1
 	ldxy @run
 	CALL FINAL_BANK_EXPR, m::align_up
@@ -1181,30 +1198,37 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	adc @padding+1
 	sta @load+1
 	jcs @overflow
-	ldx @frag
 	lda @padding
-	sta fragment_padlo,x
+	ldy #FR_PADLO
+	sta (@frag),y
 	lda @padding+1
-	sta fragment_padhi,x
+	ldy #FR_PADHI
+	sta (@frag),y
 
 	lda @load
-	sta __link_fragment_loadlo,x
+	ldy #FR_LOADLO
+	sta (@frag),y
 	lda @load+1
-	sta __link_fragment_loadhi,x
+	ldy #FR_LOADHI
+	sta (@frag),y
 	lda @run
-	sta __link_fragment_runlo,x
+	ldy #FR_RUNLO
+	sta (@frag),y
 	lda @run+1
-	sta __link_fragment_runhi,x
+	ldy #FR_RUNHI
+	sta (@frag),y
 
-	lda fragment_sizelo,x
+	ldy #FR_SIZELO
+	lda (@frag),y
 	sta @value
-	lda fragment_sizehi,x
+	ldy #FR_SIZEHI
+	lda (@frag),y
 	sta @value+1
 
 	jsr advance_layout
 	jcs @overflow
 
-@next:	inc @frag
+@next:	NEXT_FRAGMENT @frag
 	jmp @fragment
 
 ;-------------------------------------------------------------------------------
@@ -1308,114 +1332,187 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 .export __link_update_progress
 __link_update_progress:
 .proc update_progress
-	lda r0
+@saved=r0
+	lda @saved
 	pha
-	lda r1
+	lda @saved+1
 	pha
 
 	CALL FINAL_BANK_EDIT, edit::update_progress
 
 	pla
-	sta r1
+	sta @saved+1
 	pla
-	sta r0
+	sta @saved
 	rts
 .endproc
 
 ;*******************************************************************************
 ; FRAGMENT
-; Looks up the global FRAGMENT ID for the given local FRAGMENT
+; Registers an object's fragment during pass 1 and looks it up during pass 2.
 ; IN:
 ;   - .A = named segment ($ff for ABS)
 ;   - .X = object-local fragment index.
 ; OUT:
-;   - .A: global fragment ID
-.pushseg
-; The linker ROM bank cannot hold this helper as well. Keep only this
-; registration/lookup routine resident; callers still select the linker bank
-; for its tables.
-.segment "DATA"
+;   - .XY: global fragment record pointer
+;   - .C: set if the fragment table is full or the fragment does not match
 .export __link_fragment
-.proc __link_fragment
+.ifdef vic20
+__link_fragment: JUMP FINAL_BANK_LINKER_AUX, register_fragment
+object_fragment_ptr: JUMP FINAL_BANK_LINKER_AUX, fragment_pointer
+.pushseg
+BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
+.else
+__link_fragment = register_fragment
+object_fragment_ptr = fragment_pointer
+.pushseg
+.segment "DATA"
+.endif
+.proc register_fragment
 @parent = re
-@local  = rf
+@local = rf
+@ptr = r0
 	sta @parent
 	stx @local
 	lda linkpass
-	cmp #$02
-	beq @lookup
-	cpx #$00
+	cmp #2
+	jeq @lookup
+	ldxy fragments_top
+	stxy @ptr
+	cmpw #fragments_end
+	jcs @full
+	ldx @local
 	bne @append
 	ldy activeobj
-	lda num_fragments
-	sta object_fragbase-1,y
-
+	lda @ptr
+	sta object_fragbase_lo-1,y
+	lda @ptr+1
+	sta object_fragbase_hi-1,y
 @append:
-	ldy num_fragments
-	cpy #MAX_LINK_FRAGMENTS
-	bcs @full
+	ldy #FR_BYTES-1
+	lda #0
+@clear:
+	sta (@ptr),y
+	dey
+	bpl @clear
+	ldy #FR_SEGMENT
 	lda @parent
-	sta fragment_segment,y
+	sta (@ptr),y
+	iny
 	lda obj::segments_sizelo,x
-	sta fragment_sizelo,y
+	sta (@ptr),y
+	iny
 	lda obj::segments_sizehi,x
-	sta fragment_sizehi,y
+	sta (@ptr),y
+	iny
 	lda obj::alignlo,x
-	sta fragment_alignlo,y
+	sta (@ptr),y
+	iny
 	lda obj::alignhi,x
-	sta fragment_alignhi,y
+	sta (@ptr),y
+	iny
 	lda obj::fill,x
-	sta fragment_fill,y
-	lda #$00
-	sta fragment_padlo,y
-	sta fragment_padhi,y
-	sta __link_fragment_loadlo,y
-	sta __link_fragment_loadhi,y
-	sta __link_fragment_runlo,y
-	sta __link_fragment_runhi,y
+	sta (@ptr),y
 	lda @parent
 	cmp #SEG_ABS
 	bne @added
+	ldy #FR_LOADLO
 	lda obj::segments_startlo,x
-	sta __link_fragment_loadlo,y
-	sta __link_fragment_runlo,y
+	sta (@ptr),y
+	ldy #FR_RUNLO
+	sta (@ptr),y
+	ldy #FR_LOADHI
 	lda obj::segments_starthi,x
-	sta __link_fragment_loadhi,y
-	sta __link_fragment_runhi,y
-@added:	inc num_fragments
-	lda num_fragments
+	sta (@ptr),y
+	ldy #FR_RUNHI
+	sta (@ptr),y
+@added:
+	NEXT_FRAGMENT fragments_top
+	ldxy @ptr
 	clc
 	rts
 @lookup:
+	lda @local
 	ldy activeobj
-	lda object_fragbase-1,y
-	clc
-	adc @local
-	cmp num_fragments
-	bcs @full
-	tay
-	lda fragment_segment,y
+	jsr fragment_pointer
+	cmpw fragments_top
+	jcs @full
+	ldy #FR_SEGMENT
+	lda (@ptr),y
 	cmp @parent
 	bne @full
-	tya
-	clc
-	adc #$01
+	ldxy @ptr
 	clc
 	rts
-@full:	RETURN_ERR ERR_TOO_MANY_SEGMENTS
+@full:
+	RETURN_ERR ERR_TOO_MANY_SEGMENTS
 .endproc
+
+;*******************************************************************************
+; FRAGMENT POINTER
+; Adds a local fragment's record offset to its owning object's base pointer.
+; IN:
+;   - .A: zero-based local fragment index
+;   - .Y: one-based object ID
+; OUT:
+;   - .XY, r0: global fragment record pointer
+.proc fragment_pointer
+@ptr=r0
+.assert FR_BYTES = 16, error, "fragment pointer scaling assumes 16-byte records"
+	ldx #0
+	stx @ptr+1
+	asl
+	rol @ptr+1
+	asl
+	rol @ptr+1
+	asl
+	rol @ptr+1
+	asl
+	rol @ptr+1
+	clc
+	adc object_fragbase_lo-1,y
+	sta @ptr
+	lda @ptr+1
+	adc object_fragbase_hi-1,y
+	sta @ptr+1
+	ldxy @ptr
+	rts
+.endproc
+
 .popseg
+SET_CUR_BANK FINAL_BANK_LINKER
+
+;*******************************************************************************
+; OWN SYMBOL
+; Records the active object after a successful symbol definition.
+; IN:
+;   - .XY: symbol ID
+;   - .C: set if the definition failed; skips the owner update
+; OUT:
+;   - .C: unchanged
+.export __link_own_symbol
+.proc __link_own_symbol
+	bcs @ret
+	lda activeobj
+	CALL FINAL_BANK_SYMBOLS, sympage::link_owner_set
+@ret:
+	rts
+.endproc
 
 ;*******************************************************************************
 ; PAD FRAGMENT
 ; Write the alignment bytes immediately preceding the given global fragment
+; IN:
+;   - .XY: global fragment record pointer
 .export __link_pad_fragment
 .proc __link_pad_fragment
 @start = r2
 @stop = r0
 @fill = rd
-	tax
-	lda fragment_segment-1,x
+@ptr = re
+	stxy @ptr
+	ldy #FR_SEGMENT
+	lda (@ptr),y
 	cmp #SEG_ABS
 	beq @done
 	tay
@@ -1426,16 +1523,21 @@ __link_update_progress:
 	cmp #TYPE_BSSZP
 	beq @done
 
-	lda __link_fragment_loadlo-1,x
+	ldy #FR_LOADLO
+	lda (@ptr),y
 	sta @stop
 	sec
-	sbc fragment_padlo-1,x
+	ldy #FR_PADLO
+	sbc (@ptr),y
 	sta @start
-	lda __link_fragment_loadhi-1,x
+	ldy #FR_LOADHI
+	lda (@ptr),y
 	sta @stop+1
-	sbc fragment_padhi-1,x
+	ldy #FR_PADHI
+	sbc (@ptr),y
 	sta @start+1
-	lda fragment_fill-1,x
+	ldy #FR_FILL
+	lda (@ptr),y
 	sta @fill
 	jsr fill_span
 
@@ -1721,16 +1823,23 @@ __link_update_progress:
 ; Display and log the current object filename for either linker pass.
 .proc report_linking_file
 @objfile=zp::link+2
-	ldxy @objfile
+	; copy the current object filename from linker RAM into the shared buffer
+	ldy #0
+:	lda (@objfile),y
+	sta link_filename,y
+	beq :+
+	iny
+	bne :-
+:	ldxy #link_filename
 	lda linkpass
 	CALL FINAL_BANK_EDIT, edit::linking_file
-	ldxy @objfile
+	ldxy #link_filename
 	JUMPMAIN log::out
 .endproc
 
 ;*******************************************************************************
 ; LINK
-; Links all files that were added to the linker (link::addfile) and produces
+; Links all files in link::objfiles and produces
 ; the linked executable as a file with the given name.
 ; IN:
 ;  - link::objfiles: array of the files to link (0-terminated)
@@ -1755,8 +1864,8 @@ __link_update_progress:
 	CALLMAIN dbgi::init
 
 	jsr init_segments
-	lda #$00
-	sta num_fragments
+	ldxy #fragments
+	stxy fragments_top
 
 	; init obj pointer to start of object list
 	ldxy #__link_objfiles
@@ -1784,6 +1893,7 @@ __link_update_progress:
 	; load the next .O (object) file in the object list
 	ldxy @objfile
 	stxy obj::filename
+	ldxy #link_filename
 	CALLMAIN file::open_r
 	jcs log_error			; failed to open object file -> error
 	pha				; save file handle
@@ -1822,7 +1932,12 @@ __link_update_progress:
 	beq @pass1done		; if it's another 0, we're at end of obj list
 	incw @objfile		; move to the next filename
 
-	inc activeobj
+	lda activeobj
+	cmp #MAX_OBJS
+	bcc :+
+	lda #ERR_TOO_MANY_OBJECTS
+	jmp log_error
+:	inc activeobj
 	jmp @pass1		; if not, repeat for next obj file
 ;-------------------------------------------------------------------------------
 
@@ -1861,7 +1976,7 @@ __link_update_progress:
 ; final binary.
 @pass2: jsr report_linking_file
 
-	ldxy @objfile
+	ldxy #link_filename
 	jsr link_object		; link the object file
 	bcs log_error		; if .C set, return with error
 
@@ -1893,10 +2008,7 @@ __link_update_progress:
 @pass2done:
 	; Fragment and segment origins remain fixed throughout pass 2.
 	; calculate ORIGIN and TOP of linked program
-	jsr segmin
-	stxy asm::origin
-	jsr segmax
-	stxy asm::top
+	jsr image_bounds
 	jsr fill_sections	; fill any sections that are marked "FILL"
 
 	jsr validate_symbols
@@ -2092,131 +2204,105 @@ __link_update_progress:
 .endproc
 
 ;*******************************************************************************
-; SEGMIN
-; Returns the minimum address found in the segments array, excluding SEGMENTs
-; that are not part of the loadable image (see excluded_from_image)
-.proc segmin
-@min=r0
-	ldx #$ff
-	stx @min
-	stx @min+1
-
-	inx			; .X=0
-
-@l0:	jsr excluded_from_image
-	beq @next			; not in the image -> skip
-
-	lda segments_addrhi,x
-	cmp @min+1
-	beq @chklo
-	bcs @next
-
-	sta @min+1
-	lda segments_addrlo,x
-	sta @min
-	bcc @next
-
-@chklo:	lda segments_addrlo,x
-	cmp @min
-	bcs @next
-	sta @min
-	lda segments_addrhi,x
-	sta @min+1
-
-@next:	inx
-	cpx numsegments
-	bne @l0
-
-	ldxy @min
-	rts
-.endproc
-
-;*******************************************************************************
-; SEGMAX
-; Returns the maximum address found in the segments array.  This is the base
-; of the last SEGMENT + the size of it.  SEGMENTs that are not part of the
-; loadable image are excluded (see excluded_from_image).
-.proc segmax
-@max=r0
-@i=r2
-	ldx #$00
-	stx @i
-	stx @max
-	stx @max+1
-
-@l0:	lda segments_addrhi,x
-	cmp @max+1
-	beq @chklo
-	bcc @next
-
-	jsr excluded_from_image
-	beq @next			; not in the image -> skip
-
-	sta @max+1
-	lda segments_addrlo,x
-	sta @max
-	stx @i
-	bcc @next
-
-@chklo:	lda segments_addrlo,x
-	cmp @max
-	bcc @next
-
-	jsr excluded_from_image
-	beq @next			; not in the image -> skip
-	sta @max
-	lda segments_addrhi,x
-	sta @max+1
-	stx @i
-
-@next:	inx
-	cpx numsegments
-	bne @l0
-
-	lda @max
-	clc
-	ldy @i
-	adc segments_sizelo,y
-	tax
-	lda @max+1
-	adc segments_sizehi,y
-	tay
-	rts
-.endproc
-
-;*******************************************************************************
-; EXCLUDED FROM IMAGE
-; Returns .Z set if the given SEGMENT contributes nothing to the loadable image
-; and must therefore not affect the program's ORIGIN or TOP (empty and zeropage
-; SEGMENTs)
-; IN:
-;   - .X: the (0-based) index of the SEGMENT to test
+; IMAGE BOUNDS
+; Finds the lowest LOAD address and highest end address across fragments.
+; Includes leading alignment padding and skips zeropage and empty fragments.
 ; OUT:
-;   - .Z: set if the SEGMENT must be excluded
-; PRESERVES:
-;   - .A
-;   - .C (callers branch on the carry set before the call)
-.proc excluded_from_image
-@a=r3
-	sta @a
-	lda segments_type,x
-	eor #TYPE_SEGZP		; EOR, unlike CMP, leaves .C alone
-	beq @zp
-	lda segments_type,x
-	eor #TYPE_BSSZP
-	beq @zp
+;   - asm::origin: first byte of the loadable image
+;   - asm::top: exclusive end of the loadable image
+.ifdef vic20
+image_bounds: JUMP FINAL_BANK_LINKER_AUX, calculate_image_bounds
+.pushseg
+BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
+.else
+image_bounds = calculate_image_bounds
+.endif
+.proc calculate_image_bounds
+@start=r0
+@stop=r2
+@ptr=r4
+	ldxy #$ffff
+	stxy asm::origin
+	ldxy #0
+	stxy asm::top
+	ldxy #fragments
+	stxy @ptr
+@loop:
+	ldxy @ptr
+	cmpw fragments_top
+	jeq @done
+	ldy #FR_SIZELO
+	lda (@ptr),y
+	ldy #FR_SIZEHI
+	ora (@ptr),y
+	ldy #FR_PADLO
+	ora (@ptr),y
+	ldy #FR_PADHI
+	ora (@ptr),y
+	beq @next
+	ldy #FR_SEGMENT
+	lda (@ptr),y
+	tay
+	cpy #SEG_ABS
+	beq @include
+	lda segments_type-1,y
+	cmp #TYPE_SEGZP
+	beq @next
+	cmp #TYPE_BSSZP
+	beq @next
+@include:
+	ldy #FR_LOADLO
+	lda (@ptr),y
+	sec
+	ldy #FR_PADLO
+	sbc (@ptr),y
+	sta @start
+	ldy #FR_LOADHI
+	lda (@ptr),y
+	ldy #FR_PADHI
+	sbc (@ptr),y
+	sta @start+1
+	ldy #FR_LOADLO
+	lda (@ptr),y
+	clc
+	ldy #FR_SIZELO
+	adc (@ptr),y
+	sta @stop
+	ldy #FR_LOADHI
+	lda (@ptr),y
+	ldy #FR_SIZEHI
+	adc (@ptr),y
+	sta @stop+1
 
-	lda segments_sizelo,x
-	ora segments_sizehi,x	; .Z set if the SEGMENT is empty
-	jmp @done
-
-@zp:	lda #$00		; .Z set -> exclude the SEGMENT
-
-@done:	php			; save the result
-	lda @a			; restore .A
-	plp			; and the result
+	lda @start
+	cmp asm::origin
+	lda @start+1
+	sbc asm::origin+1
+	bcs @maximum
+	lda @start
+	sta asm::origin
+	lda @start+1
+	sta asm::origin+1
+@maximum:
+	lda @stop
+	cmp asm::top
+	lda @stop+1
+	sbc asm::top+1
+	bcc @next
+	lda @stop
+	sta asm::top
+	lda @stop+1
+	sta asm::top+1
+@next:
+	NEXT_FRAGMENT @ptr
+	jmp @loop
+@done:
 	rts
 .endproc
+.ifdef vic20
+.popseg
+SET_CUR_BANK FINAL_BANK_LINKER
+.endif
 
 ;*******************************************************************************
 ; GET SECTION BY NAME
@@ -2484,6 +2570,24 @@ __link_strcmp:
 
 :	lda (zp::str2),y	; make sure strings terminate at same index
 @ret:	rts
+.endproc
+
+;*******************************************************************************
+; PROCESS WORD
+; Advances the LINK text pointer to the next whitespace or NUL terminator.
+; IN/OUT:
+;   - zp::line: text pointer
+.proc process_word
+	ldy #0
+@loop:
+	lda (zp::line),y
+	beq @done
+	jsr is_ws
+	beq @done
+	incw zp::line
+	jmp @loop
+@done:
+	rts
 .endproc
 
 ;*******************************************************************************

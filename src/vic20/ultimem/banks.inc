@@ -35,7 +35,8 @@ FINAL_BANK_FASTSCROLL_UP   = $10
 FINAL_BANK_FASTSCROLL_DOWN = $11
 FINAL_BANK_ERRLOG          = $12
 FINAL_BANK_FLASH           = $13
-NUM_BANKS                  = $13
+FINAL_BANK_LINKER_AUX      = $14
+NUM_BANKS                  = $14
 
 ; Contiguous symbol storage: physical RAM blocks 70..100 (248 KiB).
 SYMBOL_META_BANK    = 70

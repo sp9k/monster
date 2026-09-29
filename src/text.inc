@@ -5,6 +5,7 @@
 .import __text_clrinfo
 .import __text_clrline
 .import __text_drawline
+.import __text_drawline_plain
 .import __text_insertmode
 .import __text_index2cursor
 .import __text_len
@@ -73,6 +74,7 @@ CH_R_ARROW	    = 135
 	clrinfo          = __text_clrinfo
 	clrline          = __text_clrline
 	drawline         = __text_drawline
+	drawline_plain   = __text_drawline_plain
 	info             = __text_info
 	insertmode       = __text_insertmode
 	index2cursor     = __text_index2cursor

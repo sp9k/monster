@@ -10,6 +10,8 @@
 .include "asm.inc"
 .include "beep.inc"
 .include "config.inc"
+.include "viewport.inc"
+TEXT_EDIT_LIMIT = MAX_LINE_LEN
 .include "cursor.inc"
 .include "draw.inc"
 .include "edit.inc"
@@ -60,11 +62,6 @@ NUM_ESCAPE_CODES = 8
 STATUS_FORMAT_DEFAULT = 0	; display x, line/total lines
 STATUS_FORMAT_XY      = 1	; display x,y position of cursor
 
-.ifdef soft4x8
-VIS_WS_CHAR = 131		; character to render for visual whitespace
-.else
-VIS_WS_CHAR = $de		; character to render for visual whitespace
-.endif
 
 .BSS
 ;*******************************************************************************
@@ -89,7 +86,8 @@ __text_show_ws: .byte 0	; if !0, TAB's will be rendered
 render_off: .byte 0
 indirect:   .byte 0
 
-tempbuff: .res LINESIZE
+tempbuff:
+.res MAX_LINE_LEN+1
 
 .CODE
 ;*******************************************************************************
@@ -228,7 +226,7 @@ tempbuff: .res LINESIZE
 @printing:
 	jsr savetmp
 	ldx zp::curx
-	cpx cur::maxx
+	jsr compare_limit
 	bcs @err		; cursor is limited
 
 	lda __text_insertmode
@@ -267,7 +265,7 @@ tempbuff: .res LINESIZE
 @tab:	jsr __text_rendered_line_len
 	dex
 	bmi @tabok		; if len is 0 -> continue
-	cpx cur::maxx
+	jsr compare_limit
 	bcs @abort		; TAB made the line oversized - abort
 @tabok:	jsr __text_tabr_dist
 	clc
@@ -279,7 +277,7 @@ tempbuff: .res LINESIZE
 	jsr __text_rendered_line_len
 	dex
 	bmi :+				; if len is 0 -> continue
-	cpx cur::maxx
+	jsr compare_limit
 	bcc :+
 
 @abort:	; line is oversized now - abort the operation
@@ -311,6 +309,24 @@ tempbuff: .res LINESIZE
 ;  - mem::linebuffer: the text to draw
 .export __text_drawline
 .proc __text_drawline
+	bit edit::height
+	bmi @physical
+	cmp edit::height
+	beq @source
+	bcc @source
+@physical:
+	jmp __text_drawline_plain
+@source:
+	jmp viewport::draw
+.endproc
+
+;*******************************************************************************
+; DRAW LINE PLAIN
+; Draws linebuffer at the given row without applying the source viewport.
+; IN:
+;  - .A: screen row
+.export __text_drawline_plain
+.proc __text_drawline_plain
 	ldx #LINESIZE
 	stx __text_len
 	ldxy #mem::linebuffer
@@ -618,7 +634,7 @@ tempbuff: .res LINESIZE
 @l0:	inx
 	lda mem::linebuffer,x
 	beq @done
-	cpx #LINESIZE
+	cpx #TEXT_EDIT_LIMIT
 	bne @l0
 @done:	rts
 .endproc
@@ -638,7 +654,7 @@ tempbuff: .res LINESIZE
 	ldy #$ff
 @l0:	iny
 	inx
-	cpy #LINESIZE+1
+	cpy #TEXT_EDIT_LIMIT+1
 	bcs @ret		; too big
 	lda mem::linebuffer,y
 	beq @done
@@ -646,6 +662,12 @@ tempbuff: .res LINESIZE
 	bne @l0
 
 	; handle the TAB, move to next TAB column
+	cpx #MAX_LINE_LEN
+	bcc :+
+	ldx #MAX_LINE_LEN+1
+	sec
+	rts
+:
 	txa
 	sty @savey
 	jsr __text_tabr_dist_a
@@ -658,7 +680,7 @@ tempbuff: .res LINESIZE
 	dex			; undo the INX
 	bne @l0			; branch always
 
-@done:	cpx #LINESIZE+1
+@done:	cpx #TEXT_EDIT_LIMIT+1
 @ret:	rts
 .endproc
 
@@ -827,7 +849,8 @@ __text_tabr_dist_a=*+2
 	sbc @xstart
 @done:	rts
 
-@last:	lda #SCREEN_WIDTH	; no next tab stop; return distance to EOL
+@last:
+	lda #MAX_LINE_LEN
 	sec
 	sbc @xstart
 	rts
@@ -840,7 +863,7 @@ __text_tabr_dist_a=*+2
 .PUSHSEG
 .segment "DATA"
 tabs:
-.repeat SCREEN_WIDTH/TAB_WIDTH, i
+.repeat TEXT_EDIT_LIMIT/TAB_WIDTH, i
 	.byte i*TAB_WIDTH
 .endrepeat
 tabs_end=*-tabs
@@ -854,7 +877,7 @@ LAST_TAB_COL=TAB_WIDTH*(tabs_end-tabs)
 ; called
 .export __text_savebuff
 .proc __text_savebuff
-	ldy #LINESIZE-1
+	ldy #MAX_LINE_LEN
 :	lda mem::linebuffer,y
 	sta mem::linesave,y
 	dey
@@ -868,7 +891,7 @@ LAST_TAB_COL=TAB_WIDTH*(tabs_end-tabs)
 ; recent call to text::savebuff)
 .export __text_restorebuff
 .proc __text_restorebuff
-	ldy #LINESIZE-1
+	ldy #MAX_LINE_LEN
 :	lda mem::linesave,y
 	sta mem::linebuffer,y
 	dey
@@ -879,7 +902,7 @@ LAST_TAB_COL=TAB_WIDTH*(tabs_end-tabs)
 ;*******************************************************************************
 ; SAVETMP
 .proc savetmp
-	ldy #LINESIZE-1
+	ldy zp::text+4	; original length, including its terminator
 :	lda mem::linebuffer,y
 	sta tempbuff,y
 	dey
@@ -890,7 +913,7 @@ LAST_TAB_COL=TAB_WIDTH*(tabs_end-tabs)
 ;*******************************************************************************
 ; RESTORETMP
 .proc restoretmp
-	ldy #LINESIZE-1
+	ldy zp::text+4	; original length, including its terminator
 :	lda tempbuff,y
 	sta mem::linebuffer,y
 	dey
@@ -942,5 +965,25 @@ LAST_TAB_COL=TAB_WIDTH*(tabs_end-tabs)
 @info=zp::text
 	lda #$00
 	sta mem::statusinfo
+	rts
+.endproc
+
+;*******************************************************************************
+; COMPARE LIMIT
+; Compares a column with the logical editor width or physical prompt width.
+; IN:
+;  - .X: column to check
+; OUT:
+;  - .C: set if the column is at or beyond the applicable limit
+.proc compare_limit
+	lda edit::height
+	bmi @physical
+	cmp zp::cury
+	bcs @source
+@physical:
+	cpx cur::maxx
+	rts
+@source:
+	cpx #MAX_LINE_LEN
 	rts
 .endproc

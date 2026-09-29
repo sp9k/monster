@@ -39,14 +39,17 @@ __statusline = __mem_spare+80
 .ifdef ultimem
 .segment "SHAREBSS2"
 .endif
+.pushseg
+.segment "VIEW_SHARED"
 .export __statusinfo
 __statusinfo: .res 20
+.popseg
 
 .export __mem_drive_err
 __mem_drive_err: .res LINESIZE+1
 
 .export __linesave
-__linesave: .res 40
+__linesave: .res MAX_LINE_LEN+1
 
 .export __mem_coloron
 __mem_coloron: .byte 0
@@ -94,7 +97,7 @@ __mem_init_sig: .res 4
 ; This allows the buffer to be manipulated from any bank
 .segment "LINEBUFF"
 
-.ifdef hard8x8
+.if .defined(vic20) .and .defined(hard8x8)
 ; The debugger also uses this buffer for four 22-column display rows.
 LINEBUFFER_SIZE = .max(MAX_LINE_LEN+3, LINESIZE*4+3)
 .else

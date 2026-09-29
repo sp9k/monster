@@ -113,7 +113,9 @@ gvec: .word 0
 oldh: .byte 0
 
 ; save area for the focused window's input line (see savelb/restorelb)
-lbsave: .res LINESIZE
+.segment "VIEW_SHARED"
+lbsave: .res MAX_LINE_LEN+1
+.BSS
 
 ; cursor position of the editor, saved while a window has focus.
 ; window code that redraws the editor behind the manager's back (e.g. the
@@ -290,7 +292,7 @@ recoffs:
 .proc savelb
 	lda infocus
 	beq @done
-	ldx #LINESIZE-1
+	ldx #MAX_LINE_LEN
 :	lda mem::linebuffer,x
 	sta lbsave,x
 	dex
@@ -304,7 +306,7 @@ recoffs:
 .proc restorelb
 	lda infocus
 	beq @done
-	ldx #LINESIZE-1
+	ldx #MAX_LINE_LEN
 :	lda lbsave,x
 	sta mem::linebuffer,x
 	dex

@@ -37,7 +37,8 @@ SEG_ABS   = $ff	; symbol represents a constant (not tied to a segment)
 ; A named float constant (.EQ with a float value).  The symbol's ADDR field is
 ; an index into the evaluator's float pool rather than a value.  The FLAGS byte
 ; stores the segment in 7 bits and pads $7f back to SEG_ABS, so $7e is the
-; highest id available; MAX_SEGMENTS is 64, so it cannot collide with a real one.
+; highest live tag. Real object-local fragment IDs stop at 124. Global linker
+; references are separate 16-bit pointers; resolved link symbols use SEG_ABS.
 SEG_FLOAT = $7e
 ; On disk this distinct tag is followed by a packed five-byte payload.
 ; It must never be stored in an in-memory symbol or used as a segment index.

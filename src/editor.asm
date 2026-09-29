@@ -12,6 +12,7 @@
 .include "breakpoints.inc"
 .include "codes.inc"
 .include "config.inc"
+.include "viewport.inc"
 .include "copybuff.inc"
 .include "ctx.inc"
 .include "cursor.inc"
@@ -145,6 +146,7 @@ progress_count: .byte 0
 __edit_highlight_en: .byte 0	; highlight flag: if !0 highlight highlight_line
 
 __edit_highlight_line:	.word 0 	; the line we are highlighting
+.export __edit_highlight_file = highlight_file
 highlight_file:   	.byte 0		; debug file ID of the highlighted line
 highlight_status:	.byte 0		; if !0 highlight is active
 
@@ -253,7 +255,7 @@ guidismissall = gui::dismissall
 
 	; rewind source and get the first line's contents in textbuffer
 	jsr src::rewind
-	jsr src::get
+	jsr editor_getline
 
 	; move cursor to first character on line
 	lda #$00
@@ -332,7 +334,9 @@ main:	jsr key::getui
 	jmp @done
 @ins:	jsr onkey
 
-@done:	jsr errlog::after_key
+@done:
+	jsr viewport::follow
+	jsr errlog::after_key
 	jsr text::update	; update status in case something was changed
 	jsr is_visual
 	beq :+
@@ -392,9 +396,8 @@ main:	jsr key::getui
 ;*******************************************************************************
 ; RENDER ROW
 ; Renders the source line that belongs at the given screen row without
-; affecting the cursor, linebuffer, or source position.  The given row must
-; be at or below the cursor's row.  Rows past the end of the source are
-; cleared.
+; affecting the cursor, linebuffer, or source position. Rows past the end
+; of the source are cleared.
 ; Used by the monitor to render rows that are revealed when its window
 ; shrinks below the size it had when the screen was last saved.
 ; IN:
@@ -426,7 +429,7 @@ main:	jsr key::getui
 	jsr src::downn
 	bcs @clr		; source ended before the target row
 
-@read:	jsr src::get		; leaves the source on the drawn row
+@read:	jsr editor_getline		; leaves the source on the drawn row
 	pla			; restore the row
 	jsr print_line
 	jmp @done
@@ -548,6 +551,8 @@ main:	jsr key::getui
 ; Opens the "LINK" file from disk, parses it, and links all object files
 ; on the same disk
 .proc command_link
+@resultend=r0
+@maxfiles=r2
 @file=r8
 @linkbuffer=mem::spare
 	CALL FINAL_BANK_LINKER, link::init
@@ -566,13 +571,13 @@ main:	jsr key::getui
 	bcs @err				; error
 
 	; get all object files on disk
-	ldxy #mem::spareend			; end addr of destination buff
-	stxy r0
+	ldxy #link::objfiles_end		; end addr of destination buff
+	stxy @resultend
 	lda #MAX_OBJS
-	sta r2					; max number of filenames
+	sta @maxfiles			; max number of filenames
 	lda #$4f				; 'O'
 	ldxy #link::objfiles
-	jsr dir::get_by_type
+	jsr dir::get_objects
 	bcs @err
 
 	; link all object files that were found
@@ -1430,11 +1435,7 @@ cancel = enter_command
 	lda #'l'
 	sta text::statusmode
 
-	; get the length of the current line
-	jsr text::rendered_line_len
-	ldy #$00
-	lda zp::cury
-	jmp scr::rvsline_part
+	jmp rvs_current_line
 .endproc
 
 ;*******************************************************************************
@@ -2141,23 +2142,10 @@ cancel = enter_command
 ;*******************************************************************************
 ; COMMAND_MOVE_SCR
 ; Accepts another key and moves the screen around depending on what that key is:
-;  - l: move screen 2 characters to the left
-;  - h: move screen 2 characters to the right
+;  - l: pan VIEW_SCROLL_STEP columns toward the right of the source
+;  - h: pan VIEW_SCROLL_STEP columns toward the left of the source
 .proc command_move_scr
-.if 0
-; TODO:
-	jsr key::waitch
-	cmp #$68	; 'h'
-	beq @right
-	cmp #$6c	; 'l'
-	beq @left
-	rts
-@left:  JUMP FINAL_BANK_VSCREEN, scr::shr
-@right: JUMP FINAL_BANK_VSCREEN, scr::shl
-.else
-	; not implemented
-	rts
-.endif
+	jmp viewport::command
 .endproc
 
 ;*******************************************************************************
@@ -2515,7 +2503,7 @@ cancel = enter_command
 ;   [     b    ]
 ; The result, after calling this procedure will be a single line like this:
 ;   [  a   ][     b    ]
-; If the rendered length of the joined line would be greater than the LINESIZE,
+; If the rendered length of the joined line would exceed MAX_LINE_LEN,
 ; this operation does nothing
 .proc join_line
 	jsr make_joined_line
@@ -2539,52 +2527,11 @@ cancel = enter_command
 ;   [     b    ]
 ; The result, after calling this procedure will be a single line like this:
 ;   [  a   ][     b    ]
-; If the rendered length of the joined line would be greater than the LINESIZE,
+; If the rendered length of the joined line would exceed MAX_LINE_LEN,
 ; this operation does nothing
 .proc make_joined_line
-@lena=r6	; length of line A
-	jsr exit_visual		; if in VISUAL mode, exit it
-	jsr src::on_last_line	; are there any lines to join?
-	sec
-	beq :-			; if not -> rts
-
-	; save buffer in case we need to abort operation (joined line too long)
-	jsr refresh_line
-	jsr text::savebuff
-	jsr src::pushp
-
-	; get the index to append B to
-	jsr text::linelen
-	stx @lena
-
-	jsr src::lineend	; go to end of the line
-	jsr src::next		; move past the newline
-
-	; read the new line contents into the text buffer
-	lda #<mem::linebuffer
-	clc
-	adc @lena
-	tax
-	lda #>mem::linebuffer
-	adc #$00
-	tay
-	jsr src::getin
-
-	; make sure the rendered line is <= LINESIZE characters
-	jsr text::rendered_line_len
-	bcc @join			; if not, continue
-
-@err:	; the join would have made the line too long, don't join it
-	jsr text::restorebuff	; restore the original text buffer
-	jsr src::popgoto	; clean up and exit
-	jsr beep::short
-	sec
-	rts
-
-@join:	jsr src::popp		; clean stack
-	jsr src::backspace	; delete the newline
-	jsr refresh_line
-	jmp sync_cur
+	jsr exit_visual
+	jmp viewport::join
 .endproc
 
 ;*******************************************************************************
@@ -3168,7 +3115,7 @@ edit_refresh:
 	jsr src::pushp
 
 	jsr src::home
-	jsr src::get		; get the contents of current line
+	jsr editor_getline		; get the contents of current line
 	jsr text::savebuff	; save the line buffer
 
 	ldx zp::cury		; get # of rows to go up in source
@@ -3711,6 +3658,7 @@ goto_buffer:
 ; EDIT
 ; Configures the cursor/screen/etc. for editing
 .proc edit
+	jsr viewport::init
 .ifdef vic20
 	lda #$7f
 	sta $911e		; disable CA1 (RESTORE key) interrupts
@@ -4378,7 +4326,7 @@ goto_buffer:
 	jsr scrolldown
 
 @setcur:
-	jsr src::get
+	jsr editor_getline
 	lda mem::linebuffer
 	cmp #$09		; TAB
 	bne @setx
@@ -4407,6 +4355,7 @@ goto_buffer:
 ; IN:
 ;  - .A: the row to clear
 .proc clear_row
+	jsr viewport::clear
 	pha
 	tax
 	lda #$00
@@ -4439,16 +4388,7 @@ goto_buffer:
 ; PART 2 of editor code + data
 .segment "EDITCODE"
 
-;*******************************************************************************
-; CLEAR MESSAGE
-; Clears the current status message
-; OUT:
-;   - .A: 0
-.proc clear_message
-	lda #$00
-	sta mem::statusinfo
-:	rts
-.endproc
+clear_message = text::clrinfo
 
 ;*******************************************************************************
 ; ONKEY
@@ -4456,9 +4396,8 @@ goto_buffer:
 .proc onkey
 @insert:
 	jsr handle_universal_keys
-	bcs :-			; -> RTS
-
-	; fall through to insert
+	bcc insert
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -4617,7 +4556,7 @@ goto_buffer:
 	lda @ch
 	cmp #$0d
 	beq @cont	; if we crossed a newline, continue
-	jsr src::get	; get the contents of the line we're on now
+	jsr editor_getline	; get the contents of the line we're on now
 
 	ldx #$00
 	stx zp::cury		; row 0
@@ -4630,7 +4569,7 @@ goto_buffer:
 	rts		; done
 
 @cont:	jsr src::up
-	jsr src::get	; read the line we're moving to into linebuffer
+	jsr editor_getline	; read the line we're moving to into linebuffer
 
 	ldx #$00
 	stx zp::curx
@@ -5064,7 +5003,7 @@ goto_buffer:
 	sec		; cursor could not be moved down
 	rts
 
-@down:	jsr src::get	; get the data for this in linebuffer
+@down:	jsr editor_getline	; get the data for this in linebuffer
 	inc zp::cury	; move row down
 	lda #$00
 	sta zp::curx
@@ -5220,7 +5159,7 @@ goto_buffer:
 	bcs @clr		; no new line to get -> erase the bottom row
 
 	jsr src::home
-	jsr src::get
+	jsr editor_getline
 	lda height
 	jsr draw_src_line	; draw the new line that was scrolled up
 	jmp @done
@@ -5274,6 +5213,7 @@ goto_buffer:
 	sty @num
 	; scroll everything up from below the line we deleted
 	jsr text::scrollupn
+	jsr viewport::scroll_up
 
 	; shift colors up by the same amount
 	ldx @start
@@ -5904,7 +5844,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 
 @longmove_cont:
 	sta zp::cury
-@l0: 	jsr src::get
+@l0: 	jsr editor_getline
 	jsr print_current_line
 	jsr is_visual
 	bne @visdone
@@ -5954,7 +5894,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	bcc @l0
 
 	; draw the last row (src::up will return .C=1 for it)
-	jsr src::get
+	jsr editor_getline
 	lda #$00
 	jsr print_line
 
@@ -5984,7 +5924,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	cpx height
 	bcc @l0
 
-	jsr src::get
+	jsr editor_getline
 	jsr print_current_line
 
 @downdone:
@@ -6134,6 +6074,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	sta @start
 	sty @num
 	jsr text::scrolldownn
+	jsr viewport::scroll_down
 
 	; shift colors down by 1
 	ldx @start
@@ -6286,6 +6227,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 ; SYNC CUR
 ; Syncs the physical cursor with the source one
 .export sync_cur
+.export __edit_sync_cur = sync_cur
 .proc sync_cur
 	lda zp::srcx
 	jsr gotoindex
@@ -6740,13 +6682,16 @@ unblank = scr::unblank
 ;*******************************************************************************
 ; REFRESH LINE
 ; Reloads the linebuffer with its correct contents from the source buffer
+.pushseg
+.CODE
 edit_refreshline:
 .proc refresh_line
 	jsr src::pushp
 	jsr src::home
-	jsr src::get
+	jsr editor_getline
 	jmp src::popgoto
 .endproc
+.popseg
 
 ;*******************************************************************************
 ; TOGGLE VIS WS
@@ -6837,3 +6782,6 @@ numcommands=*-commands
 
 command_vecs_lo: .lobytes cmd_vecs
 command_vecs_hi: .hibytes cmd_vecs
+
+; Source reads for the editor include the offscreen columns.
+editor_getline = src::getwide

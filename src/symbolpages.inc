@@ -5,6 +5,8 @@
 .import __sympage_copy_record
 .import __sympage_name_buffer
 .import __sympage_scope_buffer
+.import __sympage_link_owner_set
+.import __sympage_link_owner_get
 
 .scope sympage
 	load        = __sympage_load
@@ -12,6 +14,8 @@
 	copy_record = __sympage_copy_record
 	name_buffer = __sympage_name_buffer
 	scope_buffer = __sympage_scope_buffer
+	link_owner_set = __sympage_link_owner_set
+	link_owner_get = __sympage_link_owner_get
 .endscope
 
 ;*******************************************************************************

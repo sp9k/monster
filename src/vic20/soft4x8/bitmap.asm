@@ -7,6 +7,8 @@
 ; This configuration is popularly known as MINIGRAFIK, created by Mike
 ;*******************************************************************************
 
+.include "../../config.inc"
+.include "../../viewport.inc"
 .include "layout.inc"
 .include "../expansion.inc"
 .include "../prefs.inc"
@@ -405,6 +407,26 @@ __screen_draw_gutter_row:
 ;  - .X: one past the last column to reverse
 .export __screen_rvsline_part
 .proc __screen_rvsline_part
+	bit zp::editor_height
+	bmi @physical
+	cmp zp::editor_height
+	beq @source
+	bcc @source
+@physical:
+	jmp __screen_rvsline_part_physical
+@source:
+	jmp viewport::reverse
+.endproc
+
+;*******************************************************************************
+; REVERSE LINE PART PHYSICAL
+; Reverses a visible span without applying the source viewport offset.
+; IN:
+;  - .A: screen row
+;  - .Y: first physical column
+;  - .X: end physical column (exclusive)
+.export __screen_rvsline_part_physical
+.proc __screen_rvsline_part_physical
 @dst=r0
 @odd=r2		; !0 if the character to end at is odd
 @start=r3
@@ -636,6 +658,7 @@ inittab_blank:	.byte $02,$fe,$fe,$eb,$00,$0c
 ; Restores the bitmap from the backup buffer.
 ; to scr::restore
 .proc restore
+	CALLMAIN viewport::invalidate
 @buff=r0
 @bm=r2
 	ldxy #backbuff
