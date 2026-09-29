@@ -5,6 +5,7 @@
 ;*******************************************************************************
 
 .include "config.inc"
+.include "errors.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "ram.inc"
@@ -52,9 +53,13 @@ __log_close  = logclose
 ;   - .C: set on error
 ;   - .A: error code (on error)
 .proc lognew
+	jsr src::new_log
+	lda #$00
+	bcs :+
 	lda #$01
-	sta __log_written
-	jmp src::new_log
+:	sta __log_written
+	lda #ERR_BUFFER_FULL
+	rts
 .endproc
 
 ;*******************************************************************************

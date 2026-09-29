@@ -50,14 +50,6 @@ __reu_move_src:  .res 3
 __reu_move_dst:  .res 3
 __reu_move_size: .word 0
 
-;*******************************************************************************
-; TABLE STATE
-; These parameters contain the properties of the table usedb by the
-; tab* procedures
-tab_addr:         .res 3
-tab_element_size: .byte 0
-tab_num_elements: .word 0
-
 .CODE
 
 ;*******************************************************************************
@@ -178,29 +170,9 @@ tab_num_elements: .word 0
 ;   - reu::reu_addr: the address to store to (24 bit)
 .export __reu_store1
 .proc __reu_store1
-@tmp=tmp
-	sta @tmp
-
-	IO_BEGIN
-	jsr mapreu
-	lda #<@tmp
-	sta $df02	; c64addr
-	lda #>@tmp
-	sta $df02+1	; c64addr+1
-
-	lda #$01
-	sta $df07	; txlen
-
-	lda #$00
-	sta $df07+1	; txlen+1
-	sta $df0a
-
-	lda #$90	; transfer from c64 -> REU with immediate execution
-	sta $df01	; execute
-	IO_DONE
-
-	lda @tmp	; restore .A
-	rts
+	sta tmp
+	lda #$90	; C64 -> REU
+	jmp transfer1
 .endproc
 ;*******************************************************************************
 ; STORE
@@ -212,17 +184,8 @@ tab_num_elements: .word 0
 ;   - reu::len:      the number of bytes to copy (16-bit)
 .export __reu_store
 .proc __reu_store
-	jsr txlen_empty
-	beq @done
-	IO_BEGIN
-	jsr mapreu
-	lda #$00
-	sta $df0a
-	lda #$90	; transfer from c64 -> REU with immediate execution
-	sta $df01	; execute
-	IO_DONE
-
-@done:	rts
+	lda #$90
+	bne transfer	; always
 .endproc
 
 ;*******************************************************************************
@@ -234,25 +197,29 @@ tab_num_elements: .word 0
 ;   - .A: the byte that was read
 .export __reu_load1
 .proc __reu_load1
-@tmp=tmp
+	lda #$91	; REU -> C64
+	; fall through to transfer1
+.endproc
+
+; Single-byte transfers share register setup and preserve X/Y. Keep the
+; command on the stack while mapreu uses A; IO_DONE restores the caller's P.
+.proc transfer1
 	IO_BEGIN
+	pha
 	jsr mapreu
-	lda #<@tmp
-	sta $df02	; c64addr
-	lda #>@tmp
-	sta $df02+1	; c64addr+1
-
+	lda #<tmp
+	sta $df02
+	lda #>tmp
+	sta $df03
 	lda #$01
-	sta $df07	; txlen
-
+	sta $df07
 	lda #$00
-	sta $df07+1	; txlen+1
+	sta $df08
 	sta $df0a
-
-	lda #$91	; transfer from REU -> c64 with immediate execution
-	sta $df01	; execute
+	pla
+	sta $df01
 	IO_DONE
-	lda @tmp	; read the byte we loaded
+	lda tmp
 	rts
 .endproc
 
@@ -266,16 +233,27 @@ tab_num_elements: .word 0
 ;   - reu::len:      the number of bytes to copy (16-bit)
 .export __reu_load
 .proc __reu_load
+	lda #$91
+	; fall through to transfer
+.endproc
+
+; Keep the command separate from the saved processor flags used by IO_BEGIN.
+.proc transfer
+	pha
 	jsr txlen_empty
-	beq @done
+	beq @empty
+	pla
 	IO_BEGIN
+	pha
 	jsr mapreu
 	lda #$00
 	sta $df0a
-	lda #$91	; transfer from REU -> c64 with immediate execution
-	sta $df01	; execute
+	pla
+	sta $df01
 	IO_DONE
-@done:	rts
+	rts
+@empty:	pla
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -290,7 +268,7 @@ tab_num_elements: .word 0
 .export __reu_load_delayed
 .proc __reu_load_delayed
 	jsr txlen_empty
-	beq @done
+	beq done
 	lda #$36
 	sta $01
 
@@ -299,16 +277,9 @@ tab_num_elements: .word 0
 
 	jsr mapreu
 
-	lda #$34	; all RAM visible for the transfer itself
-	sta $01
+	jmp delayed_done
 
-	lda $ff00
-	sta $ff00	; trigger the transfer
-
-	lda __ram_mem01
-	sta $01
-
-@done:	rts
+done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -323,7 +294,7 @@ tab_num_elements: .word 0
 .export __reu_store_delayed
 .proc __reu_store_delayed
 	jsr txlen_empty
-	beq @done
+	beq __reu_load_delayed::done
 	lda #$36
 	sta $01
 
@@ -332,6 +303,10 @@ tab_num_elements: .word 0
 	lda #$80	; transfer C64 RAM -> REU delayed
 	sta $df01
 
+	; fall through to the shared DMA trigger
+.endproc
+
+.proc delayed_done
 	lda #$34	; all RAM visible for the transfer itself
 	sta $01
 
@@ -341,7 +316,7 @@ tab_num_elements: .word 0
 	lda __ram_mem01
 	sta $01
 
-@done:	rts
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -427,9 +402,14 @@ tab_num_elements: .word 0
 	bne :+
 	rts				; nothing to move
 
-:	lda __reu_reu_addr+2
+:	; mask IRQs during move
+	php
+	sei
+	lda __reu_reu_addr+2
 	pha				; save current "bank"
 
+	; DMA updates only the hardware registers. The virtual C64 address and
+	; length remain valid for all four transfers.
 	lda @size
 	sta __reu_txlen
 	lda @size+1
@@ -443,14 +423,6 @@ tab_num_elements: .word 0
 	sta __reu_reu_addr+2
 	jsr __reu_swap
 
-	lda @size
-	sta __reu_txlen
-	lda @size+1
-	sta __reu_txlen+1
-	ldxy #@end
-	stxy __reu_c64_addr
-	stxy __reu_reu_addr
-
 	; bring in the source data to relocate
 	lda @src
 	sta __reu_reu_addr
@@ -459,13 +431,6 @@ tab_num_elements: .word 0
 	lda @src+2
 	sta __reu_reu_addr+2
 	jsr __reu_load
-
-	lda @size
-	sta __reu_txlen
-	lda @size+1
-	sta __reu_txlen+1
-	ldxy #@end
-	stxy __reu_c64_addr
 
 	; and store it to its relocation address
 	lda @dst
@@ -476,16 +441,9 @@ tab_num_elements: .word 0
 	sta __reu_reu_addr+2
 	jsr __reu_store
 
-	lda @size
-	sta __reu_txlen
-	lda @size+1
-	sta __reu_txlen+1
-
-
 	; finally, restore the C64's memory that we used as an intermediate
 	; buffer
 	ldxy #@end
-	stxy __reu_c64_addr
 	stxy __reu_reu_addr
 	lda #^REU_TMP_ADDR
 	sta __reu_reu_addr+2
@@ -493,76 +451,9 @@ tab_num_elements: .word 0
 
 	pla
 	sta __reu_reu_addr+2	; restore "bank"
+	plp
 	rts
 @end=*
-.endproc
-
-;*******************************************************************************
-; FIND
-; Seeks, page by page, for the given string beginning at the given
-; address. If no match is found at the 64k page of the given address,
-; returns with the .C flag set.
-; IN:
-;  - .XY:           the string to look for
-;  - .A:            the length of the string
-;  - reu::reu_addr: the address to start seeking at
-; OUT:
-;  - .C: set if the string is not found
-;  - .A:  the 64k block of the return address (same as one given)
-;  - .XY: the address of the string (if found)
-.export __reu_find
-.proc __reu_find
-@str=zp::bankoffset
-@len=zp::bankoffset+2
-@tmp=zp::bankoffset+3
-@pagebuff=@end
-	stxy @str
-	sta @len
-
-	ldxy #$100
-	stxy __reu_txlen
-	ldxy #@pagebuff
-	stxy __reu_c64_addr
-	stxy __reu_c64_addr
-
-	; read one page for compare
-	jsr __reu_load
-
-	; search the page for the string
-	ldy #$00
-	ldx #$00
-@l0:	lda (@str),y
-	cmp @pagebuff,y
-	beq @next
-
-	; .Y -= .X (backtrack the # of chars we matched)
-	stx @tmp
-	tya
-	sec
-	sbc @tmp
-	tay
-	ldx #$ff		; reset char match count
-
-@next:	inx
-	cpx @len
-	beq @found
-	iny
-	bne @l0
-	inc __reu_reu_addr+1	; next page
-	bne @l0			; repeat until end of 64k block
-	sec			; flag not found
-	rts
-
-@found:	tya
-	clc
-	adc __reu_reu_addr
-	tax
-	lda __reu_reu_addr+1
-	adc #$00
-	tay
-	lda __reu_reu_addr+2
-	RETURN_OK
-@end:
 .endproc
 
 ;*******************************************************************************
@@ -592,23 +483,7 @@ tab_num_elements: .word 0
 
 	; read the address to load from
 	jsr inline::getarg_zp_ind
-	stx __reu_reu_addr
-	sta __reu_reu_addr+1
-	jsr inline::setup_done
-
-	lda savea
-	jsr __reu_store1
-
-	ldx savex
-	ldy savey
-
-	; restore flags register
-	lda savep
-	pha
-	lda savea
-	plp
-
-	rts
+	jmp storeb_done
 .endproc
 
 ;*******************************************************************************
@@ -633,6 +508,10 @@ tab_num_elements: .word 0
 
 	; read the address to load from
 	jsr inline::getarg_zp_ind_off
+	; fall through to the shared transfer/register restore
+.endproc
+
+.proc storeb_done
 	stx __reu_reu_addr
 	sta __reu_reu_addr+1
 	jsr inline::setup_done
@@ -699,35 +578,12 @@ tab_num_elements: .word 0
 	; save .C flag
 	php
 	pla
-	and #$01		; mask .C bit
 	sta savep
 
 	; read the address to load from
 	jsr inline::setup
 	jsr inline::getarg_zp_ind
-	stx __reu_reu_addr
-	sta __reu_reu_addr+1
-	jsr inline::setup_done
-
-	jsr __reu_load1
-	sta savea
-
-	ldx savex
-	ldy savey
-
-	; set flags
-	cmp #$00
-	php
-	pla
-	and #$fe
-	ora savep	; restore .C bit
-	pha
-
-	lda savea
-
-	; restore flags register
-	plp
-	rts
+	jmp loadb_done
 .endproc
 
 ;*******************************************************************************
@@ -740,38 +596,30 @@ tab_num_elements: .word 0
 ;  - .N: set if loaded byte is negative
 ;  - .Z: set if loaded byte is 0
 .export	__reu_loadb_off
-.proc	__reu_loadb_off
+.proc __reu_loadb_off
 	; save .C flag
 	php
 	pla
-	and #$01		; mask .C bit
 	sta savep
 
 	; read the address to load from
 	jsr inline::setup
 	jsr inline::getarg_zp_ind_off
+	; fall through to the shared transfer/register restore
+.endproc
+
+.proc loadb_done
 	stx __reu_reu_addr
 	sta __reu_reu_addr+1
 	jsr inline::setup_done
 
 	jsr __reu_load1
-	sta savea
-
 	ldx savex
 	ldy savey
 
-	; set flags
-	cmp #$00	; set .N and .Z
-	php
-	pla
-	and #$fe	; mask .C bit
-	ora savep	; restore .C bit
-	pha		; save .N, .Z, and .C
-
-	lda savea
-
-	; restore flags register
-	plp
+	; Restore the saved carry, then set N/Z from the byte without changing C.
+	lsr savep
+	ora #$00
 	rts
 .endproc
 
@@ -784,7 +632,7 @@ tab_num_elements: .word 0
 ; CLOBBERS:
 ;  - .A, .X, .Y, .P
 .export	__reu_loadw
-.proc	__reu_loadw
+.proc __reu_loadw
 @dst=tmp
 	jsr inline::setup
 

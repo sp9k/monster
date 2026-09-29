@@ -14,6 +14,14 @@
 .import __src_mark_dirty
 .import __src_on_last_line
 
+.import append
+.import atcursor_prev
+.import bank_next
+.import cross_next
+.import cross_prev
+.import find_prev
+.import split
+
 .macpack longbranch
 
 buffstate   = zp::srccur
@@ -22,16 +30,31 @@ poststartzp = zp::srccur2
 line        = zp::srcline
 lines       = zp::srclines
 end         = zp::srcend
+srctmp      = zp::srctmp
 
-BUFFER_SIZE = $6000	; max size of buffer
+;*******************************************************************************
+; NOTE: must match source.asm
+POOL_TAIL = $fe
+next_of   = bank_next-FINAL_BANK_SOURCE0
+
+;*******************************************************************************
+; each segment is 1 bank mapped to BLK1; last 2 bytes are length while inactive
+BUFFER_SIZE = $2000-2	; max size of a segment
 GAPSIZE     = $100	; size of gap in gap buffer
+
+;*******************************************************************************
+; where destination of a copy between segments is mapped (BLK2)
+COPY_DST = $4000
 
 ;*******************************************************************************
 ; DATA
 ; This buffer holds the text data.  It is a large contiguous chunk of memory
 .segment "SOURCE"
 .assert * & $ff = 0, error, "source buffers must be page aligned"
-data: .res BUFFER_SIZE
+data:   .res BUFFER_SIZE
+seglen: .word 0
+
+.export __src_data := data
 
 .CODE
 
@@ -93,6 +116,10 @@ data: .res BUFFER_SIZE
 	cmp #>(BUFFER_SIZE+data)-1	; -1 to save space for a $100 byte gap
 	bcc @ok
 
+	; segment is full; split it
+	jsr split
+	bcc @ok
+
 @err:	; buffer overflow, cannot insert character
 	pla				; clean stack
 	lda #ERR_BUFFER_FULL
@@ -121,11 +148,7 @@ data: .res BUFFER_SIZE
 	ldy cursorzp+1
 	bmi @done	; out of range
 
-.ifndef ultimem
-	sta24 __src_bank, cursorzp
-.else
 	jsr insert
-.endif
 	cmp #$0d
 	bne @insdone
 
@@ -141,42 +164,33 @@ data: .res BUFFER_SIZE
 @done:	RETURN_OK
 .endproc
 
-.PUSHSEG
-.RODATA
+;*******************************************************************************
+; GAPLEN
+; Returns the length of the gap
+; OUT:
+;  - .XY: the length of the gap
+.proc gaplen
+	ldxy poststartzp
+	sub16 cursorzp
+	rts
+.endproc
 
 ;*******************************************************************************
-; SYNC X
-; Syncs the zp::srcx based on the distance from the start of the line or buffer
-.export sync_x
-.proc sync_x
-@cur=r0
-@x=r2
-	jsr activate_source
-	ldxy cursorzp
-	stxy @cur
+; ON LINE INSERTED
+; Callback to handle a line insertion. Various state needs to be shifted when
+; this occurs (breakpoints, etc.)
+.proc on_line_inserted
+	; TODO:
+	; update debug info: find all line programs in the current file with
+	; start lines greater than the current line and increment those
 
-	ldy #$00
-	sty @x
-
-@l0:	lda @cur
-	cmp #<data
-	bne :+
-	lda @cur+1
-	cmp #>data
-	beq @done
-
-:	decw @cur
-	lda (@cur),y
-	cmp #$0d
-	beq @done
-	inc @x
-	bne @l0			; branch always
-
-@done:	lda @x
-	sta zp::srcx
-	jsr deactivate_source
-	RETURN_OK
+	CALLMAIN errlog::inserted
+	rts
 .endproc
+
+;*******************************************************************************
+; The following routines run outside BLK1 and map source segments into BLK1.
+.RODATA
 
 ;*******************************************************************************
 ; DOWN
@@ -205,7 +219,14 @@ data: .res BUFFER_SIZE
 	bne @go			; branch always
 
 @small:	cpx #$00
-	beq @eof		; no chars after the cursor; cannot move down
+	bne @go
+
+	; this segment is exhausted; continue in the next one
+	jsr deactivate_source
+	jsr cross_next
+	bcs @eof		; end of the buffer
+	jsr activate_source
+	jmp @chunk
 
 @go:	ldy #$00
 @l0:	lda (poststartzp),y
@@ -219,19 +240,21 @@ data: .res BUFFER_SIZE
 	bne @l0
 
 	; no newline in this chunk; advance past the copied bytes and
-	; continue with the next chunk (if the buffer end was reached, the
-	; next iteration exits via @eof with the cursor moved to the end)
+	; continue with the next chunk
 	jsr @advance
 	jmp @chunk
 
-@eof:	jsr deactivate_source
-	sec			; end of the buffer
+@eof:	sec			; end of the buffer
 	rts
 
 @ok:	incw line
 	jsr @advance
-	clc			; success
-	jmp deactivate_source
+	jsr deactivate_source
+	jsr at_seg_end
+	bne :+
+	jsr cross_next
+:	clc			; success
+	rts
 
 @advance:
 	; move both gap pointers past the .Y bytes that were copied
@@ -251,13 +274,315 @@ data: .res BUFFER_SIZE
 .endproc
 
 ;*******************************************************************************
+; AT SEG END
+; OUT:
+;  - .Z: set if there is no after-gap text in the active segment
+.proc at_seg_end
+	ldx poststartzp
+	cpx end
+	bne :+
+	ldx poststartzp+1
+	cpx end+1
+:	rts
+.endproc
+
+;*******************************************************************************
+; NEXT
+; Moves the cursor up one character in the gap buffer
+; OUT:
+;  - .A: the character at the new cursor position in .A
+;  - .C: clear on success (always clear)
+.export __src_next
+.proc __src_next
+	ldx poststartzp
+	cpx end
+	bne @move
+	ldx poststartzp+1
+	cpx end+1
+	beq @done
+@move:
+
+	; switch to the bank that contains the source buffer's data
+	jsr activate_source
+
+	; move one byte from the end of the gap to the start
+	ldy #$00
+	lda (poststartzp),y
+	sta (cursorzp),y
+
+	incw cursorzp
+	incw poststartzp
+
+	; switch back to main bank
+	jsr deactivate_source
+
+	ldx poststartzp
+	cpx end
+	bne :+
+	ldx poststartzp+1
+	cpx end+1
+	bne :+
+	pha
+	jsr cross_next
+	pla
+
+:	cmp #$0d
+	bne @done
+	incw line
+
+	ldx #$ff
+	stx zp::srcx		; reset cursor "column"
+
+@done:	inc zp::srcx		; move to next "column"
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; PREV
+; Moves the cursor back one character in the gap buffer.
+; NOTE: srcx will not be accurate if a newline is crossed by this routine.
+; OUT:
+;  - .A: the character at the new cursor position (if not at the start of buff)
+;  - .C: set if we're at the start of the buffer and couldn't move back
+.export __src_prev
+.proc __src_prev
+	lda cursorzp
+	bne @cont
+	lda cursorzp+1
+	cmp #>data
+	bne @cont
+	jsr cross_prev
+	bcc @cont
+	jsr __src_atcursor
+	sec
+	rts
+
+@cont:	; move char from start of gap to the end of the gap
+	decw cursorzp
+	decw poststartzp
+
+	; switch to the bank that contains the source buffer's data
+	jsr activate_source
+
+	; move one byte from the start of the gap to the end
+	ldy #$00
+	lda (cursorzp),y
+	sta (poststartzp),y
+
+	cmp #$0d
+	bne :+
+	decw line
+
+:	dec zp::srcx		; decrement cursor "column"
+	bpl @done
+	inc zp::srcx
+
+@done:	; read the new cursor character and restore MAIN
+	jsr atcursor_mapped
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; ATCURSOR
+; Returns the character at the cursor position.
+; OUT:
+;  - .A: the character at the current cursor position
+.export __src_atcursor
+.proc __src_atcursor
+	jsr activate_source
+	ldy #$00
+
+	; fall through to atcursor_mapped
+.endproc
+
+;*******************************************************************************
+; ATCURSOR MAPPED
+; Reads the byte before cursorzp, or the previous segment's last byte when
+; cursorzp is at the segment start. Restores MAIN before returning.
+; Assumes the active source segment is mapped to BLK1.
+; IN:
+;  - .Y:   zero
+; OUT:
+;  - .A: the character read, or zero at the start of the buffer
+.proc atcursor_mapped
+	lda cursorzp
+	bne @local
+	lda cursorzp+1
+	cmp #>data
+	bne @local
+	jsr deactivate_source
+	jmp atcursor_prev
+
+@local:	decw cursorzp
+	lda (cursorzp),y
+	incw cursorzp
+	jmp deactivate_source
+.endproc
+
+;*******************************************************************************
+; ACTIVATE SOURCE
+; Maps the active segment into BLK1
+; CLOBBERS:
+;  - .X
+.proc activate_source
+	ldx __src_bank
+	; fall through to map_bank
+.endproc
+
+;*******************************************************************************
+; MAP BANK
+; Maps the given bank into BLK1
+; IN:
+;  - .X: the bank to map
+; CLOBBERS:
+;  - .X
+.proc map_bank
+	stx $9ff8
+	ldx #$57
+	stx $9ff2	; RAM in BLK1
+	rts
+.endproc
+
+;*******************************************************************************
+; INSERT
+.proc insert
+	jsr activate_source
+	ldy #$00
+	sta (cursorzp),y
+
+	; fall through to deactivate_source
+.endproc
+
+;*******************************************************************************
+; DEACTIVATE SOURCE
+; Restores the MAIN bank to BLK1
+; CLOBBERS:
+;  - none (.C is preserved)
+.proc deactivate_source
+	pha
+	lda #$01
+	sta $9ff8
+	lda #$55		; ROM in BLK 1/2/3
+	sta $9ff2
+	pla
+	rts
+.endproc
+
+;*******************************************************************************
+; SYNC X
+; Syncs the zp::srcx based on the distance from the start of the line or buffer
+.export sync_x
+.proc sync_x
+@cur=r0
+@x=r2
+@bank=r3
+	lda __src_bank
+	sta @bank
+	ldxy cursorzp
+	stxy @cur
+	lda #$00
+	sta @x
+
+@seg:	ldx @bank
+	jsr map_bank
+	ldy #$00
+@l0:	lda @cur
+	bne @scan
+	lda @cur+1
+	cmp #>data
+	bne @scan
+
+	; start of this segment; continue in the previous one
+	jsr deactivate_source
+	ldx @bank
+	jsr find_prev
+	bcs @done
+	sta @bank
+	jsr __src_seg_len
+	stx @cur
+	tya
+	clc
+	adc #>data
+	sta @cur+1
+	jmp @seg
+
+@scan:	decw @cur
+	lda (@cur),y
+	cmp #$0d
+	beq @done
+	inc @x
+	bne @l0			; branch always
+
+@done:	lda @x
+	sta zp::srcx
+	jsr deactivate_source
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; SEG SET LEN
+; Stores the length of an inactive segment
+; IN:
+;  - .A:  the segment's bank
+;  - .XY: its length
+.export __src_seg_set_len
+.proc __src_seg_set_len
+	pha
+	txa
+	pha
+	tsx
+	lda $0102,x
+	tax
+	jsr map_bank
+	pla
+	sta seglen
+	sty seglen+1
+	pla
+
+	jmp deactivate_source
+.endproc
+
+;*******************************************************************************
+; SEG PEEK
+; Reads a byte of a segment
+; IN:
+;  - .A:  the segment's bank
+;  - .XY: the offset to read
+; OUT:
+;  - .A: the byte read
+.export __src_seg_peek
+.proc __src_seg_peek
+@ptr=zp::bankaddr0
+	.assert <data = 0, error, "data must be page aligned"
+	pha
+	stx @ptr
+	tya
+	clc
+	adc #>data
+	sta @ptr+1
+	pla
+	tax
+	jsr map_bank
+	ldy #$00
+	lda (@ptr),y
+	jmp deactivate_source
+.endproc
+
+.segment "SRCCODE"
+.import __SRCCODE_RUN__
+.assert __SRCCODE_RUN__ >= $4000, error, "SRCCODE must not be in BLK1"
+
+;*******************************************************************************
 ; UPN
-; Advances the source by the number of lines in .XY
+; Advances the source by the given number of lines.
 ; IN:
 ;  - .XY: the number of lines to move "up"
 ; OUT:
-;  - .C: set if the beginning was reached before the total lines requested could
+;  - .C: set if the beginning was reached before total lines requested could
 ;        be reached
+; Runs from BLK5 while source segments are mapped into BLK1.
+.pushseg
+.RODATA
 .export __src_upn
 .proc __src_upn
 @cnt=r4
@@ -272,6 +597,7 @@ data: .res BUFFER_SIZE
 	bcc @loop
 @done:	jmp deactivate_source
 .endproc
+.popseg
 
 ;*******************************************************************************
 ; UP
@@ -295,6 +621,7 @@ data: .res BUFFER_SIZE
 ; already on the first line
 ; this will leave the cursor on the first newline character encountered while
 ; going backwards through the source.
+; Must be called with the source activated.
 ; OUT:
 ;  - .C: set if cursor is at the start of the buffer
 .proc up
@@ -302,32 +629,19 @@ data: .res BUFFER_SIZE
 	lda #$00
 	sta zp::srcx
 
-	; if MSB of of cursorzp > (>data), use max value for counter ($ff)
-	; if MSB is >data, use the LSB of the cursorzp pointer as counter
-	lda cursorzp
-	sec
-	sbc #<data
-	tax
-	lda cursorzp+1
-	sbc #>data
-	beq :+
-	ldx #$ff
-
-:	txa
-	beq @eof		; cursorzp == data
+	jsr @avail
+	bcs @eof
 	decw cursorzp
 	decw poststartzp
-
-	ldy #$00
 	lda (cursorzp),y
 	sta (poststartzp),y
 	cmp #$0d
-	bne :+
+	bne @chunk
 	decw line
 
-:	dex
-	beq @eof
-
+;-------------------------------------------------------------------------------
+@chunk:	jsr @avail
+	bcs @eof
 @l0:	decw cursorzp
 	decw poststartzp
 	lda (cursorzp),y
@@ -336,101 +650,49 @@ data: .res BUFFER_SIZE
 	beq @done
 	dex
 	bne @l0
+	beq @chunk		; branch always
 
-@eof:	jsr deactivate_source
-	sec				; end of the buffer
-	rts
+@eof:	rts
 
+;-------------------------------------------------------------------------------
 @done:	; increment pointers once (we want to end just before the newline
 	incw cursorzp
 	incw poststartzp
-	RETURN_OK
-.endproc
 
-;*******************************************************************************
-; NEXT
-; Moves the cursor up one character in the gap buffer
-; OUT:
-;  - .A: the character at the new cursor position in .A
-;  - .C: clear on success (always clear)
-.export __src_next
-.proc __src_next
-	; do __src_end inline to save the cycles from JSR and RTS
-	ldx poststartzp
-	cpx end
-	bne @cont
-	ldx poststartzp+1
-	cpx end+1
-	beq @done
-
-@cont:	; switch to the bank that contains the source buffer's data
-	jsr activate_source
-
-	; move one byte from the end of the gap to the start
-	ldy #$00
-	lda (poststartzp),y
-	sta (cursorzp),y
-
-	incw cursorzp
-	incw poststartzp
-
-	; switch back to main bank
-	jsr deactivate_source
-
-	cmp #$0d
-	bne @done
-	incw line
-
-	ldx #$ff
-	stx zp::srcx		; reset cursor "column"
-
-@done:	inc zp::srcx		; move to next "column"
-	RETURN_OK
-.endproc
-
-;*******************************************************************************
-; PREV
-; Moves the cursor back one character in the gap buffer.
-; NOTE: srcx will not be accurate if a newline is crossed by this routine.
-; OUT:
-;  - .A: the character at the new cursor position (if not at the start of buff)
-;  - .C: set if we're at the start of the buffer and couldn't move back
-.export __src_prev
-.proc __src_prev
-	jsr __src_start
+	; the newline may have ended its segment
+	jsr at_seg_end
 	bne :+
-	jsr __src_atcursor
+	jsr deactivate_source
+	jsr cross_next
+	jsr activate_source
+:	RETURN_OK
+
+;-------------------------------------------------------------------------------
+; .X = bytes before the cursor in this segment (max $ff), moving to the
+; previous segment if there are none. .C is set at the start of the buffer.
+@avail:	lda cursorzp
 	sec
+	sbc #<data
+	tax
+	lda cursorzp+1
+	sbc #>data
+	beq :+
+	ldx #$ff
+:	ldy #$00
+	txa
+	bne @ok
+
+	jsr deactivate_source
+	jsr cross_prev
+
+	php
+	jsr activate_source
+	plp
+	bcc @avail
 	rts
 
-:	; move char from start of gap to the end of the gap
-	decw cursorzp
-	decw poststartzp
-
-	; switch to the bank that contains the source buffer's data
-	jsr activate_source
-
-	; move one byte from the start of the gap to the end
-	ldy #$00
-	lda (cursorzp),y
-	sta (poststartzp),y
-
-	cmp #$0d
-	bne :+
-	decw line
-
-:	dec zp::srcx		; decrement cursor "column"
-	bpl @done
-	inc zp::srcx
-
-@done:	; get the character at the new cursor position
-	decw cursorzp
-	lda (cursorzp),y
-	incw cursorzp
-
-	jsr deactivate_source
-
-	RETURN_OK
+@ok:	clc
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -466,9 +728,15 @@ data: .res BUFFER_SIZE
 @store:	; make sure there is room for the character
 	ldy end+1
 	cpy #>(BUFFER_SIZE+data)
-	bcs @full		; buffer is full
+	bcc @room
 
+	; segment is full; continue in a new one
 	pha
+	jsr append
+	pla
+	bcs @full
+
+@room:	pha
 	jsr activate_source
 	pla
 	ldy #$00
@@ -481,135 +749,234 @@ data: .res BUFFER_SIZE
 	sec
 	rts
 .endproc
-.POPSEG
 
 ;*******************************************************************************
-; START
-; Returns .Z set if the cursor is at the start of the buffer.
+; GET IN
+; Reads the line at the cursor into the given address
+; IN:
+;  - .XY: destination to copy to
 ; OUT:
-;  - .Z: set if the cursor is at the start of the buffer
-.export __src_start
-.proc __src_start
-	ldx cursorzp
-	bne @done	; if LSB is !0, not the start
-	ldx cursorzp+1
-	cpx #>data
-@done:	rts
+;  - (.XY): a line of text from the cursor position (0-terminated)
+.export __src_getin
+.proc __src_getin
+	lda #LINESIZE
+	; fall through to the bank-spanning reader
 .endproc
 
 ;*******************************************************************************
-; GAPLEN
-; Returns the length of the gap
-; OUT:
-;  - .XY: the length of the gap
-.proc gaplen
-	ldxy poststartzp
-	sub16 cursorzp
-	rts
-.endproc
-
-;*******************************************************************************
-; ON LINE INSERTED
-; Callback to handle a line insertion. Various state needs to be shifted when
-; this occurs (breakpoints, etc.)
-.proc on_line_inserted
-	; TODO:
-	; update debug info: find all line programs in the current file with
-	; start lines greater than the current line and increment those
-
-	CALLMAIN errlog::inserted
-	rts
-.endproc
-
-.ifdef ultimem
-.segment "BANKCODE"
-.endif
-;*******************************************************************************
-; ATCURSOR
-; Returns the character at the cursor position.
-; OUT:
-;  - .A: the character at the current cursor position
-.export __src_atcursor
-.proc __src_atcursor
-	decw cursorzp
-.ifndef ultimem
-	lda24 __src_bank, cursorzp
-.else
-	jsr activate_source
-	ldy #$00
-	lda (cursorzp),y
-	jsr deactivate_source
-.endif
-	incw cursorzp
-	rts
-.endproc
-
-.ifdef ultimem
-;*******************************************************************************
-; ACTIVATE SOURCE
-; Maps the active source buffer's 3 banks into BLK1/2/3
-.proc activate_source
-.ifdef ultimem_p
-	ldx __src_bank
-	stx $9ff3	; load the source buffer's profile
-	rts
-.else
-	; bank in the source buffer
-	ldx __src_bank
-	stx $9ff8	; BLK1 = base of source bank
-	inx
-	stx $9ffa	; BLK2 = source base bank + 1
-	inx
-	stx $9ffc	; BLK3 = source base bank + 2
-	ldx #$7f
-	stx $9ff2	; RAM in BLK 1/2/3
-	rts
-.endif
-.endproc
-
-;*******************************************************************************
-; INSERT
-.proc insert
-	jsr activate_source
-	ldy #$00
-	sta (cursorzp),y
-
-	; fall through to deactivate_source
-.endproc
-
-;*******************************************************************************
-; DEACTIVATE SOURCE
-; Restores the MAIN bank
-.proc deactivate_source
-.ifdef ultimem_p
-	ldx #FINAL_BANK_MAIN
-	stx $9ff3		; restore the MAIN profile
-	rts
-.else
-	ldx #$01
-	stx $9ff8
-	inx
-	stx $9ffa
-	inx
-	stx $9ffc
-	ldx #$55		; ROM in BLK 1/2/3
-	stx $9ff2
-	rts
-.endif
-.endproc
-
-.segment "BANKCODE"
-;*******************************************************************************
-; COPY LINE
-.export src_copyline
-.proc src_copyline
+; READSPAN
+; Reads the given number of bytes to the given destination.
+; IN:
+;   - .A: maximum characters
+;   - .XY: destination to read to
+.export __src_readspan
+.proc __src_readspan
+@max=zp::banktmp
 @src=zp::bankaddr0
-@target=zp::bankaddr1
+@dst=zp::bankaddr1
+@end=srctmp
+@bank=srctmp+2
+	sta @max
+	stxy @dst
+	ldxy poststartzp
+	stxy @src
+	ldxy end
+	stxy @end
+	lda __src_bank
+	sta @bank
 	jsr activate_source
-	cpy #MAX_LINE_LEN
-	bcc :+
-	ldy #MAX_LINE_LEN-1
-:	COPY_Y @src, @target
+
+	ldy #$00
+@chunk:
+	; @src includes a -Y offset; .Y indexes both source and destination
+	; across segment boundaries.
+	lda @end
+	sec
+	sbc @src
+	tax
+	lda @end+1
+	sbc @src+1
+	bne @full
+	cpx @max
+	bcc @limit
+
+@full:	ldx @max
+@limit:	stx srctmp+3
+	cpy srctmp+3
+	beq @cross
+
+@get:	lda (@src),y
+	cmp #$0d
+	beq @done
+	sta (@dst),y
+	iny
+	cpy srctmp+3
+	bcc @get
+	cpy @max
+	beq @done
+
+;-------------------------------------------------------------------------------
+@cross:	ldx @bank
+	lda next_of,x
+	cmp #POOL_TAIL
+	bcs @done
+	sta @bank
+	tax
+	jsr map_bank
+	lda seglen
+	sta @end
+	lda seglen+1
+	clc
+	adc #>data
+	sta @end+1
+	; Bias the new source pointer by -Y without moving the destination.
+	tya
+	eor #$ff
+	sec
+	adc #<data
+	sta @src
+	lda #>data-1
+	adc #$00
+	sta @src+1
+	jmp @chunk
+
+@done:	lda #$00
+	sta (@dst),y
+	jsr deactivate_source
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; SEG LEN
+; Returns the stored length of an inactive segment
+; IN:
+;  - .A: the segment's bank
+; OUT:
+;  - .XY: its length
+.export __src_seg_len
+.proc __src_seg_len
+	tax
+	jsr map_bank
+	ldx seglen
+	ldy seglen+1
 	jmp deactivate_source
 .endproc
-.endif
+
+;*******************************************************************************
+; SEG CLOSE
+; Closes the active segment's gap and stores its length
+; OUT:
+;  - .XY: segment's length
+;  - end: end of the text (other pointers are invalidated)
+.export __src_seg_close
+.proc __src_seg_close
+@src=zp::bankaddr0
+@dst=zp::bankaddr1
+	jsr activate_source
+
+	ldxy cursorzp
+	cmpw poststartzp
+	beq @nogap
+
+	; move [poststart, end) down to the cursor
+	stxy @dst
+	ldxy poststartzp
+	stxy @src
+	jsr copy_to_end
+	stxy end
+
+@nogap:	lda end
+	sta seglen
+	tax
+	lda end+1
+	sec
+	sbc #>data
+	sta seglen+1
+	tay
+
+	jmp deactivate_source
+.endproc
+
+;*******************************************************************************
+; SEG COPY
+; Copies the active segment's text from the given page to its end into the
+; start of another segment and stores that segment's length.
+; IN:
+;  - .A: the destination segment's bank
+;  - .X: the page (offset from the start of the segment) to copy from
+.export __src_seg_copy
+.proc __src_seg_copy
+@src=zp::bankaddr0
+@dst=zp::bankaddr1
+	sta $9ffa		; BLK2 = destination
+	txa
+	clc
+	adc #>data
+	sta @src+1
+	lda #$00
+	sta @src
+	sta @dst
+	lda #>COPY_DST
+	sta @dst+1
+	jsr activate_source
+	lda #$5f
+	sta $9ff2		; RAM in BLK1 and BLK2
+
+	jsr copy_to_end
+	stx COPY_DST+BUFFER_SIZE
+	tya
+	sec
+	sbc #>COPY_DST
+	sta COPY_DST+BUFFER_SIZE+1
+
+	lda #$02
+	sta $9ffa		; restore BLK2
+	jmp deactivate_source
+.endproc
+
+;*******************************************************************************
+; COPY TO END
+; Copies [bankaddr0, end) to bankaddr1, lowest address first
+; OUT:
+;  - .XY: the end of the copy's destination
+.proc copy_to_end
+@src=zp::bankaddr0
+@dst=zp::bankaddr1
+	lda end
+	sec
+	sbc @src
+	pha
+	lda end+1
+	sbc @src+1
+	tax
+	ldy #$00
+	txa
+	beq @rest
+
+@page:	lda (@src),y
+	sta (@dst),y
+	iny
+	bne @page
+	inc @src+1
+	inc @dst+1
+	dex
+	bne @page
+@rest:	pla
+	tax
+	beq @done
+
+@l0:	lda (@src),y
+	sta (@dst),y
+	iny
+	dex
+	bne @l0
+
+@done:	tya
+	clc
+	adc @dst
+	tax
+	lda @dst+1
+	adc #$00
+	tay
+	rts
+.endproc

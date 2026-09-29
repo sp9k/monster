@@ -24,6 +24,7 @@ __ram_mem01: .byte $34
 reubankstack: .res 16
 
 .ifdef CART
+.export cur_rombank
 cur_rombank:  .byte $ff	; ROM bank of the current context ($ff = resident)
 rombankstack: .res 16	; ROM bank stack (parallels reubankstack)
 
@@ -54,6 +55,7 @@ codebanks:
 	.byte CART_BANK_VSCREEN	; $19 VSCREEN
 	.byte CART_BANK_EXPR	; $1a EXPR/FP
 	.byte CART_BANK_LABELS	; $1b paged symbol metadata
+	.byte CART_BANK_SID	; $1c SID loader/player
 .endif
 
 ;*******************************************************************************

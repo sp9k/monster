@@ -32,6 +32,7 @@
 .include "watches.inc"
 .include "vmem.inc"
 .include "zeropage.inc"
+.macpack longbranch
 
 .ifdef vic20
 CUR_BANK .set FINAL_BANK_MAIN
@@ -72,7 +73,13 @@ winbot: .byte 0		; last (bottom) row of the view's contents
 .export __view_select
 .export __view_refresh
 
-.if .defined(CART) .and .defined(c64)
+.ifdef vic20
+__view_edit:    JUMP FINAL_BANK_VIEWERS, viewedit
+__view_select:  JUMP FINAL_BANK_VIEWERS, select
+__view_refresh: JUMP FINAL_BANK_VIEWERS, refresh
+windraw_vec:    JUMP FINAL_BANK_VIEWERS, windraw
+enter_vec:      JUMP FINAL_BANK_VIEWERS, enter
+.elseif .defined(CART) .and .defined(c64)
 __view_edit:    JUMP FINAL_BANK_DBGUI, viewedit
 __view_select:  JUMP FINAL_BANK_DBGUI, select
 __view_refresh: JUMP FINAL_BANK_DBGUI, refresh
@@ -108,7 +115,12 @@ window:
 .byte 0				; $10 unused
 .POPSEG
 
+.ifdef vic20
+.segment "VIEWERS"
+CUR_BANK .set FINAL_BANK_VIEWERS
+.else
 BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
+.endif
 
 ;*******************************************************************************
 ; EDIT
@@ -134,12 +146,12 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 .proc setbounds
 	ldx #COL_START
 	ldy wintop
-	jsr cur::setmin
+	CALLMAIN cur::setmin
 
 	ldy winbot
 	iny
 	ldx #COL_STOP
-	jmp cur::setmax
+	JUMPMAIN cur::setmax
 .endproc
 
 ;*******************************************************************************
@@ -162,19 +174,19 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 	ldy wintop
 	ldx #COL_START
-	jsr cur::set
+	CALLMAIN cur::set
 
 	lda #TEXT_REPLACE
 	sta text::insertmode
 
 ; until user exits, get input and update memory
-@edit:	jsr cur::on
+@edit:	CALLMAIN cur::on
 	ldxy memaddr
 	stxy @src
 
-	jsr key::waitui
+	CALLMAIN key::waitui
 	pha
-	jsr cur::off
+	CALLMAIN cur::off
 	pla
 
 	cmp #K_UP_ARROW
@@ -184,7 +196,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	jsr refresh		; redraw at the new address
 	ldy wintop
 	ldx #COL_START
-	jsr cur::set		; move back to home row/col (draws the cursor)
+	CALLMAIN cur::set		; move back to home row/col (draws the cursor)
 	jmp @edit
 
 :	cmp #K_QUIT
@@ -226,29 +238,29 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	; move the cursor back in bounds if the window shrank
 	lda zp::cury
 	cmp wintop
-	bcs @edit
+	jcs @edit
 	ldy wintop
 	ldx zp::curx
-	jsr cur::set
+	CALLMAIN cur::set
 	jmp @edit
 
-:	jsr key::isup
+:	CALLMAIN key::isup
 	bne :+
 @up:	jsr up
 	jmp @edit
 
-:	jsr key::isdown
+:	CALLMAIN key::isdown
 	bne :+
 @down:	jsr down
 	jmp @edit
 
-:	jsr key::isleft	; h or left
+:	CALLMAIN key::isleft	; h or left
 	bne :+
 @retreat:
 	jsr @prev_x
 	jmp @edit
 
-:	jsr key::isright
+:	CALLMAIN key::isright
 	bne :+
 @right: jsr @next_x
 	jmp @edit
@@ -257,7 +269,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	bne :+
 	jmp @find
 
-:	jsr key::ishex
+:	CALLMAIN key::ishex
 	bcs @replace_val
 	cmp #K_SET_WATCH
 	beq @setwatch
@@ -272,14 +284,14 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	pha
 
 	lda #WATCH_STORE
-	jsr watch::add
+	CALLMAIN watch::add
 
 	ldxy #strings::watch_added
 	RENDER_STR
 	lda #DEBUG_MESSAGE_LINE
 	CALLMAIN text::print
 
-	jsr beep::short	; beep to confirm add
+	CALLMAIN beep::short	; beep to confirm add
 	jmp @edit
 
 @done:	lda #GUI_RET_QUIT
@@ -294,7 +306,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 ;--------------------------------------
 ; get the address of the memory at the cursor position
 @set_nybble:
-	jsr util::chtohex
+	CALLMAIN util::chtohex
 	pha
 
 	; get the base address for the row that the cursor is on
@@ -335,7 +347,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 @hinybble:
 	ldxy @dst
 	lda @dstoffset
-	jsr vmem::load_off
+	CALLMAIN vmem::load_off
 
 	and #$0f
 	sta @odd
@@ -351,7 +363,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 @lownybble:
 	ldxy @dst
 	lda @dstoffset
-	jsr vmem::load_off
+	CALLMAIN vmem::load_off
 
 	and #$f0
 	sta @odd
@@ -361,7 +373,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	sta zp::bankval
 	ldxy @dst
 	lda @dstoffset
-	jmp vmem::store_off
+	JUMPMAIN vmem::store_off
 
 ;--------------------------------------
 ; move cursor to the next x-position
@@ -376,7 +388,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	dey
 	bpl :-
 	ldy zp::cury
-	jmp cur::set
+	JUMPMAIN cur::set
 
 ;--------------------------------------
 ; move cursor to the previous x-position
@@ -391,7 +403,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	dey
 	bpl :-
 	ldy zp::cury
-	jmp cur::set
+	JUMPMAIN cur::set
 
 ;--------------------------------------
 ; table of columns to skip in cursor movement
@@ -429,7 +441,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	sta text::insertmode
 	bcs @reset		; input cancelled
 
-	jsr util::parsehex	; parse the user's given hex string
+	CALLMAIN util::parsehex	; parse the user's given hex string
 	bcs @find		; if invalid hex, retry
 	lda @len
 	cmp #$03
@@ -465,7 +477,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	dec memaddr+1
 :	lda wintop
 	ldx winbot
-	jsr text::scrolldown
+	CALLMAIN text::scrolldown
 	lda wintop
 	jsr draw_row
 	jmp refresh_title
@@ -494,7 +506,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	inc memaddr+1
 :	ldx wintop
 	lda winbot
-	jsr text::scrollup
+	CALLMAIN text::scrollup
 	lda winbot
 	jsr draw_row
 	jmp refresh_title
@@ -582,7 +594,11 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	stx winbot
 	stx @row
 
-	CALLMAIN format_title	; GUICODE is hidden while the DBGUI bank is mapped
+.ifdef vic20
+	jsr format_title
+.else
+	CALLMAIN format_title
+.endif
 
 @l0:	lda @row
 	jsr draw_row
@@ -598,7 +614,11 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 ; REFRESH TITLE
 ; Refreshes the tile row for the memory viewer
 .proc refresh_title
+.ifdef vic20
+	jsr format_title
+.else
 	CALLMAIN format_title
+.endif
 	JUMPMAIN gui::refresh_titles
 .endproc
 
@@ -606,15 +626,17 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 ; FORMAT TITLE
 ; Renders the base address for the current view
 .PUSHSEG
+.ifndef vic20
 .segment "GUICODE"
+.endif
 .proc format_title
 	lda memaddr
-	jsr util::hextostr
+	CALLMAIN util::hextostr
 	stx strings::memview_title+TITLE_ADDR_START+3
 	sty strings::memview_title+TITLE_ADDR_START+2
 
 	lda memaddr+1
-	jsr util::hextostr
+	CALLMAIN util::hextostr
 	stx strings::memview_title+TITLE_ADDR_START+1
 	sty strings::memview_title+TITLE_ADDR_START
 	rts
@@ -645,14 +667,14 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	lda memaddr+1
 	adc #$00
 	tay
-	jsr ui::memline
+	CALLMAIN ui::memline
 
 	pla
 	pha
 	CALLMAIN text::print	; draw the row of rendered bytes
 	pla
 	tax
-	jmp draw::resetline
+	JUMPMAIN draw::resetline
 .endproc
 
 ;*******************************************************************************
@@ -718,7 +740,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 	stxy @addr		; store the address of the LSB
 	lda #$01		; next byte
-	jsr vmem::load_off
+	CALLMAIN vmem::load_off
 	cmp @val+1		; is the MSB a match our value's?
 	beq @found		; if so, we found our word
 @next:	incw @addr		; try from the next address
@@ -753,7 +775,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	sta @val
 
 @l0:	ldxy @addr	; get current address to seek at
-	jsr vmem::load	; load the value at the next address
+	CALLMAIN vmem::load	; load the value at the next address
 	cmp @val	; == val we're looking for?
 	beq @found	; if so, we're done
 	incw @addr	; move to the next address

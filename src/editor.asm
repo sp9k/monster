@@ -2219,8 +2219,11 @@ cancel = enter_command
 	; a LINE selection of an empty line has end < start: nothing to copy
 	; (the copy buffer is left empty and delete will remove just the line)
 	jsr src::pos
-	cmpw @cur
-	bcc @restoresrc
+	txa			; positions wrap at 64K: compare signed
+	cmp @cur
+	tya
+	sbc @cur+1
+	bmi @restoresrc
 
 @copy:	jsr src::atcursor	; get next char to copy
 	cmp #$00		; EOF?
@@ -2298,8 +2301,11 @@ cancel = enter_command
 	cmpw @cur
 	beq @done	; nothing copied
 
-:	cmpw @cur
-	bcs @cont	; end >= cur, don't swap
+:	txa		; positions wrap at 64K: compare signed
+	cmp @cur
+	tya
+	sbc @cur+1
+	bpl @cont	; end >= cur, don't swap
 
 	; end < cur; swap them
 	lda @cur
@@ -4074,6 +4080,7 @@ goto_buffer:
 	pla			; restore file handle
 	php			; save load status
 	jsr file::close		; close the file
+	jsr src::rewind		; loading leaves the cursor in the last segment
 	plp			; restore load status
 	bcs @err
 

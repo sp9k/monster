@@ -14,6 +14,14 @@
 .import __src_mark_dirty
 .import __src_on_last_line
 
+.import append
+.import atcursor_prev
+.import bank_next
+.import cross_next
+.import cross_prev
+.import find_prev
+.import split
+
 .macpack longbranch
 
 buffstate   = zp::srccur
@@ -22,11 +30,33 @@ poststartzp = zp::srccur2
 line        = zp::srcline
 lines       = zp::srclines
 end         = zp::srcend
+srctmp      = zp::srctmp
 
-; TODO:
-BUFFER_SIZE = $8000	; max size of buffer
+; NOTE: must match source.asm
+POOL_TAIL = $fe
+next_of   = bank_next-FINAL_BANK_SOURCE0
+
+BUFFER_SIZE = $8000	; max size of a segment
 GAPSIZE     = $100	; size of gap in gap buffer
 PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
+
+SEGLEN_ADDR = BUFFER_SIZE
+
+.export __src_data: abs = 0
+
+.BSS
+seglen: .word 0
+
+;*******************************************************************************
+; private buffer for source DMA transfers
+.ifdef CART
+.segment "SRCVARS"	; always-visible high RAM
+.else
+.DATA			; resident RAM visible during DMA
+.endif
+READ_CHUNK = 64
+readbuf: .res READ_CHUNK
+.assert (readbuf+READ_CHUNK <= $a000) .or ((readbuf >= $c000) .and (readbuf+READ_CHUNK <= $d000)), lderror, "source DMA buffer must be visible with I/O enabled"
 
 .CODE
 ;*******************************************************************************
@@ -115,9 +145,15 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 @store:	; make sure there is room for the character
 	ldy end+1
 	cpy #>BUFFER_SIZE
-	bcs @full		; buffer is full
+	bcc @room
 
-	ldy __src_bank
+	; segment is full; continue in a new one
+	pha
+	jsr append
+	pla
+	bcs @full
+
+@room:	ldy __src_bank
 	sty reu::reuaddr+2
 	STOREB end
 	incw end
@@ -139,8 +175,6 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 ;  - $120-$130: may be clobbered if newline is inserted
 .export __src_insert
 .proc __src_insert
-@src=r2
-@dst=r4
 	cmp #$0d
 	beq :+
 	cmp #$0a
@@ -165,6 +199,10 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	; must stay below the top of the buffer
 	lda end+1
 	cmp #>BUFFER_SIZE-1	; -1 to save space for a $100 byte gap
+	bcc @ok
+
+	; segment is full; split it
+	jsr split
 	bcc @ok
 
 @err:	; buffer overflow, cannot insert character
@@ -226,15 +264,15 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 ;  - .C: clear on success (always clear)
 .export __src_next
 .proc __src_next
-	; do __src_end inline to save the cycles from JSR and RTS
 	ldx poststartzp
 	cpx end
-	bne @cont
+	bne @move
 	ldx poststartzp+1
 	cpx end+1
 	beq @done
+@move:
 
-@cont: ; move one byte from the end of the gap to the start
+	; move one byte from the end of the gap to the start
 	lda __src_bank
 	sta reu::reuaddr+2
 
@@ -244,7 +282,17 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 	incw cursorzp
 	incw poststartzp
 
-	cmp #$0d
+	ldx poststartzp
+	cpx end
+	bne :+
+	ldx poststartzp+1
+	cpx end+1
+	bne :+
+	pha
+	jsr cross_next
+	pla
+
+:	cmp #$0d
 	bne @done
 	incw line
 
@@ -256,6 +304,106 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 .endproc
 
 ;*******************************************************************************
+; AT SEG END
+; OUT:
+;  - .Z: set if there is no after-gap text in the active segment
+.proc at_seg_end
+	ldx poststartzp
+	cpx end
+	bne :+
+	ldx poststartzp+1
+	cpx end+1
+:	rts
+.endproc
+
+;*******************************************************************************
+; DOWN
+; Scan bounded REU chunks and move only the bytes through the first newline.
+; OUT: .C set at EOF, clear after consuming a newline.
+.export __src_down
+.proc __src_down
+@chunk:
+	ldxy end
+	sub16 poststartzp
+	cpy #$00
+	bne @full
+	cpx #READ_CHUNK
+	bcs @full
+	cpx #$00
+	bne @load
+	jsr cross_next
+	bcc @chunk
+	rts
+@full:	ldx #READ_CHUNK
+@load:	stx reu::txlen
+	ldxy poststartzp
+	lda __src_bank
+	jsr load_chunk
+
+	ldy #$00
+@scan:	lda readbuf,y
+	iny
+	cmp #$0d
+	beq @newline
+	cpy reu::txlen
+	bcc @scan
+	clc
+	bcc @move
+@newline:
+	incw line
+	sec
+@move:	php			; remember whether this chunk ended a line
+	sty reu::txlen		; store only the bytes actually consumed
+	ldxy cursorzp
+	stxy reu::reuaddr
+	jsr reu::store
+
+	lda reu::txlen
+	clc
+	adc cursorzp
+	sta cursorzp
+	bcc :+
+	inc cursorzp+1
+:	lda reu::txlen
+	clc
+	adc poststartzp
+	sta poststartzp
+	bcc :+
+	inc poststartzp+1
+:	lda reu::txlen
+	clc
+	adc zp::srcx
+	sta zp::srcx
+
+	jsr at_seg_end
+	bne :+
+	jsr cross_next
+:	plp
+	bcs :+
+	jmp @chunk
+:	lda #$00
+	sta zp::srcx
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; LOAD CHUNK
+; The transfer parameters remain ready to store this chunk back to the REU.
+; IN:
+;   - .A = REU bank
+;   - .XY = offset
+;   - reu::txlen low = count (1..READ_CHUNK).
+.proc load_chunk
+	sta reu::reuaddr+2
+	stxy reu::reuaddr
+	ldxy #readbuf
+	stxy reu::c64addr
+	lda #$00
+	sta reu::txlen+1
+	jmp reu::load
+.endproc
+
+;*******************************************************************************
 ; PREV
 ; Moves the cursor back one character in the gap buffer.
 ; OUT:
@@ -263,13 +411,16 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 ;  - .C: set if we're at the start of the buffer and couldn't move back
 .export __src_prev
 .proc __src_prev
-	jsr __src_start
-	bne :+
+	lda cursorzp
+	ora cursorzp+1
+	bne @cont
+	jsr cross_prev
+	bcc @cont
 	jsr __src_atcursor
 	sec
 	rts
 
-:	; move char from start of gap to the end of the gap
+@cont:	; move char from start of gap to the end of the gap
 	decw cursorzp
 	decw poststartzp
 
@@ -291,19 +442,6 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 @done:	; get the character at the new cursor position
 	jsr __src_atcursor
 	RETURN_OK
-.endproc
-
-;*******************************************************************************
-; START
-; Returns .Z set if the cursor is at the start of the buffer.
-; OUT:
-;  - .Z: set if the cursor is at the start of the buffer
-.export __src_start
-.proc __src_start
-	ldx cursorzp
-	bne @done	; if LSB is !0, not the start
-	ldx cursorzp+1	; set .Z if MSB is 0
-@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -335,7 +473,12 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 ;  - .A: the character at the current cursor position
 .export __src_atcursor
 .proc __src_atcursor
-	decw cursorzp
+	lda cursorzp
+	ora cursorzp+1
+	bne :+
+	jmp atcursor_prev
+
+:	decw cursorzp
 	lda24 __src_bank, cursorzp
 	incw cursorzp
 	rts
@@ -348,6 +491,9 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 .proc sync_x
 @cur=r0
 @x=r2
+@bank=r3
+	lda __src_bank
+	sta @bank
 	ldxy cursorzp
 	stxy @cur
 
@@ -356,9 +502,19 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 
 @l0:	lda @cur
 	ora @cur+1
-	beq @done		; start of buffer
-	decw @cur
-	lda24 __src_bank, @cur
+	bne @scan
+
+	; start of this segment; continue in the previous one
+	ldx @bank
+	jsr find_prev
+	bcs @done
+	sta @bank
+	jsr __src_seg_len
+	stxy @cur
+	jmp @l0
+
+@scan:	decw @cur
+	lda24 @bank, @cur
 	cmp #$0d
 	beq @done
 	inc @x
@@ -367,4 +523,226 @@ PAGESIZE    = $100	; size of data "page" (amount stored in c64 RAM)
 @done:	lda @x
 	sta zp::srcx
 	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; GET IN
+; Reads the line at the cursor into the given address
+; IN:
+;  - .XY: destination to copy to
+; OUT:
+;  - (.XY): a line of text from the cursor position (0-terminated)
+.pushseg
+.ifdef CART
+.segment "GUICODE"
+.endif
+.export __src_getin
+.proc __src_getin
+	lda #LINESIZE
+
+	; fall through __src_readspan
+.endproc
+
+;*******************************************************************************
+; READSPAN
+; Reads the given number of bytes into the given buffer
+; IN:
+;   - .A: maximum characters
+;   - .XY: destination to read to
+.export __src_readspan
+.proc __src_readspan
+@limit=zp::banktmp
+@src=zp::bankaddr0
+@dst=zp::bankaddr1
+@end=srctmp
+@bank=srctmp+2
+@count=srctmp+3
+	sta @limit
+	stxy @dst
+	ldxy poststartzp
+	stxy @src
+	ldxy end
+	stxy @end
+	lda __src_bank
+	sta @bank
+	lda #$00
+	sta @count
+
+;-------------------------------------------------------------------------------
+@chunk:	lda @limit
+	sec
+	sbc @count
+	cmp #READ_CHUNK
+	bcc :+
+	lda #READ_CHUNK
+
+:	sta reu::txlen
+	ldxy @end
+	sub16 @src
+	cpy #$00
+	bne @load
+	cpx #$00
+	beq @cross
+	cpx reu::txlen
+	bcs @load
+	stx reu::txlen
+
+@load:	ldxy @src
+	lda @bank
+	jsr load_chunk
+	ldy @count
+
+;-------------------------------------------------------------------------------
+	ldx #$00
+@copy:	lda readbuf,x
+	cmp #$0d
+	beq @done
+	sta (@dst),y
+	iny
+	inx
+	cpx reu::txlen
+	bcc @copy
+
+	sty @count
+	cpy @limit
+	beq @done
+	lda @src
+	clc
+	adc reu::txlen
+	sta @src
+	bcc @chunk
+	inc @src+1
+	bcs @chunk
+
+;-------------------------------------------------------------------------------
+@cross:	ldx @bank
+	lda next_of,x
+	cmp #POOL_TAIL
+	bcs @eof
+	sta @bank
+	jsr __src_seg_len
+	stxy @end
+	lda #$00
+	sta @src
+	sta @src+1
+	beq @chunk
+
+@eof:	ldy @count
+@done:	lda #$00
+	sta (@dst),y
+	RETURN_OK
+.endproc
+.popseg
+
+;*******************************************************************************
+; SEG LEN
+; Returns the stored length of an inactive segment
+; IN:
+;  - .A: the segment's bank
+; OUT:
+;  - .XY: its length
+.export __src_seg_len
+.proc __src_seg_len
+	sta reu::reuaddr+2
+
+	ldxy #SEGLEN_ADDR
+	stxy reu::reuaddr
+	ldxy #$02
+	stxy reu::txlen
+
+	ldxy #seglen
+	stxy reu::c64addr
+
+	jsr reu::load
+	ldxy seglen
+	rts
+.endproc
+
+;*******************************************************************************
+; SEG SET LEN
+; Stores the length of an inactive segment
+; IN:
+;  - .A:  the segment's bank
+;  - .XY: its length
+.export __src_seg_set_len
+.proc __src_seg_set_len
+	sta reu::reuaddr+2
+	STOREW SEGLEN_ADDR
+	rts
+.endproc
+
+;*******************************************************************************
+; SEG PEEK
+; Reads a byte of a segment
+; IN:
+;  - .A:  the segment's bank
+;  - .XY: the offset to read
+; OUT:
+;  - .A: the byte read
+.export __src_seg_peek
+.proc __src_seg_peek
+	sta reu::reuaddr+2
+	stxy zp::bankaddr0
+	LOADB zp::bankaddr0
+	rts
+.endproc
+
+;*******************************************************************************
+; SEG CLOSE
+; Closes the active segment's gap and stores its length
+; OUT:
+;  - .XY: the segment's length
+.export __src_seg_close
+.proc __src_seg_close
+	ldxy end
+	sub16 poststartzp
+	stxy reu::move_size
+
+	ldxy poststartzp
+	cmpw cursorzp
+	beq @nogap
+
+	; close the gap in the segment we are done with
+	stxy reu::move_src
+	ldxy cursorzp
+	stxy reu::move_dst
+
+	lda __src_bank
+	sta reu::move_src+2
+	sta reu::move_dst+2
+	jsr reu::move
+
+@nogap:	ldxy cursorzp
+	add16 reu::move_size
+	lda __src_bank
+	jmp __src_seg_set_len
+.endproc
+
+;*******************************************************************************
+; SEG COPY
+; Copies the active segment's text from the given page to its end into the
+; start of another segment and stores that segment's length
+; IN:
+;  - .A: the destination segment's bank
+;  - .X: the page (offset from the start of the segment) to copy from
+.export __src_seg_copy
+.proc __src_seg_copy
+	sta reu::move_dst+2
+	stx reu::move_src+1
+
+	lda #$00
+	sta reu::move_src
+	sta reu::move_dst
+	sta reu::move_dst+1
+	lda __src_bank
+	sta reu::move_src+2
+
+	ldxy end
+	sub16 reu::move_src
+	stxy reu::move_size
+	jsr reu::move
+
+	ldxy reu::move_size
+	lda reu::move_dst+2
+	jmp __src_seg_set_len
 .endproc

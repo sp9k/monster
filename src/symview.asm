@@ -7,6 +7,7 @@
 
 .include "alert.inc"
 .include "border.inc"
+.include "cursor.inc"
 .include "debuginfo.inc"
 .include "debug.inc"
 .include "draw.inc"
@@ -65,6 +66,15 @@ output_row = r0			; screen row the composed text
 output_col = r1          	; next column in the composition buffer
 output_src = r2			; pointer to the field being appended
 
+.if .defined(vic20) .and .defined(soft4x8)
+; Row composition uses only SCREEN_WIDTH bytes of the 81-byte assembly buffer.
+; Stage the final glyph here while blanking borrows it for the gutter.
+redraw_corner = mem::asmbuffer+SCREEN_WIDTH
+; Keep complete final rows outside the renderer's string/composition buffers.
+redraw_lastrow = mem::spareend-2*SCREEN_WIDTH
+redraw_footer  = mem::spareend-SCREEN_WIDTH
+.endif
+
 ;*******************************************************************************
 .DATA
 sym_value:    .byte "$", ESCAPE_VALUE, 0
@@ -97,35 +107,27 @@ CUR_BANK .set FINAL_BANK_MAIN
 ; Enters the symbol viewer in the bank containing its navigation code.
 .export __symview_enter
 
-.if .defined(CART) .and .defined(c64)
+.ifdef vic20
+__symview_enter: JUMP FINAL_BANK_VIEWERS, enter
+.elseif .defined(CART) .and .defined(c64)
 __symview_enter: JUMP FINAL_BANK_DBGUI, enter
 .else
 __symview_enter = enter
 .endif
 
-BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
-
-;*******************************************************************************
-; BANKED FORMATTING ENTRY POINTS
-; Keep symbol lookup and rendering together with the VIC-20 float formatter.
 .ifdef vic20
-get_item:          JUMP FINAL_BANK_EXPR, get_row_item
-item_index_here:   JUMP FINAL_BANK_EXPR, item_index
-drawrows:    JUMP FINAL_BANK_EXPR, draw_rows
-print_details:     JUMP FINAL_BANK_EXPR, print_details_impl
-modal_bounds_here: JUMP FINAL_BANK_EXPR, modal_bounds
-full_bounds_here:  JUMP FINAL_BANK_EXPR, full_bounds
-.pushseg
-.segment "EXPR"
-CUR_BANK .set FINAL_BANK_EXPR
+.segment "VIEWERS"
+CUR_BANK .set FINAL_BANK_VIEWERS
 .else
+BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
+.endif
+
 get_item          = get_row_item
 item_index_here   = item_index
-drawrows    = draw_rows
+drawrows          = draw_rows
 print_details     = print_details_impl
 modal_bounds_here = modal_bounds
 full_bounds_here  = full_bounds
-.endif
 
 ;*******************************************************************************
 space_msg:       .byte " ", 0
@@ -202,7 +204,7 @@ DETAIL_PROMPT_COL = ALERT_TEXT_COL+DETAIL_PROMPT_PAD
 	ldxy lbl
 	CALLMAIN lbl::getaddr
 
-	jsr expr::fconst_get
+	CALL FINAL_BANK_EXPR, expr::fconst_get
 	bcs @done
 	lda #$02
 	sta mode
@@ -231,7 +233,7 @@ DETAIL_PROMPT_COL = ALERT_TEXT_COL+DETAIL_PROMPT_PAD
 	lda mode
 	cmp #$02
 	bne @integer
-	jsr expr::float_format
+	CALL FINAL_BANK_EXPR, expr::float_format
 	ldxy #expr::floatstr
 	rts
 @integer:
@@ -327,7 +329,22 @@ DETAIL_PROMPT_COL = ALERT_TEXT_COL+DETAIL_PROMPT_PAD
 	sta output_row
 	jmp @next
 
-@list:	lda output_row
+@list:
+.if .defined(vic20) .and .defined(soft4x8)
+	lda output_row
+	cmp #SCREEN_HEIGHT-2
+	bne @draw
+	; This row shares its final character with the blanked gutter. Defer
+	; the whole row so the renderer never writes the borrowed glyph.
+	ldx #SCREEN_WIDTH-1
+@save:	lda mem::asmbuffer,x
+	sta redraw_lastrow,x
+	dex
+	bpl @save
+	jmp @next
+@draw:
+.endif
+	lda output_row
 	CALLMAIN text::puts
 
 @next:	inc output_row
@@ -594,8 +611,57 @@ DETAIL_PROMPT_COL = ALERT_TEXT_COL+DETAIL_PROMPT_PAD
 .endproc
 
 .ifdef vic20
-.popseg
-CUR_BANK .set FINAL_BANK_MAIN
+.ifdef soft4x8
+; Preserve the final glyph copied back by scr::restore before unblanking.
+.proc save_corner
+	ldx #15
+	bne copy_corner
+.endproc
+.proc copy_corner
+@copy:	lda $1ff0,x
+	sta redraw_corner,x
+	lda #$55
+	sta $1ff0,x
+	dex
+	bpl @copy
+	rts
+.endproc
+.endif
+;*******************************************************************************
+; FINISH RESTORE
+; Unblank after restoring the saved editor screen. The soft bitmap's blanking borrows
+; the bottom-right glyph; preserve the newly drawn pixels instead of letting
+; unblank restore the glyph that was there before the redraw.
+.proc finish_restore
+.ifdef soft4x8
+	CALLMAIN scr::unblank
+	ldx #15
+@restore:
+	lda redraw_corner,x
+	sta $1ff0,x
+	dex
+	bpl @restore
+	rts
+.else
+	JUMPMAIN scr::unblank
+.endif
+.endproc
+.endif
+
+.ifdef vic20
+.proc finish_redraw
+	CALLMAIN scr::unblank
+.ifdef soft4x8
+	lda #SCREEN_HEIGHT-2
+	ldxy #redraw_lastrow
+	CALLMAIN text::puts
+	lda #HEIGHT
+	ldxy #redraw_footer
+	JUMPMAIN text::puts
+.else
+	rts
+.endif
+.endproc
 .endif
 
 ;*******************************************************************************
@@ -620,7 +686,19 @@ CUR_BANK .set FINAL_BANK_MAIN
 	sta page_top
 	sta page_top+1
 @redraw:
+.if .defined(vic20) .and .defined(soft4x8)
+	; Every row is replaced below. Clearing the bitmap here would overwrite
+	; the glyph borrowed by blanking. Reset colors before borrowing it.
+	lda #CUR_OFF
+	sta cur::status
+	CALLMAIN scr::clrcolor
+	CALLMAIN scr::blank
+.else
+.ifdef vic20
+	CALLMAIN scr::blank
+.endif
 	CALLMAIN edit::clear
+.endif
 	ldxy #sort_by_addr_msg
 	lda sortby
 	beq :+
@@ -636,12 +714,37 @@ CUR_BANK .set FINAL_BANK_MAIN
 	beq :+
 	ldxy #locations_msg
 :	RENDER_STR
+.if .defined(vic20) .and .defined(soft4x8)
+	; The rendered footer is a plain string. Pad it to a full row and keep
+	; it out of the bottom-right glyph until the gutter is restored.
+	stxy output_src
+	ldy #$00
+@footer:
+	lda (output_src),y
+	beq @pad
+	sta redraw_footer,y
+	iny
+	cpy #SCREEN_WIDTH
+	bcc @footer
+	bcs @drawrows
+@pad:	lda #' '
+@spaces:
+	sta redraw_footer,y
+	iny
+	cpy #SCREEN_WIDTH
+	bcc @spaces
+@drawrows:
+.else
 	lda #HEIGHT
 	CALLMAIN text::print
+.endif
 
 	lda #$00
 	ldx #HEIGHT
 	jsr drawrows
+.ifdef vic20
+	jsr finish_redraw
+.endif
 
 ;-------------------------------------------------------------------------------
 @menu:	ldx selection
@@ -658,13 +761,29 @@ CUR_BANK .set FINAL_BANK_MAIN
 	sta view_details
 
 	; redraw the rows that were covered by the modal
+.ifdef vic20
+	CALLMAIN scr::blank
+.endif
 	jsr modal_bounds_here
 	lda #DETAIL_TOP
 	ldx #DETAIL_BOTTOM+1
 	jsr drawrows
 	jsr full_bounds_here
+.ifdef vic20
+	CALLMAIN scr::unblank
+.endif
 	jmp @menu
-@quit:	JUMPMAIN scr::restore
+@quit:
+.ifdef vic20
+	CALLMAIN scr::blank
+	CALLMAIN scr::restore
+.ifdef soft4x8
+	jsr save_corner
+.endif
+	jmp finish_restore
+.else
+	JUMPMAIN scr::restore
+.endif
 
 @listkeys:
 	cmp #K_QUIT
@@ -701,10 +820,16 @@ CUR_BANK .set FINAL_BANK_MAIN
 	lda lbl::num
 	ora lbl::num+1
 	jeq @menu
+.ifdef vic20
+	CALLMAIN scr::blank
+.endif
 	jsr @selected_item
 	lda #$01
 	sta view_details
 	jsr print_details
+.ifdef vic20
+	CALLMAIN scr::unblank
+.endif
 	jmp @key
 
 @down:	lda selection
@@ -745,8 +870,17 @@ CUR_BANK .set FINAL_BANK_MAIN
 	lda lbl::num
 	ora lbl::num+1
 	jeq @quit
-	CALLMAIN scr::restore
+.ifdef vic20
+	CALLMAIN scr::blank
+.endif
 	jsr @selected_item
+	CALLMAIN scr::restore
+.ifdef vic20
+.ifdef soft4x8
+	jsr save_corner
+.endif
+	jsr finish_restore
+.endif
 	ldxy lbl
 	JUMPMAIN dbg::gotolabel
 

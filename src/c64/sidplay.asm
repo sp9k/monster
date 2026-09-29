@@ -15,6 +15,7 @@ SIDPLAY_IMPL = 1
 .include "sidplay.inc"
 .macpack longbranch
 
+; The disk build has no reserved tune window.
 .ifdef CART
 .import __SIDBUFF_RUN__, __SIDBUFF_SIZE__
 .assert __SIDBUFF_RUN__ = SID_START, lderror, "SID window start mismatch"
@@ -42,12 +43,11 @@ cia_timed: .byte 0	; 0 = video-frame IRQ, 1 = CIA timer A IRQ
 __sid_zp_reu = REU_SID_ZP_ADDR
 .export __sid_image_reu
 __sid_image_reu = REU_SID_IMAGE_ADDR
-.DATA
+.segment "SIDGATE"
 .export __sid_active
 __sid_active: .byte 0
 paused:       .byte 0
-
-.CODE
+zero:         .byte 0	; DMA reads physical RAM, not the cartridge ROM
 
 ;*******************************************************************************
 SET_CUR_BANK BANK_NONE
@@ -56,21 +56,84 @@ SET_CUR_BANK BANK_NONE
 
 ;*******************************************************************************
 ; LOAD
-; Calls the SID file loader in the directory bank.
+; Calls the SID file loader in its dedicated cartridge bank.
 ; IN:
 ;  - .XY: the 0-terminated filename
 ; OUT:
 ;  - .C: set if loading failed
 ;  - .A: error code if .C is set
-__sid_load: JUMP FINAL_BANK_FILEDIR, load
+__sid_load: JUMP FINAL_BANK_SID, load
+
+;*******************************************************************************
+__sid_tick:
+	ldx #1
+	bne sid_call
+__sid_cia_tick:
+	ldx #2
+	bne sid_call
+__sid_stop:
+	ldx #3
+	bne sid_call
+__sid_toggle:
+	ldx #4
+	bne sid_call
+__sid_restart:
+	ldx #5
+	bne sid_call
+__sid_config_irq:
+	ldx #0
+
+;*******************************************************************************
+; SID CALL
+.import cur_rombank
+.proc sid_call
+	php
+	sei
+	lda $01
+	pha
+	lda #$37
+	sta $01
+	lda cur_rombank
+	pha
+	lda #CART_BANK_SID
+	sta $de00
+	jsr dispatch
+
+	tax
+	php
+	pla
+	tay
+	pla
+	sta $de00
+	pla
+	sta $01
+	plp
+	tya
+	lsr
+	txa
+	rts
+.endproc
+
+BANKED_CODE "SIDCODE", FINAL_BANK_SID
+
+;*******************************************************************************
+; DISPATCH
+; Dispatches to the given procedure by ID
+.proc dispatch
+	lda hi,x
+	pha
+	lda lo,x
+	pha
+	rts
+lo: .lobytes config_irq-1, tick-1, cia_tick-1, stop-1, toggle-1, restart-1
+hi: .hibytes config_irq-1, tick-1, cia_tick-1, stop-1, toggle-1, restart-1
+.endproc
 
 ;*******************************************************************************
 ; STOP
 ; Stops playback and prepares the player for a new song to be loaded
-.proc __sid_stop
-	IO_BEGIN
+.proc stop
 	jsr clear_sid
-	IO_DONE
 	rts
 .endproc
 
@@ -88,7 +151,7 @@ __sid_load: JUMP FINAL_BANK_FILEDIR, load
 	dex
 	bpl :-
 
-	jsr __sid_config_irq
+	jsr config_irq
 	rts
 .endproc
 
@@ -97,8 +160,7 @@ __sid_load: JUMP FINAL_BANK_FILEDIR, load
 ; Pauses or resumes playback.
 ; SID registers are write-only, so they are set to their full volume when
 ; unpaused until the next write to $d418. Does nothing if no song playing.
-.proc __sid_toggle
-	IO_BEGIN
+.proc toggle
 
 	lda __sid_active	; song playing?
 	bne @pause		; if so, pause it
@@ -120,17 +182,16 @@ __sid_load: JUMP FINAL_BANK_FILEDIR, load
 
 @volume:
 	sta $d418		; set volume off (if pausing) or to full if not
-	jsr __sid_config_irq
+	jsr config_irq
 
-@done:	IO_DONE
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
 ; CONFIG IRQ
 ; Enables the VIC raster interrupt for a "VBI" tune, or disables it when
 ; stopped, paused, or playing a CIA-based tune.
-.proc __sid_config_irq
+.proc config_irq
 	lda $d01a
 	and #$fe
 	sta $d01a		; disable the raster source
@@ -158,10 +219,10 @@ __sid_load: JUMP FINAL_BANK_FILEDIR, load
 ;*******************************************************************************
 ; CIA TICK
 ; Runs a playback update if the selected tune uses CIA timing.
-.proc __sid_cia_tick
+.proc cia_tick
 	lda cia_timed
 	beq @done
-	jmp __sid_tick
+	jmp tick
 @done:
 	rts
 .endproc
@@ -228,7 +289,7 @@ __sid_load: JUMP FINAL_BANK_FILEDIR, load
 ; OUT:
 ;  - .C: set if the REU is busy
 ;  - .A: ERR_IO_ERROR if .C is set
-.proc __sid_restart
+.proc restart
 	lda __sid_active
 	ora paused
 	beq @none
@@ -245,7 +306,7 @@ __sid_load: JUMP FINAL_BANK_FILEDIR, load
 ; OUT:
 ;  - .C: set if the REU is busy
 ;  - .A: ERR_IO_ERROR if .C is set
-.proc start
+.proc start_tune
 	ldx #$90		; C64 -> REU, before init can modify the payload
 	jmp initialize
 .endproc
@@ -288,7 +349,7 @@ __sid_load: JUMP FINAL_BANK_FILEDIR, load
 
 	lda $01
 	pha
-	lda #$36
+	lda #$37
 	sta $01
 
 	; do not cancel a pending transfer or interfere with REU IRQ users
@@ -329,7 +390,7 @@ __sid_load: JUMP FINAL_BANK_FILEDIR, load
 	; save the updated zeropage for the song
 	sei
 	cld
-	lda #$36
+	lda #$37
 	sta $01
 	jsr swapzp
 	jsr restore_reu
@@ -337,7 +398,7 @@ __sid_load: JUMP FINAL_BANK_FILEDIR, load
 	; set up the IRQ for the song
 	lda #$01
 	sta __sid_active
-	jsr __sid_config_irq
+	jsr config_irq
 	pla
 	sta $01
 	plp
@@ -356,7 +417,7 @@ callinit:
 ; TICK
 ; Plays one update if a tune is active and the REU is available.
 ; Called once per selected hardware interrupt.
-.proc __sid_tick
+.proc tick
 	lda __sid_active
 	beq @done
 	lda $df01		; is DMA already armed?
@@ -378,7 +439,7 @@ callinit:
 	cld
 
 	; save the new SID zeropage and restore Monster's
-	lda #$36
+	lda #$37
 	sta $01
 	jsr swapzp
 	jsr restore_reu
@@ -387,7 +448,7 @@ callplay:
 	jmp (playaddr)
 .endproc
 
-BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
+; Loader and player share the dedicated SID ROM bank.
 
 ;*******************************************************************************
 ; READBYTE
@@ -430,7 +491,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 .proc load
 @dst=r0
 	stxy loadaddr
-	CALLMAIN __sid_stop
+	jsr stop
 	ldxy loadaddr
 	jsr file::open_r
 	bcc :+
@@ -597,7 +658,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	bcs @address
 	lda handle
 	jsr file::close
-	CALLMAIN start
+	jsr start_tune
 	rts
 
 @address:
@@ -685,6 +746,3 @@ __sid_config_irq:
 __sid_cia_tick:
 	rts
 .endif
-
-;*******************************************************************************
-zero:	.byte 0

@@ -11,8 +11,7 @@ bankval     = $06	; the value written by store_byte
 bankjmpaddr = $07	; JMP in struction for banked calls
 bankjmpvec  = $08	; JMP vector
 
-memsrc      = $0a	; temporary pointer for memory operations
-memdst      = $0c	; temporary pointer for memory operations
+srctmp      = $0a	; $0a-$0d scratch for source bank-chain operations
 
 monitor     = $0e	; scratchpad for the monitor (window drawing)
 

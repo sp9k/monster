@@ -36,7 +36,8 @@ FINAL_BANK_FASTSCROLL_DOWN = $11
 FINAL_BANK_ERRLOG          = $12
 FINAL_BANK_FLASH           = $13
 FINAL_BANK_LINKER_AUX      = $14
-NUM_BANKS                  = $14
+FINAL_BANK_VIEWERS         = $15
+NUM_BANKS                  = $15
 
 ; Contiguous symbol storage: physical RAM blocks 70..100 (248 KiB).
 SYMBOL_META_BANK    = 70
@@ -57,8 +58,8 @@ VMEM_BLK2_BANK     = 37 ; $4000-$6000 ($2000 bytes)
 VMEM_BLK3_BANK     = 38	; $6000-$8000 ($2000 bytes)
 VMEM_BLK5_BANK     = 39	; $a000-$c000 ($2000 bytes)
 
-FINAL_BANK_SOURCE0 = 40	; 8 source buffers * 3 blocks each (40-63)
-FINAL_BANK_LOG     = 64
+FINAL_BANK_SOURCE0 = 40	; pool of source banks shared by all buffers (40-66)
+SOURCE_POOL_SIZE   = 27
 ERRLOG_RAM_BANK    = 67
 ERRLOG_ROM_BANK    = 28
 FLASH_CHECK_RAM_BANK = 101 ; private disk-validation workspace, not image staging

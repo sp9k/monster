@@ -5,7 +5,6 @@ C64_REU_INC = 1
 .import __reu_move
 .import __reu_compare
 .import __reu_c64_addr
-.import __reu_find
 .import __reu_init
 .import __reu_load
 .import __reu_load_blk
@@ -53,7 +52,6 @@ REU_TMP_ADDR            = $ff0000
 	c64addr        = __reu_c64_addr
 	copy_y         = __reu_copy_y
 	compare        = __reu_compare
-	find           = __reu_find
 	load           = __reu_load
 	load_blk       = __reu_load_blk
 	load_delayed   = __reu_load_delayed

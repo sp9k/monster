@@ -2,10 +2,8 @@
 ; SOURCE.ASM
 ; This file contains the procedures to interacting with the buffer that backs
 ; the editor. When data is entered in the editor, it is stored in one of 8
-; "source buffers", each in their own memory bank. These are gap buffers to
-; allow for efficient insertion of text.
-; Because there are 8 different buffers, the procedures to read and write to
-; the current active buffer are stored in shared RAM.
+; "source buffers". These are gap buffers to allow for efficient insertion of
+; text, and each may span as many banks from a shared pool as it needs.
 ;*******************************************************************************
 
 .include "config.inc"
@@ -29,14 +27,22 @@
 .include "ram.inc"
 
 .import __src_atcursor
+.import __src_getin
+.import __src_readspan
 .import __src_insert
 .import __src_init_buff
 .import __src_next
 .import __src_prev
-.import __src_start
+
+.import __src_data
+.assert <__src_data = 0, error, "source data must be page aligned"
+.import __src_seg_copy
+.import __src_seg_len
+.import __src_seg_close
+.import __src_seg_peek
+.import __src_seg_set_len
 
 .import sync_x
-.import src_copyline
 
 ;*******************************************************************************
 ; CONSTANTS
@@ -44,6 +50,7 @@
 MAX_SOURCES    = 8		; max # of user source buffers
 NUM_BUFFERS    = MAX_SOURCES+1	; user buffers + the reserved LOG buffer
 POS_STACK_SIZE = 16 		; size of source position stack
+NEAR_DIST      = $400		; popgoto walks distances shorter than this
 
 LOG_BUFFER	= MAX_SOURCES	; reserved buffer for LOG
 
@@ -51,12 +58,31 @@ LOG_BUFFER	= MAX_SOURCES	; reserved buffer for LOG
 ; FLAGS
 FLAG_DIRTY = 1
 
-.segment "BSS_NOINIT"
+.segment "SRCVARS"
 
 ;*******************************************************************************
 data_start:
 sp:	.byte 0			; stack pointer for source position stack
-stack:	.res POS_STACK_SIZE*2	; stack for source positions
+
+;*******************************************************************************
+; source position stack: 24-bit position and line it is on
+stk_lo:   .res POS_STACK_SIZE
+stk_mid:  .res POS_STACK_SIZE
+stk_hi:   .res POS_STACK_SIZE
+stk_llo:  .res POS_STACK_SIZE
+stk_lhi:  .res POS_STACK_SIZE
+
+;*******************************************************************************
+; BANK CHAIN
+POOL_FREE = $ff		; flag for banks that are free
+POOL_TAIL = $fe		; flag for the end of a chain of banks
+
+.export bank_next
+bank_next: .res SOURCE_POOL_SIZE
+next_of = bank_next-FINAL_BANK_SOURCE0
+
+; offset of the active segment's first byte within its buffer
+base: .res 3
 
 ;*******************************************************************************
 ; BUFFSTATE
@@ -71,6 +97,7 @@ poststartzp    = zp::srccur2
 line           = zp::srcline
 lines          = zp::srclines
 end            = zp::srcend
+srctmp      = zp::srctmp
 srcx           = zp::srcx
 SAVESTATE_SIZE = 11		; space used by above zeropage addresses
 
@@ -125,6 +152,12 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	.assert (flags+NUM_BUFFERS)-bank = (NUM_BUFFERS*4)+1, error, "bank/buffs_curx/buffs_cury/banks/flags must be contiguous"
 	ldx #(NUM_BUFFERS*4)+1
 :	sta bank-1,x
+	dex
+	bne :-
+
+	lda #POOL_FREE
+	ldx #SOURCE_POOL_SIZE
+:	sta bank_next-1,x
 	dex
 	bne :-
 
@@ -230,54 +263,488 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	cpx #SAVESTATE_SIZE
 	bne @l0
 
-	clc			; ok
-@ret:	rts
+	jmp calc_base
 .endproc
 
 ;*******************************************************************************
-; GET FREE BANK
-; Returns an available "bank" for a new source buffer.
-; Only banks[0..numsrcs-1] are scanned, so the caller must invoke this before
-; counting the new buffer in numsrcs.  The LOG buffer never allocates from
-; here; it uses its own dedicated bank (FINAL_BANK_LOG).
-; NOTE: this is quite platform specific. What defines a "bank" varies
-; a lot between platforms.
+; ALLOC BANK
+; Takes a bank from the pool and marks it as the tail of a new chain
 ; OUT:
-;  - .A: the "bank" for the ID
-.proc get_free_bank
-	ldy #$00
-@find:	tya
-	jsr @get_bank
-	ldx numsrcs
-	beq @ok
-:	cmp banks-1,x
-	beq @next
-	dex
-	bne :-
+;  - .A: the bank that was allocated
+;  - .C: set if the pool is exhausted
+.proc alloc_bank
+	ldx #FINAL_BANK_SOURCE0
+@l0:	lda next_of,x
+	cmp #POOL_FREE
+	beq @found
+	inx
+	cpx #FINAL_BANK_SOURCE0+SOURCE_POOL_SIZE
+	bne @l0
+	rts			; .C set
 
-@ok:	; bank in .A is not taken, return it
-	rts
-
-@next:	iny
-	bne @find			; branch always
-
-;-------------------------------------------------------------------------------
-; return the bank corresponding to the index in .A
-@get_bank:
-.ifdef ultimem
-@tmp=r0
-	; *3 (each bank is 3 "blocks" on Ultimem)
-	sta @tmp
-	asl
-	;clc
-	adc @tmp
-	adc #FINAL_BANK_SOURCE0
-	rts
-.else
+@found:	lda #POOL_TAIL
+	sta next_of,x
+	txa
 	clc
-	adc #FINAL_BANK_SOURCE0
 	rts
-.endif
+.endproc
+
+;*******************************************************************************
+; ALLOC AFTER
+; Allocates a bank and links it into the active chain after the active segment
+; OUT:
+;  - .A: the bank that was allocated
+;  - .C: set if the pool is exhausted
+.proc alloc_after
+	jsr alloc_bank
+	bcs @done
+	tay
+	ldx bank
+	lda next_of,x
+	sta next_of,y
+	tya
+	sta next_of,x
+	clc
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; FIND PREV
+; IN:
+;  - .X: a bank in a chain
+; OUT:
+;  - .A: the bank before it
+;  - .C: set if .X is the head of its chain
+; CLOBBERS:
+;  - .Y
+.export find_prev
+.proc find_prev
+	txa
+	ldy #FINAL_BANK_SOURCE0
+@l0:	cmp next_of,y
+	beq @found
+	iny
+	cpy #FINAL_BANK_SOURCE0+SOURCE_POOL_SIZE
+	bne @l0
+	rts			; .C set
+
+@found:	tya
+	clc
+	rts
+.endproc
+
+;*******************************************************************************
+; HEAD OF
+; IN:
+;  - .X: a bank in a chain
+; OUT:
+;  - .X: the first bank in the chain
+.proc head_of
+:	jsr find_prev
+	bcs @done
+	tax
+	bcc :-
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; FREE CHAIN
+; Returns every bank in the chain containing the given bank to the pool
+; IN:
+;  - .A: any bank in the chain
+.proc free_chain
+	tax
+	jsr head_of
+@l0:	ldy next_of,x
+	lda #POOL_FREE
+	sta next_of,x
+	cpy #POOL_TAIL
+	beq @done
+	tya
+	tax
+	bne @l0			; branch always
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; UNLINK
+; Removes a bank from its chain and returns it to the pool
+; IN:
+;  - .X: the bank to remove
+.proc unlink
+	jsr find_prev
+	bcs @free
+	tay
+	lda next_of,x
+	sta next_of,y
+
+@free:	lda #POOL_FREE
+	sta next_of,x
+	rts
+.endproc
+
+;*******************************************************************************
+; ADD BASE
+; Adds .XY to the active segment's base
+.proc add_base
+	txa
+	clc
+	adc base
+	sta base
+	tya
+	adc base+1
+	sta base+1
+	bcc :+
+	inc base+2
+:	rts
+.endproc
+
+;*******************************************************************************
+; SUB BASE
+; Subtracts .XY from the active segment's base
+.proc sub_base
+	stxy srctmp+2
+	lda base
+	sec
+	sbc srctmp+2
+	sta base
+	lda base+1
+	sbc srctmp+3
+	sta base+1
+	bcs :+
+	dec base+2
+:	rts
+.endproc
+
+;*******************************************************************************
+; CALC BASE
+; Recomputes base for the active segment from the lengths of the segments
+; before it
+.proc calc_base
+	lda #$00
+	sta base
+	sta base+1
+	sta base+2
+	ldx bank
+
+@l0:	jsr find_prev
+	bcs @done
+	pha
+	jsr __src_seg_len
+	jsr add_base
+	pla
+	tax
+	jmp @l0
+
+@done:	clc
+	rts
+.endproc
+
+;*******************************************************************************
+; ENTER
+; Makes the given bank the active segment with the cursor at the given offset.
+; IN:
+;  - .A:  the bank to enter
+;  - .XY: the offset to put the cursor at
+; OUT:
+;  - .C: clear
+.proc enter
+	sta bank
+	stx cursorzp
+	stx poststartzp
+	tya
+	clc
+	adc #>__src_data
+	sta cursorzp+1
+	sta poststartzp+1
+	lda bank
+	jsr __src_seg_len
+	stx end
+	tya
+	clc
+	adc #>__src_data
+	sta end+1
+	rts
+.endproc
+
+;*******************************************************************************
+; LEAVE
+; Closes the active segment's gap and removes it from its chain if it is empty
+; and has neighbors.
+; OUT:
+;  - .XY: the length of the segment that was left
+.proc leave
+	jsr __src_seg_close
+
+	txa
+	bne @done
+	tya
+	bne @done
+	ldx bank
+	lda next_of,x
+	cmp #POOL_TAIL
+	bne @free
+	jsr find_prev
+	bcs @empty		; lone segment: keep it
+
+@free:	jsr unlink
+@empty:	ldxy #$0000
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; CROSS NEXT
+; Moves the cursor to the start of the next segment
+; OUT:
+;  - .C: set if there is no next segment
+.export cross_next
+.proc cross_next
+	ldx bank
+	lda next_of,x
+	cmp #POOL_TAIL
+	bcs @done
+	pha
+	jsr leave
+	jsr add_base
+	pla
+	ldxy #$0000
+	jmp enter
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; CROSS PREV
+; Moves the cursor to the end of the previous segment
+; OUT:
+;  - .C: set if there is no previous segment
+.export cross_prev
+.proc cross_prev
+	ldx bank
+	jsr find_prev
+	bcs @done
+
+	pha
+	jsr leave
+	pla
+	pha
+	jsr __src_seg_len
+	jsr sub_base
+	pla
+	ldxy srctmp+2
+	jmp enter
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; NORMALIZE
+; Restores the chain after the after-gap text of the active segment shrinks.
+; Moves to the next segment if the cursor is at the end of this one,
+; and leaves a segment that has become empty.
+.export normalize
+.proc normalize
+	lda poststartzp
+	cmp end
+	bne @done
+
+	lda poststartzp+1
+	cmp end+1
+	bne @done
+
+	jsr cross_next
+	bcc @done
+	lda cursorzp
+	bne @done
+
+	lda cursorzp+1
+	cmp #>__src_data
+	bne @done
+	jmp cross_prev
+
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; SPLIT
+; Called when the active segment is full and its gap is closed. Moves the
+; upper half of the segment to a new one and moves into it if the cursor was
+; there.
+; OUT:
+;  - .C: set if the pool is exhausted
+.export split
+.proc split
+@off=srctmp
+	jsr alloc_after
+	bcs @done
+
+	pha
+	lda end+1
+	sec
+	sbc #>__src_data
+	lsr
+	sta @off		; page offset of the midpoint
+	tax
+	pla
+	jsr __src_seg_copy	; move [midpoint, end) to the new segment
+
+	lda #$00
+	sta end
+	lda @off
+	clc
+	adc #>__src_data
+	sta end+1
+
+	; if the cursor is in the lower half, we're done
+	lda cursorzp
+	cmp end
+	lda cursorzp+1
+	sbc end+1
+	bcc @ok
+
+	lda cursorzp
+	sec
+	sbc end
+	sta @off
+	lda cursorzp+1
+	sbc end+1
+	sta @off+1
+	ldxy end
+	stxy cursorzp
+	stxy poststartzp
+	jsr cross_next
+
+	lda cursorzp
+	clc
+	adc @off
+	sta cursorzp
+	sta poststartzp
+	lda cursorzp+1
+	adc @off+1
+	sta cursorzp+1
+	sta poststartzp+1
+@ok:	clc
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; APPEND
+; Called when loading and the active segment is full. Starts a new, empty
+; segment after it and moves to it.
+; OUT:
+;  - .C: set if the pool is exhausted
+.export append
+.proc append
+	jsr alloc_after
+	bcs @done
+	ldxy #$0000
+	jsr __src_seg_set_len
+	jmp cross_next
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; JUMP
+; Moves the cursor to a buffer position directly.
+; IN:
+;  - srctmp: the 24-bit position to move to (clamped to the end of the buffer)
+.proc jump
+@len=zp::bankaddr0
+@pos=srctmp
+	jsr leave
+	ldx bank
+	jsr head_of
+	lda #$00
+	sta base
+	sta base+1
+	sta base+2
+
+@l0:	txa
+	pha
+	jsr __src_seg_len
+	stxy @len
+
+	; offset = pos - base
+	sec
+	lda @pos
+	sbc base
+	tax
+	lda @pos+1
+	sbc base+1
+	tay
+	lda @pos+2
+	sbc base+2
+	bne @next
+	cpy @len+1
+	bcc @found
+	bne @next
+	cpx @len
+	bcc @found
+
+@next:	pla
+	pha
+	tax
+	lda next_of,x
+	cmp #POOL_TAIL
+	bcs @tail
+	ldxy @len
+	jsr add_base
+	pla
+	tax
+	lda next_of,x
+	tax
+	bne @l0			; branch always
+
+@tail:	ldxy @len
+@found:	pla
+	jmp enter
+.endproc
+
+;*******************************************************************************
+; ATCURSOR PREV
+; __src_atcursor for a cursor at the start of its segment: gets the last byte
+; of the previous segment
+; OUT:
+;  - .A:        the byte (0 if the cursor is at the start of the buffer)
+;  - .C:        set if the cursor is at the start of the buffer
+;  - srctmp+1:  the previous segment's bank
+;  - srctmp+2:  the previous segment's length - 1
+.export atcursor_prev
+.proc atcursor_prev
+	ldx bank
+	jsr find_prev
+	bcc :+
+	lda #$00
+	rts
+
+:	sta srctmp+1
+	jsr __src_seg_len
+	txa
+	bne :+
+	dey
+:	dex
+	stxy srctmp+2
+	lda srctmp+1
+	jsr __src_seg_peek
+	clc
+	rts
+.endproc
+
+;*******************************************************************************
+; BACKSPACE PREV
+; Deletes the last byte of the segment before the active one
+.proc backspace_prev
+	jsr atcursor_prev
+	lda srctmp+1
+	ldxy srctmp+2
+	jsr __src_seg_set_len
+	lda srctmp+2
+	ora srctmp+3
+	bne :+
+
+	ldx srctmp+1
+	jsr unlink
+
+:	ldxy #$0001
+	jmp sub_base
 .endproc
 
 ;*******************************************************************************
@@ -290,11 +757,22 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	pha
 	jsr __src_save
 
-	; the LOG buffer always lives in its own dedicated bank; it is not
-	; counted in numsrcs, so it must not compete for the banks that
-	; get_free_bank allocates to user buffers
-	lda #FINAL_BANK_LOG
-	sta bank
+	; the LOG buffer draws from the same pool as user buffers; release the
+	; previous log's banks first
+	ldx banks+LOG_BUFFER
+	beq :+
+	txa
+	jsr free_chain
+	lda #$00
+	sta banks+LOG_BUFFER
+:	jsr alloc_bank
+	bcc :+
+	pla
+	tax
+	jsr set_no_save
+	sec
+	rts
+:	sta bank
 
 	; init the LOG buffer
 	lda #LOG_BUFFER
@@ -329,7 +807,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .proc __src_new
 	ldx numsrcs
 	beq @cont
-	cpx #MAX_SOURCES	; all 8 user buffers in use? (LOG has its own bank)
+	cpx #MAX_SOURCES	; all 8 user buffers in use?
 	bcc @saveold
 	rts			; err, too many sources
 
@@ -338,8 +816,10 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	jsr __src_save	; save current source data
 
 @cont:	; find a free bank for the new buffer
-	jsr get_free_bank
-	sta bank
+	jsr alloc_bank
+	bcc :+
+	rts			; pool exhausted
+:	sta bank
 
 	lda numsrcs
 	sta activesrc
@@ -375,6 +855,10 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	; mark the buffer as clean
 	;lda #$00
 	sta flags,y
+
+	sta base
+	sta base+1
+	sta base+2
 
 	; init line and lines to 1
 	inc line
@@ -549,9 +1033,13 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .proc __src_close
 @cnt=r0
 	lda numsrcs
-	beq @ok		; no buffer to close
+	bne :+
+	clc
+	rts		; no buffer to close
 
-	jsr errlog::close_buffer
+:	jsr errlog::close_buffer
+	lda bank
+	jsr free_chain
 	lda numsrcs
 	cmp #$01	; is the current buffer the last one?
 	bne @close
@@ -663,13 +1151,23 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	bcc :+
 	RETURN_ERR ERR_STACK_OVERFLOW
 
-:	asl
-	tax
+:	tya
+	pha
+	jsr __src_pos
+	stxy srctmp
+	ldx sp
 	inc sp
-	lda cursorzp
-	sta stack,x
-	lda cursorzp+1
-	sta stack+1,x
+	sta stk_hi,x
+	lda srctmp
+	sta stk_lo,x
+	lda srctmp+1
+	sta stk_mid,x
+	lda line
+	sta stk_llo,x
+	lda line+1
+	sta stk_lhi,x
+	pla
+	tay
 	RETURN_OK
 .endproc
 
@@ -686,11 +1184,9 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	RETURN_ERR ERR_STACK_UNDERFLOW
 
 :	dec sp
-	lda sp
-	asl
-	tax
-	ldy stack+1,x
-	lda stack,x
+	ldx sp
+	ldy stk_mid,x
+	lda stk_lo,x
 	tax
 	RETURN_OK
 .endproc
@@ -731,7 +1227,11 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	ldxy end
 	sub16 poststartzp
 	cmpw #1
-	rts
+	bne @done
+	ldx bank
+	lda next_of,x
+	cmp #POOL_TAIL
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -740,11 +1240,44 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; src::goto routine.  Note that if the source changes since this procedure is
 ; called, this may not be the same (or expected) position
 ; OUT:
-;  - .XY: the current source position
+;  - .XY: the current source position (low 16 bits)
+;  - .A:  the high 8 bits of the position
 .export __src_pos
 .proc __src_pos
-	ldxy cursorzp
+	lda cursorzp+1
+	sec
+	sbc #>__src_data
+	tay
+	lda cursorzp
+	clc
+	adc base
+	tax
+	tya
+	adc base+1
+	tay
+	lda base+2
+	adc #$00
 	rts
+.endproc
+
+;*******************************************************************************
+; START
+; Returns .Z set if the cursor is at the start of the buffer.
+; OUT:
+;  - .Z: set if the cursor is at the start of the buffer
+.export __src_start
+.proc __src_start
+	ldx cursorzp
+	bne @done
+	ldx cursorzp+1
+	cpx #>__src_data
+	bne @done
+	ldx base
+	bne @done
+	ldx base+1
+	bne @done
+	ldx base+2
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -768,8 +1301,18 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	decw line
 	jsr on_line_deleted
 
-:	decw cursorzp
-	dec srcx
+:	lda cursorzp
+	bne @local
+	lda cursorzp+1
+	cmp #>__src_data
+	bne @local
+	jsr backspace_prev
+	jmp @x
+
+@local:	decw cursorzp
+	jsr normalize
+
+@x:	dec srcx
 	bpl :+
 	jsr sync_x
 :	pla
@@ -817,6 +1360,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	lda #$0d		; deleted char was a newline
 :	pha
 	incw poststartzp
+	jsr normalize
 	jsr __src_mark_dirty
 	pla			; restore deleted char
 	clc
@@ -967,7 +1511,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; the buffer if there is no such character
 ; OUT:
 ;  - .C: set if the end of the buffer was reached (cannot move "down")
-.ifndef ultimem
+.if .not (.defined(ultimem) .or .defined(c64))
 .export __src_down
 .proc __src_down
 	jsr __src_end
@@ -1075,8 +1619,11 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Moves the cursor back to the start of the buffer
 .export __src_rewind
 .proc __src_rewind
-@l0:	jsr __src_prev
-	bcc @l0
+	lda #$00
+	sta srctmp
+	sta srctmp+1
+	sta srctmp+2
+	jsr jump
 
 	; reset cursors (x/line)
 	lda #$01
@@ -1199,53 +1746,104 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 
 ;*******************************************************************************
 ; POPGOTO
-; Navigates to the the most recent source position pushed in .YX
+; Navigates to the the most recent source position pushed
 .export __src_popgoto
 .proc __src_popgoto
+@d=r4
 	jsr __src_popp
-	bcc __src_goto
-	rts
+	bcs @ret
+
+	jsr __src_pos
+	stxy srctmp
+	sta srctmp+2
+
+	; distance = target - current
+	ldx sp
+	sec
+	lda stk_lo,x
+	sbc srctmp
+	sta @d
+	lda stk_mid,x
+	sbc srctmp+1
+	sta @d+1
+	lda stk_hi,x
+	sbc srctmp+2
+	beq @fwd
+	cmp #$ff
+	bne @jump
+	lda @d+1
+	cmp #<-(NEAR_DIST>>8)
+	bcs move_by
+	bcc @jump		; branch always
+@fwd:	lda @d+1
+	cmp #>NEAR_DIST
+	bcc move_by
+
+@jump:	; far away: go straight there and restore the line it was on
+	lda stk_lo,x
+	sta srctmp
+	lda stk_mid,x
+	sta srctmp+1
+	lda stk_hi,x
+	sta srctmp+2
+	lda stk_llo,x
+	sta line
+	lda stk_lhi,x
+	sta line+1
+	jsr jump
+	jmp sync_x
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
 ; GOTO
-; Goes to the source position given
+; Goes to the source position given. As the position is only 16 bits, the
+; nearest position with those low bits is used.
 ; IN:
 ;  - .XY: the source position to go to (see src::pos, src::pushp, src::popp)
 .export __src_goto
 .proc __src_goto
-@dest=r4
-	cmpw cursorzp
+@d=r4
+	stxy @d
+	jsr __src_pos
+	stxy srctmp
+	lda @d
+	sec
+	sbc srctmp
+	sta @d
+	lda @d+1
+	sbc srctmp+1
+	sta @d+1
+
+	; fall through to move_by
+.endproc
+
+;*******************************************************************************
+; MOVE BY
+; Moves the cursor by the signed 16-bit count in r4
+.proc move_by
+@d=r4
+	lda @d+1
+	bmi @back
+
+@fwd:	lda @d
+	ora @d+1
 	beq @done
-	stxy @dest
-	bcc @backwards
-
-@forwards:
 	jsr __src_end
-	beq @sync_x
+	beq @done
 	jsr __src_next
-	lda cursorzp
-	cmp @dest
-	bne @forwards
-	lda cursorzp+1
-	cmp @dest+1
-	bne @forwards
-	beq @sync_x		; branch always
+	decw @d
+	jmp @fwd
 
-@backwards:
-	jsr __src_start
-	beq @sync_x
+@back:	lda @d
+	ora @d+1
+	beq @done
 	jsr __src_prev
-	lda cursorzp
-	cmp @dest
-	bne @backwards
-	lda cursorzp+1
-	cmp @dest+1
-	bne @backwards
-@sync_x:
-	jmp sync_x
+	bcs @done
+	incw @d
+	jmp @back
 
-@done:  rts
+@done:	jmp sync_x
 .endproc
 
 ;*******************************************************************************
@@ -1257,96 +1855,17 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .export __src_get
 .proc __src_get
 	ldxy #mem::linebuffer
-
-	; fall through to __src_getin
-.endproc
-
-;*******************************************************************************
-; GET IN
-; Reads the next line into the given address
-; target location
-; IN:
-;  - .XY: destination to copy to
-; OUT:
-;  - (.XY): a line of text from the cursor position
-.export __src_getin
-.proc __src_getin
-@target=zp::bankaddr1
-	stxy @target
-	ldx #LINESIZE
-	bne get_line		; branch always
+	jmp __src_getin
 .endproc
 
 ;*******************************************************************************
 ; GET WIDE
-; Reads up to MAX_LINE_LEN characters from the source cursor into linebuffer,
-; including columns outside the editor viewport. Does not move the cursor.
-; OUT:
-;  - mem::linebuffer: NUL-terminated source text
+; Reads up to MAX_LINE_LEN characters without moving the source cursor.
 .export __src_getwide
 .proc __src_getwide
-@target=zp::bankaddr1
 	ldxy #mem::linebuffer
-	stxy @target
-	ldx #MAX_LINE_LEN
-.endproc
-
-;*******************************************************************************
-; GET LINE
-; Copies source text up to the requested limit, newline, or buffer end.
-; Terminates the copied text and leaves the source cursor unchanged.
-; IN:
-;  - .X: maximum number of characters
-;  - zp::bankaddr1: destination buffer
-; OUT:
-;  - .Y: number of characters copied
-;  - .C: clear
-.proc get_line
-@src=zp::bankaddr0
-@target=zp::bankaddr1
-@limit=zp::banktmp
-	stx @limit
-	ldxy poststartzp
-	stxy @src
-
-	jsr __src_on_last_line
-	bne @normal
-
-	; clamp the final line to the destination's limit
-	ldxy end
-	sub16 poststartzp
-	tya
-	bne @clamp
-	cpx @limit
-	bcc @golast
-@clamp:	ldx @limit
-@golast:
-	txa
-	tay
-	beq @done
-	pha
-	dey
-	lda __src_bank
-	jsr src_copyline
-	pla			; restore the terminator's index
-	tay
-	bne @done		; branch always
-
-;-------------------------------------------------------------------------------
-@normal:
-	lda @limit
-	cmp #LINESIZE
-	beq @row
-	lda __src_bank
-	jsr ram::copyline
-	jmp @done
-@row:	lda __src_bank
-	jsr ram::copyrow
-
-@done:	; terminate the copied text
-	lda #$00
-	sta (@target),y
-	RETURN_OK
+	lda #MAX_LINE_LEN
+	jmp __src_readspan
 .endproc
 
 ;*******************************************************************************
