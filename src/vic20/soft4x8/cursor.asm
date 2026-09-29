@@ -71,8 +71,8 @@ R_REPLACE_MASK = $0f	; mask for right half of 8x8 char in REPLACE mode
 ;*******************************************************************************
 ; TOGGLE
 ; Toggles the cursor (turns it off if its on or vise-versa)
-.export __cur_toggle
-__cur_toggle:
+.export __cur_toggle_physical
+__cur_toggle_physical:
 @dst=r0
 @mask=r2
 	lda zp::curx

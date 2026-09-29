@@ -15,8 +15,8 @@
 ;*******************************************************************************
 ; TOGGLE
 ; Toggles the cursor (turns it off if its on or vise-versa)
-.export __cur_toggle
-.proc __cur_toggle
+.export __cur_toggle_physical
+.proc __cur_toggle_physical
 @dst=r0
 	ldx zp::curx
 	jsr viewport::physical_x

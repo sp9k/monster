@@ -3,8 +3,9 @@
 .include "layout.inc"
 .include "text.inc"
 .include "zeropage.inc"
+.include "viewport.inc"
 
-.import __cur_toggle
+.import __cur_toggle_physical
 
 ;*******************************************************************************
 .BSS
@@ -31,6 +32,24 @@ __cur_maxy:
 maxy: .byte 0
 
 .CODE
+
+;*******************************************************************************
+; TOGGLE
+; Selection cursors are persistent highlights, including outside the viewport.
+; Ordinary cursor blinking only changes the visible screen.
+.export __cur_toggle
+.proc __cur_toggle
+	lda __cur_mode
+	beq @physical
+	lda zp::editor_height
+	bmi @physical
+	cmp zp::cury
+	bcc @physical
+	jmp viewport::toggle_cursor
+
+@physical:
+	jmp __cur_toggle_physical
+.endproc
 
 ;*******************************************************************************
 ; OFF

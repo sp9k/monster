@@ -21,6 +21,7 @@ VIEWPORT_INC = 1
 .import __view_slots
 .import __view_valid
 .import __view_x
+.import __view_toggle_cursor
 
 .scope viewport
 	chars       = __view_chars
@@ -39,5 +40,6 @@ VIEWPORT_INC = 1
 	slots       = __view_slots
 	valid       = __view_valid
 	offset      = __view_x
+	toggle_cursor = __view_toggle_cursor
 .endscope
 .endif

@@ -1384,13 +1384,14 @@ cancel = enter_command
 	jsr is_visual
 	beq :-			; -> RTS (already in VISUAL mode)
 
-	jsr cur::on
+	jsr cur::off		; replace the blinking cursor with a cached highlight
 
 	lda #MODE_VISUAL
 	sta mode
 	lda #CUR_SELECT
 	sta cur::mode
 	jsr use_replace_cursor	; set cursor to the "REPLACE" one
+	jsr cur::on
 
 	; save current editor position
 	jsr src::currline

@@ -51,6 +51,8 @@ __view_clear:       JUMP FINAL_BANK_VSCREEN, clear
 __view_scroll_up:   JUMP FINAL_BANK_VSCREEN, scroll_up
 __view_scroll_down: JUMP FINAL_BANK_VSCREEN, scroll_down
 __view_reverse:     JUMP FINAL_BANK_VSCREEN, reverse
+.export __view_toggle_cursor
+__view_toggle_cursor: JUMP FINAL_BANK_VSCREEN, toggle_cursor
 
 .export __view_join
 __view_join: JUMP FINAL_BANK_VSCREEN, join
@@ -465,10 +467,11 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	bcs @row
 	lda #0
 	sta repainting
+	; Selection cursors were already restored by the cached masks.
+	; The editor redraws an ordinary cursor after following the viewport.
+	ldx cur::mode
+	bne :+
 	sta cur::status
-	lda cur::mode
-	beq :+
-	CALLMAIN cur::on
 :	rts
 .endproc
 
@@ -547,8 +550,10 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	sta manual
 	txa
 	pha
+	lda cur::mode
+	bne :+			; a selection cursor belongs to the cached selection
 	CALLMAIN cur::off
-	pla
+:	pla
 	clc
 	adc __view_x
 	bpl :+
@@ -749,3 +754,32 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 @done:	rts
 .endproc
 
+;*******************************************************************************
+; TOGGLE CURSOR
+; Includes a selection cursor in the logical mask before clipping to the screen.
+.proc toggle_cursor
+	; save TAB count and deselect flag (used by horizontal movement)
+	lda r3
+	pha
+	lda r4
+	pha
+	lda r5
+	pha
+	ldy zp::curx
+	ldx zp::curx
+	inx
+	lda zp::cury
+	jsr reverse
+	pla
+	sta r5
+	pla
+	sta r4
+	pla
+	sta r3
+	lda #1
+	eor cur::status
+	sta cur::status
+	ldx zp::curx
+	ldy zp::cury
+	rts
+.endproc
