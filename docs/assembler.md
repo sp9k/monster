@@ -710,6 +710,29 @@ Becomes:
 ```
 ````
 
+#### .POPSEG
+
+**Syntax:** `.POPSEG`
+
+`.POPSEG` restores the most recently "pushed" (see `PUSHSEG`) segment, picking
+up where it left off.
+
+#### .PUSHSEG
+
+**Syntax:** `.PUSHSEG`
+
+`.PUSHSEG` saves the current segment for later use (see `POPSEG`).
+
+```
+.seg "CODE"
+    lda #$01
+.pushseg
+.seg "TABLES"
+    .db $10,$20,$30
+.popseg
+    rts
+```
+
 #### .SEG
 
 **Syntax:** `.SEG "name"`

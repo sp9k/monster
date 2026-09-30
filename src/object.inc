@@ -14,6 +14,7 @@
 .import __obj_dump
 .import __obj_filename
 .import __obj_get_segment_name_by_id
+.import __obj_copy_segment_name
 .import __obj_init
 .import __obj_load
 .import __obj_log_state
@@ -50,6 +51,7 @@
 	dump                   = __obj_dump
 	filename               = __obj_filename
 	get_segment_name_by_id = __obj_get_segment_name_by_id
+	copy_segment_name      = __obj_copy_segment_name
 	init                   = __obj_init
 	load                   = __obj_load
 	load_headers           = __obj_load_headers

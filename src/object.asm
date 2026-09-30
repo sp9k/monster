@@ -402,21 +402,12 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 ;  - .A = fill byte
 __obj_split_fragment:
 .proc split_fragment
-@name = r0
 @align = r6
 @fill  = r8
 	stxy @align
 	sta @fill
 	lda asm::segment
-	jsr __obj_get_segment_name_by_id
-	stxy @name
-
-	ldy #$00
-:	lda (@name),y
-	sta $100,y
-	iny
-	cpy #MAX_SEGMENT_NAME_LEN
-	bne :-
+	jsr __obj_copy_segment_name
 
 	; close current local SEGMENT/FRAGMENT and start a new one
 	jsr close_section
@@ -443,6 +434,32 @@ __obj_split_fragment:
 	ldxy #$0000
 	clc
 @ret:	rts
+.endproc
+
+;*******************************************************************************
+; COPY SEGMENT NAME
+; Copies an object-local segment name into the shared segment selection buffer.
+; IN:
+;   - .A: valid object-local fragment ID
+; OUT:
+;   - $100: eight-byte segment name
+;   - .A: segment type
+.export __obj_copy_segment_name
+.proc __obj_copy_segment_name
+@name = r0
+	pha
+	jsr __obj_get_segment_name_by_id
+	stxy @name
+	ldy #$00
+@copy:	lda (@name),y
+	sta $100,y
+	iny
+	cpy #MAX_SEGMENT_NAME_LEN
+	bne @copy
+	pla
+	tax
+	lda segments_type-1,x
+	rts
 .endproc
 
 ;*******************************************************************************

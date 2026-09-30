@@ -137,6 +137,11 @@ includestack: .res MAX_INCLUDE_DEPTH
 includesp:    .byte 0	; number of files on the include stack
 includeabort: .byte 0	; error code that stopped assembly (0 if none)
 
+; Named segment selections saved by .PUSHSEG, reset at the start of each pass.
+MAX_SEGSTACK = $10
+segstack_ids:   .res MAX_SEGSTACK
+segstacksp:     .byte $00
+
 .ifdef ultimem
 .segment "BSS_NOINIT"
 .endif
@@ -497,7 +502,10 @@ directives:
 	.byte "align",0
 	.byte "importzp",0
 	.byte "df",0
+	.byte "pushseg",0
+	.byte "popseg",0
 directives_len=*-directives
+.assert directives_len <= $ff, error, "directive names exceed byte index"
 
 ;*******************************************************************************
 .linecont +
@@ -505,10 +513,15 @@ directives_len=*-directives
 defineorg, define_psuedo_org, repeat, macro, do_if, do_else, do_endif, \
 do_ifdef, create_macro, handle_repeat, incbinfile, import, export, \
 directive_res, directive_seg, directive_segzp, directive_bss, directive_bsszp, \
-directive_align, importzp, definefloat
+directive_align, importzp, definefloat, directive_pushseg, directive_popseg
 .linecont -
 
+.pushseg
+.ifdef vic20
+.segment "CODE"
+.endif
 directive_vectorslo: .lobytes directive_vectors
+.popseg
 directive_vectorshi: .hibytes directive_vectors
 
 ;*******************************************************************************
@@ -681,6 +694,7 @@ BANKED_CODE "ASMBANK"
 	; empty CONTEXT and IF stacks
 	lda #$00
 	sta ifstacksp
+	sta segstacksp
 	sta ifdefidx		; restart the .IFDEF result log (pass 1)
 
 	jsr ctx::init
@@ -717,6 +731,7 @@ BANKED_CODE "ASMBANK"
 	sta image::mode
 
 	sta ifstacksp		; reset the .IF stack (may leak from prior pass)
+	sta segstacksp		; reset saved segment selections for this pass
 	sta includesp		; reset the include stack
 	sta includeabort	; and the "stop assembling" latch
 	sta has_output
@@ -2622,6 +2637,10 @@ CUR_BANK .set FP_CALLER_BANK
 	JUMP FINAL_BANK_LINKER, obj::add_export
 .endproc
 
+; Segment stack handlers share the existing expression directive helpers.
+directive_pushseg: JUMP FINAL_BANK_EXPR, push_segment
+directive_popseg:  JUMP FINAL_BANK_EXPR, pop_segment
+
 ;*******************************************************************************
 ; DIRECTIVE BSS ZP
 ; Handles the `.BSSZP` directive
@@ -2677,11 +2696,22 @@ CUR_BANK .set FP_CALLER_BANK
 
 	; if verifying, the name is validated; skip all side effects
 	lda zp::verify
-	beq @apply
+	beq select_segment
 	lda #ASM_DIRECTIVE
 	RETURN_OK
+.endproc
 
-@apply:	ldxy __asm_linenum
+;*******************************************************************************
+; SELECT SEGMENT
+; Closes the active section and resumes a named segment, recording debug blocks.
+; IN:
+;   - $100: uppercase segment name
+;   - __asm_segtype: segment type
+; OUT:
+;   - .A: ASM_DIRECTIVE on success, error code on failure
+;   - .C: set on section or debug block failure
+.proc select_segment
+	ldxy __asm_linenum
 	stxy dbgi::srcline
 
 	; end the current BLOCK of debug info (if one is open)
@@ -4817,10 +4847,87 @@ __asm_type_to_mode = type2mode
 .endif
 
 ;*******************************************************************************
-; RESERVATION AND ALIGNMENT HELPERS
+; DIRECTIVE HELPERS
 ; Directive parsing executes in the expression bank
 .segment "EXPR"
 CUR_BANK .set FINAL_BANK_EXPR
+
+;*******************************************************************************
+; SEGMENT STACK SYNTAX
+; Checks that a segment stack directive has no operand.
+; IN:
+;   - zp::line: text following the directive
+; OUT:
+;   - .C: set and .A = error code for an unexpected operand
+.proc segment_stack_syntax
+	CALLMAIN line::process_ws
+	beq @ok
+	cmp #';'
+	beq @ok
+	RETURN_ERR ERR_UNEXPECTED_CHAR
+@ok:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; DIRECTIVE PUSHSEG
+; Saves the active named segment and its type on the segment stack.
+; IN:
+;   - zp::line: text following .PUSHSEG
+;   - asm segment state: active named segment
+; OUT:
+;   - .A: ASM_DIRECTIVE on success, error code on failure
+;   - .C: set on invalid syntax, missing named segment, or stack overflow
+.proc push_segment
+	jsr segment_stack_syntax
+	bcs @ret
+	lda zp::verify
+	bne @done
+	lda __asm_segmentid
+	beq @noseg
+	cmp #SEG_ABS
+	beq @noseg
+	ldx segstacksp
+	cpx #MAX_SEGSTACK
+	bcs @full
+	sta segstack_ids,x
+	inc segstacksp
+@done:	lda #ASM_DIRECTIVE
+	RETURN_OK
+@noseg:
+	RETURN_ERR ERR_NO_SEGMENTS
+@full:	RETURN_ERR ERR_STACK_OVERFLOW
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; DIRECTIVE POPSEG
+; Resumes the last saved named segment at its current end, with its saved type.
+; IN:
+;   - zp::line: text following .POPSEG
+;   - segment stack: selection saved by .PUSHSEG
+; OUT:
+;   - .A: ASM_DIRECTIVE on success, error code on failure
+;   - .C: set on invalid syntax, stack underflow, or segment selection failure
+.proc pop_segment
+	jsr segment_stack_syntax
+	bcs @ret
+	lda zp::verify
+	bne @done
+	ldx segstacksp
+	beq @empty
+	dex
+	lda segstack_ids,x
+	CALL FINAL_BANK_LINKER, obj::copy_segment_name
+	sta __asm_segtype
+	CALL FINAL_BANK_ASM, select_segment
+	bcs @ret
+	dec segstacksp
+@done:	lda #ASM_DIRECTIVE
+	RETURN_OK
+@empty:
+	RETURN_ERR ERR_STACK_UNDERFLOW
+@ret:	rts
+.endproc
 
 ;*******************************************************************************
 ; RESERVE COUNT
