@@ -2537,11 +2537,16 @@ CUR_BANK .set FP_CALLER_BANK
 
 ;*******************************************************************************
 ; DIRECTIVE RES
-; Fills the next n bytes with the 0 values
+; Reserves the defined number of bytes, filling initialized segments with zeroes
+; IN:
+;   - zp::line: count expression or full-address-space literal
+; OUT:
+;   - .A: ASM_DIRECTIVE on success, error code on failure
+;   - .C: set on error
 .proc directive_res
 @cnt=r0
 	jsr line::process_ws
-	jsr eval_expr
+	CALL FINAL_BANK_EXPR, reserve_count
 	bcs @err
 	lda zp::verify
 	bne @done		; syntax is enough while editing; values may be stale
@@ -4812,14 +4817,113 @@ __asm_type_to_mode = type2mode
 .endif
 
 ;*******************************************************************************
-; ALIGN IMPLEMENTATION
-; Keep the directive together in the expression bank; the main VIC-20 code
-; bank has no room for it. Calls back to assembler helpers name their bank.
+; RESERVATION AND ALIGNMENT HELPERS
+; Directive parsing executes in the expression bank
 .segment "EXPR"
 CUR_BANK .set FINAL_BANK_EXPR
+
+;*******************************************************************************
+; RESERVE COUNT
+; Evaluates the count for .RES, including the full-address-space literals.
+; Full BSS reservations are recorded directly; initialized output emits its
+; first byte here and leaves the remaining $ffff bytes to DIRECTIVE RES.
+; IN:
+;   - zp::line: count expression (16 bit) OR $10000/65536 (for 64KB res)
+; OUT:
+;   - .XY: remaining count for DIRECTIVE RES
+;   - expr::kind: expression kind for constant validation
+;   - zp::line: after the parsed operand
+;   - .C: set and .A = error code on invalid input
+.proc reserve_count
+	ldx #$00
+	ldy #$00
+	lda (zp::line),y
+	cmp #'$'
+	beq @match
+	ldx #@decimal-@literals
+
+@match:	lda @literals,x
+	beq @end
+	cmp (zp::line),y
+	bne @expression
+	inx
+	iny
+	bne @match
+
+@end:	lda (zp::line),y
+	beq @full
+	cmp #';'
+	beq @full
+	cmp #' '
+	beq @space
+	cmp #$09
+	bne @expression
+@space:
+	iny
+	bne @end
+
+@expression:
+	JUMP FINAL_BANK_ASM, eval_expr
+
+@full:	tya
+	clc
+	adc zp::line
+	sta zp::line
+	bcc :+
+	inc zp::line+1
+:	lda #VAL_ABS
+	sta expr::kind
+	lda zp::verify
+	bne @done		; syntax checking must not reserve any bytes
+
+	; if .RES is $10000 bytes, only accept at start of empty address space
+	lda zp::virtualpc
+	ora zp::virtualpc+1
+	ora section_size
+	ora section_size+1
+	ora section_size+2
+	bne @overflow
+	lda __asm_segtype
+	cmp #TYPE_SEGZP
+	beq @overflow
+	cmp #TYPE_BSSZP
+	beq @overflow
+	cmp #TYPE_BSS
+	bne @initialized
+	inc section_size+2	; BSS has no physical output or fill bytes
+
+@done:	ldxy #$0000
+	RETURN_OK
+
+@initialized:
+	lda #$00
+	tay
+	CALL FINAL_BANK_ASM, writeb
+	bcs @ret
+	CALL FINAL_BANK_ASM, incpc
+	ldxy #$ffff
+	RETURN_OK
+
+@overflow:
+	RETURN_ERR ERR_OVERSIZED_OPERAND
+@ret:	rts
+
+;-------------------------------------------------------------------------------
+@literals:
+	.byte "$10000",0
+@decimal:
+	.byte "65536",0
+.endproc
+
+;*******************************************************************************
+; ALIGN IMPLEMENTATION
+; Handler for the .ALIGN directive
+; IN:
+;   - zp::line: alignment and optional fill expressions
+; OUT:
+;   - .A: ASM_DIRECTIVE on success, error code on failure
+;   - .C: set on error
 .proc align_impl
-; No instruction operand is live during a directive. Expression evaluation
-; preserves this assembler-owned slot, unlike the general scratch registers.
 @align = operand
 @fill  = r2
 @cnt   = r3

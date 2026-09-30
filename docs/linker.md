@@ -106,6 +106,10 @@ Individual object fragments have 24-bit sizes, so a single BSS fragment can
 reserve a full 64 KiB memory section from `START=0` to `END=$10000`.
 The reservation must fit both its LOAD and RUN sections.
 
+NOTE: runtime addresses must be in the 16-bit range (`0-$ffff`), but the assembler accepts
+`.res $10000` (or `.res 65536`) for a full address-space reservation at offset
+zero in an empty segment.
+
 #### ALIGN
 
 The `ALIGN` property tells the linker to begin a SEGMENT on an address boundary instead of
