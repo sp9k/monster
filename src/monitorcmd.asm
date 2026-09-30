@@ -1314,13 +1314,27 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; Saves the given memory range to the specified file
 ; e.g.
 ;  `>S $1000 $2000 FILE.PRG`
+; IN:
+;   - zp::line: start address, exclusive end address and filename
+; OUT:
+;   - .C: set on error, with the error code in .A
 .proc savemem
 @startaddr=zp::debuggertmp
 @stopaddr=zp::debuggertmp+2
+@nonempty=zp::debuggertmp+4
 	jsr get_range
 	bcs @done
+	ldxy @startaddr
+	cmpw @stopaddr
+	bcs @empty
+
+	decw @stopaddr
 	ldxy @stopaddr
 	stxy file::save_address_end
+	lda #$01
+	bne @range
+@empty:	lda #$00
+@range:	sta @nonempty
 
 	CALLMAIN scr::blank
 
@@ -1331,12 +1345,14 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	pha
 
 	; save the given memory range
+	ldx @nonempty
+	beq @close
 	ldxy @startaddr
 	CALLMAIN file::savebin
 	bcs @saverr
 
 	; close the file
-	pla
+@close:	pla
 	CALLMAIN file::close
 	jsr @err				; restore IRQ
 	RETURN_OK

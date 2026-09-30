@@ -170,10 +170,18 @@ origin: .word 0
 
 ;*******************************************************************************
 ; TOP
-; the highest address in the program
+; the inclusive last address in the program; valid when has_output is nonzero
 .export __asm_top
 __asm_top:
 top: .word 0
+
+.export __asm_section_size
+__asm_section_size:
+section_size: .res 3		; bytes reserved in the current object section
+
+.export __asm_has_output
+__asm_has_output:
+has_output: .byte 0		; set if program contains any non-BSS bytes
 
 ;*******************************************************************************
 ; PCSET
@@ -711,6 +719,10 @@ BANKED_CODE "ASMBANK"
 	sta ifstacksp		; reset the .IF stack (may leak from prior pass)
 	sta includesp		; reset the include stack
 	sta includeabort	; and the "stop assembling" latch
+	sta has_output
+	sta section_size
+	sta section_size+1
+	sta section_size+2
 	sta top			; set top of program to 0
 	sta top+1
 	sta origin
@@ -3063,9 +3075,8 @@ include_entry:
 	lda pcset
 	bne @chkorg
 
-	; PC isn't set yet, set TOP to the new PC
+	; The first origin sets the base; emitted bytes establish TOP.
 	inc pcset
-	stxy top
 	stxy origin
 	bne @done		; branch always
 
@@ -4340,60 +4351,85 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 .endproc
 
 ;*******************************************************************************
-; ADD_PC
-; Adds the given value to the virtual PC and asmresult pointers
-; IN:
-;  - .A: the value to add to the assembly pointers (virtualpc and asmresult)
-.proc addpc
-	ldx zp::verify
-	beq :+
-	rts
-
-:	pha
-	clc
-	adc zp::asmresult
-	sta zp::asmresult
-	tax
-	lda zp::asmresult+1
-	bcc :+
-	inc zp::asmresult+1
-
-:	tay
-	pla
-	clc
-	adc zp::virtualpc
-	sta zp::virtualpc
-	bcc update_top
-	inc zp::virtualpc+1
-	bcs update_top		; branch always
-
-	; fall through to incpc
+; INCPC
+; Advances the logical PC by 1 and reserves output (for non-BSS data)
+; OUT:
+;   - None
+.proc incpc
+	lda #$01
+	; fall through to addpc
 .endproc
 
 ;*******************************************************************************
-; INCPC
-; Updates the asmresult and virtualpc pointers by 1
-.proc incpc
+; ADD PC
+; Counts reserved bytes, advances the logical PC, and advances output for
+; non-BSS data
+; IN:
+;   - .A: the amount to advance
+; OUT:
+;   - None
+.proc addpc
+	cmp #$00
+	beq @done
 	ldx zp::verify
-	bne :+		; -> RTS
+	bne @done
 
-	incw zp::asmresult
-	incw zp::virtualpc
+	pha
+	clc
+	adc section_size
+	sta section_size
+	bcc @counted
+	inc section_size+1
+	bne @counted
+	inc section_size+2
 
-	; fall through to update_top
+@counted:
+	pla
+	pha
+	clc
+	adc zp::virtualpc
+	sta zp::virtualpc
+	bcc :+
+	inc zp::virtualpc+1
+:	pla
+
+	ldx __asm_segtype
+	cpx #TYPE_BSS
+	beq @done		; if BSS -> don't update output size
+	cpx #TYPE_BSSZP
+	beq @done
+
+	clc
+	adc zp::asmresult
+	sta zp::asmresult
+	bcc update_top
+	inc zp::asmresult+1
+	bcs update_top
+
+@done:	rts
 .endproc
 
 ;*******************************************************************************
 ; UPDATE TOP
-; Sets the top of the program to the given PC if it is higher than the current
-; TOP
+; Sets the inclusive last initialized address (if the current PC is higher than
+; the existing one).
+; IN:
+;   - zp::asmresult: next output address
+; OUT:
+;   - None
 .proc update_top
-	; update the top pointer if we are at the top of the program
 	ldxy zp::asmresult
+	cpx #$00
+	bne :+
+	dey
+:	dex
 	cmpw top
 	bcc :+
 	stxy top
-:	rts		; <- incpc
+
+:	lda #$01
+	sta has_output
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -4412,17 +4448,18 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	lda zp::verify
 	bne @ok			; if just verifying, don't write
 
-	lda zp::bankval		; writing a non-zero byte?
-	beq :+			; zeroes are allowed anywhere
 	lda __asm_segtype
 	cmp #TYPE_BSS
-	beq @bsserr
+	beq @bss
 	cmp #TYPE_BSSZP
-	bne :+
-@bsserr:
+	bne @initialized
+
+@bss:	lda zp::bankval
+	beq @ok
 	RETURN_ERR ERR_DATA_IN_BSS
 
-:	lda pcset
+@initialized:
+	lda pcset
 	bne :+
 	RETURN_ERR ERR_NO_ORIGIN
 

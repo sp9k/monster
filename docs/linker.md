@@ -71,7 +71,10 @@ the program.
 The LINK file must always be named "LINK". Therefore, only 1 such file may exist on a given disk.
 The linker loads this file before beginning the link process and uses it to initialize the layout for the final linked binary as well as define the constraints for it.
 
-Every `MEMORY` section must define both `START` and `END`. Note that the `END` address is exclusive.
+Every `MEMORY` section must define both `START` and `END`. The `END` address is
+exclusive and may be `$10000`. `START` must be in `$0000`–`$ffff`, and
+`END` must not precede it
+
 Every `SEGMENTS` entry must define `LOAD`. `RUN` is optional and defaults to the
 same memory section as `LOAD`. `ALIGN` is optional and defaults to no alignment.
 `FILL` is also optional and defaults to disabled.
@@ -96,6 +99,12 @@ section's `START`, and each subsequent one begins where the previous ended.
 
 If a SEGMENT defines both a `LOAD` and a `RUN` SECTION, it occupies each.  That is,
 the SECTIONs that it *loads* and *runs* in are both advanced by the size of the SEGMENT.
+
+BSS segments advance the address without writing data to the linked output image.
+
+Individual object fragments have 24-bit sizes, so a single BSS fragment can
+reserve a full 64 KiB memory section from `START=0` to `END=$10000`.
+The reservation must fit both its LOAD and RUN sections.
 
 #### ALIGN
 

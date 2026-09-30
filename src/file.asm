@@ -223,7 +223,7 @@ ENDOSPROC
 ; IN:
 ;  - .A:                      the file to save to
 ;  - .XY:                     the start address to write from
-;  - __file_save_address_end: the end of the address range to save
+;  - __file_save_address_end: inclusive last address to save
 ; OUT:
 ;  .C: set on error, clear on success
 OSPROC savebin
@@ -577,6 +577,10 @@ ENDOSPROC
 ;*******************************************************************************
 ; GETB
 ; During SAVE: reads the next byte to be saved.
+; IN:
+;  - isbin: zero for source, $01 for binary, $80 after the last binary byte
+;  - __file_save_address:     start of range (inclusive)
+;  - __file_save_address_end: end of range (inclusive)
 ; OUT:
 ;  - .A: the character that was read
 ;  - .C: set if EOF (source) or end of save address range (binary)
@@ -592,14 +596,22 @@ ENDOSPROC
 	rts
 
 @use_bin:
+	bmi @eof		; the inclusive last byte has already been read
 	ldxy __file_save_address
-	cmpw __file_save_address_end	; are we at the end of the save range?
-	bcs @done			; if so, we're done
+	cmpw __file_save_address_end
+	beq @last
+	bcs @eof		; inverted range
 
 	jsr vmem::load
 	incw __file_save_address
 	clc
-@done:	rts
+	rts
+
+@last:	lda #$80
+	sta isbin
+	jsr vmem::load
+	clc
+	rts
 .endproc
 
 ;*******************************************************************************

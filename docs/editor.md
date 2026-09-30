@@ -250,7 +250,8 @@ can also be used to export things like data tables for use with .INCBIN
 (`.D`) file.  You may think of these as debuggable versions of your release
 binaries: a `.D` file can be loaded (`:L`) and debugged without having to
 reassemble/relink it.  This command should be run after a successful assembly
-or link.
+or link that produced initialized bytes. Empty or BSS-only programs cannot be
+exported as debug files.
 
 ```{example}
 `:D HELLO.D`

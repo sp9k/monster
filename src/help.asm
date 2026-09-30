@@ -146,7 +146,7 @@ rowbuf: .res LINESIZE	; row being composed
 	CALLMAIN scr::save
 	jsr drawframe
 
-	lda asm::pcset
+	lda asm::has_output
 	bne @prog
 
 @noprog:

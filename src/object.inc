@@ -21,6 +21,7 @@
 .import __obj_numsections
 .import __obj_sections_sizelo
 .import __obj_sections_sizehi
+.import __obj_sections_sizebank
 .import __obj_segments
 .import __obj_num_exports
 .import __obj_num_imports
@@ -28,6 +29,7 @@
 .import __obj_segment_ids
 .import __obj_segments_sizelo
 .import __obj_segments_sizehi
+.import __obj_segments_sizebank
 .import __obj_segments_startlo
 .import __obj_segments_starthi
 
@@ -58,10 +60,12 @@
 	numsections            = __obj_numsections
 	sections_sizelo        = __obj_sections_sizelo
 	sections_sizehi        = __obj_sections_sizehi
+	sections_sizebank      = __obj_sections_sizebank
 	segments               = __obj_segments
 	segment_ids            = __obj_segment_ids
 	segments_sizelo        = __obj_segments_sizelo
 	segments_sizehi        = __obj_segments_sizehi
+	segments_sizebank      = __obj_segments_sizebank
 	segments_startlo       = __obj_segments_startlo
 	segments_starthi       = __obj_segments_starthi
 .endscope

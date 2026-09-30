@@ -868,16 +868,21 @@ main:	jsr key::getui
 
 :	; get the size of the assembled program and print it
 	ldxy #strings::done
-	lda asm::pcset		; did this program assemble > 0 bytes?
+	lda asm::has_output	; did this program assemble > 0 bytes?
 	beq @print 		; if not, print a simple "done"
 
-	; get the size of the assembled program (top - origin)
-	lda asm::top
-	sec
-	sbc asm::origin
+	jsr program_size
+	txa
 	pha
-	lda asm::top+1
-	sbc asm::origin+1
+	tya
+	pha
+
+	ldxy #strings::null
+	bcc :+
+	ldxy #@full
+:	tya
+	pha
+	txa
 	pha
 
 	lda asm::top
@@ -915,8 +920,34 @@ main:	jsr key::getui
 ;-------------------------------------------------------------------------------
 .PUSHSEG
 .RODATA
-@success_msg: .byte "ok $", $fe, "-$", $fe, " (", $fe, " bytes)", 0
+@success_msg: .byte "ok $", $fe, "-$", $fe, " (", ESCAPE_STRING, $fe, " bytes)", $00
+@full:	.byte "1", $00
 .POPSEG
+.endproc
+
+;*******************************************************************************
+; PROGRAM SIZE
+; Calculates the initialized program size
+; OUT:
+;   - .XY: byte count, $0000 for a full 64 KiB program
+;   - .C:  set if entire 64KB range is occupied
+.proc program_size
+	lda asm::top
+	sec
+	sbc asm::origin
+	tax
+	lda asm::top+1
+	sbc asm::origin+1
+	tay
+	inx
+	bne @done
+	iny
+	bne @done
+	sec		; full
+	rts
+
+@done:	clc		; not full
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -3696,7 +3727,6 @@ goto_buffer:
 ;   - None
 .proc command_loaddbg
 @file=zp::editortmp
-@addr=zp::editortmp+1
 	stxy @file
 
 	ldxy #strings::loading
@@ -3717,8 +3747,52 @@ goto_buffer:
 	tax
 	jsr krn::chkin		; CHKIN, file in .X is input
 
+	CALL FINAL_BANK_LINKER_AUX, load_debug_binary
+	bcs @errclose
+
+	; read the symbol table
+	CALLMAIN lbl::load
+	bcs @errclose
+
+	; read the debug information
+	lda #$00				; no relocation
+	CALL FINAL_BANK_DEBUG, dbgi::load
+	bcs @errclose
+
+	CALLMAIN lbl::remapfiles
+	bcc @done
+	bcs @errclose		; branch always
+
+	; failed to load the debug info; close the file and report the error
+@errclose:
+	pha			; save the error code
+	lda @file
+	jsr file::close
+	jsr unblank
+	pla			; restore the error code
+	jmp report_typein_error
+
+@done:	lda @file
+	jsr file::close
+
+@ret:	jmp unblank
+.endproc
+
+;*******************************************************************************
+; LOAD DEBUG BINARY
+; Reads the debug-file header and initialized bytes, setting inclusive bounds.
+; A zero size in the header denotes a full 64 KiB program.
+; IN:
+;   - The debug file is open and selected as the input channel
+; OUT:
+;   - .C: set on error, with the error code in .A
+.PUSHSEG
+BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
+.proc load_debug_binary
+@addr=zp::editortmp+1
 	lda #$00
 	sta image::mode
+	sta asm::has_output
 
 	; read the start address of the program
 	jsr krn::chrin		; read LSB
@@ -3738,6 +3812,13 @@ goto_buffer:
 	plp
 	adc asm::origin+1
 	sta asm::top+1
+	bcc :+
+	ora asm::top
+	bne @trunc
+:	decw asm::top		; inclusive last byte (0 means 64 KiB)
+	ldxy asm::top
+	cmpw asm::origin
+	bcc @trunc
 
 	; read the CODE (binary data)
 :	jsr krn::readst
@@ -3745,39 +3826,22 @@ goto_buffer:
 	jsr krn::chrin
 	ldxy @addr
 	jsr vmem::store
-	incw @addr
 	ldxy @addr
 	cmpw asm::top
-	bne :-
+	beq @loaded
+	incw @addr
+	jmp :-
 
-	; read the symbol table
-	CALLMAIN lbl::load
-	bcs @errclose
+@loaded:
+	lda #$01
+	sta asm::has_output
 
-	; read the debug information
-	lda #$00				; no relocation
-	CALL FINAL_BANK_DEBUG, dbgi::load
-	bcs @errclose
-	CALLMAIN lbl::remapfiles	; saved file IDs belong to the loaded file table
-	bcc @done
-	bcs @errclose		; branch always
+	RETURN_OK
 
-@trunc:	lda #ERR_IO_ERROR	; file ended before all data was read
-
-	; failed to load the debug info; close the file and report the error
-@errclose:
-	pha			; save the error code
-	lda @file
-	jsr file::close
-	jsr unblank
-	pla			; restore the error code
-	jmp report_typein_error
-
-@done:	lda @file
-	jsr file::close
-
-@ret:	jmp unblank
+@trunc:	RETURN_ERR ERR_IO_ERROR
 .endproc
+.POPSEG
+SET_CUR_BANK FINAL_BANK_EDIT
 
 ;*******************************************************************************
 ; SAVE D
@@ -3792,9 +3856,12 @@ goto_buffer:
 	lda image::mode
 	beq :+
 	jmp ::command_saveprg::image_error
+:	lda asm::has_output
+	bne :+
+	lda #ERR_NO_ORIGIN
+	jmp report_errcode
 :
 @file=zp::editortmp
-@addr=zp::editortmp+2
 	stxy @file
 
 	ldxy #strings::saving
@@ -3813,31 +3880,22 @@ goto_buffer:
 
 	; write the start address of the program
 	lda asm::origin
-	sta @addr
 	jsr krn::chrout
 	lda asm::origin+1
-	sta @addr+1
 	jsr krn::chrout
 
-	; write the size of the program
-	lda asm::top
-	sec
-	sbc asm::origin
-	php
+	jsr program_size
+	tya
+	pha
+	txa
 	jsr krn::chrout
-	plp
-	lda asm::top+1
-	sbc asm::origin+1
+	pla
 	jsr krn::chrout
 
 	; write the CODE (binary data)
-:	ldxy @addr
-	jsr vmem::load
-	jsr krn::chrout
-	incw @addr
-	ldxy @addr
-	cmpw asm::top
-	bne :-
+	lda @file
+	CALL FINAL_BANK_LINKER_AUX, image::save
+	bcs @symbolerr
 
 	; write the symbol table
 	CALLMAIN lbl::dump

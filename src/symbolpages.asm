@@ -41,12 +41,13 @@ SIZEOF_LABEL       = 12
 .res $2000		; C64 offset by $2000
 .endif
 .res MAX_LABELS*8
+
 .segment "SYMBOL_NAME_STORAGE0"
 .res $ffff
-.byte 0
+.byte $00
 .segment "SYMBOL_NAME_STORAGE1"
 .res $ffff
-.byte 0
+.byte $00
 
 ;*******************************************************************************
 .ifdef vic20

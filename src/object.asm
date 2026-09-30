@@ -8,13 +8,13 @@
 ; NUM_EXPORTS     [1 byte]   ; number of symbols exported in object file
 ; NUM_IMPORTS     [2 bytes]  ; number of symbols imported by object file
 ; NUM_LOCALS      [2 bytes]  ; number of LOCAL symbols in object file
-; FRAGMENT HEADERS           ; 16 bytes per fragment, in layout order
+; FRAGMENT HEADERS           ; 17 bytes per fragment, in layout order
 ;  NAME   [$0:$7]            ; named SEGMENT, or zeroes for absolute .ORG code
 ;  ORIGIN [$8:$9]            ; 0 for REL code, literal address for ABS code
 ;  TYPE   [$a]               ; TYPE_SEGZP/SEG/BSS/BSSZP/ABS (see below)
-;  SIZE   [$b:$c]            ; raw bytes in fragment; excludes alignment padding
-;  ALIGN  [$d:$e]            ; boundary preceding this fragment; 0=no constraint
-;  FILL   [$f]               ; fill byte for this boundary
+;  SIZE   [$b:$d]            ; raw bytes in fragment; excludes alignment padding
+;  ALIGN  [$e:$f]            ; boundary preceding this fragment; 0=no constraint
+;  FILL   [$10]               ; fill byte for this boundary
 ; IMPORTS[]
 ;   Only symbols referenced by emitted relocations, in first-use order.
 ;   NAME[...]
@@ -32,7 +32,7 @@
 ;   FILE ID[1], LINE[2]    ; floats use SEG_FLOAT_PACKED + five bytes before these
 ; FRAGMENT TABLES:
 ;   TYPE[1]
-;   CODE SIZE[2]
+;   CODE SIZE[3]
 ;   RELOCATION SIZE[2] (non-BSS only)
 ;   OBJCODE[]          (non-BSS only)
 ;   RELOCATIONS[]      (non BSS only)
@@ -55,7 +55,7 @@
 ;   FILENAMES               ; its own local-ID table for the debug block headers
 ;   HEADERS
 ;   PROGRAM
-; All two-byte fields are little-endian.
+; All multibyte fields are little-endian.
 ;*******************************************************************************
 
 .include "asm.inc"
@@ -105,9 +105,11 @@ reloc = zp::link	; when linking, pointer to current relocation
 
 .export __obj_sections_sizelo
 .export __obj_sections_sizehi
+.export __obj_sections_sizebank
 .export __obj_segments
 .export __obj_segments_sizelo
 .export __obj_segments_sizehi
+.export __obj_segments_sizebank
 
 ;*******************************************************************************
 ; Type flags for SEGMENT
@@ -198,10 +200,14 @@ __obj_sections_sizelo:
 sections_sizelo:   .res MAX_SECTIONS
 __obj_sections_sizehi:
 sections_sizehi:   .res MAX_SECTIONS
+__obj_sections_sizebank:
+sections_sizebank: .res MAX_SECTIONS
 __obj_segments_sizelo:
 segments_sizelo:   .res MAX_SECTIONS
 __obj_segments_sizehi:
 segments_sizehi:   .res MAX_SECTIONS
+__obj_segments_sizebank:
+segments_sizebank: .res MAX_SECTIONS
 .export segments_type
 segments_type:     .res MAX_SECTIONS
 
@@ -288,7 +294,11 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 
 ;*******************************************************************************
 ; INIT
-; Clears the object state in preparation for a new object file to be assembled
+; Clears the object state in preparation for a new object file to be assembled.
+; IN:
+;   - None
+; OUT:
+;   - None
 .proc init
 	lda #$00
 	sta numsections
@@ -306,8 +316,10 @@ BANKED_SEG "OBJCODE", FINAL_BANK_LINKER
 @clrsizes:
 	sta segments_sizelo-1,x
 	sta segments_sizehi-1,x
+	sta segments_sizebank-1,x
 	sta sections_sizelo-1,x
 	sta sections_sizehi-1,x
+	sta sections_sizebank-1,x
 	sta segments_alignlo-1,x
 	sta segments_alignhi-1,x
 	sta __obj_segments_fill-1,x
@@ -441,7 +453,7 @@ __obj_split_fragment:
 ; will be determined by the linker when the program is linked.
 ; The base address of the SEGMENT is also returned, which will be 0 if this is
 ; a never before seen SEGMENT or where the last section that referenced this
-; SEGMENT left off if not.
+; SEGMENT left off if not. The new section begins with a zero byte count.
 ; IN:
 ;   - .A:             TYPE: 0=ZP relocate, 1=ABS relocate, 2=BSS, $FF=ABS
 ;   - zp::asmresult:  the physical address to begin the section at
@@ -455,6 +467,11 @@ __obj_split_fragment:
 @name=$100
 @segaddr=r0
 @info=r4
+	ldy #$00
+	sty asm::section_size
+	sty asm::section_size+1
+	sty asm::section_size+2
+
 	ldy zp::pass
 	cpy #$01
 	beq @pass1
@@ -554,6 +571,7 @@ __obj_split_fragment:
 	lda #$00
 	sta segments_sizelo-1,x
 	sta segments_sizehi-1,x
+	sta segments_sizebank-1,x
 
 	; store TYPE byte (ZP/BSS/etc) for the SEGMENT
 	lda @info
@@ -583,7 +601,13 @@ __obj_split_fragment:
 
 ;*******************************************************************************
 ; CLOSE SECTION
-; Closes the open section (if there is one)
+; Closes the open section and records its size in the section and fragment
+; tables
+; IN:
+;   - asm::section_size: 24-bit byte count of the section
+;   - reloctop:          end of the relocation table
+; OUT:
+;   - .C: clear
 .proc close_section
 	ldx numsections
 	beq @done		; no section to close
@@ -603,17 +627,15 @@ __obj_split_fragment:
 	sta sections_relocsizehi-1,x
 	RETURN_OK
 
-@pass1:	; calculate/set the size for the previous section
-	lda zp::asmresult
-	sec
-	sbc sections_startlo-1,x
+@pass1:	lda asm::section_size
 	sta sections_sizelo-1,x
-	lda zp::asmresult+1
-	sbc sections_starthi-1,x
+	lda asm::section_size+1
 	sta sections_sizehi-1,x
+	lda asm::section_size+2
+	sta sections_sizebank-1,x
 
 	; update segment size (running sum)
-	ldy __obj_segment_ids-1,x
+@total:	ldy __obj_segment_ids-1,x
 	lda segments_sizelo-1,y
 	clc
 	adc sections_sizelo-1,x
@@ -621,6 +643,9 @@ __obj_split_fragment:
 	lda segments_sizehi-1,y
 	adc sections_sizehi-1,x
 	sta segments_sizehi-1,y
+	lda segments_sizebank-1,y
+	adc sections_sizebank-1,x
+	sta segments_sizebank-1,y
 
 @done:	RETURN_OK
 .endproc
@@ -1201,6 +1226,11 @@ __obj_split_fragment:
 ; Dumps the SEGMENTS used in the object file and their sizes
 ; Also computes the sizes of the object and relocation tables, which are
 ; written in front of their corresponding data tables.
+; IN:
+;   - Object section and fragment tables from assembly
+;   - The object file is selected as the output channel
+; OUT:
+;   - .C: clear
 .proc dump_segments
 @name=r0
 @sec_idx=r2
@@ -1290,11 +1320,8 @@ __obj_split_fragment:
 	lda segments_type,x
 	jsr krn::chrout
 
-	; write the number of bytes used for this SEGMENT (2 bytes)
-	lda __obj_segments_sizelo,x
-	jsr krn::chrout
-	lda __obj_segments_sizehi,x
-	jsr krn::chrout
+	; write the number of bytes used for this SEGMENT (3 bytes)
+	jsr dump_fragment_size
 
 	; write the alignment the SEGMENT's code requires (2 bytes)
 	lda segments_alignlo,x
@@ -1315,14 +1342,33 @@ __obj_split_fragment:
 .endproc
 
 ;*******************************************************************************
+; DUMP FRAGMENT SIZE
+; Writes a fragment's 24-bit size in little-endian order.
+; IN:
+;   - .X: zero-based fragment index
+.proc dump_fragment_size
+	lda segments_sizelo,x
+	jsr krn::chrout
+	lda segments_sizehi,x
+	jsr krn::chrout
+	lda segments_sizebank,x
+	jmp krn::chrout
+.endproc
+
+;*******************************************************************************
 ; DUMP SEGMENT TABLES
 ; Concatenates all SECTIONS that share a SEGMENT and dumps them to the object
 ; file under construction.
+; IN:
+;   - Object section and fragment tables from assembly
+;   - The object file is selected as the output channel
+; OUT:
+;   - .C: clear
 .proc dump_segment_tables
 @sec=r0
 @sz=r2
-@sec_idx=r4
-@seg_idx=r5
+@sec_idx=r5
+@seg_idx=r6
 	lda #$00
 	sta @seg_idx
 	cmp numsections
@@ -1340,10 +1386,7 @@ __obj_split_fragment:
 	jsr krn::chrout
 
 	; write the size of the SEGMENT
-	lda __obj_segments_sizelo,x
-	jsr krn::chrout
-	lda __obj_segments_sizehi,x
-	jsr krn::chrout
+	jsr dump_fragment_size
 
 	; check if this is a BSS segment. We don't emit object/relocation code
 	; for segments of this TYPE
@@ -1378,6 +1421,9 @@ __obj_split_fragment:
 	sta @sz
 	lda __obj_sections_sizehi,x
 	sta @sz+1
+	lda __obj_sections_sizebank,x
+	sta @sz+2
+	ora @sz+1
 	ora @sz
 	beq @obj_next			; if no OBJ code, done with this SECTION
 
@@ -1392,9 +1438,15 @@ __obj_split_fragment:
 	jsr vmem::load		; load a byte of object code
 	jsr krn::chrout		; and dump it
 	incw @sec
-	decw @sz
-	iszero @sz
-	bne :-			; repeat til done
+	lda @sz
+	ora @sz+1
+	bne :+
+	dec @sz+2
+:	decw @sz
+	lda @sz
+	ora @sz+1
+	ora @sz+2
+	bne :--			; repeat til done
 
 @obj_next:
 	inc @sec_idx
@@ -1831,7 +1883,9 @@ __obj_get_fragment_run:
 ;*******************************************************************************
 ; LOAD INFO
 ; Loads the first part of the object file and extracts basic info from it
-; (e.g. number of symbols)
+; (e.g. number of symbols).
+; IN:
+;   - The object file is selected as the input channel
 ; OUT:
 ;   - .C: set on error
 .proc load_info
@@ -1918,6 +1972,8 @@ __obj_get_fragment_run:
 	sta __obj_segments_sizelo,y
 	jsr krn::chrin
 	sta __obj_segments_sizehi,y
+	jsr krn::chrin
+	sta __obj_segments_sizebank,y
 
 	; get the alignment the SEGMENT's code requires
 	jsr krn::chrin
@@ -2461,15 +2517,27 @@ __obj_get_fragment_run:
 	jsr krn::chrin			; eat "info" byte for SEGMENT
 	pha
 
-	; read the table sizes for this SEGMENT
+	; Read the byte count and check it against the fragment header.
 	ldy seg_idx
-	jsr krn::chrin			; get code size LSB
-	sta segments_sizelo,y
+	jsr krn::chrin
+	cmp segments_sizelo,y
+	bne @badsize
 	sta @sz
-	jsr krn::chrin			; get code size MSB
-	sta segments_sizehi,y
+	jsr krn::chrin
+	cmp segments_sizehi,y
+	bne @badsize
 	sta @sz+1
+	jsr krn::chrin
+	cmp segments_sizebank,y
+	bne @badsize
+	sta @sz+2
+	jmp @sizes_ok
 
+@badsize:
+	pla			; discard the saved type byte
+	RETURN_ERR ERR_IO_ERROR
+
+@sizes_ok:
 	; log the SEGMENT name and table sizes for it
 	ldx seg_idx
 	inx				; +1 (SEGMENTs are 1-based)
@@ -2526,7 +2594,9 @@ __obj_get_fragment_run:
 	beq @next_seg		; if so, skip to the next SEGMENT
 
 	; if the segment is empty, there is no object code to load
-	iszero @sz
+	lda @sz
+	ora @sz+1
+	ora @sz+2
 	beq @reltab
 
 @objcode:
@@ -2539,11 +2609,13 @@ __obj_get_fragment_run:
 	incw @seg
 
 	lda @sz
+	ora @sz+1
 	bne :+
-	dec @sz+1
-:	dec @sz
-	bne @objcode
-	lda @sz+1
+	dec @sz+2
+:	decw @sz
+	lda @sz
+	ora @sz+1
+	ora @sz+2
 	bne @objcode
 
 @reltab:
@@ -2725,7 +2797,11 @@ __obj_get_fragment_run:
 
 ;*******************************************************************************
 ; LOG SEGMENTS
-; Logs the relative and absolute segments in the current object state
+; Logs the relative and absolute segments in the current object state.
+; IN:
+;   - Object fragment names, addresses and sizes
+; OUT:
+;   - None
 .proc log_segments
 @i    = zp::link
 @buff = r0
@@ -2823,6 +2899,8 @@ __obj_get_fragment_run:
 	pha
 	lda segments_sizehi,x
 	pha
+	lda segments_sizebank,x
+	pha
 
 	; push address of name
 	lda #>@name
@@ -2851,7 +2929,7 @@ __obj_get_fragment_run:
 @abs_title: .byte "absolute segments:",0
 @abs_seg:   .byte "$", ESCAPE_VALUE, "-$", ESCAPE_VALUE,0
 @rel_title: .byte "relative segments:",0
-@rel_seg:   .byte ESCAPE_STRING, ": ", ESCAPE_VALUE, 0
+@rel_seg:   .byte ESCAPE_STRING, ": ", ESCAPE_BYTE, ESCAPE_VALUE, 0
 .endproc
 
 ;*******************************************************************************

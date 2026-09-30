@@ -111,6 +111,9 @@ activeobj:         .byte 0	; the current OBJECT (id) being linked
 objerr:            .byte 0	; error code from linking an object
 parsed_properties: .byte 0	; properties seen in the current LINK definition
 absolute_end:      .word 0	; next free entry in absolute_ranges
+layout_loadbank:   .byte 0
+layout_runbank:    .byte 0
+layout_sizebank:   .byte $00
 linkpass:          .byte 0	; 1 while pass 1 is running, 2 during pass 2
 
 ;*******************************************************************************
@@ -143,6 +146,7 @@ sections_startlo:    .res MAX_SECTIONS
 sections_starthi:    .res MAX_SECTIONS
 sections_stoplo:     .res MAX_SECTIONS
 sections_stophi:     .res MAX_SECTIONS
+sections_stopbank:   .res MAX_SECTIONS	; must be $00 or $01 (END=$10000)
 sections_flags:      .res MAX_SECTIONS
 section_names:       .res MAX_SECTIONS*MAX_SECTION_NAME_LEN
 sections_offsetlo:   .res MAX_SECTIONS
@@ -150,6 +154,7 @@ sections_offsethi:   .res MAX_SECTIONS
 sections_offsetbank: .res MAX_SECTIONS
 section_cursorlo:    .res MAX_SECTIONS
 section_cursorhi:    .res MAX_SECTIONS
+section_cursorbank:  .res MAX_SECTIONS
 
 .export sections_startlo
 .export sections_starthi
@@ -170,12 +175,13 @@ section_cursorhi:    .res MAX_SECTIONS
 ;  .byte    LOAD SEGMENT id
 ;  .byte    RUN SEGMENT id
 ;  .byte    flags
-segments_load:   .res MAX_SEGMENTS	; id of SECTION to load to
-segments_run:    .res MAX_SEGMENTS	; id of SECTION to run at
-segments_flags:  .res MAX_SEGMENTS
-segments_sizelo: .res MAX_SEGMENTS
-segments_sizehi: .res MAX_SEGMENTS
-segments_type:   .res MAX_SEGMENTS
+segments_load:     .res MAX_SEGMENTS	; id of SECTION to load to
+segments_run:      .res MAX_SEGMENTS	; id of SECTION to run at
+segments_flags:    .res MAX_SEGMENTS
+segments_sizelo:   .res MAX_SEGMENTS
+segments_sizehi:   .res MAX_SEGMENTS
+segments_sizebank: .res MAX_SEGMENTS	; must be $00 or $01 (full bank)
+segments_type:     .res MAX_SEGMENTS
 
 ; The alignment required of each SEGMENT: the LINK file's ALIGN property
 ; combined (see lcm16) with the alignment every object file asks of the SEGMENT
@@ -608,7 +614,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	ldy #$00
 	lda (zp::line),y
 	cmp #';'		; are we at the end of the section?
-	bne :+
+	bne @read_property
 
 	; make sure section declared all required properties
 	lda parsed_properties
@@ -618,10 +624,20 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_ERR ERR_MISSING_REQUIRED_KEY
 
 @properties_ok:
-	incw zp::line		; move beyond the semicolon
+	ldx numsections
+	lda sections_stoplo,x
+	cmp sections_startlo,x
+	lda sections_stophi,x
+	sbc sections_starthi,x
+	lda sections_stopbank,x
+	sbc #$00
+	bcs :+
+	RETURN_ERR ERR_SEGMENT_OUT_OF_RANGE
+:	incw zp::line		; move beyond the semicolon
 	RETURN_OK		; we're at the end, return
 
-:	; read the key of the k/v pair into keybuffer
+@read_property:
+	; read the key of the k/v pair into keybuffer
 	ldxy #@keybuff
 	jsr readkey
 	bcs @err
@@ -640,25 +656,27 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	jsr strcmp
 	bne @next
 
-@found: ; found the key, run the command to map it
-	ldx @cnt
-	lda @cmdslo,x
-	sta zp::jmpvec
-	lda @cmdshi,x
-	sta zp::jmpvec+1
-
-	; evaluate the value for the handler
+	; Evaluate offsets and CPU bounds with checked endpoint arithmetic.
+@found:	ldx @cnt
 	cpx #$03
 	bne :+
 	CALL FINAL_BANK_LINKER_AUX, linkimage_parse_offset
 	bcs @ret
 	jmp @getprops
-:	jsr parse_val
+
+:	cpx #$02
+	bcs @ordinary_value
+	CALL FINAL_BANK_LINKER_AUX, parse_section_address
+	bcs @ret
+	jmp @getprops
+
+@ordinary_value:
+	jsr parse_val
 	bcs @ret	; error -> rts
 
 	; run the handler for the given key
-	jsr zp::jmpaddr
-	bcc @getprops	; repeat (get next key if there is one)
+	jsr @fillvec
+	jcc @getprops	; repeat (get next key if there is one)
 	jcs log_error	; handler failed -> return its error
 
 @next:	; move zp::str2 to the next key to check
@@ -676,34 +694,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	RETURN_ERR ERR_UNKNOWN_KEY	; no key matched the one in the file
 
 @ret:	rts
-
-;-------------------------------------------------------------------------------
-; handler for the "start" key in config file
-@startvec:
-	; set the start address for the segment
-	txa
-	ldx numsections
-	sta sections_startlo,x
-	tya
-	sta sections_starthi,x
-	lda parsed_properties
-	ora #SECTION_PROP_START
-	sta parsed_properties
-	rts
-
-;-------------------------------------------------------------------------------
-; handler for the "stop" key in config file
-@endvec:
-	; set the end address for the segment
-	txa
-	ldx numsections
-	sta sections_stoplo,x
-	tya
-	sta sections_stophi,x
-	lda parsed_properties
-	ora #SECTION_PROP_END
-	sta parsed_properties
-	rts
 
 ;-------------------------------------------------------------------------------
 ; handler for the "fill" key in config file
@@ -735,12 +725,6 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 @end:	.byte "end",0
 @fill:	.byte "fill",0
 	.byte "offset",$00
-
-;-------------------------------------------------------------------------------
-; keys table handler vectors
-.define sec_cmds @startvec, @endvec, @fillvec, @fillvec
-@cmdslo: .lobytes sec_cmds
-@cmdshi: .hibytes sec_cmds
 
 .endproc
 
@@ -1125,6 +1109,8 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	jeq @ok
 
 @init:	dex
+	lda #$00
+	sta section_cursorbank,x
 	lda sections_startlo,x
 	sta @cursorlo,x
 	lda sections_starthi,x
@@ -1148,11 +1134,16 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	sta @run
 	lda @cursorhi,y
 	sta @run+1
+	lda section_cursorbank,y
+	sta layout_runbank
+
 	ldy segments_load,x
 	lda @cursorlo,y
 	sta @load
 	lda @cursorhi,y
 	sta @load+1
+	lda section_cursorbank,y
+	sta layout_loadbank
 
 ;-------------------------------------------------------------------------------
 ; apply ALIGNment for the segment (if it has any)
@@ -1160,14 +1151,24 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	sta m::arg
 	lda segments_alignhi,x
 	sta m::arg+1
+
+	; Exhausted sections retain their endpoint until the fragment check.
 	ldxy @run
+	lda layout_runbank
+	clc
+	bne :+
 	CALL FINAL_BANK_EXPR, m::align_up
-	jcs @overflow
+:	jcs @overflow
 	stxy @run
+
 	ldxy @load
+	lda layout_loadbank
+	clc
+	bne :+
 	CALL FINAL_BANK_EXPR, m::align_up
-	jcs @overflow
+:	jcs @overflow
 	stxy @value			; set stop address for fill
+
 	lda #$00
 	sta @fill			; init fill value to 0
 	ldx @seg
@@ -1175,12 +1176,8 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	cmp #TYPE_SEGZP
 	beq @setbase			; don't fill ZP segments
 	cmp #TYPE_BSS
-	bne :+
-	lda image::mode
-	bne @setbase
-	lda #TYPE_BSS
-
-:	cmp #TYPE_BSSZP
+	beq @setbase
+	cmp #TYPE_BSSZP
 	beq @setbase			; don't fill BSS segments
 	ldxy @load
 	stxy @fill_start
@@ -1215,6 +1212,10 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	sbc #$01
 	cmp @seg
 	jne @next
+
+	lda layout_loadbank
+	ora layout_runbank
+	jne @overflow
 
 	; apply fragment-level alignment (.align directives in the obj code)
 	ldy #FR_ALIGNLO
@@ -1272,9 +1273,13 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	ldy #FR_SIZEHI
 	lda (@frag),y
 	sta @value+1
+	ldy #FR_SIZEBANK
+	lda (@frag),y
+	sta layout_sizebank
 
 	jsr advance_layout
 	jcs @overflow
+
 
 @next:	NEXT_FRAGMENT @frag
 	jmp @fragment
@@ -1289,16 +1294,31 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda @run+1
 	sbc segments_runaddrhi,x
 	sta segments_sizehi,x
-	ldy segments_load,x
+	lda layout_runbank
+	sbc #$00
+	sta segments_sizebank,x
+
+	ldy segments_run,x
+	lda section_cursorbank,y
+	beq :+
+	lda #$00
+	sta segments_sizebank,x
+
+:	ldy segments_load,x
 	lda @load
 	sta @cursorlo,y
 	lda @load+1
 	sta @cursorhi,y
+	lda layout_loadbank
+	sta section_cursorbank,y
+
 	ldy segments_run,x
 	lda @run
 	sta @cursorlo,y
 	lda @run+1
 	sta @cursorhi,y
+	lda layout_runbank
+	sta section_cursorbank,y
 	inc @seg
 	jmp @segment
 
@@ -1311,6 +1331,8 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	cmp @cursorlo,x
 	lda sections_stophi,x
 	sbc @cursorhi,x
+	lda sections_stopbank,x
+	sbc section_cursorbank,x
 	bcc @small
 	inx
 	bne @check
@@ -1324,7 +1346,11 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 ; ADVANCE LAYOUT
 ; Adds the given value to the LOAD and RUN cursors.
 ; IN:
-;   - r0/r1: the amount to add to LOAD and RUN cursors
+;   - r0/r1, layout_sizebank: 24-bit amount to add to LOAD and RUN cursors
+;   - r6/r7: LOAD cursor
+;   - r8/r9: RUN cursor
+; OUT:
+;   - .C: set if either cursor exceeds $10000
 .proc advance_layout
 @size = r0
 @load = r6
@@ -1336,7 +1362,18 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda @load+1
 	adc @size+1
 	sta @load+1
-	bcs @ret
+	lda layout_loadbank
+	adc layout_sizebank
+	sta layout_loadbank
+	bcs @overflow
+	beq @run_cursor
+	cmp #$01
+	bne @overflow
+	lda @load
+	ora @load+1
+	bne @overflow
+
+@run_cursor:
 	lda @run
 	clc
 	adc @size
@@ -1344,7 +1381,23 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda @run+1
 	adc @size+1
 	sta @run+1
-@ret:	rts
+	lda layout_runbank
+	adc layout_sizebank
+	sta layout_runbank
+	bcs @overflow
+	beq @ok
+	cmp #$01
+	bne @overflow
+	lda @run
+	ora @run+1
+	bne @overflow
+
+@ok:	clc
+	rts
+
+@overflow:
+	sec
+	rts
 .endproc
 
 .popseg
@@ -1371,8 +1424,13 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	sbc @stop+1
 	bcs @done
 	jsr skip_absolute
-	bcs @loop
-	lda @fill
+	bcc @store
+	lda @cursor
+	ora @cursor+1
+	beq @done
+	jmp @loop
+
+@store:	lda @fill
 	ldxy @cursor
 	jsr output_store
 	bcc :+
@@ -1479,6 +1537,9 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda obj::segments_sizehi,x
 	sta (@ptr),y
 	iny
+	lda obj::segments_sizebank,x
+	sta (@ptr),y
+	iny
 	lda obj::alignlo,x
 	sta (@ptr),y
 	iny
@@ -1513,10 +1574,29 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	ldy #FR_SEGMENT
 	lda (@ptr),y
 	cmp @parent
-	bne @full
+	bne @invalid
+	ldx @local
+	ldy #FR_SIZELO
+	lda (@ptr),y
+	cmp obj::segments_sizelo,x
+	bne @invalid
+
+	iny
+	lda (@ptr),y
+	cmp obj::segments_sizehi,x
+	bne @invalid
+
+	iny
+	lda (@ptr),y
+	cmp obj::segments_sizebank,x
+	bne @invalid
+
 	ldxy @ptr
 	clc
 	rts
+
+@invalid:
+	RETURN_ERR ERR_IO_ERROR
 @full:	RETURN_ERR ERR_TOO_MANY_SEGMENTS
 .endproc
 
@@ -1596,11 +1676,8 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	cmp #TYPE_SEGZP
 	beq @done
 	cmp #TYPE_BSS
-	bne :+
-	lda image::mode
-	bne @done
-	lda #TYPE_BSS
-:	cmp #TYPE_BSSZP
+	beq @done
+	cmp #TYPE_BSSZP
 	beq @done
 
 	ldy #FR_LOADLO
@@ -1645,6 +1722,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 :
 @section=r0
 @addr=r2
+@last=re
 	lda numsections
 	jeq @done
 
@@ -1664,6 +1742,8 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	ldx @section			; restore the SECTION index
 
 	; an empty SECTION contributes no bytes to the output
+	lda sections_stopbank,x
+	bne @nonempty_section
 	lda sections_startlo,x
 	cmp sections_stoplo,x
 	bne @nonempty_section
@@ -1672,6 +1752,16 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	jeq @next_section
 
 @nonempty_section:
+	lda #$01
+	sta asm::has_output
+	lda sections_stoplo,x
+	sec
+	sbc #$01
+	sta @last
+	lda sections_stophi,x
+	sbc #$00
+	sta @last+1
+
 	; begin the scan at the SECTION's START
 	lda sections_startlo,x
 	sta @addr
@@ -1695,42 +1785,44 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	sta asm::origin+1
 
 @check_top:
-	lda sections_stophi,x
-	cmp asm::top+1
-	bcc @fill
-	bne @set_top
-	lda sections_stoplo,x
+	lda @last
 	cmp asm::top
+	lda @last+1
+	sbc asm::top+1
 	bcc @fill
-	beq @fill
-
-@set_top:
-	lda sections_stoplo,x
+	lda @last
 	sta asm::top
-	lda sections_stophi,x
+	lda @last+1
 	sta asm::top+1
 
-@fill:	; stop when fill pointer reaches the SECTION's END
-	jsr update_progress
-	ldx @section
-	lda @addr
-	cmp sections_stoplo,x
-	lda @addr+1
-	sbc sections_stophi,x
-	bcs @next_section	; addr >= END -> SECTION is done
+@fill:	jsr update_progress
+	ldxy @addr
+	cmpw @last
+	beq @check_ranges
+	bcs @next_section
 
+@check_ranges:
 	; ABS SEGMENTs write their own bytes here; don't zero over them
 	jsr skip_absolute
-	bcs @fill		; addr was advanced -> recheck the SECTION's END
+	bcs @advanced
 
 	; SEGMENTs that LOAD here wrote their bytes; don't zero over them
 	jsr skip_loaded
-	bcs @fill		; addr was advanced -> recheck the SECTION's END
+	bcc @store_zero
+
+@advanced:
+	lda @addr
+	ora @addr+1
+	beq @next_section	; skipped a reservation ending at $10000
+	jmp @fill
 
 @store_zero:
 	lda #$00
 	ldxy @addr
 	jsr vmem::store
+	ldxy @addr
+	cmpw @last
+	beq @next_section
 	incw @addr
 	jmp @fill
 
@@ -1772,8 +1864,15 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	sbc (@ptr),y
 	bcc @next
 
-	; addr >= range.stop -> not in this range
+	; A zero exclusive endpoint denotes $10000.
+	ldy #$02
+	lda (@ptr),y
 	iny
+	ora (@ptr),y
+	beq @inside
+
+	; addr >= range.stop -> not in this range
+	ldy #$02
 	lda @addr
 	cmp (@ptr),y
 	iny
@@ -1781,6 +1880,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	sbc (@ptr),y
 	bcs @next
 
+@inside:
 	; addr is within the range; move it to the range's END
 	ldy #$02
 	lda (@ptr),y
@@ -1828,6 +1928,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	; empty SEGMENTs contain no bytes
 	lda segments_sizelo,x
 	ora segments_sizehi,x
+	ora segments_sizebank,x
 	beq @next		; if empty -> continue to next
 
 	; addr < segment.addr -> not in this SEGMENT
@@ -1845,6 +1946,9 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	lda segments_addrhi,x
 	adc segments_sizehi,x
 	sta @end+1
+	bcs @inside		; exclusive endpoint is $10000
+	lda segments_sizebank,x
+	bne @inside
 
 	; addr >= end -> not in this SEGMENT
 	lda @addr
@@ -1853,6 +1957,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	sbc @end+1
 	bcs @next
 
+@inside:
 	; addr is within the SEGMENT's bytes; move it past them
 	ldxy @end
 	stxy @addr
@@ -2103,6 +2208,12 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	jsr image_bounds
 	jsr fill_sections	; fill any sections that are marked "FILL"
 
+	lda asm::has_output
+	bne :+
+	sta asm::origin
+	sta asm::origin+1
+:
+
 	jsr validate_symbols
 	bcs log_error
 
@@ -2212,7 +2323,18 @@ SET_CUR_BANK FINAL_BANK_LINKER
 ;   - .A: object-local SEGMENT index
 ; OUT:
 ;   - .C: set on overlap or if the range table is full
-.proc add_absolute_segment
+add_absolute_segment: JUMP FINAL_BANK_LINKER_AUX, register_absolute_segment
+.pushseg
+BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
+
+;*******************************************************************************
+; REGISTER ABSOLUTE SEGMENT
+; Records a nonempty absolute fragment after checking its range and overlaps
+; IN:
+;   - .A: object-local fragment index
+; OUT:
+;   - .C: set and .A = error code for invalid or overlapping ranges
+.proc register_absolute_segment
 @addr0_start = r2
 @addr0_stop  = r4
 @addr1_start = r6
@@ -2221,6 +2343,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	tax
 	lda obj::segments_sizelo,x
 	ora obj::segments_sizehi,x
+	ora obj::segments_sizebank,x
 	jeq @ok				; empty SEGMENTs cannot overlap
 
 	lda obj::segments_startlo,x
@@ -2233,7 +2356,17 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	tya
 	adc obj::segments_sizehi,x
 	sta @addr0_stop+1
-	bcs @outofrange			; SEGMENT end > $ffff
+	lda obj::segments_sizebank,x
+	adc #$00
+	jcs @outofrange
+	beq @compare_init
+	cmp #$01
+	jne @outofrange
+	lda @addr0_stop+1
+	ora @addr0_stop
+	jne @outofrange			; endpoint exceeds $10000
+
+@compare_init:
 
 	ldxy #absolute_ranges
 	stxy @ptr
@@ -2254,7 +2387,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	iny
 	lda (@ptr),y
 	sta @addr1_stop+1
-	jsr ranges_overlap
+	CALL FINAL_BANK_LINKER, ranges_overlap
 	bcs @overlap
 
 	lda @ptr
@@ -2298,16 +2431,19 @@ SET_CUR_BANK FINAL_BANK_LINKER
 @outofrange:
 	RETURN_ERR ERR_SEGMENT_OUT_OF_RANGE
 .endproc
+.popseg
+SET_CUR_BANK FINAL_BANK_LINKER
+
 
 ;*******************************************************************************
 ; IMAGE BOUNDS
 ; Finds the lowest LOAD address and highest end address across fragments.
-; Includes leading alignment padding and skips zeropage and empty fragments.
+; Includes initialized alignment padding; skips BSS, zeropage and empty fragments.
+; Sets asm::origin and inclusive asm::top, with asm::has_output marking data.
 ; IN:
 ;   - Fragment table with fixed LOAD addresses and padding.
 ; OUT:
-;   - asm::origin: first byte of the loadable image
-;   - asm::top: exclusive end of the loadable image
+;   - None
 image_bounds: JUMP FINAL_BANK_LINKER_AUX, calculate_image_bounds
 .pushseg
 BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
@@ -2315,11 +2451,11 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 ;*******************************************************************************
 ; CALCULATE IMAGE BOUNDS
 ; Finds the loadable address range, including leading alignment padding.
+; Sets asm::origin and inclusive asm::top, with asm::has_output marking data.
 ; IN:
 ;   - Fragment table with fixed LOAD addresses and padding
 ; OUT:
-;   - asm::origin: first byte of the loadable image
-;   - asm::top: exclusive end of the loadable image
+;   - None
 .proc calculate_image_bounds
 @start=r0
 @stop=r2
@@ -2328,6 +2464,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	stxy asm::origin
 	ldxy #$00
 	stxy asm::top
+	stx asm::has_output
 	ldxy #fragments
 	stxy @ptr
 @loop:	ldxy @ptr
@@ -2336,6 +2473,8 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	ldy #FR_SIZELO
 	lda (@ptr),y
 	ldy #FR_SIZEHI
+	ora (@ptr),y
+	ldy #FR_SIZEBANK
 	ora (@ptr),y
 	ldy #FR_PADLO
 	ora (@ptr),y
@@ -2352,7 +2491,11 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	beq @next
 	cmp #TYPE_BSSZP
 	beq @next
+	cmp #TYPE_BSS
+	beq @next
 @include:
+	lda #$01
+	sta asm::has_output
 	ldy #FR_LOADLO
 	lda (@ptr),y
 	sec
@@ -2375,6 +2518,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	ldy #FR_SIZEHI
 	adc (@ptr),y
 	sta @stop+1
+	decw @stop		; convert the exclusive endpoint to the last byte
 
 	lda @start
 	cmp asm::origin
@@ -2874,6 +3018,20 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 
 @segsize:
 	ldx @i
+	lda segments_sizebank,x
+	beq @wordsize
+
+	lda #'$'
+	jsr krn::chrout
+	lda #'1'
+	jsr krn::chrout
+	lda #$00
+	jsr puthex
+	lda #$00
+	jsr puthex
+	jmp @nextseg
+
+@wordsize:
 	ldy segments_sizehi,x	; get the size (MSB)
 	lda segments_sizelo,x	; get the size (LSB)
 	tax
@@ -2893,7 +3051,7 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 :	inc @i
 	lda @i
 	cmp numsegments
-	bne @segloop
+	jne @segloop
 
 @symbols:
 	lda #$0d
@@ -2990,6 +3148,7 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 	; skip empty segments (they can't overlap anything)
 	lda segments_sizelo,x
 	ora segments_sizehi,x
+	ora segments_sizebank,x
 	beq @nexti
 
 	lda segments_addrlo,x
@@ -3014,6 +3173,7 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 	; skip empty segments
 	lda segments_sizelo,x
 	ora segments_sizehi,x
+	ora segments_sizebank,x
 	beq @l1
 
 	lda segments_addrlo,x
@@ -3072,6 +3232,7 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 	ldx @j
 	lda segments_sizelo,x
 	ora segments_sizehi,x
+	ora segments_sizebank,x
 	beq @next_absolute_global
 
 	lda segments_addrlo,x
@@ -3108,9 +3269,15 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 	RETURN_ERR ERR_OVERLAPPING_SEGMENTS
 .endproc
 
-;-------------------------------------------------------------------------------
-; checks if [addr0_start, addr0_stop) overlaps [addr1_start, addr1_stop)
-; overlap iff addr0.start < addr1.stop AND addr1.start < addr0.stop
+;*******************************************************************************
+; RANGES OVERLAP
+; Checks whether two nonempty address ranges overlap
+; NOTE: 0 means $10000.
+; IN:
+;   - r2/r3: first range start
+;   - r4/r5: first range exclusive end
+;   - r6/r7: second range start
+;   - r8/r9: second range exclusive end
 ; OUT:
 ;   - .C: set if the ranges overlap
 .proc ranges_overlap
@@ -3118,12 +3285,21 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 @addr0_stop  = r4
 @addr1_start = r6
 @addr1_stop  = r8
+	lda @addr1_stop
+	ora @addr1_stop+1
+	beq @second		; if stop is 0 it is $10000
+
 	; if addr0.start >= addr1.stop, no overlap
 	lda @addr0_start
 	cmp @addr1_stop
 	lda @addr0_start+1
 	sbc @addr1_stop+1
 	bcs @no_overlap
+
+@second:
+	lda @addr0_stop
+	ora @addr0_stop+1
+	beq @overlap
 
 	; if addr1.start >= addr0.stop, no overlap
 	lda @addr1_start
@@ -3132,6 +3308,7 @@ map_question: .byte "generate map? (", $79, "/", $6e, ")", 0
 	sbc @addr0_stop+1
 	bcs @no_overlap
 
+@overlap:
 	sec			; overlap
 	rts
 
@@ -3338,15 +3515,15 @@ section_endbank: .res MAX_SECTIONS
 BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 
 ;*******************************************************************************
-; PARSE OFFSET
-; Parses a decimal or hexadecimal 24-bit MEMORY offset.
+; PARSE SECTION VALUE
+; Parses a decimal or hexadecimal 24-bit MEMORY property.
 ; IN:
 ;   - zp::line: value text
-;   - numsections: section being parsed
 ; OUT:
+;   - image_value: parsed 24-bit value
 ;   - zp::line: after the value
 ;   - .C: set and .A = error code on invalid input.
-.proc linkimage_parse_offset
+.proc parse_section_value
 	CALL FINAL_BANK_LINKER, process_ws
 	lda #$00
 	sta image_value
@@ -3438,6 +3615,79 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 @finish:
 	lda image_digits
 	beq @bad
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; PARSE SECTION ADDRESS
+; Stores a CPU address or exclusive endpoint for the current section and marks
+; the corresponding required property as present
+; IN:
+;   - .X:       $00 for START, $01 for END
+;   - zp::line: value text to parse
+; OUT:
+;   - zp::line: updated to point after the value
+;   - .C:       set if parse failed
+;   - .A:       error code (if .C is set)
+.proc parse_section_address
+	txa
+	pha
+	jsr parse_section_value
+	bcc :+
+	pla
+	RETURN_ERR ERR_INVALID_EXPRESSION
+:	pla
+	tay
+
+	ldx numsections
+	lda image_value+2
+	beq @store
+	cpy #$01
+	bne @bad
+	cmp #$01
+	bne @bad
+	lda image_value
+	ora image_value+1
+	bne @bad
+
+@store:	cpy #$00
+	bne @end
+
+	lda image_value
+	sta sections_startlo,x
+	lda image_value+1
+	sta sections_starthi,x
+	lda #SECTION_PROP_START
+	bne @flag
+
+@end:	lda image_value
+	sta sections_stoplo,x
+	lda image_value+1
+	sta sections_stophi,x
+	lda image_value+2
+	sta sections_stopbank,x
+	lda #SECTION_PROP_END
+
+@flag:	ora parsed_properties
+	sta parsed_properties
+	RETURN_OK
+
+@bad:	RETURN_ERR ERR_SEGMENT_OUT_OF_RANGE
+.endproc
+
+;*******************************************************************************
+; PARSE OFFSET
+; Stores the current section's 24-bit output offset and selects image output
+; IN:
+;   - zp::line: value text
+; OUT:
+;   - zp::line: after the value
+;   - .C:       set on error
+;   - .A:       error code (if .C is set)
+.proc linkimage_parse_offset
+	jsr parse_section_value
+	bcs @ret
+
 	ldx numsections
 	lda image_value
 	sta sections_offsetlo,x
@@ -3445,12 +3695,15 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	sta sections_offsethi,x
 	lda image_value+2
 	sta sections_offsetbank,x
+
 	lda sections_flags,x
 	ora #SECTION_OFFSET
 	sta sections_flags,x
 	lda #$01
 	sta image::mode
 	RETURN_OK
+
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -3581,6 +3834,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 .proc linkimage_prepare
 	lda image::mode
 	jne @image
+
 	RETURN_OK
 
 @image:	lda #$01
@@ -3631,6 +3885,9 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda sections_stophi,x
 	sbc sections_starthi,x
 	sta image_value+1
+	lda sections_stopbank,x
+	sbc #$00
+	sta image_value+2
 	jcc @absolute
 
 	; section_end = image_value + sections_offset
@@ -3642,7 +3899,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	adc image_value+1
 	sta section_endhi,x
 	lda sections_offsetbank,x
-	adc #$00
+	adc image_value+2
 	sta section_endbank,x
 	jcs @large
 	cmp #.bankbyte(IMAGE_CAPACITY)
@@ -3759,6 +4016,8 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	bne @done
 	lda sections_stophi,x
 	eor sections_starthi,x
+	bne @done
+	lda sections_stopbank,x
 
 @done:	rts
 .endproc

@@ -83,9 +83,14 @@ The format of this header in the object code is as follows:
 | name  |   8  | named SEGMENT; repeated names identify separate fragments
 | origin |  2  | literal address for absolute code, zero otherwise
 | type  |   1  | SEGZP=1, SEG=2, BSS=3, BSSZP=4, absolute=$ff
-| size  |   2  | raw fragment size, excluding alignment padding
+| size  |   3  | raw fragment size, excluding alignment padding
 | alignment | 2 | boundary before this fragment, zero for no constraint
 | fill  |   1  | byte used for this boundary's padding
+
+Fragment sizes are unsigned 24-bit little-endian values. A full 64 KiB
+fragment is encoded as `$00 $00 $01`; zero still means empty. CPU placement
+must fit within `$0000`–`$ffff`. The data-table size must match its fragment
+header. This layout replaces the earlier two-byte size fields.
 
 At link time, the linker lays out fragments in object/header order within each
 named SEGMENT, inserting padding before each fragment as needed. Sizes plus
@@ -182,9 +187,12 @@ Below is the format for the header which precedes the SEGMENT tables:
 | FIELD           | SIZE | DESCRIPTION
 |-----------------|------|---------------------------------------------------------------------
 |  info           |  1   | info byte: zero page/absolute etc.
-|  code size      |  2   | size of the object-code binary table for the SEGMENT
-|  reloc size     |  2   | size of the relocation table for the SEGMENT
+|  code size      |  3   | byte count for the fragment; BSS reserves this many bytes without a payload
+|  reloc size     |  2   | size of the relocation table; omitted for BSS fragments
 
+
+BSS records end after the three-byte size. They have no payload or relocation
+table, even when the size is `$010000`.
 
 The _info_ bitfield for the SEGMENT uses the following format:
 
