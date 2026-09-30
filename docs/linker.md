@@ -7,6 +7,27 @@ single executable binary file.  To link a program there are a few prerequisites:
 2. produce a LINK file to describe the desired layout for the linked program
 3. link the program
 
+### Output image and simulated memory
+
+The linker writes all object bytes, relocation patches, and alignment fill to
+an output image. Linking does not write to simulated memory.
+
+After a successful link, the editor loads ordinary programs from the completed
+image into simulated memory for running and debugging. `:I` reloads that image
+without linking again. Saving a linked binary, PRG, or debug file reads the
+image, so subsequent changes in simulated memory do not alter the saved bytes.
+
+Without `OFFSET` properties, CPU LOAD addresses determine image placement.
+Saved files begin at the lowest initialized address; PRG files retain their
+usual two-byte load address. BSS reserves address space without storing bytes.
+
+With explicit `OFFSET` properties, each initialized LOAD region must specify
+its output offset. `:B` saves the image starting at offset zero. These images
+are not automatically loaded into simulated memory and cannot be saved as PRG
+or debug files: they may contain several banks at the same CPU addresses.
+Loading part of such an image requires choosing a source range and a simulated
+destination address explicitly.
+
 ### Building object files
 Object files are nothing more than individually assembled fragments.  Anything you assemble ({c64-keys}`C= + A`) can
 be stored to disk in the object format.  This is done with the `:o` Ex command.  The linker will
@@ -77,7 +98,8 @@ exclusive and may be `$10000`. `START` must be in `$0000`–`$ffff`, and
 
 Every `SEGMENTS` entry must define `LOAD`. `RUN` is optional and defaults to the
 same memory section as `LOAD`. `ALIGN` is optional and defaults to no alignment.
-`FILL` is also optional and defaults to disabled.
+The MEMORY `FILL` property is optional and defaults to disabled.
+Segment `DEFINE` is optional and defaults to disabled.
 Names must be unique within each block.
 
 #### LOAD vs RUN
@@ -109,6 +131,65 @@ The reservation must fit both its LOAD and RUN sections.
 NOTE: runtime addresses must be in the 16-bit range (`0-$ffff`), but the assembler accepts
 `.res $10000` (or `.res 65536`) for a full address-space reservation at offset
 zero in an empty segment.
+
+#### Banked images and address-only regions
+
+`OFFSET` specifies a 24-bit byte offset in the output image, independent of the
+region's 16-bit CPU `START` address.
+
+The `BANK` property sets the physical bank number that will be used at runtime
+for a memory region.  It does not actually affect the linker's output.  It is only
+used to generate bank symbols that source code can import.
+
+`EMIT=0` tells the linker to not store any bytes in the output for that memory section.
+Initialized LOAD data, `OFFSET`, and `FILL=1` are not permitted in such a region.
+
+Separate regions may share CPU addresses and bank numbers for overlays;
+regions with output offsets must have nonoverlapping image ranges.
+
+```
+MEMORY [
+    ROM:
+        START=$a000
+        END=$c000
+        BANK=3
+        OFFSET=$006000
+        FILL=1;
+    RAM:
+        START=$2000
+        END=$4000
+        BANK=79
+        EMIT=0;
+]
+SEGMENTS [
+    CODE:
+        LOAD=ROM
+        RUN=RAM
+        DEFINE=1;
+]
+```
+
+#### Generated layout symbols
+
+`DEFINE=1` on a segment tells the linker to generate absolute symbols after placement
+for use in other object modules. By default, segments are _not_ exported this way.
+
+Import them in source like any other external symbol, e.g. `.import CODE.LOAD`.
+
+|      Symbol   |                     Value                                    |
+|---------------|--------------------------------------------------------------|
+| `CODE.LOAD`   | Low 16 bits of the segment's CPU load address                |
+| `CODE.RUN`    | Low 16 bits of its CPU runtime address                       |
+| `CODE.SIZE`   | Low 16 bits of its size, including internal fragment padding |
+| `CODE.LOADHI` | Upper byte of the load address                               |
+| `CODE.RUNHI`  | Upper byte of the runtime address                            |
+| `CODE.SIZEHI` | Upper byte of the size                                       |
+| `CODE.BANK`   | LOAD region's physical bank number (default 0)               |
+| `CODE.RUNBANK`| RUN region's physical bank number (default 0)                |
+
+The full size can be regenerated with `LOW + HI * 65536`.
+
+NOTE: for segments that use the maximum 64 KB range, `SIZE=0` and `SIZEHI=1`
 
 #### ALIGN
 
@@ -190,14 +271,17 @@ it.
 
 #### Limits
 
-| ITEM                                                | LIMIT |
-|-----------------------------------------------------|-------|
-| `MEMORY` sections                                   | 8     |
-| `SEGMENTS` entries / segments per object on C64     | 8     |
-| `SEGMENTS` entries / segments per object on VIC-20  | 64    |
-| Object files in one link                            | 16    |
-| Imports per object file                             | 128   |
-| Exports per object file                             | 32    |
+| ITEM                         |VIC-20| C64 |
+|------------------------------|------|-----|
+| `MEMORY` sections            | 64   | 8   |
+| `SEGMENTS` entries           | 128  | 8   |
+| Object files in one link     | 124  | 16  |
+| Fragments per object         | 124  | 32  |
+| Fragments across the link    | 512  | 124 |
+| Imports per object           | 512  | 512 |
+| Exports per object           | 64   | 64  |
+| Region / segment name length | 7    | 7   |
+
 
 ````{note}
 Below is a simple LINK file example to demonstrate its configuration format

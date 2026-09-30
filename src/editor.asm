@@ -552,6 +552,22 @@ main:	jsr key::getui
 ; Opens the "LINK" file from disk, parses it, and links all object files
 ; on the same disk
 .proc command_link
+	JUMP FINAL_BANK_LINKER_AUX, link_command
+.endproc
+
+.PUSHSEG
+BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
+.ifdef vic20
+CUR_BANK .set FINAL_BANK_LINKER_AUX
+.endif
+;*******************************************************************************
+; LINK COMMAND
+; Links the selected objects, then loads a completed CPU-addressed image.
+; IN:
+;   - LINK and object files on the selected disk
+; OUT:
+;   - None
+.proc link_command
 @resultend=r0
 @maxfiles=r2
 @file=r8
@@ -560,12 +576,12 @@ main:	jsr key::getui
 
 	; display "linking..."
 	ldxy #strings::linking
-	jsr blank
+	CALL FINAL_BANK_EDIT, blank
 
 	; create a new log and write "linking..." to it
-	jsr log::new
+	CALLMAIN log::new
 	ldxy #strings::linking
-	jsr log::out
+	CALLMAIN log::out
 
 	; parse the LINK file to setup the linking context
 	CALL FINAL_BANK_LINKER, link::parse
@@ -578,21 +594,34 @@ main:	jsr key::getui
 	sta @maxfiles			; max number of filenames
 	lda #$4f				; 'O'
 	ldxy #link::objfiles
-	jsr dir::get_objects
+	CALLMAIN dir::get_objects
 	bcs @err
 
 	; link all object files that were found
 	CALL FINAL_BANK_LINKER, link::link
 	bcs @err
 
-@done:	jsr log::close
-	jmp unblank
+	; check layout of image
+	lda image::mapped
+	bne @done		; explicit offset done
+
+	; no explicit offset given, load the linked image to vmem
+	CALL FINAL_BANK_LINKER_AUX, image::load_program
+	bcs @err
+
+@done:	CALLMAIN log::close
+	JUMP FINAL_BANK_EDIT, unblank
 
 @err:	pha			; save the error
-	jsr unblank
+	CALL FINAL_BANK_EDIT, unblank
 	pla
-	jmp report_errcode
+	JUMP FINAL_BANK_EDIT, report_errcode
 .endproc
+.POPSEG
+SET_CUR_BANK FINAL_BANK_EDIT
+.ifdef vic20
+CUR_BANK .set FINAL_BANK_EDIT
+.endif
 
 ;*******************************************************************************
 ; COMMAND ASM TO OBJ
@@ -3677,7 +3706,8 @@ goto_buffer:
 	.byte $42	; B - create .BIN
 	.byte $50	; P - create .PRG
 	.byte $44	; D - create .D (debug)
-	.byte $4c	; L - laod .D (debug)
+	.byte $4c	; L - load .D (debug)
+	.byte $49	; I - load linked image into simulated memory
 	.byte $6f	; o - create .OBJ file
 @num_ex_commands=*-@ex_commands
 
@@ -3685,7 +3715,7 @@ goto_buffer:
 .define ex_command_vecs edit_load, command_rename, command_save, \
 	command_saveall, command_scratch, command_assemble_file, \
 	command_savebin, command_saveprg, command_savedbg, command_loaddbg, \
-	command_asm_obj
+	command_loadimage, command_asm_obj
 .linecont -
 @exvecslo: .lobytes ex_command_vecs
 @exvecshi: .hibytes ex_command_vecs
@@ -3779,6 +3809,26 @@ goto_buffer:
 .endproc
 
 ;*******************************************************************************
+; COMMAND LOAD IMAGE
+; :I
+; Loads the completed CPU-addressed linked image into simulated memory.
+; IN:
+;   - A completed linked image with no explicit OFFSET mapping
+; OUT:
+;   - None
+.proc command_loadimage
+	ldxy #strings::loading
+	jsr blank
+	CALL FINAL_BANK_LINKER_AUX, image::load_program
+	bcs @err
+	jmp unblank
+@err:	pha
+	jsr unblank
+	pla
+	jmp report_errcode
+.endproc
+
+;*******************************************************************************
 ; LOAD DEBUG BINARY
 ; Reads the debug-file header and initialized bytes, setting inclusive bounds.
 ; A zero size in the header denotes a full 64 KiB program.
@@ -3853,8 +3903,8 @@ SET_CUR_BANK FINAL_BANK_EDIT
 ; OUT:
 ;   - None
 .proc command_savedbg
-	lda image::mode
-	beq :+
+	CALL FINAL_BANK_LINKER_AUX, image::check_program
+	bcc :+
 	jmp ::command_saveprg::image_error
 :	lda asm::has_output
 	bne :+
@@ -3931,8 +3981,8 @@ SET_CUR_BANK FINAL_BANK_EDIT
 ; OUT:
 ;   - None
 .proc command_saveprg
-	lda image::mode
-	beq flat
+	CALL FINAL_BANK_LINKER_AUX, image::check_program
+	bcc flat
 image_error:
 	lda #ERR_INVALID_COMMAND
 	jmp report_errcode

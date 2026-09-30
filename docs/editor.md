@@ -204,6 +204,7 @@ The table below details the available commands in _EX_ mode.
 |    `a`    | `ASSEMBLE FILE     `  | Filename                        | assembles the given filename                                                                    |
 |    `B`    | `EXPORT BINARY     `  | Filename                        | exports the active assembly to a binary file (no .PRG header)                                   |
 |    `D`    | `EXPORT DEBUG FILE `  | Filename                        | exports the loaded assembly, debug information, and symbol table as a debug (`.D`) file         |
+|    `I`    | `LOAD LINKED IMAGE `  | N/A                             | reloads the completed linked program into simulated memory                                     |
 |    `L`    | `LOAD DEBUG FILE   `  | Filename                        | loads the given debug (`.D`) file (symbol table, debug information, and program data)           |
 |    `e`    | `EDIT              `  | Filename                        | loads the buffer with the contents of the given file                                            |
 |    `o`    | `EXPORT OBJECT     `  | Filename                        | exports the active assembly to an object file with the given filename                   |
@@ -234,13 +235,24 @@ information _not_ the active file.
 **Syntax:** `:B filename`
 
 **Behavior:** Exports the active assembly ({c64-keys}`C= + A`) to the given file as binary.  This means
-no load address is prepended to the file.  This can be useful if you are using
+no load address is prepended to the file. After linking, the bytes come from the
+completed output image, independently of changes in simulated memory. This can be useful if you are using
 Monster to create level data or other code loaded by your main program.  It
 can also be used to export things like data tables for use with .INCBIN
 
 ```{example}
 `:B DATA.B`
 ```
+
+#### Load linked image
+
+**Syntax:** `:I`
+
+**Behavior:** Reloads the completed linked program into simulated memory for
+running and debugging.
+This is performed automatically after a successful link for typical programs.
+Images with explicit output _offsets_ require a source range and destination
+mapping and cannot be loaded with this command.
 
 #### Export debug file
 
