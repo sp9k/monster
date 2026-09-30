@@ -30,8 +30,8 @@
 
 ; LINKER / OBJECT FILES
 	.define MAX_SEGMENTS 128
-	.define MAX_IMPORTS  128
-	.define MAX_EXPORTS  32
+	.define MAX_IMPORTS  512	; referenced imports; unused declarations are pruned
+	.define MAX_EXPORTS  64
 .elseif .defined(c64)
 	.define MAX_LABELS 4096		; max number of named labels
 	.define MAX_ANON   1776		; max number of anonymous labels
@@ -42,8 +42,8 @@
 
 ; LINKER / OBJECT FILES
 	.define MAX_SEGMENTS 8
-	.define MAX_IMPORTS  128
-	.define MAX_EXPORTS  32
+	.define MAX_IMPORTS  512	; referenced imports; unused declarations are pruned
+	.define MAX_EXPORTS  64
 .endif
 
 .endif

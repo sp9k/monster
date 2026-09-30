@@ -16,6 +16,7 @@
 ;  ALIGN  [$d:$e]            ; boundary preceding this fragment; 0=no constraint
 ;  FILL   [$f]               ; fill byte for this boundary
 ; IMPORTS[]
+;   Only symbols referenced by emitted relocations, in first-use order.
 ;   NAME[...]
 ;   MODE[1]
 ; EXPORTS[]
@@ -45,8 +46,8 @@
 ;       bits 2-3: byte selection
 ;       bit 4:    PC-relative branch
 ;       bit 5:    base difference
-;   If FLAGS & $3c: ADDEND HIGH[1]; if FLAGS & $20: NEGATIVE BASE ID[1].
-;   Bit 7 of NEGATIVE BASE ID selects an import; low 7 bits are its index.
+;   If FLAGS & $3c: ADDEND HIGH[1]; if FLAGS & $20: NEGATIVE BASE ID[2].
+;   Bit 15 of NEGATIVE BASE ID selects an import; low 15 bits are its index.
 ;   The low addend is in OBJCODE; word operands also carry its high byte.
 ;   Branches subtract the final RUN address immediately after the operand.
 ;   A fragment target of SEG_ABS means a zero base (literal branch target).
@@ -54,7 +55,7 @@
 ;   FILENAMES               ; its own local-ID table for the debug block headers
 ;   HEADERS
 ;   PROGRAM
-; All two-byte fields are little-endian. There is no version/legacy header.
+; All two-byte fields are little-endian.
 ;*******************************************************************************
 
 .include "asm.inc"
@@ -166,8 +167,17 @@ numsections: .byte 0	; number of sections in obj file being written/read
 .export __obj_filename
 __obj_filename: .word 0	; pointer to name of object file being loaded
 
-import_label_idshi:   .res MAX_IMPORTS	; MSBs of label IDs for imports
-import_label_idslo:   .res MAX_IMPORTS	; LSBs of label IDs for imports
+; Interleaved 16-bit global label IDs, indexed by a 16-bit object-local ID.
+; C64 object storage uses REU
+; VIC-20 table lives in linker RAM.
+.ifdef c64
+.pushseg
+.segment "OBJBSS"
+.endif
+import_label_ids: .res MAX_IMPORTS*2
+.ifdef c64
+.popseg
+.endif
 
 num_reloctables_mapped: .byte 0
 
@@ -647,20 +657,14 @@ __obj_split_fragment:
 
 ;*******************************************************************************
 ; ADD IMPORT
-; Defines an IMPORT for the given label name
+; Declares an external symbol. Object-local import IDs are assigned when a
+; relocation references the symbol; unused declarations need no object entry.
 ; IN:
 ;   - .XY: address of the symbol name to define an IMPORT for
 ; OUT:
 ;   - .C: set on error
 .export __obj_add_import
 .proc __obj_add_import
-	; make sure there is room for another IMPORT
-	lda numimports+1
-	bne @toomany
-	lda numimports
-	cmp #MAX_IMPORTS
-	bcs @toomany
-
 	; define a label for the import so that references to it succeed
 	lda #SEG_UNDEF			; UNDEF (external)
 	sta zp::label_segmentid
@@ -672,21 +676,7 @@ __obj_split_fragment:
 	lda #$ff			; and so has no file
 	sta zp::label_fileid
 
-	CALLMAIN lbl::add
-	bcs @ret			; not found -> err
-
-	; store the ID of the label that was added
-	txa
-	ldx numimports
-	sta import_label_idslo,x	; get LSB of index for symbol
-	tya
-	sta import_label_idshi,x	; get MSB of index for symbol
-	incw numimports
-	clc				; ok
-@ret:	rts
-
-@toomany:
-	RETURN_ERR ERR_TOO_MANY_LABELS
+	JUMPMAIN lbl::add
 .endproc
 
 ;*******************************************************************************
@@ -717,7 +707,7 @@ __obj_split_fragment:
 	sta @sz
 
 :	ldxy reloctop
-	cmpw #(reloc_tables_end-7)	; full addend and negative fragment, if present
+	cmpw #(reloc_tables_end-8)	; full addend and negative base, if present
 	bcc :+				; below max -> ok
 	beq :+				; at max -> still fits
 	RETURN_ERR ERR_OOM
@@ -806,12 +796,14 @@ __obj_split_fragment:
 @sym_based:
 	ldxy expr::symbol
 	jsr get_import_id	; look up object-local ID for symbol
-	bcs @err		; not an IMPORT -> return error
+	bcs @err		; referenced-import table full -> return error
+	tya
+	pha
 	ldy #$03
 	txa
 	STOREB_Y @rel		; write local symbol-id LSB
 	iny			; .Y=4
-	lda #$00		; MSB (always 0 for now)
+	pla
 	STOREB_Y @rel		; write local symbol-id MSB
 
 @done:	ldy #$05
@@ -835,12 +827,20 @@ __obj_split_fragment:
 	tay
 	jsr get_import_id
 	bcs @err
+	tya
+	ora #$80		; bit 15 distinguishes imports from fragments
+	pha
 	ldy #$06		; flags/offset/target/high addend precede it
-	ora #$80		; high bit distinguishes imports from fragments
-	bne @write_negative
+	txa
+	STOREB_Y @rel
+	pla
+	bne @write_negative_high
 @negative_fragment:
 	lda expr::negative
-@write_negative:
+	STOREB_Y @rel
+	lda #$00
+@write_negative_high:
+	iny
 	STOREB_Y @rel
 	iny
 
@@ -859,36 +859,99 @@ __obj_split_fragment:
 
 ;*******************************************************************************
 ; GET IMPORT ID
-; Translates the given label ID (from the assembly symbol table) to a "local"
-; one for the active object state.
+; Finds or assigns an object-local ID for a referenced external symbol.
 ; IN:
-;   - .XY: symobl ID to translate
+;   - .XY: declared external symbol ID from the assembly symbol table
 ; OUT:
-;   - .A: local ID (index into import_label_idslo/hi)
-;   - .C: set if the ID is not found (wasn't marked as an IMPORT)
+;   - .XY: zero-based object-local import ID
+;   - .C: set if the referenced-import table is full
 .proc get_import_id
 @id=r4
+@ptr=r6
+@index=r8
 	stxy @id
+	ldxy #$0000
+	stxy @index
+	jsr import_pointer
+	stxy @ptr
 
-	ldx #$00
-	cpx numimports		; any imports defined?
-	bcs @notfound		; if not, don't probe the (stale) table
-@l0:	; look for the matching symbol ID in the table of mapped IMPORTs
-	lda @id
-	cmp import_label_idslo,x
+@l0:	ldxy @index
+	cmpw numimports
+	bcs @append
+	ldy #$00
+	LOADB_Y @ptr
+	cmp @id
 	bne @next
-	lda @id+1
-	cmp import_label_idshi,x
+	iny
+	LOADB_Y @ptr
+	cmp @id+1
 	beq @found
 
-@next:	inx
-	cpx numimports
-	bcc @l0
-@notfound:
-	RETURN_ERR ERR_IMPORT_UNDEFINED
+@next:	incw @index
+	incw @ptr
+	incw @ptr
+	jmp @l0
 
-@found:	txa
+@append:
+	cmpw #MAX_IMPORTS
+	bcs @toomany
+	ldy #$00
+	lda @id
+	STOREB_Y @ptr
+	iny
+	lda @id+1
+	STOREB_Y @ptr
+	incw numimports
+
+@found:	ldxy @index
 	RETURN_OK
+
+@toomany:
+	RETURN_ERR ERR_TOO_MANY_LABELS
+.endproc
+
+;*******************************************************************************
+; IMPORT POINTER
+; Returns the address of the pointer for the given IMPORT id.
+; IN:
+;   - .XY: zero-based object-local import ID
+; OUT:
+;   - .XY: address of its two-byte global label ID in object storage
+.proc import_pointer
+	txa
+	asl
+	tax
+	tya
+	rol
+	tay
+	add16 #import_label_ids
+.ifdef c64
+	lda #FINAL_BANK_LINKER
+	sta reu::reuaddr+2
+.endif
+	rts
+.endproc
+
+;*******************************************************************************
+; GET IMPORT LABEL
+; Returns the label id for the given IMPORT id.
+; IN:
+;   - .XY: valid zero-based object-local import ID
+; OUT:
+;   - .XY: global label ID
+.proc get_import_label
+@ptr=r0
+	jsr import_pointer
+	stxy @ptr
+	ldy #$00
+	LOADB_Y @ptr
+	pha
+	iny
+	LOADB_Y @ptr
+	tay
+	pla
+	tax
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -909,8 +972,8 @@ __obj_split_fragment:
 ; DUMP IMPORTS
 ; Stores the names of the imported symbols along with their mapped symbol
 ; indices.
-; Imports must be declared with the .IMPORT directive to map them to the object
-; file.
+; Declared imports are mapped on first relocation use. Unused declarations are
+; omitted from both the import and local-symbol lists.
 ; They are indentified by a SEG_UNDEF section index in the relocation tables at
 ; link time
 .proc dump_imports
@@ -924,14 +987,12 @@ __obj_split_fragment:
 	beq @done			; if no imports -> done
 
 @l0:	; get the symbol name
+	ldxy @i
+	jsr get_import_label
+	stxy @idx
 	ldxy #@buff
 	stxy r0
-	ldx @i
-	ldy import_label_idshi,x	; get MSB of index for symbol
-	sty @idx+1
-	lda import_label_idslo,x	; get LSB of index for symbol
-	sta @idx
-	tax
+	ldxy @idx
 	CALLMAIN lbl::getname
 
 	; write out the name
@@ -1509,6 +1570,7 @@ __obj_split_fragment:
 	jmp @resolved
 @symbol:
 	ldx @record+3
+	ldy @record+4
 	jsr get_import_address
 	jcs @bad
 @resolved:
@@ -1518,12 +1580,19 @@ __obj_split_fragment:
 	beq @site
 	jsr krn::chrin
 	inc @length
-	tax
-	bpl @negative_fragment		; bit 7 clear -> subtract FRAGMENT base
+	pha
+	jsr krn::chrin
+	inc @length
+	tay
+	pla
+	cpy #$80
+	bcc @negative_fragment		; bit 15 clear -> subtract FRAGMENT base
 
 	; subtract import
-	and #$7f			; get IMPORT id
 	tax
+	tya
+	and #$7f			; get IMPORT id high byte
+	tay
 	jsr get_import_address
 	jcs @bad
 	jmp @subtract_base
@@ -1669,16 +1738,14 @@ __obj_split_fragment:
 ; GET IMPORT ADDRESS
 ; Get an imported symbol's resolved address via its global label ID.
 ; IN:
-;   - .X: zero-based object-local IMPORT index
+;   - .XY: zero-based object-local IMPORT index
 ; OUT:
 ;   - .XY: final symbol address (RUN address for relocatable labels), if valid
 ;   - .C: clear on success, set on invalid IMPORT index
 .proc get_import_address
-	cpx numimports
+	cmpw numimports
 	bcs @bad
-	ldy import_label_idshi,x
-	lda import_label_idslo,x
-	tax
+	jsr get_import_label
 	CALLMAIN lbl::getaddr
 	clc
 	rts
@@ -1801,10 +1868,8 @@ __obj_get_fragment_run:
 	sta numlocals+1
 
 	; validate the symbol counts
-	lda numimports+1
-	bne @toomany
-	lda numimports
-	cmp #MAX_IMPORTS+1
+	ldxy numimports
+	cmpw #MAX_IMPORTS+1
 	bcs @toomany
 	lda numexports
 	cmp #MAX_EXPORTS+1
@@ -1950,7 +2015,8 @@ __obj_get_fragment_run:
 @imports:
 	lda #$00
 	sta @i
-	cmp numimports
+	sta @i+1
+	iszero numimports
 	beq @exports
 
 @import_loop:
@@ -1958,9 +2024,9 @@ __obj_get_fragment_run:
 	jsr load_import
 	bcs @ret
 
-	inc @i
-	lda @i
-	cmp numimports
+	incw @i
+	ldxy @i
+	cmpw numimports
 	bne @import_loop
 
 ;-------------------------------------------------------------------------------
@@ -2278,6 +2344,7 @@ __obj_get_fragment_run:
 ;   - .C: set and .A = error code on failure
 .export __obj_load
 .proc __obj_load
+@import=r0
 @name=r6
 @addr=r6
 @symcnt=r8
@@ -2328,11 +2395,15 @@ __obj_get_fragment_run:
 :
 
 	; store the resolved (GLOBAL) id for this symbol's index (LOCAL id)
-	ldy @i
-	lda @symid+1
-	sta import_label_idshi,y
+	ldxy @i
+	jsr import_pointer
+	stxy @import
+	ldy #$00
 	lda @symid
-	sta import_label_idslo,y
+	STOREB_Y @import
+	iny
+	lda @symid+1
+	STOREB_Y @import
 
 	jsr krn::chrin		; eat info byte
 

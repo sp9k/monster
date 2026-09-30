@@ -289,11 +289,11 @@ rowbuf: .res LINESIZE	; row being composed
 	jsr print
 
 ;------------------------------------------------------------------------------
-; print the number of imports defined / available
+; print the number of referenced imports / available
 @imports:
 	lda obj::numimports
 	pha
-	lda #$00
+	lda obj::numimports+1
 	pha
 	ldxy #@imports_msg
 	lda #HELP_TEXT_ROW+11

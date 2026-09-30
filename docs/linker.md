@@ -13,6 +13,13 @@ be stored to disk in the object format.  This is done with the `:o` Ex command. 
 specifically look for files that end in `.o` when it goes to link, so be sure to enter a filename
 with that suffix: e.g. `:o hello.o`.
 
+Each object can reference up to 512 imported symbols and export up to 64 labels.
+Unused `.import` and `.importzp` declarations are omitted from the object file;
+they consume assembly symbol-table space during assembly but do not require
+matching exports at link time.
+
+Import IDs use 16 bits, including in symbol-difference relocations.
+
 Your assembled program may itself specify where it should be loaded (this is what the `.org` directive does).
 In these cases, the linker doesn't have much work.  It will, at least, ensure that all the linked
 files don't overlap.

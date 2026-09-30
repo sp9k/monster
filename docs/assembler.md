@@ -431,6 +431,8 @@ contents of the "else" block are assembled.
 **Behavior:** Exports a label for use (import) by another module.  See the linker section of this
 manual for more details.
 
+An object file can export up to 64 labels.
+
 
 ````{example}
 ```
@@ -473,6 +475,10 @@ This can be useful inside macros to determine if a parameter was provided or not
 
 **Behavior:** Imports a label defined (exported) by another module.  See the linker section of this
 manual for more details.
+
+Up to 512 distinct imports can be referenced by an object's emitted
+code or data. Symbols that are imported but unused in the assembly code are
+omitted from the object code (and thus do not count toward this limit).
 
 ````{example}
 ```
