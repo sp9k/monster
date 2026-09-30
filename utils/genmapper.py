@@ -72,33 +72,33 @@ segments = {
 		blk5 = Rom(10),
 	),
 	"SYMBOLS": Bank(
-		blk1 = Ram(70), # metadata; contiguous symbol store occupies 70..100
-		blk2 = Ram(70), # unused alias
-		blk3 = Ram(70), # temporary paging window, restored after each access
+		blk1 = Ram(64), # metadata; contiguous symbol store occupies 64..94
+		blk2 = Ram(64), # unused alias
+		blk3 = Ram(64), # temporary paging window, restored after each access
 		blk5 = Rom(11),
 	),
 	"SYMBOL_NAMES": Bank(
-		blk1 = Ram(70), # metadata; contiguous symbol store occupies 70..100
-		blk2 = Ram(70), # unused alias
-		blk3 = Ram(70), # temporary paging window, restored after each access
+		blk1 = Ram(64), # metadata; contiguous symbol store occupies 64..94
+		blk2 = Ram(64), # unused alias
+		blk3 = Ram(64), # temporary paging window, restored after each access
 		blk5 = Rom(11),
 	),
 	"CTX": Bank(
-		blk1 = Ram(26),
-		blk2 = Ram(27),
-		blk3 = Ram(28),
+		blk1 = Ram(20),
+		blk2 = Ram(21),
+		blk3 = Ram(22),
 		blk5 = Rom(12),
 	),
 	"VSCREEN": Bank(
-		blk1 = Ram(29),
-		blk2 = Ram(30),
-		blk3 = Ram(31),
+		blk1 = Ram(23),
+		blk2 = Ram(24),
+		blk3 = Ram(25),
 		blk5 = Rom(13),
 	),
 	"VSYS": Bank(
-		blk1 = Ram(33),	# $0000-$2000    (virtual internal)
-		blk2 = Ram(34), # $8000-$a000    (virutal I/O)
-		blk3 = Ram(35), # backup for debugger RAM
+		blk1 = Ram(27),	# $0000-$2000    (virtual internal)
+		blk2 = Ram(28), # $8000-$a000    (virutal I/O)
+		blk3 = Ram(29), # backup for debugger RAM
 		blk5 = Rom(14),
 	),
 	"FTXT": Bank(
@@ -108,10 +108,10 @@ segments = {
 		blk5 = Rom(19),
 	),
 	"USER": Bank(
-		blk1 = Ram(36),
-		blk2 = Ram(37),
-		blk3 = Ram(38),
-		blk5 = Ram(39),
+		blk1 = Ram(30),
+		blk2 = Ram(31),
+		blk3 = Ram(32),
+		blk5 = Ram(33),
 	),
 	"FASTSCROLL_UP": Bank(
 		blk1 = Rom(20),
@@ -126,11 +126,14 @@ segments = {
 		blk5 = Rom(27),
 	),
 	"ERRLOG": Bank(
-		blk1 = Ram(67),
-		blk2 = Ram(68),
-		blk3 = Ram(69),
+		blk1 = Ram(61),
+		blk2 = Ram(62),
+		blk3 = Ram(63),
 		blk5 = Rom(28),
 	),
+    "FLASH": Bank(Ram(95), Rom(0), Rom(3), Rom(29)),
+    "LINKER_AUX": Bank(Ram(11), Ram(12), Ram(13), Rom(30)),
+    "VIEWERS": Bank(Rom(1), Rom(2), Rom(3), Rom(31)),
 }
 
 print("\n;*******************************************************************************")

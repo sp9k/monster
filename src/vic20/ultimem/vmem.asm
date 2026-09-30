@@ -186,7 +186,7 @@ BASE=$2000
 :	cpy #$c0		; in ROM?
 	bcs @rom
 
-@blk5:	; $a000-$bfff: BLK5 (bank 39)
+@blk5:	; $a000-$bfff: BLK5 (bank 33)
 	tya
 	and #$1f		; offset within 8KB bank
 	clc
