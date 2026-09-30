@@ -29,6 +29,9 @@
 .import __label_set
 .import __label_set_addr
 .import __label_setscope
+.import __label_namespace_reset, __label_namespace_check
+.import __label_namespace_open, __label_namespace_close
+.import __label_source_scope
 
 ; SEGMENT ID FLAGS
 SEG_UNDEF = $00	; segment is undefined (external)
@@ -82,4 +85,9 @@ SYM_UNRESOLVED = $ffff	; magic value for unresolved symbol ID
 	set               = __label_set
 	setaddr           = __label_set_addr
 	setscope          = __label_setscope
+	namespace_reset   = __label_namespace_reset
+	namespace_check   = __label_namespace_check
+	namespace_open    = __label_namespace_open
+	namespace_close   = __label_namespace_close
+	source_scope      = __label_source_scope
 .endscope

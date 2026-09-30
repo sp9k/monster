@@ -158,11 +158,45 @@ Long labels are harder to squeeze onto a line.
 They are case-insensitive (`a` and `A` refer to the same label)
 and their definitions may end with a colon (':') but are not required to (`A:` and `A` are both valid label definitions)
 
+### Nested scopes
+
+`.SCOPE name` and `.PROC name` open a new namespace.  All labels defined
+inside the current scope are prioritized during the search for a matching label.
+If none is found, enclosing scopes are searched before, finally, the root scope.
+To end a scope use the `.ENDSCOPE` and `.ENDPROC` directives (depending on which
+directive opened the scope).
+
+To reference a label that is scoped, use the "dot" syntax: `screen.clear`.
+When referencing symbols this way, the full path from root must be specified.
+
+```
+.seg "CODE"
+.scope screen
+    .eq width 40
+    .proc clear
+        ldx #width
+        lda #$20
+    @loop:
+        sta $1e00-1,x
+        dex
+        bne @loop
+        rts
+    .endproc
+.endscope
+
+jsr screen.clear
+```
+
+Inside an explicit scope, `@` labels stay in that scope even when another
+ordinary label is defined.
+
+Up to 16 scopes may be open, counting procedures. Scope names must be single,
+non-local identifiers.  Fully qualified names must be 255 charactersor less.
+
 ### Local labels
 
-Local labels are defined by prefixing the label with a '@' symbol.  This _does_
-count toward the 16 character label limit.
-Local labels are valid until the next non-local label is defined as shown in
+Local labels are defined by prefixing the label with an `@` symbol. Outside an
+explicit scope, they are valid until the next non-local label, as shown in
 the following example.
 
 ````{example}

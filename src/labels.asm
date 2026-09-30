@@ -71,6 +71,8 @@ LIST_NEXT   = 2
 
 ;*******************************************************************************
 .include "asm.inc"
+.import __asm_do_label
+.include "codes.inc"
 .include "debuginfo.inc"
 .include "config.inc"
 .include "errors.inc"
@@ -108,7 +110,7 @@ temp    = zp::labels+$14	; temporary scratchpad
 
 ;*******************************************************************************
 ; CONSTANTS
-SCOPE_LEN  = 17		; size of a namespace (scope) entry (name + terminator)
+SCOPE_LEN  = 17		; legacy @-label/macro anchor (name + terminator)
 
 ; NOTE: BE CAREFUL CHANGING THIS
 ; BUCKETING LOGIC RELIES ON AN EXACT SIZE (BITS 8-11)
@@ -206,6 +208,11 @@ label_names_sorted_ids     = label_names_sorted + MAX_LABELS*2
 .export label_buckets
 label_buckets: .res NUM_BUCKETS*2
 scopes: .res SCOPE_LEN*MAX_SCOPES
+MAX_NAMESPACES = $10
+namespace_path:    .res $100
+namespace_ends:    .res MAX_NAMESPACES
+namespace_kinds:   .res MAX_NAMESPACES
+namespace_anchors: .res MAX_NAMESPACES
 .export anon_addrs
 anon_addrs: .res MAX_ANON*2
 .assert * <= $4000, error, "symbol metadata must fit below the paging window"
@@ -228,7 +235,444 @@ name_full: .byte 0		; all 128 KiB of name storage allocated
 name_top:  .word 0		; word offset of the next free name-pool entry
 labelvars_size=*-labelvars
 
+; Lexical scope state and lookup scratch are visible from every code bank.
+.ifdef vic20
+.segment "SHAREBSS2"
+.else
+.segment "BSS_NOINIT"
+.endif
+namespace_vars:
+.export __label_namespace_depth
+__label_namespace_depth:
+namespace_depth:  .byte $00
+namespace_len:    .byte $00
+namespace_anchor: .byte $00
+namespace_kind:   .byte $00
+namespace_newlen: .byte $00
+name_chars:       .byte $00
+name_qualified:   .byte $00
+name_len:         .byte $00
+search_len:       .byte $00
+search_depth:     .byte $00
+search_parents:   .byte $00
+namespace_vars_size = *-namespace_vars
+
 BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
+
+;*******************************************************************************
+; CANONICAL NAME
+; Reads a symbol token into "name_chars" and identifies absolute dotted names.
+; IN:
+;   - .XY: source name
+; OUT:
+;   - .XY: canonical token in sympage::scope_buffer
+;   - .C:  set on error
+;   - .A:  error code  (if error occurred)
+.proc canonical_name
+@src = temp
+	stxy @src
+	ldy #$00
+	sty name_qualified
+	ldx #$00
+
+@scan:	lda (@src),y
+	cmp #':'
+	beq @colon
+	cmp #';'
+	beq @end
+	jsr isseparator
+	beq @end
+	cmp #'.'
+	bne @copy
+	sta name_qualified
+
+@copy:	sta sympage::scope_buffer,x
+	inx
+	beq @long
+	iny
+	bne @scan
+@long:	RETURN_ERR ERR_LABEL_TOO_LONG
+
+@colon: iny
+	beq @long
+	lda (@src),y
+	cmp #':'
+	beq @bad
+	dey
+@end:	cpx #$00
+	beq @bad
+	sty name_chars
+	stx name_len
+	lda #$00
+	sta sympage::scope_buffer,x
+	ldxy #sympage::scope_buffer
+	RETURN_OK
+@bad:	RETURN_ERR ERR_ILLEGAL_LABEL
+.endproc
+
+;*******************************************************************************
+; PREFIX NAME
+; Prepends a lexical path to the canonical token, checking the full name length.
+; IN:
+;   - .A: number of namespace_path bytes to prepend
+;   - name_len: canonical token length
+; OUT:
+;   - .XY: qualified token in sympage::scope_buffer
+;   - .C:  set on error
+;   - .A:  ERR_LABEL_TOO_LONG on error
+.proc prefix_name
+@path = temp
+	sta search_len
+	clc
+	adc name_len
+	bcs @long
+	tax
+	ldy name_len
+@shift:
+	lda sympage::scope_buffer,y
+	sta sympage::scope_buffer,x
+	dex
+	dey
+	cpy #$ff
+	bne @shift
+	ldxy #namespace_path
+	stxy @path
+	ldy #$00
+@copy:	cpy search_len
+	beq @done
+	LOADB_Y @path
+	sta sympage::scope_buffer,y
+	iny
+	bne @copy
+@done:	ldxy #sympage::scope_buffer
+	RETURN_OK
+@long:	RETURN_ERR ERR_LABEL_TOO_LONG
+.endproc
+
+;*******************************************************************************
+; DEFINITION NAME
+; Resolves dotted names absolutely and bare names in their lexical or local
+; scope.
+; IN:
+;   - .XY: source name
+; OUT:
+;   - .XY: fully qualified name
+;   - search_parents: nonzero for ordinary lexical references
+;   - .C: set and .A = error code on failure
+.proc definition_name
+	jsr is_local
+	beq @ordinary
+	lda namespace_depth
+	beq @legacy
+	lda scopesp
+	cmp namespace_anchor
+	bne @legacy
+	lda #$00
+	beq @prepare
+@ordinary:
+	lda #$01
+@prepare:
+	sta search_parents
+	lda #$00
+	sta search_len
+	jsr canonical_name
+	bcs @ret
+	lda name_qualified
+	beq @relative
+	lda #$00
+	sta search_parents
+	beq @prefix
+@relative:
+	lda namespace_len
+@prefix:
+	jmp prefix_name
+@legacy:
+	lda #$00
+	sta search_parents
+	sta search_len
+	jmp prepend_scope
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; FIND
+; Looks up dotted names at root and bare names through the enclosing namespaces.
+; IN:
+;   - .XY: source name, optionally qualified with dots
+; OUT:
+;   - .XY: symbol ID on success
+;   - .C:  set and .A = error code if no matching symbol exists
+.proc find
+@path = temp
+	jsr definition_name
+	bcc @ready
+	cmp #ERR_LABEL_TOO_LONG
+	bne @error
+	ldx search_parents
+	beq @error
+	ldx search_len
+	beq @error
+
+	; oversized candidate cannot exist, but an enclosing name still may
+	lda namespace_depth
+	sta search_depth
+	jmp @parent
+
+@ready: lda namespace_depth
+	sta search_depth
+@try:	jsr find_exact
+	bcc @ret
+	lda search_parents
+	beq @missing
+	lda search_len
+	beq @missing
+
+	; remove this attempt's path before prepending the enclosing path
+	tay
+	ldx #$00
+@strip: lda sympage::scope_buffer,y
+	sta sympage::scope_buffer,x
+	beq @parent
+	inx
+	iny
+	bne @strip
+
+@parent:
+	dec search_depth
+	ldxy #namespace_ends
+	stxy @path
+	ldy search_depth
+	LOADB_Y @path
+	jsr prefix_name
+	bcc @try
+	bcs @parent
+@ret:	rts
+@missing:
+	RETURN_ERR ERR_LABEL_UNDEFINED
+@error:	sec
+	rts
+.endproc
+
+;*******************************************************************************
+; SOURCE SCOPE
+; Updates the legacy @-label anchor outside explicit lexical scopes.
+; IN:
+;   - .XY: source label name
+; OUT:
+;   - .C: set and .A = error code on failure
+.export __label_source_scope
+.proc __label_source_scope
+	lda namespace_depth
+	bne @done
+	jsr is_local
+	bne @done
+
+	jsr pop_scope
+	ldxy zp::line
+	jmp set_scope
+
+@done:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; NAMESPACE RESET
+; Returns to the root namespace at the start of an assembly pass.
+; IN:
+;   - None
+; OUT:
+;   - .C: clear
+.export __label_namespace_reset
+.proc __label_namespace_reset
+	lda #$00
+	ldx #namespace_vars_size
+@clear:
+	sta namespace_vars-1,x
+	dex
+	bne @clear
+	sta scopesp
+	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; NAMESPACE CHECK
+; Checks that all lexical scope directives have been closed.
+; IN:
+;   - None
+; OUT:
+;   - .C: set and .A = ERR_NO_MATCHING_SCOPE for an unclosed scope
+.export __label_namespace_check
+.proc __label_namespace_check
+	lda namespace_depth
+	beq @done
+	RETURN_ERR ERR_NO_MATCHING_SCOPE
+@done:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; NAMESPACE OPEN
+; Opens a named scope or defines a procedure label and opens its scope.
+; IN:
+;   - .A: $00 for .SCOPE, $01 for .PROC
+;   - zp::line: unqualified scope name and optional comment
+; OUT:
+;   - .A: ASM_DIRECTIVE on success, error code on failure
+;   - .C: set on invalid input, stack overflow, or label-definition failure
+.export __label_namespace_open
+.proc __label_namespace_open
+@path = temp
+	sta namespace_kind
+	ldxy zp::line
+	jsr is_valid
+	jcs @ret
+	lda name_qualified
+	bne @bad
+	ldx #$00
+
+@simple:
+	lda sympage::scope_buffer,x
+	beq @syntax
+	cmp #'.'
+	beq @bad
+	cmp #'@'
+	beq @bad
+	inx
+	bne @simple
+
+@syntax:
+	ldy name_chars
+@tail:	lda (zp::line),y
+	beq @valid
+	cmp #';'
+	beq @valid
+	jsr iswhitespace
+	bne @bad
+	iny
+	bne @tail
+@bad:	RETURN_ERR ERR_UNEXPECTED_CHAR
+
+@valid: lda zp::verify
+	jne @done
+	lda namespace_depth
+	cmp #MAX_NAMESPACES
+	jcs @full
+	lda namespace_len
+	clc
+	adc name_len
+	jcs @long
+	adc #$01
+	jcs @long
+	sta namespace_newlen
+
+	lda namespace_kind
+	beq @openpath
+	CALL FINAL_BANK_ASM, __asm_do_label
+	jcs @ret
+	; Label lookup uses the shared name buffer; reconstruct the scope token.
+	ldxy zp::line
+	jsr canonical_name
+	jcs @ret
+
+@openpath:
+	lda namespace_len
+	jsr prefix_name
+	jcs @ret
+
+	ldxy #namespace_ends
+	stxy @path
+	ldy namespace_depth
+	lda namespace_len
+	STOREB_Y @path
+
+	ldxy #namespace_kinds
+	stxy @path
+	ldy namespace_depth
+	lda namespace_kind
+	STOREB_Y @path
+
+	ldxy #namespace_anchors
+	stxy @path
+	ldy namespace_depth
+	lda namespace_anchor
+	STOREB_Y @path
+
+	lda scopesp
+	sta namespace_anchor
+	ldxy #namespace_path
+	stxy @path
+	ldy #$00
+
+@copy:	lda sympage::scope_buffer,y
+	beq @dot
+	STOREB_Y @path
+	iny
+	bne @copy
+@dot:	lda #'.'
+	STOREB_Y @path
+	lda namespace_newlen
+	sta namespace_len
+	inc namespace_depth
+
+@done:	lda #ASM_DIRECTIVE
+	RETURN_OK
+@long:	RETURN_ERR ERR_LABEL_TOO_LONG
+@full:	RETURN_ERR ERR_STACK_OVERFLOW
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; NAMESPACE CLOSE
+; Closes a scope of the matching kind and restores the enclosing namespace.
+; IN:
+;   - .A: $00 for .ENDSCOPE, $01 for .ENDPROC
+;   - zp::line: optional comment, no operands
+; OUT:
+;   - .A: ASM_DIRECTIVE on success, error code on failure
+;   - .C: set for malformed, unmatched, or mismatched closing directives
+.export __label_namespace_close
+.proc __label_namespace_close
+@path = temp
+	sta namespace_kind
+	ldy #$00
+	lda (zp::line),y
+	beq @valid
+	cmp #';'
+	bne @syntax
+
+@valid: lda zp::verify
+	bne @done
+	lda namespace_depth
+	beq @empty
+	ldxy #namespace_kinds
+	stxy @path
+
+	ldy namespace_depth
+	dey
+	LOADB_Y @path
+	cmp namespace_kind
+	bne @mismatch
+	ldxy #namespace_ends
+	stxy @path
+	ldy namespace_depth
+	dey
+	LOADB_Y @path
+	sta namespace_len
+	ldxy #namespace_anchors
+	stxy @path
+	ldy namespace_depth
+	dey
+	LOADB_Y @path
+	sta namespace_anchor
+	dec namespace_depth
+
+@done:	lda #ASM_DIRECTIVE
+	RETURN_OK
+@empty:
+	RETURN_ERR ERR_NO_OPEN_SCOPE
+@mismatch:
+	RETURN_ERR ERR_NO_MATCHING_SCOPE
+@syntax:
+	RETURN_ERR ERR_UNEXPECTED_CHAR
+.endproc
 
 ;*******************************************************************************
 ; POP SCOPE
@@ -365,6 +809,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ; Removes all labels effectively resetting the label state
 .proc clr
 @map=r0
+	jsr __label_namespace_reset
 	CALL FINAL_BANK_EXPR, expr::fconst_clr
 	; clear the hash map (linked lists of LABEL nodes)
 	ldxy #label_buckets
@@ -405,22 +850,11 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ; OUT:
 ;  - .C:  set if label is not found
 ;  - .XY: the id of the label (if found)
-.proc find
+.proc find_exact
 @label = temp
 	stxy @label		; save name to look for
 
-	; check (and flag) if the label is local. if it is, we will start
-	; searching at the end of the label table, where locals are stored
-	jsr is_local
-	beq @cont
-
-	; if local, prepend the scope as the namespace
-	ldxy @label
-	jsr prepend_scope
-	bcs @done		; return err
-	stxy @label
-
-@cont:	lda __label_num
+	lda __label_num
 	bne @find
 	lda __label_num+1
 	bne @find
@@ -599,9 +1033,12 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	jsr is_valid
 	bcs @ret		; return err
 
-	; check if the label already exists
+	; Definitions are checked in their own scope, without parent lookup.
 	ldxy @name
-	jsr find
+	jsr definition_name
+	bcs @ret
+	stxy @name
+	jsr find_exact
 	stxy id
 	bcs @insert		; label doesn't exist -> continue to add it
 
@@ -629,16 +1066,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	lda #ERR_TOO_MANY_LABELS
 	rts
 
-:	; check if label is local or not
-	ldxy @name
-	jsr is_local
-	beq @cont
-
-@local:	; if local, prepend the scope
-	jsr prepend_scope
-	bcs @ret		; return err
-	stxy @name		; save the symbol name
-
+:
 ;------------------------------------------------------------------------------
 @cont:	; load the pointers for the label we are creating
 	ldxy __label_num
@@ -1482,6 +1910,20 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ; OUT:
 ;  - .C: set if the label is NOT valid
 .proc is_valid
+	jsr canonical_name
+	bcs @ret
+	jmp is_valid_name
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; IS VALID NAME
+; Validates a canonical symbol token.
+; IN:
+;   - .XY: zero-terminated name
+; OUT:
+;   - .C: set and .A = error code if invalid
+.proc is_valid_name
 @name = r4
 	stxy @name
 	ldy #$00

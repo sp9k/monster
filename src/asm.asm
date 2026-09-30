@@ -504,6 +504,10 @@ directives:
 	.byte "df",0
 	.byte "pushseg",0
 	.byte "popseg",0
+	.byte "scope",0
+	.byte "endscope",0
+	.byte "proc",0
+	.byte "endproc",0
 directives_len=*-directives
 .assert directives_len <= $ff, error, "directive names exceed byte index"
 
@@ -513,7 +517,8 @@ directives_len=*-directives
 defineorg, define_psuedo_org, repeat, macro, do_if, do_else, do_endif, \
 do_ifdef, create_macro, handle_repeat, incbinfile, import, export, \
 directive_res, directive_seg, directive_segzp, directive_bss, directive_bsszp, \
-directive_align, importzp, definefloat, directive_pushseg, directive_popseg
+directive_align, importzp, definefloat, directive_pushseg, directive_popseg, \
+directive_scope, directive_endscope, directive_proc, directive_endproc
 .linecont -
 
 .pushseg
@@ -521,8 +526,8 @@ directive_align, importzp, definefloat, directive_pushseg, directive_popseg
 .segment "CODE"
 .endif
 directive_vectorslo: .lobytes directive_vectors
-.popseg
 directive_vectorshi: .hibytes directive_vectors
+.popseg
 
 ;*******************************************************************************
 ; see MODE_ constants in asmflags.inc
@@ -747,6 +752,8 @@ BANKED_CODE "ASMBANK"
 	sta __asm_segmentid
 	sta __asm_segtype	; reset segment type (TYPE_UNDEF) for the pass
 
+	CALL FINAL_BANK_SYMBOLS, lbl::namespace_reset
+
 	; ignore whitespace in expressions
 	CALL FINAL_BANK_EXPR, expr::end_on_ws
 
@@ -780,7 +787,7 @@ BANKED_CODE "ASMBANK"
 :	lda ctx::active		; all .MAC/.REP blocks closed?
 	beq :+
 	RETURN_ERR ERR_UNCLOSED_CTX
-:	RETURN_OK
+:	JUMP FINAL_BANK_SYMBOLS, lbl::namespace_check
 .endproc
 
 ;*******************************************************************************
@@ -1069,17 +1076,7 @@ BANKED_CODE "ASMBANK"
 	; move the line pointer past the label reference
 	; example cases handled: "foo lda #$00", "foo:lda #$00"
 @skipname:
-	ldy #$00
-	lda (zp::line),y
-	beq @name_done		; end of line -> done
-	jsr util::is_whitespace
-	beq @name_done		; whitespace ends the name
-	cmp #':'
-	beq @colon
-	jsr line::incptr
-	jmp @skipname
-
-@colon:	jsr line::incptr	; eat the ':'
+	CALL FINAL_BANK_SYMBOLS, skip_label_name
 
 @name_done:
 	ldxy zp::line
@@ -1592,7 +1589,27 @@ BANKED_CODE "ASMBANK"
 ; Extracts the label from the line
 ; pass 1: adds the label to the symbol table
 ; pass 2 (if assembling to object): maps symbol to its section
-.proc do_label
+; IN:
+;   - zp::line: label definition
+; OUT:
+;   - .C: set and .A = error code on failure
+do_label = __asm_do_label
+.export __asm_do_label
+.proc __asm_do_label
+	JUMP FINAL_BANK_SYMBOLS, do_label_impl
+.endproc
+.pushseg
+LABEL_CALLER_BANK = CUR_BANK
+BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
+CUR_BANK .set FINAL_BANK_SYMBOLS
+;*******************************************************************************
+; DO LABEL IMPLEMENTATION
+; Defines or validates an address label in its source scope.
+; IN:
+;   - zp::line: label definition
+; OUT:
+;   - .C: set and .A = error code on failure
+.proc do_label_impl
 	lda #ASM_LABEL
 	sta resulttype
 	lda zp::verify
@@ -1603,14 +1620,7 @@ BANKED_CODE "ASMBANK"
 	lda zp::virtualpc+1
 	sta zp::label_value+1
 
-	CALLMAIN lbl::islocal
-	cmp #$00		; check flag
-	bne @cont
-
-	; label is global
-	CALLMAIN lbl::popscope	; end the current scope (if any)
-	ldxy zp::line
-	CALLMAIN lbl::setscope	; set the non-local label as the new scope
+	CALL FINAL_BANK_SYMBOLS, lbl::source_scope
 	bcs @ret
 
 @cont:	lda pcset
@@ -1618,10 +1628,11 @@ BANKED_CODE "ASMBANK"
 	RETURN_ERR ERR_NO_ORIGIN
 
 :	ldxy zp::line
-	jsr pass1
+	lda zp::pass
+	cmp #$01
 	bne @validate		; if not pass 1, don't add the label
 	lda #$ff		; infer address mode
-	jmp add_label
+	JUMP FINAL_BANK_ASM, add_label
 
 @validate:
 	; pass 2: validation and symbol mapping (OBJ)
@@ -1637,6 +1648,29 @@ BANKED_CODE "ASMBANK"
 	sec			; phase error
 @ret:	rts
 .endproc
+;*******************************************************************************
+; SKIP LABEL NAME
+; Advances past a definition name and its optional colon.
+; IN:
+;   - zp::line: definition text, or whitespace after an anonymous label
+; OUT:
+;   - zp::line: text following the name
+.proc skip_label_name
+@scan:	ldy #$00
+	lda (zp::line),y
+	beq @ret
+	CALLMAIN util::is_whitespace
+	beq @ret
+	cmp #':'
+	beq @colon
+	CALLMAIN line::incptr
+	jmp @scan
+@colon:
+	CALLMAIN line::incptr
+@ret:	rts
+.endproc
+.popseg
+CUR_BANK .set LABEL_CALLER_BANK
 
 ;*******************************************************************************
 ; IS ANONDEF
@@ -2640,6 +2674,20 @@ CUR_BANK .set FP_CALLER_BANK
 ; Segment stack handlers share the existing expression directive helpers.
 directive_pushseg: JUMP FINAL_BANK_EXPR, push_segment
 directive_popseg:  JUMP FINAL_BANK_EXPR, pop_segment
+
+; Lexical directives run in the symbol bank.
+directive_scope:
+	lda #$00
+	skw
+directive_proc:
+	lda #$01
+	JUMP FINAL_BANK_SYMBOLS, lbl::namespace_open
+directive_endscope:
+	lda #$00
+	skw
+directive_endproc:
+	lda #$01
+	JUMP FINAL_BANK_SYMBOLS, lbl::namespace_close
 
 ;*******************************************************************************
 ; DIRECTIVE BSS ZP
