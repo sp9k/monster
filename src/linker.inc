@@ -16,6 +16,8 @@
 .import __link_log_banner
 .import __link_strcmp
 
+.import __link_output_load, __link_output_store
+
 .scope link
 	init                     = __link_init
 	link                     = __link_link
@@ -31,4 +33,6 @@
 	segid_by_name            = __link_get_segment_by_name
 	set_segtype              = __link_set_segment_type
 	update_progress          = __link_update_progress
+	output_load              = __link_output_load
+	output_store             = __link_output_store
 .endscope

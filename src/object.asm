@@ -1569,11 +1569,13 @@ __obj_split_fragment:
 	inx
 	bne :+
 	iny
-:	jsr vmem::load
+:	jsr link::output_load
+	jcs @ioerror
 	sta @addendhi
 
 @add:	ldxy @siteaddr
-	jsr vmem::load
+	jsr link::output_load
+	jcs @ioerror
 	clc
 	adc @value
 	sta @value
@@ -1623,7 +1625,8 @@ __obj_split_fragment:
 	bne :+
 	iny
 :	lda @value+1
-	jsr vmem::store
+	jsr link::output_store
+	jcs @ioerror
 
 @storebyte:
 	lda @value
@@ -1640,7 +1643,8 @@ __obj_split_fragment:
 	bcc @storebyte
 
 @write:	ldxy @siteaddr
-	jsr vmem::store
+	jsr link::output_store
+	jcs @ioerror
 	lda @remaining
 	sec
 	sbc @length
@@ -1656,6 +1660,9 @@ __obj_split_fragment:
 @byte_range:
 	RETURN_ERR ERR_OVERSIZED_OPERAND
 @bad:	RETURN_ERR ERR_UNKNOWN_SEGMENT
+
+@ioerror:
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -2264,6 +2271,11 @@ __obj_get_fragment_run:
 ; The global symbol table is expected to be built (labels created for any
 ; IMPORTs used in the program being linked) as well as the global segment
 ; layout.
+; IN:
+;   - Current input channel: object file
+;   - Global symbol and segment tables from link pass 1
+; OUT:
+;   - .C: set and .A = error code on failure
 .export __obj_load
 .proc __obj_load
 @name=r6
@@ -2374,6 +2386,7 @@ __obj_get_fragment_run:
 	lda __obj_fragment_ptrlo,x
 	tax
 	jsr link::pad_fragment
+	jcs @ret
 	jsr krn::chrin			; eat "info" byte for SEGMENT
 	pha
 
@@ -2447,10 +2460,11 @@ __obj_get_fragment_run:
 
 @objcode:
 	jsr link::update_progress
-	; finally, load the object code for the segment to vmem
+	; load the object code into the selected output space
 	jsr krn::chrin
 	ldxy @seg		; address to store to
-	jsr vmem::store		; store a byte of object code
+	jsr link::output_store	; store a byte of object code
+	jcs @ret
 	incw @seg
 
 	lda @sz
@@ -2498,8 +2512,7 @@ __obj_get_fragment_run:
 	jsr krn::chrin
 	jsr krn::chrin
 	jsr krn::chrin
-:
-	jsr krn::chrin		; skip the offset LSB
+:	jsr krn::chrin		; skip the offset LSB
 	jsr krn::chrin		; skip the offset MSB
 	jsr krn::chrin		; skip file ID
 	jsr krn::chrin		; skip line LSB

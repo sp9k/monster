@@ -34,6 +34,7 @@ FINAL_BANK_FILEDIR      = $17
 FINAL_BANK_ASM          = $18
 FINAL_BANK_VSCREEN      = $19
 FINAL_BANK_EXPR         = $1a
+FINAL_BANK_LINKER_AUX   = $1c ; image helpers share the SID ROM bank
 FINAL_BANK_SID          = $1c
 FINAL_BANK_FP           = FINAL_BANK_EXPR	; FP shares the evaluator's bank
 FINAL_BANK_EDIT         = FINAL_BANK_MAIN

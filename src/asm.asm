@@ -75,6 +75,7 @@
 .include "memory.inc"
 .include "object.inc"
 .include "ram.inc"
+.include "image.inc"
 .include "string.inc"
 .include "text.inc"
 .include "source.inc"
@@ -696,13 +697,16 @@ BANKED_CODE "ASMBANK"
 ; START PASS
 ; Resets assembly context in preparation for the given pass
 ; IN:
-;  - .A: the pass # (1 or 2)
+;   - .A: the pass # (1 or 2)
+; OUT:
+;   - None
 .proc startpass
 	pha
 
 	; disable VERIFY (assemble)
 	lda #$00
 	sta zp::verify
+	sta image::mode
 
 	sta ifstacksp		; reset the .IF stack (may leak from prior pass)
 	sta includesp		; reset the include stack
@@ -724,7 +728,7 @@ BANKED_CODE "ASMBANK"
 	sta zp::pass		; set pass #
 	cmp #$01
 	beq areset
-@pass2: lda ifdefidx		; snapshot the number of .IFDEF results
+@pass2:	lda ifdefidx		; snapshot the number of .IFDEF results
 	sta ifdefcnt		; recorded during pass 1...
 	lda #$00
 	sta lbl::anon_cursor

@@ -4,8 +4,10 @@
 ;*******************************************************************************
 ; LINKER
 .ifdef vic20
+.define MAX_LINK_SECTIONS $40
 .define MAX_OBJS 124		; max number of object files in a link
 .else
+.define MAX_LINK_SECTIONS $08
 .define MAX_OBJS 16
 .endif
 

@@ -47,6 +47,7 @@
 .include "object.inc"
 .include "prefs.inc"
 .include "ram.inc"
+.include "image.inc"
 .include "runtime.inc"
 .include "screen.inc"
 .include "sim6502.inc"
@@ -3690,7 +3691,9 @@ goto_buffer:
 ; Loads the given DEBUG file (program binary, global symbol table, and debug
 ; information)
 ; IN:
-;  - .XY: the argument to the command (filename)
+;   - .XY: the argument to the command (filename)
+; OUT:
+;   - None
 .proc command_loaddbg
 @file=zp::editortmp
 @addr=zp::editortmp+1
@@ -3713,6 +3716,9 @@ goto_buffer:
 	sta @file
 	tax
 	jsr krn::chkin		; CHKIN, file in .X is input
+
+	lda #$00
+	sta image::mode
 
 	; read the start address of the program
 	jsr krn::chrin		; read LSB
@@ -3779,8 +3785,14 @@ goto_buffer:
 ; Stores the program binary, the global symbol table, and debug information
 ; as a .D (debug) file to <filename>.
 ; IN:
-;  - .XY: the argument to the command (filename)
+;   - .XY: the argument to the command (filename)
+; OUT:
+;   - None
 .proc command_savedbg
+	lda image::mode
+	beq :+
+	jmp ::command_saveprg::image_error
+:
 @file=zp::editortmp
 @addr=zp::editortmp+2
 	stxy @file
@@ -3857,8 +3869,16 @@ goto_buffer:
 ; 2 byte load address (asm::origin) followed by the raw program binary
 ; Does nothing if no program has not been successfully assembled.
 ; IN:
-;  - .XY: the argument to the command (filename)
+;   - .XY: the argument to the command (filename)
+; OUT:
+;   - None
 .proc command_saveprg
+	lda image::mode
+	beq flat
+image_error:
+	lda #ERR_INVALID_COMMAND
+	jmp report_errcode
+flat:
 @file=r4
 	stxy @file
 	ldxy #strings::saving
@@ -3886,8 +3906,15 @@ goto_buffer:
 ; Stores the assembled program as raw binary to <filename>
 ; Does nothing if no program has not been successfully assembled.
 ; IN:
-;  - .XY: the argument to the command (filename)
+;   - .XY: the argument to the command (filename)
+; OUT:
+;   - None
 .proc command_savebin
+	lda image::mode
+	cmp #$01
+	bne :+
+	jmp ::command_saveprg::image_error
+:
 @file=r4
 	stxy @file
 	ldxy #strings::saving
@@ -3903,17 +3930,16 @@ goto_buffer:
 
 ;*******************************************************************************
 ; WRITE_ASM
-; Writes the assembled program to the file in r0 and then closes the file
+; Writes the assembled program or banked image and closes the output file
 ; IN:
-;  - r4: the file handle to write out
+;   - r4: the file handle to write out
+; OUT:
+;   - None
 .proc write_asm
 @file=r4
 	; write the assembled program
-	ldxy asm::top
-	stxy file::save_address_end
-	ldxy asm::origin	; get the base address of the program (in vmem)
 	lda @file
-	jsr file::savebin	; write the binary to file
+	CALL FINAL_BANK_LINKER_AUX, image::save
 	php			; save the save status
 	lda @file
 	jsr file::close
