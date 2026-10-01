@@ -84,6 +84,7 @@ LIST_NEXT   = 2
 .include "object.inc"
 .include "ram.inc"
 .include "macros.inc"
+.include "macro.inc"
 .include "target.inc"
 .include "string.inc"
 .include "symbolpages.inc"
@@ -521,6 +522,24 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .proc __label_namespace_open
 @path = temp
 	sta namespace_kind
+	lda zp::verify
+	beq @literal
+
+	ldy #$00
+	lda (zp::line),y
+	cmp #'.'
+	bne @literal
+	CALL FINAL_BANK_MACROS, mac::verify_property
+	jcs @bad
+
+	cmp #$04
+	jne @bad
+	CALL FINAL_BANK_MACROS, mac::verify_name
+	jcs @ret
+	ldy #$00
+	jmp @tail
+
+@literal:
 	ldxy zp::line
 	jsr is_valid
 	jcs @ret
@@ -640,7 +659,13 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 
 @valid: lda zp::verify
 	bne @done
-	lda namespace_depth
+	lda mac::depth
+	beq :+
+	CALL FINAL_BANK_MACROS, mac::namespace_floor
+	cmp namespace_depth
+	beq @mismatch
+
+:	lda namespace_depth
 	beq @empty
 	ldxy #namespace_kinds
 	stxy @path
@@ -672,6 +697,34 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	RETURN_ERR ERR_NO_MATCHING_SCOPE
 @syntax:
 	RETURN_ERR ERR_UNEXPECTED_CHAR
+.endproc
+
+;*******************************************************************************
+; NAMESPACE UNWIND
+; Restores the parent namespace after a macro expansion.
+; IN:
+;   - .A namespace depth at macro entry (<= current depth)
+; OUT:
+;   - namespace depth and active path restored
+.export __label_namespace_unwind
+.proc __label_namespace_unwind
+@path = temp
+	cmp namespace_depth
+	beq @done
+	sta namespace_depth
+	ldxy #namespace_ends
+	stxy @path
+
+	ldy namespace_depth
+	LOADB_Y @path
+	sta namespace_len
+	ldxy #namespace_anchors
+	stxy @path
+
+	ldy namespace_depth
+	LOADB_Y @path
+	sta namespace_anchor
+@done:	rts
 .endproc
 
 ;*******************************************************************************

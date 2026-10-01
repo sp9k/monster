@@ -2,6 +2,7 @@
 .include "codes.inc"
 .include "config.inc"
 .include "ctx.inc"
+.include "context_tokens.inc"
 .include "draw.inc"
 .include "errors.inc"
 .include "expr.inc"
@@ -10,7 +11,10 @@
 .include "labels.inc"
 .include "layout.inc"
 .include "limits.inc"
+.include "lexer.inc"
 .include "macros.inc"
+.import __mac_verify_property
+.macpack longbranch
 .include "memory.inc"
 .include "ram.inc"
 .include "screen.inc"
@@ -18,6 +22,7 @@
 .include "strings.inc"
 .include "target.inc"
 .include "text.inc"
+.include "util.inc"
 .include "zeropage.inc"
 
 .export macro_addresses
@@ -44,7 +49,7 @@ macro_addresses: .res MAX_MACROS * 2
 ;*******************************************************************************
 ; BSS
 .segment "MACROBSS"
-macros: .res $6000 - (MAX_MACROS*2)
+macros: .res $5000 - (MAX_MACROS*2) - $a0
 macros_end:
 
 ;*******************************************************************************
@@ -56,16 +61,18 @@ macros_end:
 ;    |       1       | number of parameters      |
 ;    |      0-16     | parameter 0 name          |
 ;    |      ...      | parameter n name          |
-;    |      ...      | macro definition          |
-;    |       2       | terminating 0,0           |
+;    |      ...      | binary context records    |
+;    |       1       | terminating size 0        |
 
 BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 
 ;*******************************************************************************
 ; MAC_INIT
 ; Initializes the macro state by removing all existing macros
+.import __mac_clear_mutables
 .export __mac_init
 .proc __mac_init
+	jsr __mac_clear_mutables
 	lda #$00
 	sta nummacros
 
@@ -145,44 +152,39 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 	dec @numparams
 	bne @copyparams
 
-; copy the macro definition byte-by-byte til we get to terminating 0,0
+; Copy complete framed records; payload zero bytes are not terminators.
 @paramsdone:
-	; handle the case of an empty macro
-	CALLMAIN ctx::getline	; read a line of the macro definition
+@l0:	CALLMAIN ctx::getrecord
+	bcs @ret
 	cmp #$00
-	bne :+
-	lda #$00
-	tay
-	STOREB_Y @dst		; store first of 2 terminating 0's
-	jmp @done		; continue to store the 2nd
-
-@l0:	CALLMAIN ctx::getline	; read a line of the macro definition
-	cmp #$00		; were any bytes read?
-	beq @done		; if not, we're done
-:	stxy @src
-
-	; make sure there is room for the line (and the terminating 0,0)
+	beq @done
+	; Reserve the whole record and its end marker before writing.
+	clc
+	adc @dst
+	tax
 	lda @dst+1
-	cmp #>(macros_end-MAX_LINE_LEN-3)
+	adc #$00
+	cmp #>macros_end
 	bcc @copyline
-	RETURN_ERR ERR_OOM
-
+	bne @full
+	cpx #<macros_end
+	bcs @full
 @copyline:
-	ldy #$00
-@l1:	lda (@src),y
-	STOREB_Y @dst		; store character for the macro
-	incw @src
-	incw @dst
-	cmp #$00		; at end of line?
-	bne @l1			; if not, keep processing line
-	beq @l0			; if so, loop to get another line
-
-@done:  ; 0,0 terminate the macro definition
+	STOREBLK8 CTX_TOKEN_BUFFER, @dst, CTX_TOKEN_BUFFER
+	tya
+	clc
+	adc @dst
+	sta @dst
+	bcc @l0
+	inc @dst+1
+	bne @l0
+@full:
+	RETURN_ERR ERR_OOM
+@done:
 	lda #$00
 	tay
 	STOREB_Y @dst
 	incw @dst
-	STOREB_Y @dst
 
 	lda @dst
 	sta __mac_top
@@ -190,171 +192,7 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 	sta __mac_top+1
 	inc nummacros
 	RETURN_OK
-.endproc
-
-;*******************************************************************************
-; ASM
-; Expands the given macro using the provided parameters and assembles it.
-; IN:
-;  - .A:                id of the macro
-;  - zp::mac0-zp::mac4: the macro parameters
-.export __mac_asm
-.proc __mac_asm
-@params=zp::macros
-@argslen=zp::macros+$08	; 2*(number of args passed by the caller)
-@err=zp::macros+$0b
-@errcode=zp::macros+$0c
-@cnt=zp::macros+$0d
-@macro=zp::macros+$0e
-@numparams=zp::macros+$10
-@tmplabel=$140
-@tmp=r0
-	stx @argslen	; save the number of args (*2) that were passed
-	; get the address of the macro from its id
-	asl
-	tax
-	lda macro_addresses,x
-	sta @macro
-	lda macro_addresses+1,x
-	sta @macro+1
-
-	; read macro name for use as the new temporary scope
-	ldy #$00
-	sty @err	; init err to none
-	dey		; pre-decrement ($ff)
-:	iny
-	LOADB_Y @macro
-	sta @tmplabel,y
-	bne :-
-
-	; move @macro pointer past the name of macro
-	tya
-	clc
-	adc @macro
-	sta @macro
-	bcc :+
-	inc @macro+1
-
-:	; set the label scope to the name of the macro
-	ldxy #@tmplabel
-	CALLMAIN lbl::setscope
-	bcc :+
-	rts		; return err
-
-:	; define the macro params
-	incw @macro
-	ldy #$00
-	LOADB_Y @macro	; get the number of parameters
-	sta @numparams
-	incw @macro	; move to the first parameter name
-
-	lda #$00
-	sta @cnt
-@setparams:
-	lda @cnt
-	cmp @numparams
-	beq @paramsdone
-
-	; copy the param name to a temp buffer so that it can be
-	; seen in the label bank (this also advances @macro past the name)
-	ldy #$ff		; -1
-:	iny
-	LOADB_Y @macro
-	sta @tmplabel,y
-	beq :+
-	cmp #$0d
-	bne :-
-
-:	tya
-	sec		; +1
-	adc @macro
-	sta @macro
-	bcc :+
-	inc @macro+1
-
-:	; if no value was passed for this parameter, leave it undefined
-	lda @cnt
-	asl
-	cmp @argslen
-	bcs @nextparam
-
-	; get the value to set the parameter to
-	tax
-	lda @params,x
-	sta zp::label_value
-	lda @params+1,x
-	sta zp::label_value+1
-	beq :+
-	lda #$01		; ABS
-:	sta zp::label_mode	; set the address mode for this label
-
-	; macro params are constants; they must not generate relocations
-	lda #SEG_ABS
-	sta zp::label_segmentid
-
-	; set the parameter to its value
-	ldxy #@tmplabel
-	CALLMAIN lbl::set
-	bcc @nextparam		; ok -> continue with the next parameter
-	sta @errcode		; save the error code (e.g. invalid label)
-	rol @err		; record the error (.C is set) for @done
-	bne @done		; branch always (@err is now nonzero)
-
-@nextparam:
-	inc @cnt
-	bne @setparams		; repeat for all params (branch always)
-
-@paramsdone:
-	; check if the macro is empty (begins with 2 0's)
-	ldy #$00
-	LOADB_Y @macro
-	sta @tmp
-	iny
-	LOADB_Y @macro
-	ora @tmp
-	beq @done
-
-@asm:	; assemble the macro line by line
-	; get macro address and
-	; save state that may be clobbered if we assemble another macro
-	lda @macro
-	pha
-	tax
-	lda @macro+1
-	pha
-	tay
-
-	; assemble this line of the macro
-	lda #FINAL_BANK_MACROS
-	CALLMAIN asm::tokenize
-
-	rol @err		; set error if .C was set
-	sta @errcode		; store the error code
-
-	; restore state (@cnt and @macro)
-	pla
-	sta @macro+1
-	pla
-	sta @macro
-
-@chkerr:
-	lda @err		; did an error occur?
-	bne @done		; if yes, exit
-
-@ok:	; move to the next line
-	ldy #$00
-:	incw @macro
-	LOADB_Y @macro
-	bne :-
-
-	incw @macro
-	LOADB_Y @macro		; at the end of the macro? (two 0's)
-	bne @asm		; no, continue
-
-@done:	CALLMAIN lbl::popscope	; pop the scope for this macro
-	lsr @err		; set .C if error occurred
-	lda @errcode
-	rts
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -440,10 +278,8 @@ MODE_DEF  = 1
 @scroll=re
 @i=rf
 @mode=zp::tmp10
-@dirbuff=mem::spare+40		; 0-40 will be corrupted by text routines
-@namebuff=mem::spareend-40	; buffer for the file name
-@lineptrslo=@namebuff-(256*2)	; room for 128 lines
-@lineptrshi=@namebuff-(256)	; room for 128 lines
+@body=mem::spare+40		; 0-40 may be used by text routines
+@namebuff=mem::spare+$80	; title, separate from token staging/metadata
 
 	; reset/save the screen
 	CALLMAIN scr::save
@@ -670,15 +506,93 @@ MODE_DEF  = 1
 @getline:
 	ldx @mode
 	cpx #MODE_DEF
-	bne @getname
+	jne @getname
 
 @getdef:
 	tax
-	lda @lineptrslo,x
+	lda @body
 	sta @name
-	lda @lineptrshi,x
+	lda @body+1
 	sta @name+1
-	jmp @copy
+	ldy #$00
+@seek:
+	cpx #$00
+	beq @record
+	LOADB_Y @name
+	clc
+	adc @name
+	sta @name
+	bcc :+
+	inc @name+1
+:	dex
+	jmp @seek
+@record:
+	LOADB_Y @name
+	tax
+@tokens:
+	LOADB_Y @name
+	sta CTX_TOKEN_BUFFER,y
+	iny
+	dex
+	bne @tokens
+	CALL LEX_BANK, lex::decode
+	bcs @viewret
+	lda lex::cached
+	bmi @render_values
+	ldxy #mem::asmbuffer
+@viewret:
+	rts
+
+; Display typed integers by value, clipping the rendered row at MAX_LINE_LEN.
+@render_values:
+@sourcepos=r0
+@outpos=r1
+@low=r2
+	lda #$00
+	sta @sourcepos
+	sta @outpos
+@render:
+	ldx @sourcepos
+	CALL LEX_BANK, lex::value_at
+	bcs @character
+	stx @low
+	tya
+	pha
+	lda #'$'
+	jsr @emit
+	pla
+	jsr @hex
+	lda @low
+	jsr @hex
+	jmp @render_next
+@character:
+	ldx @sourcepos
+	lda mem::asmbuffer,x
+	beq @render_done
+	jsr @emit
+@render_next:
+	inc @sourcepos
+	jmp @render
+@render_done:
+	ldx @outpos
+	lda #$00
+	sta @namebuff,x
+	ldxy #@namebuff
+	rts
+@hex:
+	CALLMAIN util::hextostr
+	txa
+	pha
+	tya
+	jsr @emit
+	pla
+@emit:
+	ldx @outpos
+	cpx #MAX_LINE_LEN
+	bcs :+
+	sta @namebuff,x
+	inc @outpos
+:	rts
 
 @getname:
 	asl
@@ -768,23 +682,21 @@ MODE_DEF  = 1
 	sta @namebuff,x
 
 @getlines:
+	ldxy @macro
+	stxy @body
 	ldx #$00
 	ldy #$00
 @line:	LOADB_Y @macro		; are we at the end of the definition?
 	cmp #$00
 	beq @end		; if so, we're done
 
-	lda @macro
-	sta @lineptrslo,x
-	lda @macro+1
-	sta @lineptrshi,x
-
-:	; move to the next line
-	incw @macro
-	LOADB_Y @macro
-	bne :-
-	incw @macro
-	inx
+	; Skip the complete record, including any embedded zero payload bytes.
+	clc
+	adc @macro
+	sta @macro
+	bcc :+
+	inc @macro+1
+:	inx
 	bne @line		; branch always
 @end:
 	stx @cnt
@@ -897,7 +809,7 @@ MODE_DEF  = 1
 	; following characters must be between '0' and 'Z'
 @cont:	ldx #$00
 @l1:	inx
-	cpx #(MAX_MACRO_NAME_LEN/2)+1
+	cpx #MAX_MACRO_NAME_LEN
 	bcs @toolong
 	lda (zp::line),y
 	jsr @is_separator
@@ -912,7 +824,7 @@ MODE_DEF  = 1
 @toolong:
 	lda #ERR_LABEL_TOO_LONG
 	sec			; error
-	bcs @done		; branch always
+	jcs @done		; branch always
 
 @params:
 	; now validate that the operand(s) are all valid
@@ -929,7 +841,10 @@ MODE_DEF  = 1
 	ldy #$00
 	lda (zp::line),y
 	cmp #'.'
-	beq @perr		; directive -> not a macro invocation
+	bne :+
+	jsr __mac_verify_property
+	bcs @perr
+:
 	CALLMAIN asm::isopcode
 	bcc @perr		; opcode -> not a macro invocation
 
@@ -947,13 +862,18 @@ MODE_DEF  = 1
 	lda (zp::line),y
 	jsr @is_end_of_line
 	beq @ok
-@param:	cmp #'#'
+@param:	cmp #','
+	beq @comma
+	cmp #'"'
+	beq @string
+	cmp #'#'
 	bne :+
 	incw zp::line		; skip '#' (macro params may be immediate)
 :	CALL FINAL_BANK_EXPR, expr::parse
 	bcs @perr
 
 	; if there is another arg, it must be separated by comma
+@checkcomma:
 	jsr @process_ws
 	ldy #$00
 	lda (zp::line),y
@@ -961,8 +881,18 @@ MODE_DEF  = 1
 	beq @ok			; no more args -> done
 	cmp #','
 	bne @perr		; no comma -> err
+@comma:
 	incw zp::line
-	bne @paramloop		; comma found, check next param
+	jmp @paramloop
+@string:
+	incw zp::line
+	ldy #$00
+	lda (zp::line),y
+	beq @perr
+	cmp #'"'
+	bne @string
+	incw zp::line
+	jmp @checkcomma
 
 @perr:	sec
 	bcs @done		; return error (branch always)

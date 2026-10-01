@@ -12,6 +12,8 @@ FP_IMPL = 1
 
 .include "errors.inc"
 .include "fp.inc"
+.include "lexer.inc"
+.include "ram.inc"
 .include "macros.inc"
 .include "zeropage.inc"
 
@@ -167,50 +169,16 @@ strsave: .res 32		; FOUT uses the bottom of the hardware stack page
 .export __fp_isfloat
 .proc __fp_isfloat
 .if FP_SUPPORTED
-	ldy #$00
-	lda (zp::line),y
-	cmp #'.'
-	beq @dot
-	jsr isdigit
-	bcs @no			; must begin with a digit
-
-@l0:	iny
-	beq @no			; ran off the end of the line
-	lda (zp::line),y
-	jsr isdigit
-	bcc @l0
-
-	cmp #'.'
-	bne @exp
-
-	; a '.' only makes this a float if a digit follows it
-@dot:
-	iny
-	lda (zp::line),y
-	jmp isdigit		; -> .C clear if float
-
-@exp:	cmp #'e'
-	beq :+
-	cmp #'E'
+	jsr lex::peek
+	bcs @ret
+	cmp #LEX_FLOAT
 	bne @no
-
-:	iny
-	lda (zp::line),y
-	cmp #'+'
-	beq @esign
-	cmp #'-'
-	bne @edigit
-@esign:	iny
-	lda (zp::line),y
-@edigit:
-	jmp isdigit		; -> .C clear if float
-
-@no:	sec
+	clc
 	rts
-.else
-	sec			; floats are not supported on this target
-	rts
+@no:
 .endif
+	sec
+@ret:	rts
 .endproc
 
 ;*******************************************************************************

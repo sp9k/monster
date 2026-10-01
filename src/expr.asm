@@ -19,11 +19,14 @@
 .include "limits.inc"
 .include "kernal.inc"
 .include "macros.inc"
+.include "macro.inc"
 .include "math.inc"
 .include "object.inc"
 .include "ram.inc"
 .include "target.inc"
 .include "util.inc"
+.include "lexer.inc"
+.import __mem_asmbuffer
 
 .macpack longbranch
 
@@ -1657,14 +1660,13 @@ __expr_float_format:
 
 @l0:	ldy #$00
 	lda (zp::line),y
-	jsr is_whitespace	; eat whitespace
+	jsr is_whitespace
 	bne :+
 
-	; check whitespace behavior, finish if configured as terminator
 	lda end_on_whitespace
 	jne @done
 	jsr inc_line
-	bne @l0		; branch always
+	bne @l0
 
 :	lda (zp::line),y
 	jsr @isterminator
@@ -1780,6 +1782,26 @@ __expr_float_format:
 	jmp @l0
 
 @getoperand:
+	lda zp::verify
+	beq @ordinary_operand
+	ldy #$00
+	lda (zp::line),y
+	cmp #'.'
+	bne @ordinary_operand
+
+	CALL FINAL_BANK_MACROS, mac::verify_property
+	bcs @ordinary_operand
+	cmp #$04
+	jcs @err
+
+	CALL FINAL_BANK_MACROS, mac::verify_name
+	jcs @ret
+
+	ldxy #$0000
+	lda #TOK_VALUE
+	jmp @operand
+
+@ordinary_operand:
 .if FP_SUPPORTED
 	jsr get_function
 	bcs :+
@@ -1974,48 +1996,45 @@ __expr_float_format:
 ; Recognize binary relations. Consume only the first byte of two-byte tokens;
 ; the parser's usual inc_line consumes the final byte.
 .proc get_comparison
+	; Non-relational operators need no lexical lookahead.
+	cmp #'<'
+	beq @lex
+	cmp #'>'
+	beq @lex
+	cmp #'='
+	beq @lex
+	cmp #'!'
+	bne @no
+@lex:
+	jsr lex::peek
+	bcs @ret
 	cmp #'<'
 	beq @less
 	cmp #'>'
 	beq @greater
-	cmp #'='
-	beq @equal
-	cmp #'!'
-	beq @unequal
+	cmp #LEX_EQ
+	bcc @no
+	cmp #LEX_GE+1
+	bcs @no
 	sec
-	rts
-@less:
-	ldx #FP_LT
-	bne @optional_equal
-@greater:
-	ldx #FP_GT
-@optional_equal:
-	ldy #$01
-	lda (zp::line),y
-	cmp #'='
-	bne @ok
-	inx
+	sbc #LEX_EQ
+	tax
+	lda @operators,x
+	pha
 	jsr inc_line
-@ok:	txa
+	pla
+	clc
+@ret:	rts
+@less:	lda #FP_LT
 	clc
 	rts
-@equal:
-	ldx #FP_EQ
-	bne @required_equal
-@unequal:
-	ldx #FP_NE
-@required_equal:
-	ldy #$01
-	lda (zp::line),y
-	cmp #'='
-	beq @consume
-	ldy #$00
-	lda (zp::line),y
-	sec
+@greater:
+	lda #FP_GT
+	clc
 	rts
-@consume:
-	jsr inc_line
-	jmp @ok
+@no:	sec
+	rts
+@operators: .byte FP_EQ, FP_NE, FP_LE, FP_GE
 .endproc
 
 ;*******************************************************************************
@@ -2087,7 +2106,7 @@ fnames:
 ; Reads the given label and returns the address of it if there
 ; is one
 ; IN:
-;  - .XY: pointer to the label to get the address of
+;  - zp::line: label spelling; .X: lexical span length
 ; OUT:
 ;  - zp::line: updated to point past the label parsed
 ;  - .C        is set if no label is found
@@ -2096,6 +2115,9 @@ fnames:
 .proc get_label
 @id=zp::expr
 @mode=r0
+	txa
+	pha			; retain the lexical span across symbol lookup
+	ldxy zp::line
 	CALLMAIN lbl::isvalid 	; if verifying, let this pass if label is valid
 	bcs @done
 
@@ -2126,78 +2148,16 @@ fnames:
 	sta @mode
 
 @updateline:
-	; move the line pointer to the separator
-	ldy #$00
-@l0:	lda (zp::line),y
-	jsr isseparator
-	beq :+
-	jsr inc_line
-	bne @l0
-:
+	pla
+	tax
+	jsr lex::advance
 	lda @mode	; restore mode
 @ok:	ldxy @id	; get label
 	clc		; ok
-@done:	rts
-.endproc
-
-;*******************************************************************************
-; ISVAL
-; Checks if the word in zp::line is a value or not
-; OUT:
-;  - .C: clear if the string is a hex or decimal value
-.proc isval
-	; allow first char to be '$' or '*'
-	ldx #$00	; 0 if decimal, 1 if hex
-	lda (zp::line),y
-
-	; check for '*' (current PC)
-	cmp #'*'
-	bne :+
-	ldy #$01
-	lda (zp::line),y
-	jsr isseparator
-	beq @done
-	bne @err
-:	cmp #$27	; single quote
-	bne :+
-	RETURN_OK	; if single quote, this is either a value or nothing
-
-:	cmp #'$'
-	bne @cont
-	inx		; flag hex
-	iny
-
-@cont:	lda (zp::line),y
-	jsr isseparator
-	beq @err	; end found before any digits -> not a VALUE
-
-@l0:	lda (zp::line),y
-	jsr isseparator
-	beq @done
-
-	cpx #$00
-	beq @dec
-
-	; check hex
-	cmp #$66+1	; 'f'+1
-	bcs @err
-	cmp #$61	; 'a'
-	bcs @ok
-	cmp #$46+1	; 'F'+1
-	bcs @err
-	cmp #$41	; 'A'
-	bcs @ok
-
-@dec:	cmp #'0'
-	bcc @err
-	cmp #'9'+1
-	bcs @err
-
-@ok:	iny
-	bne @l0
-
-@done:	RETURN_OK
-@err:	sec
+	rts
+@done:	tax
+	pla			; discard span, preserving the error and carry
+	txa
 	rts
 .endproc
 
@@ -2213,9 +2173,50 @@ fnames:
 ;   - .C:  set if no operand was able to be parsed
 .proc get_operand
 @lbl=zp::expr
+	ldy #$00
+	lda (zp::line),y
+	cmp #'?'
+	bne @ordinary
+	lda mac::depth
+	beq @invalid_atom
+	jsr inc_line
+	jsr get_val
+	bcs @atomret
+	cmpw #SYM_UNRESOLVED
+	beq @atomabs
+	stxy @lbl
+	cpx lbl::num
+	tya
+	sbc lbl::num+1
+	bcs @invalid_atom
+	CALLMAIN lbl::addrmode
+	ldxy @lbl
+	jmp @resolved
+@atomabs:
+	jmp @abs
+@invalid_atom:
+	lda #ERR_INVALID_MACRO_ARGS
+	sec
+@atomret:
+	rts
+@ordinary:
+	jsr lex::peek
+	bcs @atomret
+	cmp #LEX_INTEGER
+	bne @lexical
+	lda zp::line
+	sec
+	sbc #<__mem_asmbuffer
+	tax
+	jsr lex::value_at
+	bcs @atomret
+	jsr inc_line
+	lda #TOK_VALUE
+	RETURN_OK
+@lexical:
 .if FP_SUPPORTED
-	jsr fp::isfloat
-	bcs @notfloat
+	cmp #LEX_FLOAT
+	bne @notfloat
 
 	; a float literal is parked in the literal pool and the token carries
 	; its offset, so that TOK_FLOAT stays the same width as every other
@@ -2249,28 +2250,45 @@ fnames:
 
 @notfloat:
 .endif
-	ldy #$00		; isval reads (zp::line),y and fp::isfloat moved .Y
-	jsr isval
-	bcs @label		; not a literal value, try label
+	cmp #LEX_WORD
+	beq @label
+	cmp #LEX_CHAR
+	beq @value
+	cmp #'*'
+	beq @star
+	cmp #LEX_NUMBER
+	bne @badvalue
 
-@star:	; check for '*'
+	; The lexer already classified every digit. Check only the boundary;
+	; conversion below checks range, so no second validation scan is needed.
+	txa
+	tay
+	lda (zp::line),y
+	jsr isseparator
+	bne @badvalue
+	cpx #$01
+	bne @value
 	ldy #$00
 	lda (zp::line),y
-	cmp #'*'
-	bne :+			; if not '*', check label
+	cmp #'$'
+	bne @value
+@badvalue:
+	RETURN_ERR ERR_UNEXPECTED_CHAR
+
+@star:
 	jsr inc_line		; move past the '*'
 	lda #TOK_PC		; if '*' just return the token for current PC
 	RETURN_OK
 
-:	jsr get_val		; is this a value?
+@value:	jsr get_val
 	bcs @ret
 	lda #TOK_VALUE
 @ret:	rts
 
-@label: ldxy zp::line
-	jsr get_label		; is it a label?
+@label:	jsr get_label
 	bcs @ret
 
+@resolved:
 	cmpw #SYM_UNRESOLVED	; is label undefined (id == $ffff)?
 	beq @abs		; if so, just return placeholder token
 

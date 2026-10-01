@@ -390,4 +390,48 @@ CUR_BANK .set bank
 	.byte val
 .endmacro
 
+;*******************************************************************************
+; LOADBLK8
+; Loads a known-length record from the current data bank into shared memory.
+; IN: src zeropage pointer, dst absolute address, count byte in memory (1..255)
+; OUT: .Y count; .A/.P volatile, .X preserved
+.macro LOADBLK8 src, dst, count
+	lda count
+	sta reu::txlen
+	lda #$00
+	sta reu::txlen+1
+	lda src
+	sta reu::reuaddr
+	lda src+1
+	sta reu::reuaddr+1
+	lda #<dst
+	sta reu::c64addr
+	lda #>dst
+	sta reu::c64addr+1
+	jsr reu::load
+	ldy count
+.endmacro
+
+;*******************************************************************************
+; STOREBLK8
+; Stores a known-length record from shared memory into the current data bank.
+; IN: src absolute address, dst zeropage pointer, count byte in memory (1..255)
+; OUT: .Y count; .A/.P volatile, .X preserved
+.macro STOREBLK8 src, dst, count
+	lda count
+	sta reu::txlen
+	lda #$00
+	sta reu::txlen+1
+	lda dst
+	sta reu::reuaddr
+	lda dst+1
+	sta reu::reuaddr+1
+	lda #<src
+	sta reu::c64addr
+	lda #>src
+	sta reu::c64addr+1
+	jsr reu::store
+	ldy count
+.endmacro
+
 .endif

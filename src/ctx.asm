@@ -4,8 +4,8 @@
 ; The "context" is a special buffer used by the .MAC and .REP directives to
 ; store lines of data, which is required to complete the assembly of these
 ; directives when their corresponding .ENDMAC or .ENDREP directive is found.
-; Each line of text is preceded by a line number, which is used to map the line
-; to its address when debug information is generated.
+; Bodies contain length-prefixed lexical records with source line numbers.
+; See context_tokens.inc for the internal encoding.
 ;*******************************************************************************
 
 .include "asm.inc"
@@ -17,6 +17,10 @@
 .include "util.inc"
 .include "target.inc"
 .include "zeropage.inc"
+.include "lexer.inc"
+.include "context_tokens.inc"
+.import __ctx_encode
+.macpack longbranch
 
 ;*******************************************************************************
 .exportzp __ctx_numlines
@@ -24,8 +28,8 @@
 .export __ctx_rewind
 .export __ctx_pop
 .export __ctx_getline
+.export __ctx_getrecord
 .export __ctx_getparams
-.export __ctx_getdata
 .export __ctx_write_parent
 .export __ctx_write
 .export __ctx_end
@@ -59,8 +63,6 @@ contexts_top:
 
 __ctx_active: .byte 0	; # of contexts on stack - !0: a context is active
 __ctx_open:   .byte 0	; !0: current context is "closed" (ctx::end was called)
-quote:        .byte 0	; quote char of the string/char literal being copied
-			; by write/write_parent (0 = not in a literal)
 
 ;*******************************************************************************
 ; CTX META
@@ -109,8 +111,8 @@ __ctx_push:         JUMP FINAL_BANK_CTX, push
 __ctx_rewind:       JUMP FINAL_BANK_CTX, rewind
 __ctx_pop:          JUMP FINAL_BANK_CTX, pop
 __ctx_getline:      JUMP FINAL_BANK_CTX, getline
+__ctx_getrecord:    JUMP FINAL_BANK_CTX, getrecord
 __ctx_getparams:    JUMP FINAL_BANK_CTX, getparams
-__ctx_getdata:      JUMP FINAL_BANK_CTX, getdata
 __ctx_write_parent: JUMP FINAL_BANK_CTX, write_parent
 __ctx_write:	    JUMP FINAL_BANK_CTX, write
 __ctx_end:	    JUMP FINAL_BANK_CTX, end
@@ -181,11 +183,9 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	sta mem::ctxbuffer
 
 	jsr rewind
-	; initialize buffer to 0,0 (end of buffer)
+	; initialize an empty body (zero record size)
 	lda #$00
 	tay
-	STOREB_Y cur
-	iny
 	STOREB_Y cur
 	RETURN_OK
 .endproc
@@ -235,7 +235,7 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 
 	; restore the ctx metadata (iter, iterend, cur, param, etc.)
 	ldy #SIZEOF_CTX_HEADER-1
-@l0:	lda (ctx),y
+@l0:	LOADB_Y ctx
 	sta meta,y
 	dey
 	bpl @l0
@@ -265,42 +265,55 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 ;  - mem::asmbuffer: the line read from the context
 ;  - asm::linenum:   line number that the line corresponds to
 .proc getline
-@out=mem::asmbuffer
-	; read until a newline or EOF
+	jsr getrecord
+	bcs @ret
+	cmp #$00
+	beq @ret
+	JUMP LEX_BANK, lex::decode
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; GET RECORD
+; Copies the next framed binary record to the shared token buffer.
+; IN: active context cursor
+; OUT: .A record size (zero at EOF), .XY token buffer; .C set on invalid bounds
+.proc getrecord
+@size=r0
+@next=r2
 	ldy #$00
-	sty @out	; init buffer to empty
 	LOADB_Y cur
-	bne @readlinenum
-	iny
-	LOADB_Y cur
-	beq @ok		; if line is empty -> we're done
-	dey
-
-@readlinenum:
-	LOADB_Y cur
-	sta asm::linenum
-	incw cur
-	LOADB_Y cur
-	sta asm::linenum+1
-	incw cur
-
-@read:	LOADB_Y cur
-	sta @out,y
+	sta CTX_TOKEN_BUFFER
 	beq @done
-	iny
-	cpy #MAX_LINE_LEN+1
-	bcc @read
-	RETURN_ERR ERR_LINE_TOO_LONG
-
-@done:	tya
-	sec		; +1
+	cmp #$04
+	bcc @bad
+	sta @size
+	clc
 	adc cur
-	sta cur
-	bcc :+
-	inc cur+1
-:	tya		; restore # of bytes read
-	ldxy #@out
-@ok:	RETURN_OK
+	sta @next
+	lda cur+1
+	adc #$00
+	sta @next+1
+	cmp params+1
+	bcc @copy
+	bne @bad
+	lda @next
+	cmp params
+	bcs @bad
+@copy:
+	LOADBLK8 cur, CTX_TOKEN_BUFFER, @size
+	ldxy @next
+	stxy cur
+	lda CTX_TOKEN_BUFFER+1
+	sta asm::linenum
+	lda CTX_TOKEN_BUFFER+2
+	sta asm::linenum+1
+@done:
+	lda CTX_TOKEN_BUFFER
+	ldxy #CTX_TOKEN_BUFFER
+	clc
+	rts
+@bad:	RETURN_ERR ERR_CTX_FULL
 .endproc
 
 ;*******************************************************************************
@@ -357,42 +370,6 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 .endproc
 
 ;*******************************************************************************
-; GETDATA
-; Copies the data for the current context to mem::spare
-; OUT:
-;  - mem::spare: the contents of the current context
-;  - .XY:        address of data (mem::spare)
-.proc getdata
-@src=r0
-@dst=r2
-	jsr get_data_addr
-	stxy @src
-	ldxy #mem::spare
-	stxy @dst
-
-	ldy #$00
-@l0:	; read line number (or terminating 00)
-	lda (@src),y
-	incw @src
-	ora (@src),y
-	beq @done	; if 0,0 this is the end of the data
-	incw @src
-
-@l1:	lda (@src),y
-	sta (@dst),y
-	incw @src
-	incw @dst
-	cmp #$00
-	bne @l1		; repeat for whole line
-	beq @l0		; if end of this line, get next one
-
-@done:	lda #$00
-	sta (@dst),y
-	ldxy #mem::spare
-	rts
-.endproc
-
-;*******************************************************************************
 ; GETDATAADDR
 ; returns the address of the data for the active context.
 ; OUT:
@@ -409,170 +386,95 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 .endproc
 
 ;*******************************************************************************
-; CLASSIFY CHAR
-; Tests whether the given character ends the line being written and tracks
-; whether we are inside a quoted literal (in `quote`): inside one, ';' is not
-; a comment and only the matching closing quote is special.
-; IN:
-;  - .A: the character to classify
-; OUT:
-;  - .A: the character (unchanged)
-;  - .C: set if the character ends the line (CR or comment ';')
-; CLOBBERS: .X
-.proc classify_char
-	cmp #$0d
-	beq @eol
-	ldx quote	; inside a string/char literal?
-	beq @unquoted
-
-	; inside a literal only the matching closing quote is special
-	cmp quote
-	bne @keep	; not the closing quote -> store verbatim
-	ldx #$00
-	stx quote	; leaving the literal
-	beq @keep	; branch always (store the closing quote too)
-
-@unquoted:
-	cmp #';'
-	beq @eol	; comment (outside any literal) ends the line
-	cmp #'"'
-	beq @openq
-	cmp #$27	; single quote
-	bne @keep
-@openq:	sta quote	; entering a quoted literal
-
-@keep:	clc
-	rts
-
-@eol:	sec
-	rts
-.endproc
-
-;*******************************************************************************
 ; WRITE PARENT
-; Writes the given line to parent of the current context's line buffer
-; Comments are ignored to save space in the context buffer.
-; IN:
-;  - .XY:           line data to write to the active context
-;  - asm::linenum:  line number that the line maps to
-; OUT:
-;  - .XY: the address of the active context.
-;  - .C:  set on error
+; Captures a reduced binary line in the parent context.
+; IN: mem::asmbuffer source view; current iterator and source line
+; OUT: .C set on encoding failure or full parent; parent cursor advanced on success
 .proc write_parent
-@line=r0
-	stxy @line
-
-	ldy #$00
-	sty quote	; not inside a quoted literal
-	lda (@line),y
-	beq @ok		; don't store empty lines
-
-@writelinenum:
-	; write the line number that the line corresponds to
-	lda asm::linenum
-	STOREB_Y parent
-	incw parent
-	lda asm::linenum+1
-	STOREB_Y parent
-	incw parent
-
-@write: ldy #$00
-	lda (@line),y
-	beq @done
-	jsr classify_char
-	bcs @done
-	STOREB_Y parent
-
-	incw @line
-	incw parent
-
-	; did the parent catch up to the child's context?
-	ldxy parent
-	cmpw ctx
-	bne @write
-
-	; parent is now overwriting this context -> return error
-	;sec
-	lda #ERR_CTX_FULL
-	rts
-
-@done:	lda #$00
-	STOREB_Y parent	; terminate this line in the buffer
-
-	; write the termiating 0,0 for the buffer
-	incw parent
-	STOREB_Y parent
+@dst=r0
+@limit=r2
+	ldxy #CTX_ITER_NAME
+	jsr getparams
+	bcs @ret
+	ldxy #mem::asmbuffer
+	lda numparams
+	jsr __ctx_encode
+	bcs @ret
+	; The parent's saved parameter pointer is its exclusive allocation limit.
+	lda ctx
+	sta @dst
+	lda ctx+1
+	sec
+	sbc #>CONTEXT_SIZE
+	sta @dst+1
+	ldy #$06
+	LOADB_Y @dst
+	sta @limit
 	iny
-	STOREB_Y parent
-
-@ok:	inc numlines
-	RETURN_OK
+	LOADB_Y @dst
+	sta @limit+1
+	ldxy parent
+	stxy @dst
+	jsr append_record
+	bcs @ret
+	ldxy @dst
+	stxy parent
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
 ; WRITE
-; Writes the given line to the context at its current position
-; Comments are ignored to save space in the context buffer.
-; IN:
-;  - .XY: line data to write to the active context
-;  - asm::linenum:  line number that the line maps to
-; OUT:
-;  - .XY: the address of the active context.
-;  - .C:  set on error
+; Captures a lexical record in the active context.
+; IN: .XY source; asm::linenum source location
+; OUT: .C set on encoding failure or full context; cursor advanced on success
 .proc write
-@line=r0
-	stxy @line
-	ldy #$00
-	sty quote	; not inside a quoted literal
-	lda (@line),y
-	beq @ok		; don't store empty lines
+@dst=r0
+@limit=r2
+	lda #$00
+	jsr __ctx_encode
+	bcs @ret
+	ldxy cur
+	stxy @dst
+	ldxy params
+	stxy @limit
+	jsr append_record
+	bcs @ret
+	ldxy @dst
+	stxy cur
+@ret:	rts
+.endproc
 
-@writelinenum:
-	; write the line number that the line corresponds to
-	lda asm::linenum
-	STOREB_Y cur
-	incw cur
-	lda asm::linenum+1
-	STOREB_Y cur
-	incw cur
-
-@write: lda (@line),y
-	beq @done
-	jsr classify_char
-	bcs @done
-	STOREB_Y cur
-
-	incw @line
-
-	; increment context pointer and make sure the context isn't full
-	incw cur
-	lda cur+1
-	cmp params+1
-	bcc @write	; cur < params -> continue
-	bne @full	; cur > params -> full
-	lda cur
-	cmp params
-	bcc @write	; cur < params -> continue
-
-@full:	;sec
-	lda #ERR_CTX_FULL
-	rts
-
-@err:	; sec
-	lda #ERR_LINE_TOO_LONG
-	rts
-
-@done:	lda #$00
-	STOREB_Y cur	; terminate this line in the buffer
-
-	; write the termiating 0,0 for the buffer
-	incw cur
-	STOREB_Y cur
-	iny
-	STOREB_Y cur
-
-@ok:	inc numlines
+;*******************************************************************************
+; APPEND RECORD
+; Checks space before writing any bytes, including the end-of-body marker.
+; IN: r0 destination cursor, r2 exclusive limit; CTX_TOKEN_BUFFER record
+; OUT: r0 advanced, .C clear; .C set without writes when full
+.proc append_record
+@dest=r0
+@limit=r2
+@next=r4
+	lda @dest
+	clc
+	adc CTX_TOKEN_BUFFER
+	sta @next
+	lda @dest+1
+	adc #$00
+	sta @next+1
+	cmp @limit+1
+	bcc @copy
+	bne @full
+	lda @next
+	cmp @limit
+	bcs @full
+@copy:
+	STOREBLK8 CTX_TOKEN_BUFFER, @dest, CTX_TOKEN_BUFFER
+	lda #$00
+	STOREB_Y @dest
+	ldxy @next
+	stxy @dest
+	inc numlines
 	RETURN_OK
+@full:	RETURN_ERR ERR_CTX_FULL
 .endproc
 
 ;*******************************************************************************

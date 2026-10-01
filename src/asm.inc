@@ -11,6 +11,9 @@
 .import __asm_set_pc
 .import __asm_startpass
 .import __asm_tokenize
+.import __asm_assemble_line
+.import __asm_assemble_tokens
+.import __asm_assemble_view
 .import __asm_section_size
 .import __asm_top
 .import __asm_linenum
@@ -39,6 +42,11 @@
 	segment        = __asm_segmentid
 	segtype        = __asm_segtype
 	tokenize       = __asm_tokenize
+	; Prepared source in mem::asmbuffer; same pass/context state as tokenize.
+	assemble_line  = __asm_assemble_line
+	assemble_tokens = __asm_assemble_tokens
+	; Unmodified lex::decode view, with its current cache and mac::source.
+	assemble_view = __asm_assemble_view
 	top            = __asm_top
 	type_to_mode   = __asm_type_to_mode
 	word_type      = __asm_word_type

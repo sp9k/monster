@@ -7,8 +7,8 @@
 .import __ctx_open
 .import __ctx_push
 .import __ctx_pop
-.import __ctx_getdata
 .import __ctx_getline
+.import __ctx_getrecord
 .import __ctx_rewind
 .import __ctx_write
 .import __ctx_write_parent
@@ -44,7 +44,7 @@ CTX_MACRO  = 2
 	open         = __ctx_open
 	pop          = __ctx_pop
 	getline      = __ctx_getline
-	getdata      = __ctx_getdata
+	getrecord    = __ctx_getrecord
 	write        = __ctx_write
 	write_parent = __ctx_write_parent
 	rewind       = __ctx_rewind

@@ -322,4 +322,36 @@ CUR_BANK .set BANK_NONE
 	JUMP FINAL_BANK_MAIN, proc
 .endmacro
 
+;*******************************************************************************
+; LOADBLK8
+; Loads a known-length record from the current data bank into shared memory.
+; IN: src zeropage pointer, dst absolute address, count byte in memory (1..255)
+; OUT: .Y count; .A/.P volatile, .X preserved
+.macro LOADBLK8 src, dst, count
+.local @loop
+	ldy #$00
+@loop:
+	lda (src),y
+	sta dst,y
+	iny
+	cpy count
+	bcc @loop
+.endmacro
+
+;*******************************************************************************
+; STOREBLK8
+; Stores a known-length record from shared memory into the current data bank.
+; IN: src absolute address, dst zeropage pointer, count byte in memory (1..255)
+; OUT: .Y count; .A/.P volatile, .X preserved
+.macro STOREBLK8 src, dst, count
+.local @loop
+	ldy #$00
+@loop:
+	lda src,y
+	sta (dst),y
+	iny
+	cpy count
+	bcc @loop
+.endmacro
+
 .endif

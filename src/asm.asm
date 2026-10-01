@@ -84,6 +84,7 @@
 .include "target.inc"
 .include "vmem.inc"
 .include "zeropage.inc"
+.include "lexer.inc"
 
 .macpack longbranch
 
@@ -120,6 +121,11 @@ SEG_BSS  = 2	; flag for BSS segment (all data must be 0, PC not updated)
 .export ifstack
 ifstack:   .res MAX_IFS	; TRUE/FALSE values for the active IF blocks
 			; (referenced as ifstack-1,x; x in [1, ifstacksp])
+
+.export __asm_ifstack
+__asm_ifstack = ifstack
+.export __asm_ifdepth
+__asm_ifdepth = ifstacksp
 ifstacksp: .byte 0	; stack pointer to "if" stack
 
 ;*******************************************************************************
@@ -508,6 +514,8 @@ directives:
 	.byte "endscope",0
 	.byte "proc",0
 	.byte "endproc",0
+	.byte "local",0
+	.byte "set",0
 directives_len=*-directives
 .assert directives_len <= $ff, error, "directive names exceed byte index"
 
@@ -518,7 +526,8 @@ defineorg, define_psuedo_org, repeat, macro, do_if, do_else, do_endif, \
 do_ifdef, create_macro, handle_repeat, incbinfile, import, export, \
 directive_res, directive_seg, directive_segzp, directive_bss, directive_bsszp, \
 directive_align, importzp, definefloat, directive_pushseg, directive_popseg, \
-directive_scope, directive_endscope, directive_proc, directive_endproc
+directive_scope, directive_endscope, directive_proc, directive_endproc, \
+directive_local, directive_set
 .linecont -
 
 .pushseg
@@ -703,6 +712,7 @@ BANKED_CODE "ASMBANK"
 	sta ifdefidx		; restart the .IFDEF result log (pass 1)
 
 	jsr ctx::init
+	CALL FINAL_BANK_MACROS, mac::reset_expansion
 	CALL FINAL_BANK_MACROS, mac::init
 	CALLMAIN obj::init
 	CALLMAIN lbl::clr
@@ -752,6 +762,7 @@ BANKED_CODE "ASMBANK"
 	sta __asm_segmentid
 	sta __asm_segtype	; reset segment type (TYPE_UNDEF) for the pass
 
+	CALL FINAL_BANK_MACROS, mac::reset_expansion
 	CALL FINAL_BANK_SYMBOLS, lbl::namespace_reset
 
 	; ignore whitespace in expressions
@@ -761,8 +772,10 @@ BANKED_CODE "ASMBANK"
 	pla
 	sta zp::pass		; set pass #
 	cmp #$01
-	beq areset
-@pass2:	lda ifdefidx		; snapshot the number of .IFDEF results
+	jeq areset
+@pass2:
+	CALL FINAL_BANK_MACROS, mac::reset_mutables
+	lda ifdefidx		; snapshot the number of .IFDEF results
 	sta ifdefcnt		; recorded during pass 1...
 	lda #$00
 	sta lbl::anon_cursor
@@ -810,21 +823,75 @@ BANKED_CODE "ASMBANK"
 	jsr ram::copyline
 	bcc @copied
 	RETURN_ERR ERR_LINE_TOO_LONG	; line doesn't fit the asm buffer
-
 @copied:
-	jsr edit::update_progress
+	lda #$00		; COPYLINE also accepts a CR as the source terminator
+	sta asmbuffer,y
+.endproc
 
+;*******************************************************************************
+; ASSEMBLE LINE
+; Common source entry after banked input has been copied into shared memory.
+; Preserves original spelling and normalizes syntax before lexical consumption.
+; IN: asmbuffer contains a NUL-terminated source line of at most MAX_LINE_LEN;
+;     assembler pass, context and source-location state are already selected
+; OUT: .A ASM_* result or error; .C set on error
+.proc assemble_line
+@quote=r0
+	lda #$00
+	sta lex::cached
 	ldy #$00
-	sty mem::asmbuffer+MAX_LINE_LEN
+@copy:
+	lda asmbuffer,y
+	sta mac::source,y
+	beq prepared
+	cmp #$61
+	bcc @punctuation
+	cmp #$7b
+	bcs @next
+	eor #$20
+	sta asmbuffer,y
+@next:
+	iny
+	cpy #MAX_LINE_LEN+1
+	bcc @copy
+@long:
+	RETURN_ERR ERR_LINE_TOO_LONG
+
+@punctuation:
+	cmp #';'
+	beq @comment
+	sta @quote
+	cmp #'"'
+	beq @quoted
+	cmp #$27
+	bne @next
+	; The character after an apostrophe is literal, even if also an apostrophe.
+	iny
+	cpy #MAX_LINE_LEN+1
+	bcs @long
+	lda asmbuffer,y
+	sta mac::source,y
+	beq prepared
+@quoted:
+	iny
+	cpy #MAX_LINE_LEN+1
+	bcs @long
+	lda asmbuffer,y
+	sta mac::source,y
+	beq prepared
+	cmp @quote
+	bne @quoted
+	beq @next
+@comment:
+	lda #$00		; copy the comment verbatim through its terminator
+	sta @quote
+	beq @quoted
+
+prepared:
+	jsr edit::update_progress
 
 	ldxy #asmbuffer
 	stxy zp::line
-	jsr line::process_ws
-	beq noasm			; empty line -> done
-	cmp #';'
-	beq @checkifs
-	ldxy zp::line
-	jsr str::toupper_unquoted	; normalize syntax up to first comment
 
 ;-------------------------------------------------------------------------------
 ; check if we're in an .IF (FALSE) and if we are, return
@@ -841,6 +908,7 @@ BANKED_CODE "ASMBANK"
 @if_false:
 	; asm is off, check for ENDIF, ELSE, or a nested IF/IFDEF
 	; anything else: return without assembling
+	jsr line::process_ws
 	jsr is_directive
 	bcs noasm		; if not directive continue
 	jsr getdirective
@@ -875,6 +943,18 @@ BANKED_CODE "ASMBANK"
 .endproc
 
 ;*******************************************************************************
+; ASSEMBLE TOKENS
+; Assembles a framed binary context record through the common statement parser.
+; IN: CTX_TOKEN_BUFFER record; current pass and context state
+; OUT: .A ASM_* result or error; .C set on error
+.proc assemble_tokens
+	CALL LEX_BANK, lex::decode
+	bcs @ret
+	jmp assemble_line::prepared
+@ret:	rts
+.endproc
+
+;*******************************************************************************
 ; NOASM
 ; Returns with .A=ASM_NONE
 .proc noasm
@@ -888,7 +968,8 @@ BANKED_CODE "ASMBANK"
 ; if a label is found, for example, we will reenter here after adding the label
 ; to assemble any opcode, directive, etc. that may still be in the line
 .proc assemble_with_ctx
-	jsr line::process_ws
+	CALL LEX_BANK, lex::significant
+	bcs @ret
 	beq noasm
 ; check if the line is a full line comment
 @chk_comment:
@@ -1094,7 +1175,8 @@ BANKED_CODE "ASMBANK"
 
 ; from here on we are either reading a comment or an operand
 @getopws:
-	jsr line::process_ws
+	CALL LEX_BANK, lex::significant
+	bcs @evalfailed
 	jsr islineterminator_or_separator
 	bne @chk_comment
 	jmp @done
@@ -1118,7 +1200,7 @@ BANKED_CODE "ASMBANK"
 	; not immediate, assume expressions are 2 bytes
 	cmp #'('
 	bne @evalexpr
-	jsr is_indirect
+	CALL LEX_BANK, lex::indirect
 	bcs @unexpected_char	; unbalanced parens, e.g. a missing ')'
 	bne @evalexpr
 	inc indirect_hint	; might be dealing with indirect opcode
@@ -1693,9 +1775,21 @@ CUR_BANK .set LABEL_CALLER_BANK
 	ldy #$00
 	lda (zp::line),y
 	cmp #'+'
-	beq :+
+	beq @sign
 	cmp #'-'
-:	rts
+	bne @ret
+
+@sign:	; make sure no unexpected characters appear after first +/-
+	iny
+	lda (zp::line),y
+	cmp #'+'
+	beq @sign
+	cmp #'-'
+	beq @sign
+	jsr islineterminator_or_separator
+	beq @ret
+	jsr util::is_whitespace
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2071,63 +2165,6 @@ CUR_BANK .set LABEL_CALLER_BANK
 .endproc
 
 ;*******************************************************************************
-; IS INDIRECT
-; Checks if the contents of zp::line represent an indirect operand
-; IN:
-;   - zp::line: the operand to check
-; OUT:
-;   - .Z: set if the operand IS indirect (completely enclosed in a parens)
-;   - .C: set if the operand's parentheses are unbalanced
-.proc is_indirect
-@cnt=r0
-@len=r1
-	ldy #$00
-	sty @cnt
-	lda (zp::line),y
-	cmp #'('
-	bne @no		; if doesn't start with a '(', not indirect
-
-@l0:	; check if opening paren is closed before end of line
-	lda (zp::line),y
-	jsr islineterminator_or_separator
-	beq @unbalanced	; at the effective end of line and unbalanced
-	cmp #'('
-	bne :+
-	inc @cnt
-:	cmp #')'
-	bne :+
-	dec @cnt
-	beq @closed
-:	iny
-	bne @l0		; branch always
-
-@closed:
-	; parens are balanced; the operand is indirect only if nothing but
-	; ",y" indexing, whitespace, or the end of the statement follows the
-	; closing ')'.  Any other character means the leading '(' was part
-	; of an arithmetic expression, e.g. "(2+3)*4"
-	iny
-@l1:	lda (zp::line),y
-	jsr islineterminator_or_separator
-	beq @yes	; end of statement -> indirect
-	cmp #','
-	beq @yes	; ",y" indexing -> indirect
-	jsr util::is_whitespace
-	bne @no		; any other character -> expression, not indirect
-	iny
-	bne @l1		; skip whitespace and keep looking
-
-@no:	lda #$ff
-@yes:	clc		; parens are balanced
-	rts
-
-@unbalanced:
-	lda #$ff	; .Z clear: not indirect
-	sec
-	rts
-.endproc
-
-;*******************************************************************************
 ; IS_DIRECTIVE
 ; Checks if the contents of (zp::line) represent a directive
 ; OUT:
@@ -2294,16 +2331,13 @@ CUR_BANK .set LABEL_CALLER_BANK
 
 ;-------------------------------------------------------------------------------
 ; assemble all lines for the iteration
-; NOTE: __asm_linenum is NOT advanced; every generated line maps to the
-; line of the .ENDREP (as macros map their expansion to the invocation line)
-@l1:	jsr ctx::getline	; get a line to assemble
+; Each record restores its captured source line for diagnostics/debug mapping.
+@l1:	jsr ctx::getrecord	; get a binary line to assemble
 	bcs @errpop
 	cmp #$00
 	beq @next		; if at the end, continue to next iteration
 
-	; assemble line read from context
-	lda #FINAL_BANK_MAIN	; bank doesn't matter for ctx
-	jsr tokenize		; assemble context line
+	jsr assemble_tokens
 	bcc @l1			; ok -> repeat
 
 @errpop:
@@ -2361,21 +2395,9 @@ CUR_BANK .set LABEL_CALLER_BANK
 	bne @write_ctx		; if yes, write it to the context buffer
 
 ;-------------------------------------------------------------------------------
-; context is closed, reduce the current iterator to its constant value
-; and write it to the parent context's buffer
-@buff=$100+LINESIZE
-	lda zp::ctx+repctx::numparams
-	beq @nosub		; no iterator -> write the line unmodified
-
-	ldxy #@buff
-	jsr ctx::getparams	; get the active iterator's name
-	ldxy #@buff
-	jsr sub_label		; and replace uses with its value in asmbuffer
-	bcs @done		; substituted line too long -> return error
-
-@nosub:	ldxy #mem::asmbuffer
-	jsr ctx::write_parent	; write disassembled line to PARENT's ctx buff
-	jmp @ctx_done		; errcheck and return
+; Freeze complete iterator tokens while copying to the parent's binary body.
+	jsr ctx::write_parent
+	jmp @ctx_done
 
 @toplevel:
 	lda ctx::open
@@ -2595,7 +2617,7 @@ CUR_BANK .set FP_CALLER_BANK
 .proc directive_res
 @cnt=r0
 	jsr line::process_ws
-	CALL FINAL_BANK_EXPR, reserve_count
+	CALL FINAL_BANK_CTX, reserve_count
 	bcs @err
 	lda zp::verify
 	bne @done		; syntax is enough while editing; values may be stale
@@ -2672,8 +2694,11 @@ CUR_BANK .set FP_CALLER_BANK
 .endproc
 
 ; Segment stack handlers share the existing expression directive helpers.
-directive_pushseg: JUMP FINAL_BANK_EXPR, push_segment
-directive_popseg:  JUMP FINAL_BANK_EXPR, pop_segment
+directive_pushseg: JUMP FINAL_BANK_CTX, push_segment
+directive_popseg:  JUMP FINAL_BANK_CTX, pop_segment
+
+directive_local: JUMP FINAL_BANK_MACROS, mac::local
+directive_set: JUMP FINAL_BANK_MACROS, mac::set
 
 ; Lexical directives run in the symbol bank.
 directive_scope:
@@ -2829,7 +2854,7 @@ directive_endproc:
 @cont:	ldxy #@filename
 	stxy r0
 	ldxy zp::line
-	jsr util::parse_enquoted_line
+	CALL FINAL_BANK_MACROS, mac::filename
 	bcs @ret0
 	stxy zp::line
 	jsr line::incptr
@@ -2937,7 +2962,7 @@ directive_endproc:
 ;  Stores the corresponding lines for addresses of assembled code
 .proc includefile
 @filename=$100
-	jsr util::parse_enquoted_line
+	CALL FINAL_BANK_MACROS, mac::filename
 	bcs :+				; -> rts (failed to parse filename)
 
 	ldxy #@filename
@@ -3506,7 +3531,7 @@ include_entry:
 ; to set the pad value.  If not provided, 0 is used.
 ; EXAMPLE:
 ;   .align $100, $ff
-directive_align: JUMP FINAL_BANK_EXPR, align_impl
+directive_align: JUMP FINAL_BANK_CTX, align_impl
 
 ;*******************************************************************************
 ; DISASSEMBLE
@@ -3964,56 +3989,25 @@ directive_align: JUMP FINAL_BANK_EXPR, align_impl
 ; IN:
 ;  - .A the id of the macro to assemble
 .proc assemble_macro
-@cnt=zp::macros+$0e
-@id=zp::macros+$0f
-@params=zp::macros
-	sta @id
-	ldx #$fe	; -2
-
-	; read all the parameters for the macro
-@l0:	inx
-	inx
-	jsr line::process_ws	; move to the next parameter (if any)
-	jsr islineterminator	; end of line (or comment)?
-	beq @done		; if so, no more parameters
-
-	cpx #MAX_PARAMS*2	; more args than a macro may have?
-	bcc :+
-	RETURN_ERR ERR_INVALID_MACRO_ARGS
-
-:	stx @cnt
-	jsr eval_expr
-	bcc @setparam
-	rts		; return err
-
-@setparam:
-	txa
-	ldx @cnt
-	sta @params,x
-	tya
-	sta @params+1,x
-
-	ldy #$00
-@nextparam:
-	lda (zp::line),y 	; read until comma or endline
-	beq @lastarg		; 0 (end of line) we're done, assemble
-	cmp #';'		; ';' (comment) - also done
-	beq @lastarg
-	jsr line::incptr
-	cmp #','
-	beq @l0
-	jsr util::is_whitespace
-	beq @nextparam
-	RETURN_ERR ERR_INVALID_MACRO_ARGS
-
-@lastarg:
-	ldx @cnt		; .X = 2*(number of args read)
-	inx
-	inx
-
-@done:	lda @id
-	; .X = 2*(number of args); mac::asm leaves unpassed params undefined
 	JUMP FINAL_BANK_MACROS, mac::asm
+.endproc
+
+;*******************************************************************************
+; MACRO ENABLED
+; Checks if the current conditional branch is active
+; OUT:
+;   - .Z: clear if the conditional branch IS active
+.export macro_enabled
+.proc macro_enabled
+	ldx ifstacksp
+
+@next:	dex
+	bmi @yes
+	lda ifstack,x
+	bne @next
+	rts
+@yes:	lda #$01
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -4630,187 +4624,6 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 .endproc
 
 ;*******************************************************************************
-; SUB LABEL
-; Substitutes a symbol name in the asmbuffer with its value.
-; If the label is not found, does nothing
-; This procedure is used to reduce lines before they are stored to the context
-; buffer.
-; e.g. "LDA A+B+$10" becomes "LDA $1000+B+$10"
-; IN:
-;   - .XY:       address of name of label to replace
-;   - asmbuffer: buffer to find/replace the symbol in
-; OUT:
-;   - asmbuffer: updated buffer with symbol replaced
-;   - .C:        set if the substituted line does not fit in the line buffer
-.proc sub_label
-@cnt         = r0
-@restlen     = r1
-@val         = r2
-@backup      = r4
-@len         = r6
-@label       = zp::str0
-@line        = zp::str2
-@buff        = mem::spare
-	stxy @label
-	lda #<mem::asmbuffer
-	sta @line
-	lda #>mem::asmbuffer
-	sta @line+1
-
-@find:	ldxy @label
-	jsr find_label
-	bcs @ok		; not found -> exit
-	stxy @line	; @line = address of label to substitute
-
-	; look up the address of the label we are substituting
-	ldxy @label
-	CALLMAIN lbl::addr
-	bcs @noaddr	; label doesn't exist -> clean stack and exit
-	stxy @val	; save the value of the symbol for later
-
-	; get offset to start backup at (line+strlen(@label))
-	ldxy #@buff
-	stxy @backup
-
-	; back up rest of line
-	ldx #$00
-	ldy @len
-:	lda (@line),y
-	sta @buff,x
-	beq :+
-	inx
-	iny
-	cpy #MAX_LINE_LEN
-	bne :-
-
-:	stx @restlen
-
-	; make sure the substituted line will still fit in the line buffer:
-	; new length = offset of the match + 5 ("$xxxx") + length of the rest
-	lda @line
-	clc
-	adc #$05
-	adc @restlen
-	sec
-	sbc #<mem::asmbuffer	; .A = the new total line length
-	cmp #MAX_LINE_LEN+1
-	bcs @toolong		; new line doesn't fit -> error
-
-	; replace label with its hex value in the line
-	ldy #$00
-	lda #'$'
-	sta (@line),y
-	inc @line
-	lda @val+1
-	jsr @write_hex
-	lda @val
-	jsr @write_hex
-
-	; copy the backed up rest of the line after our replacement
-	ldy #$00
-@l1:	lda (@backup),y
-	sta (@line),y
-	beq @find	; repeat procedure to replace next occurrence (if any)
-	iny
-	cpy #MAX_LINE_LEN
-	bcc @l1
-
-@noaddr:
-	pla		; clean up the saved @label/@line
-	pla
-	pla
-	pla
-@ok:	clc		; ok
-	rts
-
-@toolong:
-	RETURN_ERR ERR_LINE_TOO_LONG
-
-;-------------------------------------------------------------------------------
-; WRITE HEX
-; helper to convert/write a hex value to buffer
-@write_hex:
-	jsr util::hextostr
-	tya
-	ldy #$00
-	sta (@line),y
-	txa
-	iny
-	sta (@line),y
-	inc @line
-	inc @line
-	sty @cnt
-	rts
-.endproc
-
-;*******************************************************************************
-; FIND LABEL
-; Searches for the given label in the given buffer
-; e.g. when called with "A", returns the address "LDA A+B+$10"
-;                                                     ^
-; IN:
-;   - .XY:      address of name of label to replace
-;   - zp::str2: address of buffer to find the symbol in
-; OUT:
-;   - .XY:      address of the next occurrence of the label label
-;   - zp::str0: the given label
-.proc find_label
-@cnt         = r0
-@replace_idx = r1
-@val         = r2
-@backup      = r4
-@len         = r6
-@label       = zp::str0
-@line        = zp::str2
-@buff        = mem::spare
-	stxy @label
-	jsr str::len
-	sta @len
-
-	ldy #$00
-	sty @cnt
-@l0:	; read until we're NOT on a separator
-	lda (@line),y
-	beq @notfound	; end of line -> not found
-	jsr util::isseparator
-	bne @check	; found a non-separator char -> check if it's our label
-	inc @line
-	inc @cnt
-	lda @cnt
-	cmp #MAX_LINE_LEN
-	bcc @l0
-@notfound:
-	sec		; flag "not found"
-	rts
-
-@check:	; check if we're now pointing to the label
-	lda @len
-	jsr str::compare
-	bne @skiptoken
-	ldy @len		; look at the character after the match
-	lda (@line),y
-	jsr util::isseparator
-	beq @found		; if match ends on a separator -> found
-
-@skiptoken:
-	; read until we ARE on a separator
-	ldy #$00
-@l1:	lda (@line),y
-	jsr util::isseparator
-	beq @l0		; we are back on a separator, continue to outer loop
-	inc @line
-	inc @cnt
-	lda @cnt
-	cmp #MAX_LINE_LEN
-	bcc @l1
-	rts
-
-@found: ; found the string (label)
-	ldxy @line
-	RETURN_OK
-.endproc
-
-;*******************************************************************************
 ; PASS 1
 ; OUT:
 ;   - .Z: set if we the current pass number is 1
@@ -4862,6 +4675,9 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 .export __asm_startpass
 .export __asm_endpass
 .export __asm_tokenize
+.export __asm_assemble_line
+.export __asm_assemble_tokens
+.export __asm_assemble_view
 .export __asm_include
 .export __asm_set_pc
 .export __asm_disassemble
@@ -4875,6 +4691,9 @@ __asm_reset:        JUMP FINAL_BANK_ASM, areset
 __asm_startpass:    JUMP FINAL_BANK_ASM, startpass
 __asm_endpass:      JUMP FINAL_BANK_ASM, endpass
 __asm_tokenize:     JUMP FINAL_BANK_ASM, tokenize
+__asm_assemble_line: JUMP FINAL_BANK_ASM, assemble_line
+__asm_assemble_tokens: JUMP FINAL_BANK_ASM, assemble_tokens
+__asm_assemble_view: JUMP FINAL_BANK_ASM, assemble_line::prepared
 __asm_include:      JUMP FINAL_BANK_ASM, includefile::include_entry
 __asm_set_pc:       JUMP FINAL_BANK_ASM, set_pc
 __asm_disassemble:  JUMP FINAL_BANK_ASM, disassemble
@@ -4886,6 +4705,9 @@ __asm_reset        = areset
 __asm_startpass    = startpass
 __asm_endpass      = endpass
 __asm_tokenize     = tokenize
+__asm_assemble_line = assemble_line
+__asm_assemble_tokens = assemble_tokens
+__asm_assemble_view = assemble_line::prepared
 __asm_include      = includefile::include_entry
 __asm_set_pc       = set_pc
 __asm_disassemble  = disassemble
@@ -4896,9 +4718,9 @@ __asm_type_to_mode = type2mode
 
 ;*******************************************************************************
 ; DIRECTIVE HELPERS
-; Directive parsing executes in the expression bank
-.segment "EXPR"
-CUR_BANK .set FINAL_BANK_EXPR
+; Cold directive helpers share the context bank; expression ROM holds the lexer.
+.segment "CTX"
+CUR_BANK .set FINAL_BANK_CTX
 
 ;*******************************************************************************
 ; SEGMENT STACK SYNTAX

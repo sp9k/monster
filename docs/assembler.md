@@ -24,9 +24,10 @@ directives (like `.DB $00`), or macros (e.g. `LDXY #$0000`).  Instructions are
 separated by colons.  Operands (or arguments, in the case of macros) may be
 literal values or expressions, which are described in the next section.
 
-**COMMENT** - once the assembler encounters a semicolon, it stops interpreting
-the line.  Everything after the first semicolon on a line is for the coder's
-reference only.
+**COMMENT** - a semicolon outside a quoted string or character literal starts
+a comment. Everything after it is for the coder's reference only. Punctuation
+inside literals keeps its literal meaning, including parentheses, colons, and
+semicolons.
 
 Below are some examples of valid lines:
 
@@ -691,6 +692,12 @@ Becomes
 An optional parameter can be given that will be assigned the value of
 the current iteration of repetition during assembly.
 
+Iterator names are matched as complete tokens. Quoted strings and character
+literals are left intact: with iterator `I`, `"I"` and `'I'` remain literals,
+and names such as `INDEX` and `object.I` are separate names. Nested repeats
+capture iterator values as binary integers, so inserting a larger value does
+not lengthen the stored source line.
+
 ````{example}
 ```
 .rep 5,I
@@ -828,37 +835,119 @@ Macros may invoke other macros, as in this example:
 ```
 ````
 
-You may omit arguments to a macro if your macro knows how to deal with
-less than the maximum number it expects as in this example:
 
-````{example}
 ```
+.mac LDXY ARG
+.if .isimm(ARG)
+    ldx #<(.value(ARG))
+    ldy #>(.value(ARG))
+.else
+    ldx ARG
+    ldy ARG+1
+.endif
+.endmac
+
+LDXY #message
+LDXY pointer
+```
+
+These operations are available in macro bodies:
+
+| Operation       | Result                                                                              |
+|-----------------|-------------------------------------------------------------------------------------|
+| `.isimm(ARG)`   | 1 when the argument begins with `#`, otherwise 0                                    |
+| `.present(ARG)` | 1 if a nonblank argument is given; 0 if not                                         |
+| `.value(ARG)`   | The argument expression without its immediate marker (if any)                       |
+| `.ident(ARG)`   | The original argument spelling (for generated labels/procedure names)               |
+| `.text(ARG)`    | The argument spelling as a quoted string (if already quoted does nothing)           |
+
+You may omit trailing arguments or leave some parameters empty (e.g. `PLOT x,,z`).
+Referencing an omitted argument will generate an `INVALID MACRO ARGS` error.
+
+```asm
 .mac SAVEBYTES A, B, C
-.ifdef A
+.if .present(A)
     lda A
     pha
 .endif
-.ifdef B
+.if .present(B)
     lda B
     pha
 .endif
-.ifdef C
+.if .present(C)
     lda C
     pha
 .endif
 .endmac
+
+SAVEBYTES #0,,address
 ```
-````
+
+Passing a parameter as a complete argument to another macro preserves its
+presence, immediate marker, original spelling, and caller binding. For example,
+`INNER A,B` forwards both arguments even when `B` was omitted. Expressions such
+as `INNER .value(A)+1` create a new argument.
+
+Local symbols work the same way they do during normal assembly in macro
+definitions: a `@` prefix defines a private label unique to each invocation.
+
+You can also declare symbols with the `.local` directive for any labels that should also be
+kept local to the macro definition. This directive must precede the symbol's first use.
+
+```
+.mac INCW ADDR
+.local skip
+    inc ADDR
+    bne skip
+    inc ADDR+1
+skip:
+.endmac
+```
+
+Use `.ident` to use the argument as a name for the expansion.
+These strings can also be concatenated with `+` in `.inc` and `.incbin`.
+
+```asm
+.mac INLINE_PROC NAME
+.proc .ident(NAME)
+.inc "i/"+.text(NAME)+".s"
+.endproc
+.endmac
+```
+
+The resulting filename still obeys the existing file/debug-name limit (15
+characters). A self-assembly build must stage long host paths under suitable
+short disk names. Concatenation does not change directory or device handling.
+
+#### Mutable assembly constants
+
+`.set NAME expression` defines or updates an integer assembly-time constant.
+Unlike `.eq`, these assignments occur on both passes. The expression must already be
+resolved and absolute. Immutable constants and address labels cannot be overwritten.
+
+```
+.set CUR_BANK 1
+.mac CALL BANK, TARGET
+.if BANK==CUR_BANK
+    jsr TARGET
+.else
+    jsr trampoline
+    .db BANK
+    .dw TARGET
+.endif
+.endmac
+
+.set CUR_BANK 2
+...
+```
 
 ### Macro limitations
 
-There are some limitations on the number of macros and overall size of the
-macros per assembly.  The source for all macros must be less than $5F00 bytes.
-There is also a 128 macro limit.
+There are at most 128 macros and four parameters per macro. Definitions share
+`$4E60` bytes. Each macro and `.REP` body must fit in a `$1000`-byte context,
+including its header and parameters. This limit applies to encoded tokens
+rather than source characters; comments are discarded.
 
-Each macro can be at most 256 lines or $1000 bytes, whichever is lower. This restriction also applies to .REP.
-
-Comments are excluded from the internal context buffer, so using them will not count toward the byte limit.
 
 ### Other limitations/guidelines
 
