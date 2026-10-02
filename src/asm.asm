@@ -67,6 +67,7 @@
 .include "kernal.inc"
 .include "layout.inc"
 .include "labels.inc"
+.include "limits.inc"
 .include "line.inc"
 .include "linker.inc"
 .include "log.inc"
@@ -95,9 +96,6 @@ CUR_BANK .set FINAL_BANK_MAIN
 eval_expr = expr::eval
 
 ;*******************************************************************************
-MAX_IFS      = 8 ; max nesting depth for .if/.endif
-
-;*******************************************************************************
 ; ASM INFORMATION
 ; These zeropage locations are filled with information after each call to
 ; asm::tokenize
@@ -121,12 +119,12 @@ SEG_BSS  = 2	; flag for BSS segment (all data must be 0, PC not updated)
 .export ifstack
 ifstack:   .res MAX_IFS	; TRUE/FALSE values for the active IF blocks
 			; (referenced as ifstack-1,x; x in [1, ifstacksp])
+ifstacksp: .byte 0	; stack pointer to "if" stack
 
 .export __asm_ifstack
-__asm_ifstack = ifstack
 .export __asm_ifdepth
+__asm_ifstack = ifstack
 __asm_ifdepth = ifstacksp
-ifstacksp: .byte 0	; stack pointer to "if" stack
 
 ;*******************************************************************************
 ; INCLUDE STACK
@@ -762,7 +760,6 @@ BANKED_CODE "ASMBANK"
 	sta __asm_segmentid
 	sta __asm_segtype	; reset segment type (TYPE_UNDEF) for the pass
 
-	CALL FINAL_BANK_MACROS, mac::reset_expansion
 	CALL FINAL_BANK_SYMBOLS, lbl::namespace_reset
 
 	; ignore whitespace in expressions
@@ -774,6 +771,8 @@ BANKED_CODE "ASMBANK"
 	cmp #$01
 	jeq areset
 @pass2:
+	; (areset resets macro expansion for pass 1)
+	CALL FINAL_BANK_MACROS, mac::reset_expansion
 	CALL FINAL_BANK_MACROS, mac::reset_mutables
 	lda ifdefidx		; snapshot the number of .IFDEF results
 	sta ifdefcnt		; recorded during pass 1...
@@ -812,7 +811,8 @@ BANKED_CODE "ASMBANK"
 ;  - .XY: the string to assemble
 ;  - .A:  the bank of the string to assemble
 ;  - zp::asmresult: pointer to the location to assemble the instruction
-; out:
+;  - zp::verify: nonzero to check syntax without assembling
+; OUT:
 ;  - .A: the type of the result e.g. ASM_OPCODE or the error code
 ;  - .C: set if an error occurred
 .proc tokenize
@@ -824,17 +824,31 @@ BANKED_CODE "ASMBANK"
 	bcc @copied
 	RETURN_ERR ERR_LINE_TOO_LONG	; line doesn't fit the asm buffer
 @copied:
-	lda #$00		; COPYLINE also accepts a CR as the source terminator
+	lda #$00		; 0-terminate (COPYLINE may stop at a CR)
 	sta asmbuffer,y
+
+	lda zp::verify
+	sta expr::syntax_only
+	jsr assemble_line
+	php
+	pha
+	lda #$00
+	sta expr::syntax_only
+	pla
+	plp
+	rts
 .endproc
 
 ;*******************************************************************************
 ; ASSEMBLE LINE
-; Common source entry after banked input has been copied into shared memory.
-; Preserves original spelling and normalizes syntax before lexical consumption.
-; IN: asmbuffer contains a NUL-terminated source line of at most MAX_LINE_LEN;
-;     assembler pass, context and source-location state are already selected
-; OUT: .A ASM_* result or error; .C set on error
+; Assembles the line in the asmbuffer.
+; The original line is saved to mac::source and the asmbuffer is converted to
+; uppercase (except for strings, chars, and comments)
+; IN:
+;  - asmbuffer: the 0-terminated line to assemble
+; OUT:
+;  - .A: the type of the result e.g. ASM_OPCODE or the error code
+;  - .C: set if an error occurred
 .proc assemble_line
 @quote=r0
 	lda #$00
@@ -865,8 +879,7 @@ BANKED_CODE "ASMBANK"
 	beq @quoted
 	cmp #$27
 	bne @next
-	; The character after an apostrophe is literal, even if also an apostrophe.
-	iny
+	iny			; the char after a ' is always literal
 	cpy #MAX_LINE_LEN+1
 	bcs @long
 	lda asmbuffer,y
@@ -883,7 +896,7 @@ BANKED_CODE "ASMBANK"
 	bne @quoted
 	beq @next
 @comment:
-	lda #$00		; copy the comment verbatim through its terminator
+	lda #$00		; copy the rest of the line (comment) as is
 	sta @quote
 	beq @quoted
 
@@ -944,11 +957,14 @@ prepared:
 
 ;*******************************************************************************
 ; ASSEMBLE TOKENS
-; Assembles a framed binary context record through the common statement parser.
-; IN: CTX_TOKEN_BUFFER record; current pass and context state
-; OUT: .A ASM_* result or error; .C set on error
+; Decodes the token record in CTX_TOKEN_BUFFER and assembles it
+; IN:
+;  - CTX_TOKEN_BUFFER: the record to assemble
+; OUT:
+;  - .A: the type of the result e.g. ASM_OPCODE or the error code
+;  - .C: set if an error occurred
 .proc assemble_tokens
-	CALL LEX_BANK, lex::decode
+	CALL LEX_DECODE_BANK, lex::decode
 	bcs @ret
 	jmp assemble_line::prepared
 @ret:	rts
@@ -968,8 +984,8 @@ prepared:
 ; if a label is found, for example, we will reenter here after adding the label
 ; to assemble any opcode, directive, etc. that may still be in the line
 .proc assemble_with_ctx
-	CALL LEX_BANK, lex::significant
-	bcs @ret
+	CALL LEX_BANK, lex::eatws
+	bcs @badtoken
 	beq noasm
 ; check if the line is a full line comment
 @chk_comment:
@@ -997,10 +1013,13 @@ prepared:
 
 	lda ctx::active
 	beq @exec_directive	; no active context -> execute
-	cmp #$02
-	bcs @chkctl		; nested context -> body line
 	lda ctx::open
-	beq @exec_directive	; top-level context closed -> execute
+	bne @chkctl		; context is open -> body line
+	lda ctx::active
+	cmp #$02
+	bcc @exec_directive	; top-level context closed -> execute
+	lda zp::ctx+repctx::type
+	bpl @exec_directive	; parent isn't capturing -> execute
 
 @chkctl:
 	cpx #<macro
@@ -1032,6 +1051,26 @@ prepared:
 	bcs @ret	; err -> exit
 	bne assemble	; if context wasn't handled, assemble
 @ret:	rts
+
+@badtoken:
+	; a line that can't be split into tokens may still be stored in a
+	; context (it is only an error if it is assembled)
+	pha			; save the error
+	jsr handle_ctx
+	bcs @ctxerr
+	bne @lexerr		; not stored -> return the error
+	pla
+	lda #$00
+	rts
+@ctxerr:
+	tax
+	pla
+	txa
+	rts
+@lexerr:
+	pla
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1175,7 +1214,7 @@ prepared:
 
 ; from here on we are either reading a comment or an operand
 @getopws:
-	CALL LEX_BANK, lex::significant
+	CALL LEX_BANK, lex::eatws
 	bcs @evalfailed
 	jsr islineterminator_or_separator
 	bne @chk_comment
@@ -1187,7 +1226,11 @@ prepared:
 	jmp @done		; if comment, we're done
 
 @parse_operand:
-	cmp #'#'
+	cmp #LEX_IMMARG
+	bne :+
+	inc immediate		; macro argument that includes its own '#'
+	jmp @evalexpr
+:	cmp #'#'
 	bne @lparen		; if not '#' check for a paren (indirect)
 	inc immediate		; flag operand as IMMEDIATE
 	jsr line::incptr
@@ -1779,7 +1822,7 @@ CUR_BANK .set LABEL_CALLER_BANK
 	cmp #'-'
 	bne @ret
 
-@sign:	; make sure no unexpected characters appear after first +/-
+@sign:	; only more +/- may follow (e.g. "-5" is an expression)
 	iny
 	lda (zp::line),y
 	cmp #'+'
@@ -2003,15 +2046,21 @@ CUR_BANK .set LABEL_CALLER_BANK
 
 ;*******************************************************************************
 ; GETTEXT
-; Parses an enquoted text string in zp::line and returns it in mem::spare
+; Parses an enquoted text string (or a string macro argument) in zp::line and
+; returns it in mem::spare
 ; returns the length in .A ($ff if no string was found)
 .proc gettext
 	ldy #$00
 	lda (zp::line),y
 	cmp #'"'
-	bne @err
+	beq :+
+	ldxy #mem::spare
+	lda #MAX_LINE_LEN
+	CALL FINAL_BANK_MACROS, mac::string_arg
+	bcc @ret
+	bcs @err
 
-	ldx #$00
+:	ldx #$00
 @l0:	jsr line::incptr
 	lda (zp::line),y
 	beq @err		; no closing quote
@@ -2024,7 +2073,9 @@ CUR_BANK .set LABEL_CALLER_BANK
 @done:	jsr line::incptr
 	txa
 	RETURN_OK
-@err:	RETURN_ERR ERR_SYNTAX_ERROR
+@err:	lda #ERR_SYNTAX_ERROR
+	sec
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2331,8 +2382,8 @@ CUR_BANK .set LABEL_CALLER_BANK
 
 ;-------------------------------------------------------------------------------
 ; assemble all lines for the iteration
-; Each record restores its captured source line for diagnostics/debug mapping.
-@l1:	jsr ctx::getrecord	; get a binary line to assemble
+; each line sets asm::linenum to the source line it was captured from
+@l1:	jsr ctx::getrecord	; get a line to assemble
 	bcs @errpop
 	cmp #$00
 	beq @next		; if at the end, continue to next iteration
@@ -2385,17 +2436,20 @@ CUR_BANK .set LABEL_CALLER_BANK
 
 	; check if the active context is "open" or "closed"
 	; open:   write to context
-	; closed: write to parent context (nested) OR
-	;         return for assembler to handle (not nested)
+	; closed: write to parent context (nested, parent capturing) OR
+	;         return for assembler to handle
 	cmp #$02		; activectx < 2?
 	bcc @toplevel		; if yes, we're using first context (top)
 
 @nested:
 	lda ctx::open		; is context open?
 	bne @write_ctx		; if yes, write it to the context buffer
+	lda zp::ctx+repctx::type
+	bpl @ok			; parent isn't capturing -> assemble it
 
 ;-------------------------------------------------------------------------------
-; Freeze complete iterator tokens while copying to the parent's binary body.
+; context is closed, replace the iterator with its value and write the line
+; to the parent context's buffer
 	jsr ctx::write_parent
 	jmp @ctx_done
 
@@ -2436,15 +2490,15 @@ CUR_BANK .set LABEL_CALLER_BANK
 
 @notval:
 	pha				; save parse error
-	ldy #$00
-	lda (zp::line),y
-	cmp #'"'
-	beq :+
+	jsr gettext			; quoted text or a string macro arg
+	bcc :+
 	pla				; restore expression parse error
 	sec
 	rts
-:	pla
-	jmp @text
+:	tax
+	pla
+	txa
+	jmp @gottext
 
 @ok:	; store the extracted value
 	ldy #$00
@@ -2457,6 +2511,7 @@ CUR_BANK .set LABEL_CALLER_BANK
 @text:	jsr gettext
 	bcs @err
 
+@gottext:
 	; store extracted text
 	tay
 	tax
@@ -2693,12 +2748,13 @@ CUR_BANK .set FP_CALLER_BANK
 	JUMP FINAL_BANK_LINKER, obj::add_export
 .endproc
 
-; Segment stack handlers share the existing expression directive helpers.
+; Segment stack handlers run with the other directive helpers (context bank).
 directive_pushseg: JUMP FINAL_BANK_CTX, push_segment
 directive_popseg:  JUMP FINAL_BANK_CTX, pop_segment
 
-directive_local: JUMP FINAL_BANK_MACROS, mac::local
-directive_set: JUMP FINAL_BANK_MACROS, mac::set
+; .LOCAL and .SET are handled by the macro code
+directive_local:   JUMP FINAL_BANK_MACROS, mac::local
+directive_set:     JUMP FINAL_BANK_MACROS, mac::set
 
 ; Lexical directives run in the symbol bank.
 directive_scope:
@@ -2761,6 +2817,16 @@ directive_endproc:
 	; get the name of the segment
 	jsr util::parse_enquoted_line
 	bcc @add
+
+	pha
+	ldxy #@name
+	lda #MAX_LINE_LEN
+	CALL FINAL_BANK_MACROS, mac::string_arg
+	bcs :+
+	pla
+	jmp @add
+:	pla
+	sec
 	rts		; error
 
 @add:	; segment names are identifiers, even though their syntax uses quotes
@@ -4675,7 +4741,6 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 .export __asm_startpass
 .export __asm_endpass
 .export __asm_tokenize
-.export __asm_assemble_line
 .export __asm_assemble_tokens
 .export __asm_assemble_view
 .export __asm_include
@@ -4691,7 +4756,6 @@ __asm_reset:        JUMP FINAL_BANK_ASM, areset
 __asm_startpass:    JUMP FINAL_BANK_ASM, startpass
 __asm_endpass:      JUMP FINAL_BANK_ASM, endpass
 __asm_tokenize:     JUMP FINAL_BANK_ASM, tokenize
-__asm_assemble_line: JUMP FINAL_BANK_ASM, assemble_line
 __asm_assemble_tokens: JUMP FINAL_BANK_ASM, assemble_tokens
 __asm_assemble_view: JUMP FINAL_BANK_ASM, assemble_line::prepared
 __asm_include:      JUMP FINAL_BANK_ASM, includefile::include_entry
@@ -4705,7 +4769,6 @@ __asm_reset        = areset
 __asm_startpass    = startpass
 __asm_endpass      = endpass
 __asm_tokenize     = tokenize
-__asm_assemble_line = assemble_line
 __asm_assemble_tokens = assemble_tokens
 __asm_assemble_view = assemble_line::prepared
 __asm_include      = includefile::include_entry
@@ -4718,7 +4781,7 @@ __asm_type_to_mode = type2mode
 
 ;*******************************************************************************
 ; DIRECTIVE HELPERS
-; Cold directive helpers share the context bank; expression ROM holds the lexer.
+; Directive parsing executes in the context bank
 .segment "CTX"
 CUR_BANK .set FINAL_BANK_CTX
 

@@ -11,6 +11,7 @@
 .import __mac_verify_property, __mac_verify_name
 .import __mac_namespace_floor
 .import __mac_set, __mac_reset_mutables
+.import __mac_splice_arg, __mac_bind_pc, __mac_string_arg, __mac_argrecord
 
 .scope mac
 	add     = __mac_add
@@ -21,14 +22,19 @@
 	num     = __mac_num
 	top     = __mac_top
 	view    = __mac_view
+
 	reset_expansion = __mac_reset_expansion
-	source  = __mac_source
-	depth   = __mac_depth
-	local   = __mac_local
-	filename = __mac_filename
+	source          = __mac_source
+	depth           = __mac_depth
+	local           = __mac_local
+	filename        = __mac_filename
 	verify_property = __mac_verify_property
-	verify_name = __mac_verify_name
+	verify_name     = __mac_verify_name
 	namespace_floor = __mac_namespace_floor
-	set = __mac_set
-	reset_mutables = __mac_reset_mutables
+	set             = __mac_set
+	reset_mutables  = __mac_reset_mutables
+	splice_arg      = __mac_splice_arg
+	bind_pc         = __mac_bind_pc
+	string_arg      = __mac_string_arg
+	argrecord       = __mac_argrecord
 .endscope

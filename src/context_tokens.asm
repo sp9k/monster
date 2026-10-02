@@ -1,6 +1,9 @@
 ;*******************************************************************************
-; BINARY CONTEXT CAPTURE
-; Packs lexical tokens without binding symbols or evaluating expressions.
+; CONTEXT_TOKENS.ASM
+; This file contains the code to encode a line of source as a context record
+; (see context_tokens.inc).
+;*******************************************************************************
+
 .include "asm.inc"
 .include "config.inc"
 .include "ctx.inc"
@@ -17,10 +20,21 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 
 ;*******************************************************************************
 ; ENCODE
-; Encodes a source view; optional iterator reduction matches complete WORD tokens.
-; Invalid quoted syntax is retained as RAW so disabled branches remain inert.
-; IN: .XY normalized source view, .A nonzero to freeze CTX_ITER_NAME to iterator
-; OUT: CTX_TOKEN_BUFFER record, .A byte size, .C clear; .C set on overflow
+; Encodes the given line as a record in CTX_TOKEN_BUFFER.
+; If the rest of the line can't be split into tokens (e.g. a missing closing
+; quote) it is stored as one RAW token.
+; IN:
+;  - .XY:          line to encode
+;  - .A:           if nonzero, replace words matching CTX_ITER_NAME with
+;                  iterator's current value
+;  - asm::linenum: line number to store in the record
+; OUT:
+;  - .A:               size of the record (or error if .C set)
+;  - .C:               set if the record doesn't fit or contains a macro
+;                      argument
+;  - CTX_TOKEN_BUFFER: encoded record
+; CLOBBERS:
+;  - r0-r3, r6-r7
 .export __ctx_encode
 .proc __ctx_encode
 @out=r0
@@ -35,14 +49,15 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	lda zp::line+1
 	pha
 	stxy zp::line
+
 	lda #$03
 	sta @out
 	lda asm::linenum
 	sta CTX_TOKEN_BUFFER+1
 	lda asm::linenum+1
 	sta CTX_TOKEN_BUFFER+2
-@next:
-	CALL LEX_BANK, lex::peek
+
+@next:	CALL LEX_BANK, lex::peek
 	jcs @raw_tail
 	cmp #LEX_END
 	jeq @end
@@ -52,13 +67,17 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	sta @kind
 	cmp #LEX_INTEGER
 	beq @cached_value
+	cmp #LEX_ARG
+	beq @cached_value
+	cmp #LEX_IMMARG
+	beq @cached_value
 	cmp #LEX_WORD
 	bne @ordinary
 	lda @replace
 	beq @ordinary
+
 	ldy #$00
-@match:
-	lda (zp::line),y
+@match: lda (zp::line),y
 	cmp CTX_ITER_NAME,y
 	bne @ordinary
 	iny
@@ -71,6 +90,7 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	lda zp::ctx+repctx::iter+1
 	sta @hi
 	jmp @integer
+
 @cached_value:
 	lda zp::line
 	sec
@@ -80,8 +100,20 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	jcs @bad
 	stx @lo
 	sty @hi
+	sta @kind
+	cmp #LEX_INTEGER
+	beq @valued
+	; arguments can't be stored in a context, which can outlive the
+	; invocation that they belong to
+	lda #ERR_INVALID_MACRO_ARGS
+	sec
+	jmp @restore
+
 @integer:
 	lda #LEX_INTEGER
+	sta @kind
+@valued:
+	lda @kind
 	jsr @put
 	jcs @bad
 	lda @lo
@@ -91,20 +123,25 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	jsr @put
 	jcs @bad
 	jmp @advance
+
 @ordinary:
 	lda @kind
+	cmp #' '
+	bcc @raw		; store control characters as is
 	cmp #LEX_SPACE
 	beq @single
 	cmp #LEX_EQ
 	bcc @payload_test
 	cmp #LEX_GE+1
 	bcc @single
+
 @payload_test:
 	cmp #LEX_WORD
 	bcc @single
 	cmp #LEX_FLOAT+1
 	bcc @payload
-	lda #LEX_RAW
+@raw:	lda #LEX_RAW
+
 @payload:
 	jsr @put
 	jcs @bad
@@ -112,14 +149,14 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	jsr @put
 	jcs @bad
 	ldy #$00
-@copy:
-	lda (zp::line),y
+@copy:	lda (zp::line),y
 	jsr @put
 	jcs @bad
 	iny
 	cpy @span
 	bcc @copy
 	jmp @advance
+
 @single:
 	jsr @put
 	bcs @bad
@@ -128,7 +165,7 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	CALL LEX_BANK, lex::advance
 	jmp @next
 @raw_tail:
-	; Preserve deferred errors as an opaque remainder, including quote bytes.
+	; store the rest of the line as is (as a RAW token)
 	ldy #$00
 @length:
 	lda (zp::line),y
@@ -150,8 +187,8 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	sta CTX_TOKEN_BUFFER
 	clc
 	bcc @restore
-@bad:
-	lda #ERR_LINE_TOO_LONG
+
+@bad:	lda #ERR_LINE_TOO_LONG
 	sec
 @restore:
 	tax
@@ -161,8 +198,8 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	sta zp::line
 	txa
 	rts
-@put:
-	ldx @out
+
+@put:	ldx @out
 	cpx #CTX_TOKEN_LIMIT
 	bcs @ret
 	sta CTX_TOKEN_BUFFER,x

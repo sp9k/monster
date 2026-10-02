@@ -3,13 +3,26 @@ CONTEXT_TOKENS_INC = 1
 .include "lexer_tokens.inc"
 .import __mem_spare
 
-; Internal context format, rebuilt each assembly pass (never an object format).
-; Record: byte total size, word source line, tokens, LEX_END.
-; Zero size marks the end of a body. Payload zero bytes are ordinary data.
-; WORD/NUMBER/STRING/CHAR/FLOAT/RAW: kind, byte spelling size, spelling bytes.
-; SPACE: one canonical space. Comparisons and punctuation: one token byte.
-; INTEGER: kind, word value; source view uses one placeholder backed by metadata.
-CTX_TOKEN_BUFFER = __mem_spare+$200
-CTX_TOKEN_LIMIT = $ff
-CTX_ITER_NAME = __mem_spare+$180
+;*******************************************************************************
+; Context record format (.MAC/.REP body):
+;  - 1 byte:  size of the record (including this header)
+;  - 2 bytes: source line number
+;  - tokens, terminating with LEX_END
+;
+; A record with size=0 marks the end of the body
+; Tokens are stored as:
+;   ----------------------------------------|-----------------------------------
+;   |              Token type               |          Format                  |
+;   |---------------------------------------|----------------------------------|
+;   | WORD, NUMBER, STRING, CHAR, FLOAT, RAW| kind, length, the characters     |
+;   | SPACE, comparisons, and punctuation:  | just the kind                    |
+;   | INTEGER                               | kind, 16-bit value               |
+;   | ARG, IMMARG                           | kind, frame depth, argument index|
+;   ----------------------------------------|-----------------------------------
+;*******************************************************************************
+
+CTX_TOKEN_BUFFER = __mem_spare+$300	; shared with lbl's scope buffer
+CTX_TOKEN_LIMIT  = $ff
+CTX_ITER_NAME    = __mem_spare+$180	; name of the .REP iterator
+
 .endif

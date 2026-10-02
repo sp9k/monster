@@ -193,7 +193,7 @@ nop_handler:
 	stxy TRAMPOLINE_PC
 
 	; restore the user's IRQ vector ($fffe)
-	ldxy #::irq_handler::irq_return+1
+	ldxy #irq_return+1
 	stxy reu::c64addr
 	ldxy #$fffe
 	stxy reu::reuaddr
@@ -400,9 +400,9 @@ nop_handler:
 
 	; overwrite the JMP address to go to edit handler
 	lda #<nmi_edit
-	sta ::brk_handler::nmi_return+1
+	sta nmi_return+1
 	lda #>nmi_edit
-	sta ::brk_handler::nmi_return+2
+	sta nmi_return+2
 	rts
 .endproc
 
@@ -575,6 +575,7 @@ nmi_handler:
 nmi_return:
 	jmp dbg::reenter
 .endproc
+nmi_return = brk_handler::nmi_return
 
 ;*******************************************************************************
 ; IRQ HANDLER
@@ -598,6 +599,7 @@ irq_brk:
 	pha
 	jmp brk_handler
 .endproc
+irq_return = irq_handler::irq_return
 nmi_handler_size=*-nmi_handler
 
 .segment "TRAMPOLINE"

@@ -48,7 +48,6 @@ FP_EXP   = $8d
 .import __fp_val
 .import __fp_binop
 .import __fp_fromint
-.import __fp_isfloat
 .import __fp_parse
 .import __fp_toint
 .import __fp_unary
@@ -61,7 +60,6 @@ FP_EXP   = $8d
 
 	binop   = __fp_binop
 	fromint = __fp_fromint
-	isfloat = __fp_isfloat
 	parse   = __fp_parse
 	toint   = __fp_toint
 	unary   = __fp_unary

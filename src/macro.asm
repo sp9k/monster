@@ -13,8 +13,6 @@
 .include "limits.inc"
 .include "lexer.inc"
 .include "macros.inc"
-.import __mac_verify_property
-.macpack longbranch
 .include "memory.inc"
 .include "ram.inc"
 .include "screen.inc"
@@ -24,11 +22,14 @@
 .include "text.inc"
 .include "util.inc"
 .include "zeropage.inc"
+.macpack longbranch
 
 .export macro_addresses
 .export macros
 
 .import __MACROBSS_LOAD__
+.import __mac_clear_mutables
+.import __mac_verify_property
 
 MAX_MACRO_NAME_LEN = 16
 
@@ -61,15 +62,14 @@ macros_end:
 ;    |       1       | number of parameters      |
 ;    |      0-16     | parameter 0 name          |
 ;    |      ...      | parameter n name          |
-;    |      ...      | binary context records    |
-;    |       1       | terminating size 0        |
+;    |      ...      | definition (ctx records)  |
+;    |       1       | terminating 0             |
 
 BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 
 ;*******************************************************************************
 ; MAC_INIT
 ; Initializes the macro state by removing all existing macros
-.import __mac_clear_mutables
 .export __mac_init
 .proc __mac_init
 	jsr __mac_clear_mutables
@@ -85,11 +85,12 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 ;*******************************************************************************
 ; MAC_ADD
 ; Adds the macro to the internal macro state.
+; The definition is read from the active context (see context_tokens.inc).
 ; IN:
-;  - .XY: pointer to the macro definition
-;     This will not contain the .MAC but does end with .ENDMAC)
-;  - .A: number of parameters
-;  - r0: pointer to parameters as a sequence of 0-terminated strings
+;  - .A: number of parameters (including the macro's name)
+;  - r0: pointer to the name and parameters as 0-terminated strings
+; OUT:
+;  - .C: set on error
 .export __mac_add
 .proc __mac_add
 @src=zp::tmp10
@@ -152,13 +153,13 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 	dec @numparams
 	bne @copyparams
 
-; Copy complete framed records; payload zero bytes are not terminators.
+; copy each record of the macro definition
 @paramsdone:
 @l0:	CALLMAIN ctx::getrecord
 	bcs @ret
 	cmp #$00
 	beq @done
-	; Reserve the whole record and its end marker before writing.
+	; make sure there is room for the record and the terminating 0
 	clc
 	adc @dst
 	tax
@@ -278,8 +279,8 @@ MODE_DEF  = 1
 @scroll=re
 @i=rf
 @mode=zp::tmp10
-@body=mem::spare+40		; 0-40 may be used by text routines
-@namebuff=mem::spare+$80	; title, separate from token staging/metadata
+@body=mem::spare+40		; address of the macro's first record
+@namebuff=mem::spare+$80	; same memory as mac::source
 
 	; reset/save the screen
 	CALLMAIN scr::save
@@ -535,15 +536,20 @@ MODE_DEF  = 1
 	iny
 	dex
 	bne @tokens
-	CALL LEX_BANK, lex::decode
-	bcs @viewret
+	CALL LEX_DECODE_BANK, lex::decode
+	bcs @badline
 	lda lex::cached
 	bmi @render_values
 	ldxy #mem::asmbuffer
-@viewret:
+	rts
+@badline:
+	lda #$00		; show a line that can't be decoded as empty
+	sta mem::asmbuffer
+	ldxy #mem::asmbuffer
+	clc
 	rts
 
-; Display typed integers by value, clipping the rendered row at MAX_LINE_LEN.
+; the line has values: print each one as hex in place of its placeholder
 @render_values:
 @sourcepos=r0
 @outpos=r1
@@ -690,7 +696,7 @@ MODE_DEF  = 1
 	cmp #$00
 	beq @end		; if so, we're done
 
-	; Skip the complete record, including any embedded zero payload bytes.
+	; move to the next record
 	clc
 	adc @macro
 	sta @macro

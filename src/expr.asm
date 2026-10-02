@@ -26,6 +26,7 @@
 .include "target.inc"
 .include "util.inc"
 .include "lexer.inc"
+.include "rpn.inc"
 .import __mem_asmbuffer
 
 .macpack longbranch
@@ -34,17 +35,6 @@
 ; CONSTANTS
 MAX_OPERATORS = $10
 MAX_OPERANDS  = MAX_OPERATORS/2
-MAX_RPN_LEN   = $20	; size of the RPN token list (__expr_rpnlist)
-
-TOK_SYMBOL    = 1	; symbol e.g. "label"
-TOK_SYMBOL_ZP = 2	; zeropage symbol e.g. "tmp"
-TOK_VALUE     = 3	; constant value e.g. 123
-TOK_PC        = 4	; current PC e.g. '*'
-TOK_BINARY_OP = 5	; binary operator e.g. '+' or '-'
-TOK_UNARY_OP  = 6	; unary operator e.g. '<'
-TOK_FLOAT     = 7	; float literal e.g. 1.5 (value is an index into
-			; fliterals, not the number itself)
-TOK_END       = $ff	; end of expression marker
 
 PC_SYMBOL_ID   = $ffff	; magic value for '*' (in eval result)
 
@@ -92,6 +82,21 @@ end_on_whitespace: .byte 0
 ; FLOAT MODE
 ; One of the FLOAT_MODE_* values; selects how a result is finished.
 float_mode: .byte 0
+
+;*******************************************************************************
+; SYNTAX ONLY
+; Nonzero while the assembler checks a source line without assembling it.
+; Monitor expression evaluation retains normal symbol values.
+.pushseg
+.DATA
+.export __expr_syntax_only
+__expr_syntax_only: .byte $00
+.popseg
+
+;*******************************************************************************
+; COMPILING
+; If !0, '*' is the macro invocation's address rather than the current PC.
+compiling: .byte 0
 
 .segment "SHAREBSS"
 
@@ -262,6 +267,19 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @postproc    = zp::tmp14
 @tmp         = zp::tmp15
 @operands    = operands	    ; operand stack (grows up from here)
+	lda __expr_syntax_only
+	beq @evaluate
+	jsr verify_rpn
+	jcs @ret
+	beq @evaluate
+
+	; Symbolic checks return a byte-sized placeholder without evaluating it.
+	ldxy #$0000
+	stxy @val1
+	stx __expr_kind
+	jmp @abs_result
+
+@evaluate:
 	ldx #$00
 	stx @i
 	stx @sp
@@ -323,7 +341,6 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	jmp @rel_done
 :
 	lda @segment
-	sta __expr_segment
 	cmp asm::segment	; is the result in a different segment?
 	bne @sym_result		; if so, need a symbol-relative answer
 
@@ -336,10 +353,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	bcc @rel_done		; and continue to finish up building result
 
 @sym_result:
-	ldx @symbol
-	stx __expr_symbol
-	ldy @symbol+1
-	sty __expr_symbol+1
+	ldxy @symbol
 
 	lda @segment
 	cmp #SEG_UNDEF		; is segment undefined?
@@ -523,7 +537,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	beq @negate
 .if FP_SUPPORTED
 	cmp #FP_FLOAT
-	jcs @function
+	bcs @function
 .endif
 	jmp @byteop
 
@@ -565,11 +579,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	jcs @ret
 	jmp @function_apply
 @function_float:
-	ldx #FP_SIZE-1
-:	lda fbuff,x
-	sta fp::val,x
-	dex
-	bpl :-
+	jsr @load_float
 @function_apply:
 	lda @operator
 	cmp #FP_INT
@@ -656,16 +666,14 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	sta @operands,x		; store LSB of addend
 	tya
 	sta @operands+1,x	; store MSB of addend
-	lda @kind
-	sta @operands+2,x	; store kind (RELOCATE or ABSOLUTE)
-	lda @segment
-	sta @operands+3,x	; store segment ID
-	lda @symbol
-	sta @operands+4,x	; store symbol ID LSB
-	lda @symbol+1
-	sta @operands+5,x	; store symbol ID MSB
-	lda @postproc
-	sta @operands+6,x	; store postproc
+	ldy #$00
+:	lda @kind,y
+	sta @operands+2,x
+	inx
+	iny
+	cpy #$05
+	bcc :-
+	ldx @sp
 	lda @negative
 	sta @operands+7,x
 	lda @negative+1
@@ -711,16 +719,12 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	dey
 	bpl :-
 .endif
-	lda @kind
-	sta @kind2
-	lda @segment
-	sta @segment2
-	lda @symbol
-	sta @symbol2
-	lda @symbol+1
-	sta @symbol2+1
+	ldx #$04
+:	lda @kind,x
+	sta @kind2,x
+	dex
+	bpl :-
 	lda @postproc
-	sta @postproc2
 	cmp #POSTPROC_NONE
 	beq @getval1
 	; post-processing ('<'/'>') applies to the final result of the
@@ -740,16 +744,11 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	dey
 	bpl :-
 .endif
-	lda @kind
-	sta @kind1
-	lda @segment
-	sta @segment1
-	lda @symbol
-	sta @symbol1
-	lda @symbol+1
-	sta @symbol1+1
-	lda @postproc
-	sta @postproc1
+	ldx #$04
+:	lda @kind,x
+	sta @kind1,x
+	dex
+	bpl :-
 	; NOTE: if val1 carries post-processing (e.g. "<label + 3"), it is
 	; NOT applied here: the full 16-bit addend takes part in the
 	; arithmetic and the marker (still in the shared @postproc) is
@@ -776,7 +775,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	beq @frelational
 	lda @kind2
 	cmp #VAL_FLOAT
-	jne @int_op
+	bne @int_op
 
 @frelational:
 	jsr @promote
@@ -819,15 +818,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 
 @fmath:	jsr fp::binop
 	bcs @err
-	ldx #FP_SIZE-1
-:	lda fp::val,x
-	sta fbuff,x
-	dex
-	bpl :-
-	lda #VAL_FLOAT
-	sta @kind
-	ldxy #$0000		; integer half of a float operand is unused
-	jmp @pushval
+	jmp @function_result
 .endif
 
 @int_op:
@@ -841,8 +832,6 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	cmp #FP_GE+1
 	jcc @relational
 @chkadd:
-	lda @operator
-
 	cmp #'+'
 	bne @chksub
 
@@ -1017,16 +1006,14 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 .endif
 
 	ldx @sp
-	lda @operands+2,x	; get "kind"
-	sta @kind
-	lda @operands+3,x	; get segment ID (for kind==RELOCATE)
-	sta @segment
-	lda @operands+4,x	; get symbol ID (for kind==RELOCATE)
-	sta @symbol
-	lda @operands+5,x	; get symbol ID (for kind==RELOCATE)
-	sta @symbol+1
-	lda @operands+6,x	; get post processing
-	sta @postproc
+	ldy #$00
+:	lda @operands+2,x
+	sta @kind,y
+	inx
+	iny
+	cpy #$05
+	bcc :-
+	ldx @sp
 	lda @operands+7,x
 	sta @negative
 	lda @operands+8,x
@@ -1051,8 +1038,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	cmp #VAL_ABS
 	bne @add_a_abs_b_rel
 
-	; A=ABS, B=ABS, no need to worry about segment/symbol
-	sta @kind	; set @kind to ABS
+	; A=ABS, B=ABS keeps the absolute kind from the last pop.
 	RETURN_OK
 
 @add_a_abs_b_rel:
@@ -1079,14 +1065,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	sec
 	rts
 
-@add_a_rel_b_abs:
-	; A=REL, B=ABS, use a's symbol and segment
-	lda @segment1
-	sta @segment
-	lda @symbol1
-	sta @symbol
-	lda @symbol1+1
-	sta @symbol+1
+; A=REL, B=ABS keeps the metadata from the last pop.
 :	RETURN_OK
 
 ;-------------------------------------------------------------------------------
@@ -1106,35 +1085,23 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	sec
 	rts			; return err
 
-:	lda #VAL_ABS
-	sta @kind
-	RETURN_OK
+:	RETURN_OK
 
 @sub_a_rel:
 	lda @kind2
 	cmp #VAL_ABS
 	bne @sub_a_rel_b_rel
 
-	; A=REL, B=ABS, result is REL with A's symbol/segment
-	; (the shared vars already hold A's segment/symbol from the last pop;
-	; .A holds @kind2 (VAL_ABS) here, so the kind must be set explicitly)
-	lda @kind1
-	sta @kind		; kind = REL
-	lda @segment1
-	sta @segment
-	lda @symbol1
-	sta @symbol
-	lda @symbol1+1
-	sta @symbol+1
+	; A=REL, B=ABS keeps the left operand's kind, symbol and segment.
 	RETURN_OK
 
 @sub_a_rel_b_rel:
 	lda @kind1
 	cmp #VAL_REL
-	jne @bad_difference
+	bne @bad_difference
 	lda @kind2
 	cmp #VAL_REL
-	jne @bad_difference
+	bne @bad_difference
 	; a post-processed ('<'/'>') value cannot take part in a symbol
 	; difference
 	lda @postproc
@@ -1211,7 +1178,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @unresolved_difference:
 	lda zp::pass
 	cmp #$01
-	jne @bad_difference
+	bne @bad_difference
 	lda #VAL_ABS
 	sta @kind	; pass 1 forward reference; revalidate on pass 2
 	RETURN_OK
@@ -1319,6 +1286,22 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @demote_ret:
 	rts
 
+;*******************************************************************************
+; LOAD FLOAT
+; Copies the current packed operand to the floating-point accumulator buffer.
+; IN:
+;   - fbuff: the packed operand
+; OUT:
+;   - fp::val: the packed operand
+;   - .X: $ff
+@load_float:
+	ldx #FP_SIZE-1
+:	lda fbuff,x
+	sta fp::val,x
+	dex
+	bpl :-
+	rts
+
 ;------------------------------------------------------------------------------
 ; FLOAT TO INT
 ; Coerces the float in fbuff to a 16-bit integer.
@@ -1326,11 +1309,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 ;   - .XY: the integer value
 ;   - .C:  set if the value is not an integer in 0..65535
 @float_to_int:
-	ldx #FP_SIZE-1
-:	lda fbuff,x
-	sta fp::val,x
-	dex
-	bpl :-
+	jsr @load_float
 	jmp fp::toint
 
 ;-------------------------------------------------------------------------------
@@ -1377,11 +1356,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	rts
 
 @fr_keep:
-	ldx #FP_SIZE-1
-:	lda fbuff,x
-	sta fp::val,x
-	dex
-	bpl :-
+	jsr @load_float
 
 @fr_publish:
 	; copy to buffer expr::floatval in shared RAM
@@ -1401,6 +1376,95 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @fr_err:
 	RETURN_ERR ERR_INVALID_EXPRESSION
 .endif
+.endproc
+
+;*******************************************************************************
+; VERIFY RPN
+; Checks operand counts and operators without resolving symbolic values.
+; IN:
+;   - expr::rpnlist: the parsed expression
+; OUT:
+;   - .A: nonzero if a symbol or current-PC operand needs deferred evaluation
+;         error code on failure
+;   - .Z: set for a valid literal-only expression
+;   - .C: set on malformed expression
+.proc verify_rpn
+@symbolic=zp::expr+6
+@index=zp::expr+7
+	ldx #$00
+	ldy #$00		; operand stack depth
+	stx @symbolic
+@next:	lda __expr_rpnlist,x
+	bmi @end
+	inx
+	cmp #TOK_UNARY_OP
+	beq @unary
+	cmp #TOK_BINARY_OP
+	beq @binary
+
+	iny			; push an operand
+	cmp #TOK_PC
+	beq @pc
+	cmp #TOK_VALUE
+	bcs @value		; integer or float literal
+@pc:	inc @symbolic
+	cmp #TOK_PC
+	beq @next
+@value:	inx
+	inx
+	bne @next
+
+@binary:
+	dey			; binary operators consume one extra operand
+	bmi @missing
+	lda __expr_rpnlist,x
+	cmp #FP_EQ
+	bcc @arithmetic
+	cmp #FP_GE+$01
+	bcc @operator
+
+@arithmetic:
+	stx @index
+	ldx #$06
+@match:	cmp ::isoperator::opchars,x
+	beq @matched
+	dex
+	bpl @match
+	bmi @invalid
+@matched:
+	ldx @index
+	bne @operator
+
+@unary:
+	lda __expr_rpnlist,x
+	cmp #'<'
+	beq @operator
+	cmp #'>'
+	beq @operator
+	cmp #FP_NEG
+	bcc @invalid
+.if FP_SUPPORTED
+	cmp #FP_EXP+$01
+.else
+	cmp #FP_POS+$01
+.endif
+	bcs @invalid
+
+@operator:
+	cpy #$01		; a unary operand, or the binary operator's left side
+	bcc @missing
+	inx
+	bne @next
+
+@end:	cpy #$01
+	bne @invalid
+	lda @symbolic
+	clc
+	rts
+@missing:
+	RETURN_ERR ERR_VALUE_EXPECTED
+@invalid:
+	RETURN_ERR ERR_INVALID_EXPRESSION
 .endproc
 
 ;*******************************************************************************
@@ -1660,13 +1724,14 @@ __expr_float_format:
 
 @l0:	ldy #$00
 	lda (zp::line),y
-	jsr is_whitespace
+	jsr is_whitespace	; eat whitespace
 	bne :+
 
+	; check whitespace behavior, finish if configured as terminator
 	lda end_on_whitespace
 	jne @done
 	jsr inc_line
-	bne @l0
+	bne @l0		; branch always
 
 :	lda (zp::line),y
 	jsr @isterminator
@@ -1717,7 +1782,7 @@ __expr_float_format:
 	beq @prefix
 .if FP_SUPPORTED
 	cmp #'.'
-	jeq @getoperand		; leading-dot literal is unambiguous here
+	beq @getoperand		; leading-dot literal is unambiguous here
 .endif
 	cmp #'-'
 	bne :+
@@ -1782,6 +1847,8 @@ __expr_float_format:
 	jmp @l0
 
 @getoperand:
+	; when checking a macro body line, accept .isimm(), .present() and
+	; .value() as a dummy value
 	lda zp::verify
 	beq @ordinary_operand
 	ldy #$00
@@ -1791,22 +1858,37 @@ __expr_float_format:
 
 	CALL FINAL_BANK_MACROS, mac::verify_property
 	bcs @ordinary_operand
-	cmp #$04
-	jcs @err
+	cmp #$04		; .ident and .text are not values
+	bcs @err
 
 	CALL FINAL_BANK_MACROS, mac::verify_name
-	jcs @ret
+	bcs @ret
 
-	ldxy #$0000
-	lda #TOK_VALUE
+	ldxy #SYM_UNRESOLVED
+	lda #TOK_SYMBOL
 	jmp @operand
 
 @ordinary_operand:
+	jsr lex::peek
+	bcs @ret
+	cmp #LEX_ARG
+	beq @argument
+	cmp #LEX_IMMARG
+	bne @function
+
+@argument:			; macro parameter: append its compiled expression
+	jsr splice
+	bcs @ret
+	lda #$00
+	sta @may_be_unary
+	jmp @l0
+
+@function:
 .if FP_SUPPORTED
 	jsr get_function
 	bcs :+
 	jsr @pushop
-	jcs @ret
+	bcs @ret
 	jmp @l0			; the following '(' opens the function argument
 :
 .endif
@@ -1922,7 +2004,7 @@ __expr_float_format:
 @rpnfull_pla:
 	pla			; clean up saved token/operator
 @rpnfull:
-	lda #ERR_LINE_TOO_LONG
+	lda #ERR_EXPRESSION_TOO_COMPLEX
 	sec
 	rts
 
@@ -1992,20 +2074,133 @@ __expr_float_format:
 .endproc
 
 ;*******************************************************************************
+; SPLICE
+; Appends a macro argument's compiled expression to the RPN list as a single
+; operand.
+; IN:
+;  - zp::line: an argument placeholder in the source view
+; OUT:
+;  - zp::line: updated to point past the placeholder
+;  - .C:       set on error
+.proc splice
+	lda zp::line
+	sec
+	sbc #<__mem_asmbuffer
+	tax
+	jsr lex::value_at
+	bcs @ret
+.if FP_SUPPORTED
+	lda fliteralsz
+.else
+	lda #$00
+.endif
+	CALL FINAL_BANK_MACROS, mac::splice_arg
+	bcs @ret
+.if FP_SUPPORTED
+	lda mac::argrecord	; size of the argument's float literals
+	beq @done
+	clc
+	adc fliteralsz
+	cmp #MAX_OPERANDS*FP_SIZE+1
+	bcs @full
+	ldy #$00
+	ldx fliteralsz
+:	lda mac::argrecord+1,y
+	sta fliterals,x
+	inx
+	iny
+	cpy mac::argrecord
+	bne :-
+	stx fliteralsz
+.endif
+@done:	jsr inc_line
+	clc
+	rts
+.if FP_SUPPORTED
+@full:	lda #ERR_EXPRESSION_TOO_COMPLEX
+	sec
+.endif
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; COMPILE
+; Parses a macro argument into a record that SPLICE can append to later
+; expressions. The record is the RPN size, the RPN tokens, the size of the
+; float literals, then the float literals.
+; '*' becomes a symbol for the address of the invocation.
+; IN:
+;  - zp::line: the expression to parse
+;  - .XY:      where to write the record
+; OUT:
+;  - zp::line: updated to point past the expression
+;  - .C:       set on error
+.export __expr_compile
+.proc __expr_compile
+@dst=zp::expr+6
+	lda #$01
+	sta compiling
+	txa
+	pha
+	tya
+	pha
+
+	jsr __expr_parse
+	tax
+	pla
+	sta @dst+1
+	pla
+	sta @dst
+	lda #$00
+	sta compiling
+	txa
+	bcs @ret
+	ldy #$00
+	lda __expr_rpnlistlen
+	sta (@dst),y
+	tax
+	beq @rpndone
+:	lda __expr_rpnlist,y
+	iny
+	sta (@dst),y
+	dex
+	bne :-
+
+@rpndone:
+	iny
+.if FP_SUPPORTED
+	lda fliteralsz
+	sta (@dst),y
+	beq @ok
+:	lda fliterals,x
+	iny
+	sta (@dst),y
+	inx
+	cpx fliteralsz
+	bne :-
+.else
+	lda #$00
+	sta (@dst),y
+.endif
+@ok:	clc
+@ret:	rts
+.endproc
+
+;*******************************************************************************
 ; GET COMPARISON
 ; Recognize binary relations. Consume only the first byte of two-byte tokens;
 ; the parser's usual inc_line consumes the final byte.
 .proc get_comparison
-	; Non-relational operators need no lexical lookahead.
+	; only these characters can begin a comparison
 	cmp #'<'
-	beq @lex
+	beq @peek
 	cmp #'>'
-	beq @lex
+	beq @peek
 	cmp #'='
-	beq @lex
+	beq @peek
 	cmp #'!'
 	bne @no
-@lex:
+@peek:
 	jsr lex::peek
 	bcs @ret
 	cmp #'<'
@@ -2017,7 +2212,7 @@ __expr_float_format:
 	cmp #LEX_GE+1
 	bcs @no
 	sec
-	sbc #LEX_EQ
+	sbc #LEX_EQ		; ==, !=, <= or >=
 	tax
 	lda @operators,x
 	pha
@@ -2106,7 +2301,8 @@ fnames:
 ; Reads the given label and returns the address of it if there
 ; is one
 ; IN:
-;  - zp::line: label spelling; .X: lexical span length
+;  - zp::line: the label to get the address of
+;  - .X:       the length of the label
 ; OUT:
 ;  - zp::line: updated to point past the label parsed
 ;  - .C        is set if no label is found
@@ -2116,15 +2312,17 @@ fnames:
 @id=zp::expr
 @mode=r0
 	txa
-	pha			; retain the lexical span across symbol lookup
+	pha			; save the label's length
 	ldxy zp::line
 	CALLMAIN lbl::isvalid 	; if verifying, let this pass if label is valid
 	bcs @done
 
-	; if we are only verifying (e.g. in pass 1 of assembly), label
-	; ID is not final, proceed with dummy id
+	; Syntax checks validate spelling without consulting assembly-time values.
+	; Unresolved pass-1 names use the same placeholder ID.
 	ldxy #SYM_UNRESOLVED
 	stxy @id
+	lda __expr_syntax_only
+	bne @dummy
 
 @get_id:
 	; if not verifying (e.g. in pass 2), label ID is final; try to get it
@@ -2156,7 +2354,7 @@ fnames:
 	clc		; ok
 	rts
 @done:	tax
-	pla			; discard span, preserving the error and carry
+	pla			; discard the saved length
 	txa
 	rts
 .endproc
@@ -2173,43 +2371,16 @@ fnames:
 ;   - .C:  set if no operand was able to be parsed
 .proc get_operand
 @lbl=zp::expr
-	ldy #$00
-	lda (zp::line),y
-	cmp #'?'
-	bne @ordinary
-	lda mac::depth
-	beq @invalid_atom
-	jsr inc_line
-	jsr get_val
-	bcs @atomret
-	cmpw #SYM_UNRESOLVED
-	beq @atomabs
-	stxy @lbl
-	cpx lbl::num
-	tya
-	sbc lbl::num+1
-	bcs @invalid_atom
-	CALLMAIN lbl::addrmode
-	ldxy @lbl
-	jmp @resolved
-@atomabs:
-	jmp @abs
-@invalid_atom:
-	lda #ERR_INVALID_MACRO_ARGS
-	sec
-@atomret:
-	rts
-@ordinary:
 	jsr lex::peek
-	bcs @atomret
-	cmp #LEX_INTEGER
+	jcs @ret
+	cmp #LEX_INTEGER	; a captured .REP iterator value?
 	bne @lexical
 	lda zp::line
 	sec
 	sbc #<__mem_asmbuffer
 	tax
 	jsr lex::value_at
-	bcs @atomret
+	jcs @ret
 	jsr inc_line
 	lda #TOK_VALUE
 	RETURN_OK
@@ -2246,7 +2417,7 @@ fnames:
 	RETURN_OK
 
 @poolfull:
-	RETURN_ERR ERR_LINE_TOO_LONG
+	RETURN_ERR ERR_EXPRESSION_TOO_COMPLEX
 
 @notfloat:
 .endif
@@ -2259,8 +2430,7 @@ fnames:
 	cmp #LEX_NUMBER
 	bne @badvalue
 
-	; The lexer already classified every digit. Check only the boundary;
-	; conversion below checks range, so no second validation scan is needed.
+	; the number must end at a separator, and '$' alone is not a number
 	txa
 	tay
 	lda (zp::line),y
@@ -2277,8 +2447,18 @@ fnames:
 
 @star:
 	jsr inc_line		; move past the '*'
+	lda compiling
+	bne @invocation
 	lda #TOK_PC		; if '*' just return the token for current PC
 	RETURN_OK
+
+@invocation:
+	CALL FINAL_BANK_MACROS, mac::bind_pc
+	bcs @ret
+	stxy @lbl
+	CALLMAIN lbl::addrmode
+	ldxy @lbl
+	jmp @resolved
 
 @value:	jsr get_val
 	bcs @ret
@@ -2325,7 +2505,7 @@ fnames:
 	pla			; cleanup saved mode
 	lda fliteralsz
 	cmp #MAX_OPERANDS*FP_SIZE
-	bcs @poolfull
+	jcs @poolfull
 	CALLMAIN lbl::getaddr	; .XY = index into fconsts
 	jsr get_const
 	bcs @ret
@@ -2500,44 +2680,33 @@ fnames:
 ;  - .A: the character to test
 ; OUT:
 ;  - .Z: set if the char in .A is an operator ('+', '-', etc.)
+;  - .AXY: unchanged
 .proc isoperator
 @xsave=zp::util+2
-	cmp #K_PIPE		; ASCII |; ca65 maps the literal to PETSCII $dd
-	beq @yes
-	; sanity check that operator is in range of operator characters
 	cmp #'!'
 	bcc @no
-	cmp #'^'+1
-	bcs @no
-	stx @xsave
-	tax
-	lda @lut-'!',x
-	php
-	txa
+	cmp #'^'+$01
+	bcc @ascii
+	cmp #K_PIPE
+	rts
+@ascii:	cmp #'0'
+	bcc @scan
+	cmp #'<'
+	bcc @no			; digits and the intervening punctuation
+@scan:	stx @xsave
+	ldx #numchars-$01
+@next:	cmp opchars,x
+	beq @found
+	dex
+	bpl @next
+@found:	php
 	ldx @xsave
 	plp
-	rts
-
-@no:	cmp #'!'		; out of range: .Z clear, even for NUL
-@yes:
-	rts
-
-;-------------------------------------------------------------------------------
-; lookup table for operator test; 0=operator
-@lut:
-.repeat '^'-'!'+1, i
-.if (i+'!' = '(') || (i+'!' = ')') || (i+'!' = '[') || (i+'!' = ']')
-	.byte 0
-.elseif (i+'!' = '+') || (i+'!' = '-') || (i+'!' = '*') || (i+'!' = '/')
-	.byte 0
-.elseif (i+'!' = '^') || (i+'!' = '&')
-	.byte 0
-.elseif (i+'!' = '<') || (i+'!' = '>') || (i+'!' = '=') || (i+'!' = '!')
-	.byte 0
-.else
-	.byte 1
-.endif
-.endrepeat
+@no:	rts
+; The first seven entries are the binary arithmetic operators for verify_rpn.
+opchars:	.byte '+', '-', '*', '/', '&', '^', K_PIPE
+	.byte '!', '(', ')', '<', '=', '>', '[', ']'
+numchars=*-opchars
 .endproc
 
 ;*******************************************************************************

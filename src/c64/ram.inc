@@ -392,9 +392,15 @@ CUR_BANK .set bank
 
 ;*******************************************************************************
 ; LOADBLK8
-; Loads a known-length record from the current data bank into shared memory.
-; IN: src zeropage pointer, dst absolute address, count byte in memory (1..255)
-; OUT: .Y count; .A/.P volatile, .X preserved
+; Copies count bytes from the current data bank to shared memory.
+; IN:
+;  - src:   zeropage pointer to the bytes to copy
+;  - dst:   address to copy to
+;  - count: address of the number of bytes to copy (1-255)
+; OUT:
+;  - .Y: the number of bytes copied
+; CLOBBERS:
+;  - .A
 .macro LOADBLK8 src, dst, count
 	lda count
 	sta reu::txlen
@@ -414,9 +420,15 @@ CUR_BANK .set bank
 
 ;*******************************************************************************
 ; STOREBLK8
-; Stores a known-length record from shared memory into the current data bank.
-; IN: src absolute address, dst zeropage pointer, count byte in memory (1..255)
-; OUT: .Y count; .A/.P volatile, .X preserved
+; Copies count bytes from shared memory to the current data bank.
+; IN:
+;  - src:   address to copy from
+;  - dst:   zeropage pointer to copy to
+;  - count: address of the number of bytes to copy (1-255)
+; OUT:
+;  - .Y: the number of bytes copied
+; CLOBBERS:
+;  - .A
 .macro STOREBLK8 src, dst, count
 	lda count
 	sta reu::txlen

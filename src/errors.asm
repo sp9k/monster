@@ -354,6 +354,9 @@ err_sid_format:
 err_sid_address:
 ; sid address out of range
 .byte $9a,$44,$d8,$44,$24,$85,$9c,$db,$7d,$54,$db,$c6,$dc,$81,$71,$c5,$00
+err_expression_too_complex:
+; expression too complex
+.byte $2e,$10,$91,$53,$9a,$4f,$76,$d4,$7b,$db,$1b,$cd,$83,$5,$c0,$0
 
 ;*******************************************************************************
 .linecont +
@@ -442,7 +445,8 @@ err_sid_address:
 	err_invalid_alignment, \
 	err_watch_exists, \
 	err_sid_format, \
-	err_sid_address
+	err_sid_address, \
+	err_expression_too_complex
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

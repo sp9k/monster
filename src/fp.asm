@@ -12,8 +12,6 @@ FP_IMPL = 1
 
 .include "errors.inc"
 .include "fp.inc"
-.include "lexer.inc"
-.include "ram.inc"
 .include "macros.inc"
 .include "zeropage.inc"
 
@@ -156,36 +154,10 @@ strsave: .res 32		; FOUT uses the bottom of the hardware stack page
 .segment "FP"
 
 ;*******************************************************************************
-; IS FLOAT
-; Checks whether the text at zp::line begins with a float literal.  A float is
-; a run of digits followed by either a '.' with at least one digit after it, or
-; an 'e'/'E' exponent. A dot within a symbol name is an object prefix.
-; Symbol names cannot begin with a digit, so "3.14" is unambiguous.
-; A leading-dot fraction such as ".5" is also accepted.
-; IN:
-;   - zp::line: the text to test
-; OUT:
-;   - .C: clear if the text is a float literal
-.export __fp_isfloat
-.proc __fp_isfloat
-.if FP_SUPPORTED
-	jsr lex::peek
-	bcs @ret
-	cmp #LEX_FLOAT
-	bne @no
-	clc
-	rts
-@no:
-.endif
-	sec
-@ret:	rts
-.endproc
-
-;*******************************************************************************
 ; PARSE
 ; Parses the float literal at zp::line and leaves the packed result in fp::val.
 ; IN:
-;   - zp::line: the literal to parse (as accepted by fp::isfloat)
+;   - zp::line: the literal to parse (a LEX_FLOAT token)
 ; OUT:
 ;   - fp::val:  the packed value
 ;   - zp::line: updated to point past the literal
@@ -216,7 +188,7 @@ strsave: .res 32		; FOUT uses the bottom of the hardware stack page
 	jsr isdigit
 	bcs @exp
 	jsr adddigit
-	jcs @toolong
+	bcs @toolong
 	inc nfrac
 	iny
 	bne @frac
@@ -751,7 +723,7 @@ c_65536: .byte $91,$00,$00,$00,$00	; 65536.0
 	; A packed CBM zero is defined by its exponent alone; the ROM can leave
 	; unused mantissa bytes behind. Do not compare those bytes with INT(0).
 	lda __fp_val
-	jeq @zero
+	beq @zero
 	lda #<__fp_val
 	ldy #>__fp_val
 	jsr FP_MOVFM		; FAC1 = val

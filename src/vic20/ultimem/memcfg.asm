@@ -372,8 +372,14 @@ rowbuf = mem::spare
 	cmp #MC_APPLY
 	bcs @show		; the apply row has no checkbox to fill in
 
-	; check or clear the block's checkbox
+	; Fill the block number and address in the shared BLK row template.
 	tax
+	beq @checkbox		; RAM123 has its own row
+	lda blocknums-$01,x
+	sta rowbuf+MC_TEXT_COL+7
+	lda blockaddrs-$01,x
+	sta rowbuf+MC_TEXT_COL+16
+@checkbox:
 	lda blockbits,x
 	and __memcfg_blocks
 	beq @off
@@ -475,18 +481,17 @@ rowbuf = mem::spare
 ; kept in-bank: read directly by banked code
 blockbits: .byte MEMCFG_RAM123, MEMCFG_BLK1, MEMCFG_BLK2, MEMCFG_BLK3, MEMCFG_BLK5
 
-rowtextslo: .lobytes ram123row, blk1row, blk2row, blk3row, blk5row, applyrow
-rowtextshi: .hibytes ram123row, blk1row, blk2row, blk3row, blk5row, applyrow
+rowtextslo: .lobytes ram123row, blkrow, blkrow, blkrow, blkrow, applyrow
+rowtextshi: .hibytes ram123row, blkrow, blkrow, blkrow, blkrow, applyrow
 
 title:     .byte "memory config",0
 
 ; the block rows' checkboxes are patched by drawrow, so they are all laid out
 ; on the same MC_TEXT_LEN-wide grid; the apply row is just a label
 ram123row: .byte "[ ] ram123  3k $0400",0
-blk1row:   .byte "[ ] blk1    8k $2000",0
-blk2row:   .byte "[ ] blk2    8k $4000",0
-blk3row:   .byte "[ ] blk3    8k $6000",0
-blk5row:   .byte "[ ] blk5    8k $a000",0
+blkrow:   .byte "[ ] blk1    8k $2000",0
+blocknums: .byte "1235"
+blockaddrs: .byte "246a"
 applyrow:  .byte "apply",0
 
-.assert (blk1row-ram123row)-1 = MC_TEXT_LEN, error, "block row is not MC_TEXT_LEN wide"
+.assert (blkrow-ram123row)-1 = MC_TEXT_LEN, error, "block row is not MC_TEXT_LEN wide"

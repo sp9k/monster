@@ -7,7 +7,6 @@
 .import __ctx_open
 .import __ctx_push
 .import __ctx_pop
-.import __ctx_getline
 .import __ctx_getrecord
 .import __ctx_rewind
 .import __ctx_write
@@ -22,6 +21,7 @@ MAX_PARAMS = 4
 
 CTX_REPEAT = 1
 CTX_MACRO  = 2
+CTX_PARENT_OPEN = $80	; set in a context's type if its parent was open
 
 .scope repctx
 	base      = 0
@@ -30,7 +30,7 @@ CTX_MACRO  = 2
 	cur       = 6 	; ptr to current location being read in (lines)
 	params    = 8	; 16 bytes
 	numparams = 10  ; 1 byte
-	lines     = 11	; rest of buffer ($200-10)
+	type      = 11	; CTX_REPEAT or CTX_MACRO (and CTX_PARENT_OPEN)
 .endscope
 
 .scope ctx
@@ -43,7 +43,6 @@ CTX_MACRO  = 2
 	push         = __ctx_push
 	open         = __ctx_open
 	pop          = __ctx_pop
-	getline      = __ctx_getline
 	getrecord    = __ctx_getrecord
 	write        = __ctx_write
 	write_parent = __ctx_write_parent

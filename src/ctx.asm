@@ -4,8 +4,8 @@
 ; The "context" is a special buffer used by the .MAC and .REP directives to
 ; store lines of data, which is required to complete the assembly of these
 ; directives when their corresponding .ENDMAC or .ENDREP directive is found.
-; Bodies contain length-prefixed lexical records with source line numbers.
-; See context_tokens.inc for the internal encoding.
+; Each line is stored as a record of tokens along with its source line number
+; (see context_tokens.inc).
 ;*******************************************************************************
 
 .include "asm.inc"
@@ -17,17 +17,14 @@
 .include "util.inc"
 .include "target.inc"
 .include "zeropage.inc"
-.include "lexer.inc"
 .include "context_tokens.inc"
 .import __ctx_encode
-.macpack longbranch
 
 ;*******************************************************************************
 .exportzp __ctx_numlines
 .export __ctx_push
 .export __ctx_rewind
 .export __ctx_pop
-.export __ctx_getline
 .export __ctx_getrecord
 .export __ctx_getparams
 .export __ctx_write_parent
@@ -44,6 +41,7 @@ CONTEXT_SIZE      = $1000	; size of buffer per context
 PARAM_LENGTH      = 16		; size of param (stored after the context data)
 MAX_PARAMS        = 4		; max params for a context
 MAX_CONTEXTS      = 4		; max nesting depth for contexts
+CTX_PARENT_OPEN   = $80		; parent was open (see ctx.inc)
 SIZEOF_CTX_HEADER = 13
 
 ;*******************************************************************************
@@ -110,7 +108,6 @@ __ctx_numparams = numparams
 __ctx_push:         JUMP FINAL_BANK_CTX, push
 __ctx_rewind:       JUMP FINAL_BANK_CTX, rewind
 __ctx_pop:          JUMP FINAL_BANK_CTX, pop
-__ctx_getline:      JUMP FINAL_BANK_CTX, getline
 __ctx_getrecord:    JUMP FINAL_BANK_CTX, getrecord
 __ctx_getparams:    JUMP FINAL_BANK_CTX, getparams
 __ctx_write_parent: JUMP FINAL_BANK_CTX, write_parent
@@ -164,7 +161,10 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	sta parent
 
 @init:	pla			; restore type
-	sta type		; set the type of the new context
+	ldx __ctx_open
+	beq :+
+	ora #CTX_PARENT_OPEN	; remember the parent was capturing lines
+:	sta type		; set the type of the new context
 	inc __ctx_active
 	inc __ctx_open		; flag that a context is now open
 
@@ -183,7 +183,7 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	sta mem::ctxbuffer
 
 	jsr rewind
-	; initialize an empty body (zero record size)
+	; initialize buffer to 0 (end of buffer)
 	lda #$00
 	tay
 	STOREB_Y cur
@@ -214,13 +214,16 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 ; POP
 ; Restores the last PUSH'ed context
 ; OUT:
-;  -.C: set if there are no contexts to pop
+;  - .C: set if there are no contexts to pop
 .proc pop
 	lda __ctx_active
 	bne :+
 	RETURN_ERR ERR_STACK_UNDERFLOW
 
-:	lda ctx
+:	lda type
+	and #CTX_PARENT_OPEN
+	pha			; save the parent's open state
+	lda ctx
 	sec
 	sbc #<CONTEXT_SIZE
 	sta ctx
@@ -247,8 +250,8 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	pla
 	sta cur
 
-	lda #$01
-	sta __ctx_open	; mark context as open (again)
+	pla
+	sta __ctx_open	; restore the parent's open state
 
 	dec __ctx_active
 @done:  lda __ctx_active
@@ -256,28 +259,13 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 .endproc
 
 ;*******************************************************************************
-; GETLINE
-; Returns a line from the active context.
-; OUT:
-;  - .XY:            the address of the line returned
-;  - .A:             the # of bytes read (0 if EOF)
-;  - .C:             set on error
-;  - mem::asmbuffer: the line read from the context
-;  - asm::linenum:   line number that the line corresponds to
-.proc getline
-	jsr getrecord
-	bcs @ret
-	cmp #$00
-	beq @ret
-	JUMP LEX_BANK, lex::decode
-@ret:	rts
-.endproc
-
-;*******************************************************************************
 ; GET RECORD
-; Copies the next framed binary record to the shared token buffer.
-; IN: active context cursor
-; OUT: .A record size (zero at EOF), .XY token buffer; .C set on invalid bounds
+; Copies the next record in the active context to CTX_TOKEN_BUFFER
+; OUT:
+;  - .A:            the size of the record (0 if EOF)
+;  - .XY:           the address of the record (CTX_TOKEN_BUFFER)
+;  - .C:            set if the record is invalid
+;  - asm::linenum:  line number that the record corresponds to
 .proc getrecord
 @size=r0
 @next=r2
@@ -313,7 +301,7 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	ldxy #CTX_TOKEN_BUFFER
 	clc
 	rts
-@bad:	RETURN_ERR ERR_CTX_FULL
+@bad:	RETURN_ERR ERR_SYNTAX_ERROR	; the record is malformed
 .endproc
 
 ;*******************************************************************************
@@ -387,9 +375,13 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 
 ;*******************************************************************************
 ; WRITE PARENT
-; Captures a reduced binary line in the parent context.
-; IN: mem::asmbuffer source view; current iterator and source line
-; OUT: .C set on encoding failure or full parent; parent cursor advanced on success
+; Writes the line in mem::asmbuffer to the parent of the current context.
+; Uses of the active context's iterator are replaced with its current value.
+; IN:
+;  - mem::asmbuffer: line to write
+;  - asm::linenum:   line number that the line maps to
+; OUT:
+;  - .C: set on error
 .proc write_parent
 @dst=r0
 @limit=r2
@@ -400,7 +392,8 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	lda numparams
 	jsr __ctx_encode
 	bcs @ret
-	; The parent's saved parameter pointer is its exclusive allocation limit.
+
+	; the parent's saved params pointer is the end of its free space
 	lda ctx
 	sta @dst
 	lda ctx+1
@@ -424,9 +417,12 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 
 ;*******************************************************************************
 ; WRITE
-; Captures a lexical record in the active context.
-; IN: .XY source; asm::linenum source location
-; OUT: .C set on encoding failure or full context; cursor advanced on success
+; Writes the given line to the context at its current position
+; IN:
+;  - .XY:          line data to write to the active context
+;  - asm::linenum: line number that the line maps to
+; OUT:
+;  - .C: set on error
 .proc write
 @dst=r0
 @limit=r2
@@ -446,18 +442,23 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 
 ;*******************************************************************************
 ; APPEND RECORD
-; Checks space before writing any bytes, including the end-of-body marker.
-; IN: r0 destination cursor, r2 exclusive limit; CTX_TOKEN_BUFFER record
-; OUT: r0 advanced, .C clear; .C set without writes when full
+; Writes the record in CTX_TOKEN_BUFFER and a terminating 0 to the given
+; address. Nothing is written if they don't fit
+; IN:
+;  - r0: the address to write the record to
+;  - r2: the end of the free space (exclusive)
+; OUT:
+;  - r0: the address after the record
+;  - .C: set if there wasn't room for the record
 .proc append_record
-@dest=r0
+@dst=r0
 @limit=r2
 @next=r4
-	lda @dest
+	lda @dst
 	clc
 	adc CTX_TOKEN_BUFFER
 	sta @next
-	lda @dest+1
+	lda @dst+1
 	adc #$00
 	sta @next+1
 	cmp @limit+1
@@ -467,11 +468,11 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	cmp @limit
 	bcs @full
 @copy:
-	STOREBLK8 CTX_TOKEN_BUFFER, @dest, CTX_TOKEN_BUFFER
+	STOREBLK8 CTX_TOKEN_BUFFER, @dst, CTX_TOKEN_BUFFER
 	lda #$00
-	STOREB_Y @dest
+	STOREB_Y @dst
 	ldxy @next
-	stxy @dest
+	stxy @dst
 	inc numlines
 	RETURN_OK
 @full:	RETURN_ERR ERR_CTX_FULL
@@ -496,7 +497,8 @@ BANKED_SEG "CTX", FINAL_BANK_CTX
 	RETURN_ERR ERR_NO_MATCHING_SCOPE
 
 :	; make sure the open context type matches the type we're closing
-	cmp type
+	eor type
+	and #$ff^CTX_PARENT_OPEN
 	beq :+
 	RETURN_ERR ERR_NO_MATCHING_SCOPE ; if scope types mismatch, return err
 

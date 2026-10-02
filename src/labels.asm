@@ -522,6 +522,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 .proc __label_namespace_open
 @path = temp
 	sta namespace_kind
+	; when checking a macro body line, accept .ident() as the name
 	lda zp::verify
 	beq @literal
 
@@ -532,7 +533,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	CALL FINAL_BANK_MACROS, mac::verify_property
 	jcs @bad
 
-	cmp #$04
+	cmp #$04		; .ident?
 	jne @bad
 	CALL FINAL_BANK_MACROS, mac::verify_name
 	jcs @ret
@@ -661,9 +662,13 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 	bne @done
 	lda mac::depth
 	beq :+
+	; a macro can't close a scope that was opened outside of it
 	CALL FINAL_BANK_MACROS, mac::namespace_floor
 	cmp namespace_depth
-	beq @mismatch
+	bne :+
+	tax
+	beq @empty		; no scope is open at all
+	bne @mismatch		; the open scope is outside of the macro
 
 :	lda namespace_depth
 	beq @empty
@@ -703,7 +708,7 @@ BANKED_SEG "LABELS", FINAL_BANK_SYMBOLS
 ; NAMESPACE UNWIND
 ; Restores the parent namespace after a macro expansion.
 ; IN:
-;   - .A namespace depth at macro entry (<= current depth)
+;   - .A: namespace depth at macro entry (<= current depth)
 ; OUT:
 ;   - namespace depth and active path restored
 .export __label_namespace_unwind

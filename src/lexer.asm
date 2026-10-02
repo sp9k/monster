@@ -1,11 +1,7 @@
 ;*******************************************************************************
-; LEXER
-; Reads lexical tokens from shared source without evaluating expressions.
-; The cursor is zp::line; each token is a kind and a byte span at that cursor.
-; Binary replay supplies cached spans and typed integer values for asmbuffer.
-; Every new source entry or assembly pass invalidates the previous view.
-; Syntax markers (#, parentheses, commas) remain separate from expression RPN.
-; This source reader does not bind names, capture contexts or select opcodes.
+; LEXER.ASM
+; This file contains the code to split a line of source into tokens.
+; Each token is a kind and the number of bytes it spans at zp::line.
 ;*******************************************************************************
 
 .include "config.inc"
@@ -26,46 +22,48 @@
 .segment "BSS_NOINIT"
 .endif
 .export __lex_cached
-__lex_cached: .byte $00
-; The upper spare page belongs to the active assembly source view. Nested
-; source entries invalidate it; record staging occupies the preceding page.
-token_kinds = mem::spare+$300
+__lex_cached: .byte $00	; $01: line came from decode, $80: it has values
+
+; token info for the line built by DECODE (indexed by offset in asmbuffer)
+; this shares a page with lbl::namebuffer, which is not used while a line
+; is being assembled
+token_kinds = mem::spare+$200
 token_spans = token_kinds+MAX_LINE_LEN+1
-token_lows = token_spans ; INTEGER always spans one byte, freeing its length slot
+token_lows = token_spans	; values are 1 byte long so they don't need a span
 token_highs = token_spans+MAX_LINE_LEN+1
 token_length = token_highs+MAX_LINE_LEN+1
-.assert token_length+1 <= mem::spare+$400, error, "token view exceeds spare page"
+.assert token_length+1 <= mem::spare+$300, error, "token info too big"
 
 BANKED_SEG "EXPR", FINAL_BANK_EXPR
 
 ;*******************************************************************************
 ; PEEK
-; Recognizes one token, including whitespace and comments. Names and numbers
-; retain their spelling; their validity and values are checked by consumers.
+; Returns the token at zp::line without moving past it.
+; If the line was built by DECODE, the token info saved for it is used.
 ; IN:
-;   - zp::line: points to 0-terminated source in shared memory
+;  - zp::line: 0-terminated source line
 ; OUT:
-;   - .A: kind (or error if .C set)
-;   - .X: span length
-;   - .Y  zero
-;   - .C: set on error
+;  - .A: the token kind (or error if .C set)
+;  - .X: the number of bytes in the token
+;  - .Y: 0
+;  - .C: set on error
 .export __lex_peek
 .proc __lex_peek
 	lda __lex_cached
-	beq source
+	beq @source
 	lda zp::line
 	sec
 	sbc #<mem::asmbuffer
 	tax
 	lda zp::line+1
 	sbc #>mem::asmbuffer
-	bne source
+	bne @source		; not in asmbuffer
 	cpx token_length
-	bcs source
+	bcs @source
 	lda token_kinds,x
-	beq source
+	beq @source		; not the start of a saved token
 	cmp #LEX_INTEGER
-	beq @integer_span
+	bcs @integer_span	; values are a 1-byte placeholder
 	pha
 	lda token_spans,x
 	tax
@@ -77,10 +75,10 @@ BANKED_SEG "EXPR", FINAL_BANK_EXPR
 	ldy #$00
 	clc
 	rts
-source:
+
+@source:
 	ldy #$00
 	lda (zp::line),y
-classify:
 	jeq @end
 	cmp #' '
 	beq @spaces
@@ -126,7 +124,7 @@ classify:
 @spaces:
 	ldx #LEX_SPACE
 @ws:	iny
-	jeq @long
+	beq @early_long
 	lda (zp::line),y
 	jsr whitespace
 	beq @ws
@@ -135,7 +133,7 @@ classify:
 @word:	ldx #LEX_WORD
 @wordnext:
 	iny
-	jeq @long
+	beq @early_long
 	lda (zp::line),y
 	jsr namechar
 	bcc @wordnext
@@ -144,7 +142,7 @@ classify:
 	cmp #':'
 	bne @span
 	iny
-	jeq @long
+	beq @early_long
 	lda (zp::line),y
 	cmp #':'
 	beq @wordnext
@@ -155,7 +153,7 @@ classify:
 	ldx #';'
 @commentnext:
 	iny
-	jeq @long
+	beq @early_long
 	lda (zp::line),y
 	bne @commentnext
 	beq @span
@@ -164,26 +162,30 @@ classify:
 	ldx #LEX_STRING
 @stringnext:
 	iny
-	jeq @long
+	beq @early_long
 	lda (zp::line),y
-	jeq @bad
+	beq @bad
 	cmp #'"'
 	bne @stringnext
 	iny
-	jeq @long
+	beq @early_long
 	bne @span
 
 @character:
 	ldy #$01
 	lda (zp::line),y
-	jeq @bad
+	beq @bad
 	iny
 	lda (zp::line),y
 	cmp #$27
-	jne @bad
+	bne @bad
 	iny
 	ldx #LEX_CHAR
 	bne @span
+
+; Nearby error exits keep the string/word scan branches short.
+@early_long:	RETURN_ERR ERR_LINE_TOO_LONG
+@bad:	RETURN_ERR ERR_UNEXPECTED_CHAR
 
 @end:	ldx #$00
 	clc
@@ -238,19 +240,19 @@ classify:
 @fractiondigits:
 	ldx #LEX_FLOAT
 	iny
-	jeq @long
+	beq @long
 	lda (zp::line),y
 	jsr digit
 	bcc @fractiondigits
 @exponent:
 	and #$df
 	cmp #$45
-	jne @span
-	; Only absorb an exponent when its optional sign is followed by a digit.
+	bne @span
+	; only treat 'E' as an exponent if a digit follows it (or its sign)
 	tya
 	pha
 	iny
-	jeq @long_pop
+	beq @long_pop
 	lda (zp::line),y
 	cmp #'+'
 	beq @sign
@@ -258,7 +260,7 @@ classify:
 	bne @expdigit
 @sign:
 	iny
-	jeq @long_pop
+	beq @long_pop
 	lda (zp::line),y
 @expdigit:
 	jsr digit
@@ -267,7 +269,7 @@ classify:
 	ldx #LEX_FLOAT
 @expnext:
 	iny
-	jeq @long
+	beq @long
 	lda (zp::line),y
 	jsr digit
 	bcc @expnext
@@ -310,14 +312,19 @@ classify:
 @long_pop:
 	pla
 @long:	RETURN_ERR ERR_LINE_TOO_LONG
-@bad:	RETURN_ERR ERR_UNEXPECTED_CHAR
 .endproc
 
 ;*******************************************************************************
 ; ADVANCE
-; Consumes a previously inspected span.
-; IN: zp::line cursor, .X span length
-; OUT: cursor advanced by .X; .A/.X preserved, .Y zero, .C clear
+; Moves zp::line past a token returned by PEEK.
+; IN:
+;  - .X:       the number of bytes to move
+;  - zp::line: the source line
+; OUT:
+;  - zp::line: moved forward by .X bytes
+;  - .A, .X:   preserved
+;  - .Y:       0
+;  - .C:       clear
 .export __lex_advance
 .proc __lex_advance
 	pha
@@ -334,30 +341,21 @@ classify:
 .endproc
 
 ;*******************************************************************************
-; NEXT
-; Returns and consumes one token. END has a zero-length span.
-; IN: zp::line cursor
-; OUT: same result as PEEK; cursor advanced on success, unchanged on error
-.export __lex_next
-.proc __lex_next
-	jsr __lex_peek
-	bcs @done
-	jsr __lex_advance
-@done:	rts
-.endproc
-
-;*******************************************************************************
 ; SIGNIFICANT
-; Skips assembler whitespace/control bytes and peeks at the next token.
-; IN: zp::line cursor
-; OUT: same result as PEEK; cursor at first non-whitespace token
-.export __lex_significant
-.proc __lex_significant
+; Skips whitespace and control bytes, then peeks at the next token.
+; IN:
+;  - zp::line: the source line
+; OUT:
+;  - .A, .X, .Y, .C: same as PEEK
+;  - .Z:             set if at the end of the line
+;  - zp::line:       moved to the first token that isn't whitespace
+.export __lex_eatws
+.proc __lex_eatws
 @controls:
 	ldy #$00
 	lda (zp::line),y
 	bpl @next
-	ldx #$01		; retain the source reader's high-bit control-byte handling
+	ldx #$01		; skip bytes with bit 7 set (like line::process_ws)
 	jsr __lex_advance
 	jmp @controls
 @next:
@@ -374,11 +372,16 @@ classify:
 
 ;*******************************************************************************
 ; INDIRECT
-; Checks whether the leading parenthesized expression is an indirect operand.
-; Parentheses and separators inside literals are opaque lexical tokens.
-; IN: zp::line operand, beginning with '('
-; OUT: .Z set if indirect; .C set on unbalanced parentheses or bad literals;
-;      cursor restored, .A $00 if indirect or $ff otherwise; r0 volatile
+; Checks if the operand at zp::line is indirect, e.g. "(addr)" or "(zp),y".
+; It is if the closing ')' is followed by a comma or the end of the operand.
+; IN:
+;  - zp::line: the operand (beginning with '(')
+; OUT:
+;  - .A: $00 if indirect, $ff if not
+;  - .Z: set if indirect
+;  - .C: set if the parentheses don't match or a token is bad
+; CLOBBERS:
+;  - r0
 .export __lex_indirect
 .proc __lex_indirect
 @depth=r0
@@ -410,7 +413,7 @@ classify:
 
 @closed:
 	jsr __lex_advance
-	jsr __lex_significant
+	jsr __lex_eatws
 	bcs @bad
 	cmp #LEX_END
 	beq @yes
@@ -441,22 +444,22 @@ classify:
 
 ;*******************************************************************************
 ; WHITESPACE
-; Tests if the given character is a whitespace char
+; Checks if the given character is whitespace
 ; IN:
-;   - .A: character to test
+;  - .A: the character to test
 ; OUT:
-;   - .Z set if whitespace
+;  - .Z: set if whitespace
 .proc whitespace
 	.include "inline/is_ws.asm"
 .endproc
 
 ;*******************************************************************************
 ; DIGIT
-; Tests if the given character is a decimal
+; Checks if the given character is a decimal digit
 ; IN:
-;   - .A: character to test
+;  - .A: the character to test
 ; OUT:
-;   - .C: clear if character is a decimal
+;  - .C: clear if the character is a digit
 .proc digit
 	cmp #$30
 	bcc @no
@@ -467,12 +470,12 @@ classify:
 .endproc
 
 ;*******************************************************************************
-; NAME CHARACTER
-; Tests if the given character is valid as a sybmol name
+; NAMECHAR
+; Checks if the given character is valid in a symbol name
 ; IN:
-;   - .A character to test
+;  - .A: the character to test
 ; OUT:
-;   - .C: clear for letters, '.', '@', '_'
+;  - .C: clear for letters, '.', '@', and '_'
 .proc namechar
 	cmp #'.'
 	beq @yes
@@ -500,9 +503,13 @@ classify:
 
 ;*******************************************************************************
 ; VALUE AT
-; Reads a captured integer at an offset in the current source view.
-; IN: .X byte offset in mem::asmbuffer
-; OUT: .XY integer, .C clear if present; .C set otherwise
+; Returns the value saved by DECODE for an INTEGER, ARG, or IMMARG token.
+; IN:
+;  - .X: offset of the token in mem::asmbuffer
+; OUT:
+;  - .A:  the token kind
+;  - .XY: the value (for ARG/IMMARG: .X=frame depth, .Y=argument index)
+;  - .C:  set if there is no value at the given offset
 .export __lex_value_at
 .proc __lex_value_at
 	lda __lex_cached
@@ -511,10 +518,12 @@ classify:
 	bcs @no
 	lda token_kinds,x
 	cmp #LEX_INTEGER
-	bne @no
+	bcc @no
+	pha
 	lda token_lows,x
 	ldy token_highs,x
 	tax
+	pla
 	clc
 	rts
 @no:	sec
@@ -523,10 +532,18 @@ classify:
 
 ;*******************************************************************************
 ; DECODE
-; Builds a source view and lexical metadata from a framed binary context line.
-; Integer placeholders carry their value in metadata, never in their spelling.
-; IN: CTX_TOKEN_BUFFER contains a complete record (size includes its header)
-; OUT: .A source length, .XY mem::asmbuffer, .C clear; .C set on invalid encoding
+; Rebuilds a line of source in mem::asmbuffer (and mac::source) from the
+; record in CTX_TOKEN_BUFFER (see context_tokens.inc).
+; Each value is written as a 1-byte placeholder ('0' or '?'); its value and
+; the kind of each token are saved for PEEK and VALUE AT.
+; IN:
+;  - CTX_TOKEN_BUFFER: the record to decode
+; OUT:
+;  - .A:  the length of the line (or error if .C set)
+;  - .XY: mem::asmbuffer
+;  - .C:  set if the record is bad or the line is too long
+; CLOBBERS:
+;  - r0-r4
 .export __lex_decode
 .proc __lex_decode
 @read=r0
@@ -552,6 +569,10 @@ classify:
 	stx @start
 	cmp #LEX_INTEGER
 	beq @integer
+	cmp #LEX_ARG
+	beq @argument
+	cmp #LEX_IMMARG
+	beq @argument
 	cmp #LEX_SPACE
 	jeq @space
 	cmp #LEX_EQ
@@ -573,7 +594,7 @@ classify:
 	lda #$00
 	sta @kind
 @copy:
-	; Check the entire spelling once, then copy without per-byte subcalls.
+	; make sure the whole spelling fits before copying it
 	lda @read
 	clc
 	adc @count
@@ -583,9 +604,9 @@ classify:
 	lda @write
 	clc
 	adc @count
-	bcs @copy_bad
+	jcs @long
 	cmp #MAX_LINE_LEN+1
-	bcs @copy_bad
+	jcs @long
 	ldx @read
 	ldy @write
 @bytes:
@@ -605,17 +626,23 @@ classify:
 @copy_bad:
 	jmp @bad
 @integer:
+	lda #'0'
+	bne @valued
+@argument:
+	lda #ARG_PLACEHOLDER
+@valued:
+	sta @count
 	lda #$80
 	sta __lex_cached
 	jsr @get
-	jcs @bad
+	bcs @bad
 	ldx @write
 	sta token_lows,x
 	jsr @get
-	jcs @bad
+	bcs @bad
 	ldx @write
 	sta token_highs,x
-	lda #'0'
+	lda @count
 	bne @one
 @space:
 	lda #' '
@@ -626,7 +653,7 @@ classify:
 	tax
 	lda @pairs,x
 	jsr @put
-	bcs @bad
+	bcs @long
 	lda #'='
 	bne @one
 @punctuation:
@@ -636,13 +663,13 @@ classify:
 	bcs @bad
 @one:
 	jsr @put
-	bcs @bad
+	bcs @long
 @span:
 	ldx @start
 	lda @kind
 	sta token_kinds,x
 	cmp #LEX_INTEGER
-	jeq @next
+	jcs @next		; values are stored where the span would be
 	lda @write
 	sec
 	sbc @start
@@ -665,10 +692,15 @@ classify:
 	ldxy #mem::asmbuffer
 	clc
 	rts
+@long:
+	lda #ERR_LINE_TOO_LONG	; e.g. local names or .IDENT made it longer
+	skw
 @bad:
-	lda #$00
-	sta __lex_cached
-	RETURN_ERR ERR_SYNTAX_ERROR
+	lda #ERR_SYNTAX_ERROR
+	ldx #$00
+	stx __lex_cached
+	sec
+	rts
 @get:
 	ldx @read
 	cpx CTX_TOKEN_BUFFER

@@ -1,5 +1,6 @@
 .import __expr_end_on_whitespace
 .import __expr_eval
+.import __expr_syntax_only
 .import __expr_floatval
 .import __expr_floatstr
 .import __expr_eval_bool
@@ -14,6 +15,7 @@
 .import __expr_eval_list
 .import __expr_kind
 .import __expr_parse
+.import __expr_compile
 .import __expr_postproc
 .import __expr_rpnlist
 .import __expr_rpnlistlen
@@ -32,27 +34,29 @@ POSTPROC_LSB  = 1
 POSTPROC_MSB  = 2
 
 .scope expr
-	end_on_ws  = __expr_end_on_whitespace
-	eval       = __expr_eval
-	floatval   = __expr_floatval
-	floatstr   = __expr_floatstr
-	eval_bool  = __expr_eval_bool
-	eval_float = __expr_eval_float
-	eval_keep  = __expr_eval_keep
-	fconst_add = __expr_fconst_add
-	fconst_clr = __expr_fconst_clr
-	fconst_get = __expr_fconst_get
+	end_on_ws    = __expr_end_on_whitespace
+	eval         = __expr_eval
+	syntax_only  = __expr_syntax_only
+	floatval     = __expr_floatval
+	floatstr     = __expr_floatstr
+	eval_bool    = __expr_eval_bool
+	eval_float   = __expr_eval_float
+	eval_keep    = __expr_eval_keep
+	fconst_add   = __expr_fconst_add
+	fconst_clr   = __expr_fconst_clr
+	fconst_get   = __expr_fconst_get
 	fconst_read  = __expr_fconst_read
 	fconst_write = __expr_fconst_write
 	float_format = __expr_float_format
-	eval_list  = __expr_eval_list
-	kind       = __expr_kind
-	parse      = __expr_parse
-	rpnlist    = __expr_rpnlist
-	rpnlistlen = __expr_rpnlistlen
-	segment    = __expr_segment
-	symbol     = __expr_symbol
-	negative   = __expr_negative
-	postproc   = __expr_postproc
-	value      = __expr_value
+	eval_list    = __expr_eval_list
+	kind         = __expr_kind
+	parse        = __expr_parse
+	compile      = __expr_compile
+	rpnlist      = __expr_rpnlist
+	rpnlistlen   = __expr_rpnlistlen
+	segment      = __expr_segment
+	symbol       = __expr_symbol
+	negative     = __expr_negative
+	postproc     = __expr_postproc
+	value        = __expr_value
 .endscope

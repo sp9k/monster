@@ -3894,6 +3894,18 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 SET_CUR_BANK FINAL_BANK_EDIT
 
 ;*******************************************************************************
+; IMAGE ERROR
+; Reports that the program image cannot be saved in the requested format
+; IN:
+;  - None
+; OUT:
+;  - None
+.proc image_error
+	lda #ERR_INVALID_COMMAND
+	jmp report_errcode
+.endproc
+
+;*******************************************************************************
 ; SAVE D
 ; :D <filename>
 ; Stores the program binary, the global symbol table, and debug information
@@ -3905,7 +3917,7 @@ SET_CUR_BANK FINAL_BANK_EDIT
 .proc command_savedbg
 	CALL FINAL_BANK_LINKER_AUX, image::check_program
 	bcc :+
-	jmp ::command_saveprg::image_error
+	jmp image_error
 :	lda asm::has_output
 	bne :+
 	lda #ERR_NO_ORIGIN
@@ -3983,9 +3995,7 @@ SET_CUR_BANK FINAL_BANK_EDIT
 .proc command_saveprg
 	CALL FINAL_BANK_LINKER_AUX, image::check_program
 	bcc flat
-image_error:
-	lda #ERR_INVALID_COMMAND
-	jmp report_errcode
+	jmp image_error
 flat:
 @file=r4
 	stxy @file
@@ -4021,7 +4031,7 @@ flat:
 	lda image::mode
 	cmp #$01
 	bne :+
-	jmp ::command_saveprg::image_error
+	jmp image_error
 :
 @file=r4
 	stxy @file

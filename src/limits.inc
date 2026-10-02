@@ -2,6 +2,10 @@
 .define __limits_inc
 
 ;*******************************************************************************
+; ASSEMBLER
+.define MAX_IFS 8		; max nesting depth for .if/.endif
+
+;*******************************************************************************
 ; LINKER
 .ifdef vic20
 .define MAX_LINK_SECTIONS $40

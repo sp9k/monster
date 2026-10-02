@@ -191,8 +191,7 @@ udg = r8	; buffer where character data is stored (8 bytes)
 	sta (@dst),y
 	bne @nextcol
 
-@l0:	lda #$00
-	ldy #CANVAS_HEIGHT+(BORDER_SIZE)+1
+@l0:	ldy #CANVAS_HEIGHT+(BORDER_SIZE)+1
 	lda #$aa
 	sta (@dst),y	; bottom border
 	dey
@@ -303,23 +302,7 @@ udg = r8	; buffer where character data is stored (8 bytes)
 	eor #$01
 	sta cur_on
 
-	lda zp::curx
-	lsr
-	tax
-
-	lda colslo+(CANVAS_X/8),x
-	clc
-	adc #CANVAS_Y
-	sta @dst
-	lda colshi+(CANVAS_X/8),x
-	adc #$00
-	sta @dst+1
-
-	lda zp::cury
-	asl
-	asl
-	tay
-
+	jsr getcanvaspos
 	ldx #$00	; hires, even column
 	lda multicolor
 	bne @multicolor
@@ -375,8 +358,7 @@ masks:	.byte $a0, $a0, $a0, $a0
 	lda udg,y
 	sta @row	; get a row of data to render
 
-@l1:	lda #$00
-	lda @row
+@l1:	lda @row
 	and @mask
 	lsr @row
 	ldx multicolor
@@ -396,17 +378,16 @@ masks:	.byte $a0, $a0, $a0, $a0
 .endproc
 
 ;*******************************************************************************
-; GETDSTMASK
-; Gets the bitmap address of the cursor and its mask within the cell
+; GET CANVAS POSITION
+; Gets the bitmap column address and row offset for the current UDG cursor.
+; IN:
+;  - zp::curx, zp::cury: the cursor position
 ; OUT:
-;  - r0: the bitmap address of the cursor
-;  - r2: the bitmask of the cursor
-;  - r3: the inverse bitmask of the cursor
-.proc getdstmask
+;  - r0: the bitmap column address
+;  - .X: the bitmap column within the canvas
+;  - .AY: the pixel row offset within the column
+.proc getcanvaspos
 @dst=r0
-@mask=r2
-@clrmask=r3
-	jsr curoff
 	lda zp::curx
 	lsr
 	tax
@@ -424,6 +405,22 @@ masks:	.byte $a0, $a0, $a0, $a0
 	asl
 	tay
 
+	rts
+.endproc
+
+;*******************************************************************************
+; GETDSTMASK
+; Gets the bitmap address of the cursor and its mask within the cell
+; OUT:
+;  - r0: the bitmap address of the cursor
+;  - r2: the bitmask of the cursor
+;  - r3: the inverse bitmask of the cursor
+.proc getdstmask
+@dst=r0
+@mask=r2
+@clrmask=r3
+	jsr curoff
+	jsr getcanvaspos
 	lda multicolor
 	beq :+
 	lda #$ff	; multicolor takes up full 8-pixels
