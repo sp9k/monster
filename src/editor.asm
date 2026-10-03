@@ -18,6 +18,7 @@
 .include "cursor.inc"
 .include "debug.inc"
 .include "debuginfo.inc"
+.include "build.inc"
 .include "directory.inc"
 .include "draw.inc"
 .include "expr.inc"
@@ -556,10 +557,82 @@ main:	jsr key::getui
 .endproc
 
 .PUSHSEG
+.CODE
+;*******************************************************************************
+; COMMAND MAKE
+; Dispatches to the manifest build command
+; IN:
+;   - None
+; OUT:
+;   - None
+.proc command_build
+	JUMP FINAL_BANK_LINKER_AUX, build_command
+.endproc
+.POPSEG
+
+.PUSHSEG
 BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 .ifdef vic20
 CUR_BANK .set FINAL_BANK_LINKER_AUX
 .endif
+
+;*******************************************************************************
+; BUILD COMMAND
+; Saves edited sources, builds the manifest's objects, and links them in order
+; IN:
+;   - None
+; OUT:
+;   - None
+.proc build_command
+	CALL FINAL_BANK_EDIT, prompt_saveall
+	bcs @ret
+	CALL FINAL_BANK_EDIT, clear_errors
+	CALLMAIN log::new
+	bcs @error
+
+	ldxy #strings::assembling
+	CALL FINAL_BANK_EDIT, blank
+
+	; build all the objects
+	ldxy #@filename
+	jsr build::objects
+	bcs @result
+
+	; link all the objects
+	ldxy #strings::linking
+	CALL FINAL_BANK_EDIT, blank
+	jsr build::link
+	bcs @result
+
+	; if image can be loaded from result, do so now
+	lda image::mapped
+	bne @result
+	jsr image::load_program
+
+;-------------------------------------------------------------------------------
+@result:
+	php
+	pha
+	CALLMAIN log::close
+	CALL FINAL_BANK_EDIT, unblank
+	pla
+	plp
+	bcc @done
+	cmp #$00		; cancellation has no error dialog
+	beq @cancel
+
+@error: JUMP FINAL_BANK_EDIT, report_errcode
+@done:	ldxy #strings::done
+	JUMP FINAL_BANK_EDIT, print_info
+@cancel:
+	ldxy #strings::aborted
+	JUMP FINAL_BANK_EDIT, print_info
+@ret:	rts
+
+;-------------------------------------------------------------------------------
+@filename: .byte "build",0
+.endproc
+
 ;*******************************************************************************
 ; LINK COMMAND
 ; Links the selected objects, then loads a completed CPU-addressed image.
@@ -2776,6 +2849,7 @@ cancel = enter_command
 	.byte K_VIEW_MACROS	; open macro viewer
 	.byte K_VIEW_LOG	; open LOG
 	.byte K_LINK            ; link program
+	.byte K_BUILD		; build and link BUILD
 	.byte K_CLOSE_BUFF	; close buffer
 	.byte K_NEW_BUFF	; new buffer
 	.byte K_SET_BREAKPOINT	; set breakpoint
@@ -2827,7 +2901,7 @@ cancel = enter_command
 	view::edit, brkpt::edit, watch::edit, monitor_win, \
 	guienter, \
 	refresh, \
-	view_symbols, view_macros, show_log, command_link, \
+	view_symbols, view_macros, show_log, command_link, command_build, \
 	close_buffer, new_buffer, set_breakpoint, jumpback, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
 	next_buffer, prev_buffer, udgedit, leave_insert, go_basic, \

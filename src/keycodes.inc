@@ -34,6 +34,7 @@ K_ASM_DEBUG      = $b0	; C= + a (assemble with debug info)
 K_DEBUG          = $ac	; C= + d
 
 K_LINK           = $b6  ; C= + l (link)
+K_BUILD          = $ae	; C= + s (build and link BUILD)
 K_MONITOR_WIN    = $88	; F7
 
 K_NEXT_PAL       = $db	; SHIFT + +
@@ -53,8 +54,7 @@ K_VIS_WHITESPACE = $be	; C= + v
 K_FIND           = $2f	; /
 K_FIND_PREV      = $2f	; /
 K_GETCMD         = ':'  ; :
-; NOTE: these are the KERNAL's CTRL+digit color codes; they are reused as-is
-; because Monster never prints them (key::is_printing rejects them)
+
 K_GOTO_BUFF1     = $90  ; CTRL + 1
 K_GOTO_BUFF2     = $05  ; CTRL + 2 (NOTE: CTRL + e produces this too)
 K_GOTO_BUFF3     = $1c  ; CTRL + 3

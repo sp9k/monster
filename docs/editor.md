@@ -41,6 +41,7 @@ below for more info on modes).
 | {c64-keys}`Shift + RETURN` | `FORCE NEWLINE `| inserts a newline and advances even if the completed line has an error                          |
 | {c64-key}`F3`              | `SHOW BUFFERS  `| displays a list of the currently open buffers                                                   |
 | {c64-keys}`C= + L`         | `LINK          `| links the object files in the project using the LINK file on disk                               |
+| {c64-keys}`C= + S`         | `BUILD         `| assembles and links the modules listed in BUILD, using the LINK layout                          |
 | {c64-key}`F8`              | `MEMVIEW       `| opens the memory viewer/editor                                                                  |
 | {c64-key}`F5`              | `BRKVIEW       `| opens the breakpoint viewer/editor                                                              |
 | {c64-key}`F6`              | `WATCHVIEW     `| opens the watch viewer/editor                                                                   |
@@ -53,6 +54,26 @@ below for more info on modes).
 Closing a source buffer with {c64-keys}`C= + Q` immediately discards any
 unsaved changes in that buffer. The editor does not ask for confirmation.
 ```
+
+#### Build and link
+
+**Shortcut:** {c64-keys}`C= + S`
+
+**Behavior:**
+Reads the manifest file `BUILD` from the selected disk.
+
+The format of this file is: each nonempty line contains a quoted source
+filename and a quoted object filename:
+
+```
+; assemble and link in this order
+"BOOT.S" "BOOT.O"
+"LINE.S" "LINE.O"
+"UTIL.S" "UTIL.O"
+```
+
+All source files are first assembled to object code.  Then the object files
+are linked (using the `LINK` file on the same disk) to produce the final linked image.
 
 #### Help
 
