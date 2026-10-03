@@ -2663,36 +2663,36 @@ CUR_BANK .set FP_CALLER_BANK
 
 ;*******************************************************************************
 ; DIRECTIVE RES
-; Reserves the defined number of bytes, filling initialized segments with zeroes
+; Reserves the defined number of bytes, with an optional constant byte fill
 ; IN:
-;   - zp::line: count expression or full-address-space literal
+;   - zp::line: count expression or full-address-space literal, optional fill
 ; OUT:
 ;   - .A: ASM_DIRECTIVE on success, error code on failure
 ;   - .C: set on error
 .proc directive_res
 @cnt=r0
+@fill=r2
 	jsr line::process_ws
-	CALL FINAL_BANK_CTX, reserve_count
+	CALL FINAL_BANK_CTX, reserve_operands
 	bcs @err
+	sta @fill
+	stxy @cnt
 	lda zp::verify
 	bne @done		; syntax is enough while editing; values may be stale
-	jsr require_const	; the count must not vary between passes
-	bcc :+
-@err:	rts
 
-:	stxy @cnt
-@fill:	iszero @cnt
+@loop:	iszero @cnt
 	beq @done
-	lda #$00
-	tay
+	lda @fill
+	ldy #$00
 	jsr writeb
 	bcs @err
 	jsr incpc
 	decw @cnt
-	jmp @fill
+	jmp @loop
 
 @done:	lda #ASM_DIRECTIVE
 	RETURN_OK
+@err:	rts
 .endproc
 
 ;*******************************************************************************
@@ -4863,18 +4863,20 @@ CUR_BANK .set FINAL_BANK_CTX
 .endproc
 
 ;*******************************************************************************
-; RESERVE COUNT
-; Evaluates the count for .RES, including the full-address-space literals.
+; RESERVE OPERANDS
+; Evaluates the count and optional byte fill for .RES before reserving output.
 ; Full BSS reservations are recorded directly; initialized output emits its
 ; first byte here and leaves the remaining $ffff bytes to DIRECTIVE RES.
 ; IN:
-;   - zp::line: count expression (16 bit) OR $10000/65536 (for 64KB res)
+;   - zp::line: count expression or $10000/65536, optional constant byte fill
 ; OUT:
+;   - .A: fill byte (zero when omitted)
 ;   - .XY: remaining count for DIRECTIVE RES
-;   - expr::kind: expression kind for constant validation
-;   - zp::line: after the parsed operand
+;   - zp::line: after the parsed operands
 ;   - .C: set and .A = error code on invalid input
-.proc reserve_count
+.proc reserve_operands
+@count=operand
+@fill=r2
 	ldx #$00
 	ldy #$00
 	lda (zp::line),y
@@ -4894,16 +4896,21 @@ CUR_BANK .set FINAL_BANK_CTX
 	beq @full
 	cmp #';'
 	beq @full
+	cmp #','
+	beq @full
 	cmp #' '
 	beq @space
 	cmp #$09
 	bne @expression
-@space:
-	iny
+
+@space: iny
 	bne @end
 
 @expression:
-	JUMP FINAL_BANK_ASM, eval_expr
+	CALL FINAL_BANK_ASM, eval_expr
+	jcs @ret
+	lda #$00		; ordinary 16-bit count
+	beq @parsedcount	; branch always
 
 @full:	tya
 	clc
@@ -4913,8 +4920,75 @@ CUR_BANK .set FINAL_BANK_CTX
 	inc zp::line+1
 :	lda #VAL_ABS
 	sta expr::kind
+	ldxy #$0000
+	lda #$01		; full-address-space count
+
+@parsedcount:
+	pha			; preserve full-count flag while parsing fill
+	stxy @count
 	lda zp::verify
-	bne @done		; syntax checking must not reserve any bytes
+	bne @optional		; if verifying, skip const parsing
+
+	; make sure argument is valid const
+	CALL FINAL_BANK_ASM, require_const
+	bcs @cleanup
+
+;-------------------------------------------------------------------------------
+@optional:
+	lda #$00
+	sta @fill
+	CALLMAIN line::process_ws
+	CALL FINAL_BANK_ASM, islineterminator
+	beq @parsed
+	cmp #','
+	bne @badchar
+	CALLMAIN line::incptr
+	CALL FINAL_BANK_ASM, eval_expr
+	bcs @cleanup
+	lda zp::verify
+	bne @byte				; if verifying, skip const parsing
+	CALL FINAL_BANK_ASM, require_const
+	bcs @cleanup
+
+@byte:	tya
+	bne @badbyte				; expression must be single byte
+	stx @fill
+	CALLMAIN line::process_ws		; eat the argument
+	CALL FINAL_BANK_ASM, islineterminator
+	beq @parsed
+
+@badchar:
+	lda #ERR_UNEXPECTED_CHAR
+	bne @cleanup
+@badbyte:
+	lda #ERR_OVERSIZED_OPERAND
+@cleanup:
+	tax
+	pla
+	txa
+	sec
+	rts
+
+@parsed:
+	pla
+	tax			; full-count flag
+	lda zp::verify
+	bne @done		; if verifying -> done
+
+	; check if current segment is BSS (don't store values if so)
+	lda __asm_segtype
+	cmp #TYPE_BSS
+	beq @bss
+	cmp #TYPE_BSSZP
+	bne @reserve
+@bss:	lda @fill
+	beq @reserve
+	RETURN_ERR ERR_DATA_IN_BSS	; fill value !0 in BSS seg, return err
+
+;-------------------------------------------------------------------------------
+@reserve:
+	txa
+	beq @ordinary
 
 	; if .RES is $10000 bytes, only accept at start of empty address space
 	lda zp::virtualpc
@@ -4933,15 +5007,23 @@ CUR_BANK .set FINAL_BANK_CTX
 	inc section_size+2	; BSS has no physical output or fill bytes
 
 @done:	ldxy #$0000
+	lda @fill
 	RETURN_OK
 
+;-------------------------------------------------------------------------------
 @initialized:
-	lda #$00
-	tay
+	lda @fill
+	ldy #$00
 	CALL FINAL_BANK_ASM, writeb
 	bcs @ret
 	CALL FINAL_BANK_ASM, incpc
 	ldxy #$ffff
+	lda @fill
+	RETURN_OK
+
+@ordinary:
+	ldxy @count
+	lda @fill
 	RETURN_OK
 
 @overflow:

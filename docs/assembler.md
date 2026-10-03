@@ -632,13 +632,14 @@ list of the parameters.
 
 #### .RES
 
-**Syntax:** `.RES expression`
+**Syntax:** `.RES count[, fill]`
 
-**Behavior:** Fills the number of bytes defined by the evaluated expression with 0's.
+**Behavior:** Reserves `count` bytes, initialized to `fill` (defaults to zero when omitted).
 
 ````{example}
 ```
     .res SCREEN_W * SCREEN_H
+    .res $10, $ff
 ```
 ````
 
