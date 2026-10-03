@@ -39,14 +39,16 @@ __build_line: .word $0000
 __build_completed: .byte $00
 
 ;*******************************************************************************
-manifest_file: .byte $00
-output_file:   .byte $00
-at_eof:        .byte $00
-skip_lf:       .byte $00
-position:      .byte $00
-result:        .byte $00
-list_end:      .word $0000
-list_count:    .byte $00
+manifest_file:    .byte $00
+output_file:      .byte $00
+at_eof:           .byte $00
+skip_lf:          .byte $00
+position:         .byte $00
+result:           .byte $00
+list_end:         .word $0000
+list_count:       .byte $00
+debug_info:       .byte $00
+manifest_started: .byte $00
 
 BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 
@@ -78,8 +80,10 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	sta at_eof
 	sta skip_lf
 	sta manifest_file
-	sta zp::gendebuginfo
+	sta manifest_started
 	sta zp::verify
+	lda #$01
+	sta debug_info
 
 	ldy #$00
 @copy:	lda (@name),y
@@ -125,7 +129,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	ora __build_line+1
 	beq @large
 
-	jsr parse_pair		; parse the source/object pair
+	jsr parse_pair		; parse the mode header or source/object pair
 	jcs @finish
 	beq @next		; blank or comment-only line
 
@@ -204,8 +208,11 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	sta at_eof
 	sta skip_lf
 	sta list_count
+	sta manifest_started
 	sta __build_line
 	sta __build_line+1
+	lda #$01
+	sta debug_info
 	ldxy #link::objfiles
 	stxy list_end
 
@@ -225,7 +232,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda file::eof
 	sta at_eof
 	incw __build_line
-	jsr parse_pair		; parse the source/object pair
+	jsr parse_pair		; parse the mode header or source/object pair
 	bcs @close
 	beq @next
 	jsr append_object	; append object to link to the list
@@ -253,6 +260,9 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	bcs @ret
 
 	; link the list of object files
+	lda debug_info
+	eor #$01
+	sta link::no_debug_info
 	CALL FINAL_BANK_LINKER, link::link
 @ret:	rts
 .endproc
@@ -374,12 +384,13 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 
 ;*******************************************************************************
 ; PARSE PAIR
-; Reads one manifest line: "source.s" "object.o", optionally followed by ;
+; Reads an optional mode header or a quoted source/object pair with comments
 ; IN:
 ;   - linebuffer: zero-terminated manifest line
 ; OUT:
 ;   - source_filename, obj_filename: parsed filenames
-;   - .Z:    set for a blank or comment-only line
+;   - debug_info: updated by a leading DEBUG or NODEBUG header
+;   - .Z:    set for a mode header, blank, or comment-only line
 ;   - .C:    set on error
 ;   - .A:    error code (if .C set)
 .proc parse_pair
@@ -389,6 +400,13 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	beq @empty
 	cmp #';'
 	beq @empty
+	cmp #'"'
+	beq @source
+	jmp parse_mode
+
+@source:
+	lda #$01
+	sta manifest_started
 	ldxy #source_filename
 	jsr quoted_name
 	bcs @ret
@@ -417,6 +435,63 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 @ret:	rts
 @bad:	RETURN_ERR ERR_SYNTAX_ERROR
 @long:	RETURN_ERR ERR_FILENAME_TOO_LONG
+.endproc
+
+;*******************************************************************************
+; PARSE MODE
+; Reads the DEBUG or NODEBUG header from the BUILD file (if it's provided)
+; IN:
+;   - linebuffer, position: manifest line and first nonspace character offset
+;   - manifest_started: nonzero if a header or source/object pair was already read
+; OUT:
+;   - debug_info:       1 for DEBUG, 0 for NODEBUG
+;   - manifest_started: 1 to flag after a valid header
+;   - .Z:               set on success (no source/object pair)
+;   - .C:               set on error
+;   - .A:               error code (if .C set)
+.proc parse_mode
+@mode=r2
+	lda manifest_started
+	bne @bad		; only 1 header is allowed
+
+	ldy position
+	lda linebuffer,y
+	jsr uppercase
+	ldx #$00
+	cmp #$4e		; N selects NODEBUG; otherwise match DEBUG
+	beq @start
+
+	ldx #$02
+@start: stx @mode
+@match: lda @keyword,x
+	beq @end
+	lda linebuffer,y
+	jsr uppercase
+	cmp @keyword,x
+	bne @bad
+	inx
+	iny
+	bne @match
+
+@end:	sty position
+	jsr whitespace
+	beq @commit
+	cmp #';'
+	bne @bad
+
+@commit:
+	lda @mode
+	lsr
+	sta debug_info
+	inc manifest_started
+	lda #$00
+	clc
+	rts
+
+@bad:	RETURN_ERR ERR_SYNTAX_ERROR
+
+;-------------------------------------------------------------------------------
+@keyword: .byte "nodebug",0
 .endproc
 
 ;*******************************************************************************
@@ -575,6 +650,8 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 ;   - .C: set on error
 ;   - .A: error code on failure, zero on cancellation
 .proc assemble
+	lda debug_info
+	sta zp::gendebuginfo
 	CALLMAIN dbgi::init
 	CALLMAIN errlog::reset
 	lda #$01
@@ -607,7 +684,12 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 
 	lda #$02
 	bne @pass
-@ok:	RETURN_OK
+@ok:	; close the final line-mapping block before writing the object
+	lda debug_info
+	beq :+
+	ldxy zp::virtualpc
+	CALLMAIN dbgi::endblock
+:	RETURN_OK
 @errors:
 	RETURN_ERR ERR_SYNTAX_ERROR
 @cancel:

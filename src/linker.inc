@@ -1,6 +1,7 @@
 .import __link_get_segment_by_name
 .import __link_init
 .import __link_link
+.import __link_no_debug_info
 .import __link_objfiles
 .import __link_objfiles_end
 .import __link_parse
@@ -24,6 +25,7 @@
 	log_msg                  = __link_log_msg
 	log_banner               = __link_log_banner
 	strcmp                   = __link_strcmp
+	no_debug_info            = __link_no_debug_info
 	objfiles_end             = __link_objfiles_end
 	objfiles                 = __link_objfiles
 	parse                    = __link_parse

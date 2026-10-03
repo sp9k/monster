@@ -117,6 +117,9 @@ layout_runbank:    .byte 0
 layout_sizebank:   .byte $00
 linkpass:          .byte 0	; 1 while pass 1 is running, 2 during pass 2
 
+.export __link_no_debug_info
+__link_no_debug_info: .byte $00	; skip local symbols and line mappings when set
+
 ;*******************************************************************************
 ; OBJECT STATE
 ; These variables are used in the context of a single object file
@@ -287,7 +290,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 ; IN:
 ;   - None
 ; OUT:
-;   - None
+;   - link::no_debug_info: zero (normal debug-enabled linking)
 .export __link_init
 .proc __link_init
 @bss=r0
@@ -307,6 +310,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	lda #$00
 	sta numsegments
 	sta numsections
+	sta __link_no_debug_info
 	sta image::mapped
 	lda #$01
 	sta image::mode
@@ -1917,6 +1921,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 ; Links all files in link::objfiles into the output image.
 ; IN:
 ;  - link::objfiles: array of the files to link (0-terminated)
+;  - link::no_debug_info: nonzero to omit local symbols and line mappings
 ; OUT:
 ;  - .C: set on error
 ;  - image::mode: $02 when the image is complete, $01 on failure

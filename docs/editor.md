@@ -62,11 +62,13 @@ unsaved changes in that buffer. The editor does not ask for confirmation.
 **Behavior:**
 Reads the manifest file `BUILD` from the selected disk.
 
-The format of this file is: each nonempty line contains a quoted source
-filename and a quoted object filename:
+This file may optionally start with `DEBUG` or `NODEBUG` to select debug information for the build.
+It must be the first nonempty, non-comment line in the file if provided. Subsequent entries contain a
+quoted source filename and a quoted object filename:
 
 ```
 ; assemble and link in this order
+DEBUG
 "BOOT.S" "BOOT.O"
 "LINE.S" "LINE.O"
 "UTIL.S" "UTIL.O"
@@ -74,6 +76,16 @@ filename and a quoted object filename:
 
 All source files are first assembled to object code.  Then the object files
 are linked (using the `LINK` file on the same disk) to produce the final linked image.
+
+`DEBUG` is the default when no header is present. It generates source-line
+mappings during assembly and retains those mappings and local symbols when
+linking.  For most programs, this is preferable as it allows debugging.
+
+Use `NODEBUG` for very large programs. In this mode line mappings and non-exported local symbols
+are excluded from the link. Exported globals and linker-generated layout symbols
+are still produced in this mode.
+
+Header keywords are case-insensitive and may have a trailing `;` comment.
 
 #### Help
 

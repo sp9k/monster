@@ -2318,6 +2318,12 @@ __obj_get_fragment_run_base = get_fragment_run_base
 ; Extracts the SEGMENT usage info and global symbols for the given object file.
 ; This is called by the linker for each object file to build the global link
 ; state.
+; IN:
+;   - Current input channel: object file
+;   - link::no_debug_info:   !0 to omit local symbols
+; OUT:
+;   - .C: set on error
+;   - .A: error code (on failure)
 .export __obj_load_headers
 .proc __obj_load_headers
 @name=r2
@@ -2338,7 +2344,7 @@ __obj_get_fragment_run_base = get_fragment_run_base
 @import_loop:
 	jsr link::update_progress
 	jsr load_import
-	bcs @ret
+	jcs @ret
 
 	incw @i
 	ldxy @i
@@ -2369,6 +2375,10 @@ __obj_get_fragment_run_base = get_fragment_run_base
 ; add the LOCAL symbols to the global symbol table (also segment-relative),
 ; scoped to the filename of this object file
 @locals:
+	; pass 1 closes the file here when only globals are needed
+	lda link::no_debug_info
+	bne @ok
+
 	; copy the filename to shared RAM and set it as the scope
 	ldxy __obj_filename
 	stxy @name
@@ -2656,6 +2666,7 @@ __obj_get_fragment_run_base = get_fragment_run_base
 ; IN:
 ;   - Current input channel: object file
 ;   - Global symbol and segment tables from link pass 1
+;   - link::no_debug_info: nonzero to omit line mappings
 ; OUT:
 ;   - .C: set and .A = error code on failure
 .export __obj_load
@@ -2891,6 +2902,9 @@ __obj_get_fragment_run_base = get_fragment_run_base
 ;-------------------------------------------------------------------------------
 ; finally, link the debug information for the object file
 @dbginfo:
+	lda link::no_debug_info
+	bne @done
+
 	lda #$01				; flag to apply relocation
 	CALL FINAL_BANK_DEBUG, dbgi::load	; load debug info
 	bcs @dbgierr				; propagate debug info errors
