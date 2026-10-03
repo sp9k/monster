@@ -1944,7 +1944,7 @@ CUR_BANK .set LABEL_CALLER_BANK
 .export getaddrmode
 .proc getaddrmode
 	lda operandsz
-	beq @impl
+	jeq @impl
 	cmp #$02
 	beq @abs
 	cmp #$01
@@ -1989,9 +1989,11 @@ CUR_BANK .set LABEL_CALLER_BANK
 	beq @nonimmediate
 	lda expr::kind
 	cmp #VAL_DIFF
+	beq :+
+	cmp #VAL_DEFERRED
 	bne @oversized		; other word-sized immediates are illegal
-	lda #$01		; defer a fragment difference's byte range
-				; for the linker
+:
+	lda #$01		; check the deferred result's byte range at link time
 	sta operandsz
 	bne @imm
 @nonimmediate:

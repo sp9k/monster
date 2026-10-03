@@ -46,7 +46,9 @@
 ;       bits 2-3: byte selection
 ;       bit 4:    PC-relative branch
 ;       bit 5:    base difference
-;   If FLAGS & $3c: ADDEND HIGH[1]; if FLAGS & $20: NEGATIVE BASE ID[2].
+;       bit 6:    integer expression
+;   Expression records replace TARGET with LENGTH[1], RESERVED[1] = 0,
+;   followed by LENGTH bytes of RPN bytecode (terminated with TOK_END).
 ;   Bit 15 of NEGATIVE BASE ID selects an import; low 15 bits are its index.
 ;   The low addend is in OBJCODE; word operands also carry its high byte.
 ;   Branches subtract the final RUN address immediately after the operand.
@@ -75,6 +77,8 @@
 .include "text.inc"
 .include "util.inc"
 .include "vmem.inc"
+.include "deferred.inc"
+.include "rpn.inc"
 .include "zeropage.inc"
 
 .macpack longbranch
@@ -740,6 +744,8 @@ __obj_split_fragment:
 	sty @offset
 
 	lda expr::kind
+	cmp #VAL_DEFERRED
+	jeq add_deferred_reloc
 	cmp #VAL_REL
 	beq :+
 	cmp #VAL_DIFF
@@ -897,6 +903,165 @@ __obj_split_fragment:
 @ok:	RETURN_OK
 
 @err:	rts			; return error from get_import_id
+.endproc
+
+;*******************************************************************************
+; ADD DEFERRED RELOC
+; Stores a complete integer expression, mapping its imported symbol IDs to
+; object-local import IDs. The record contains flags, site, bytecode length,
+; a reserved zero byte, and the serialized expression including TOK_END.
+; IN:
+;   - r0: operand width/PC-relative flags
+;   - r3: offset from the current instruction's physical address
+;   - deferred::code, deferred::length: expression from the evaluator
+; OUT:
+;   - .C: set and .A = error code on table overflow or import failure
+.proc add_deferred_reloc
+@flags=r0
+@ptr=r1
+@offset=r3
+@site=r4
+@index=ra
+@next=rb
+	lda reloctop
+	clc
+	adc deferred::length
+	sta @next
+	lda reloctop+1
+	adc #$00
+	sta @next+1
+	bcs @full
+
+	lda @next
+	;clc
+	adc #$05
+	sta @next
+	lda @next+1
+	adc #$00
+	sta @next+1
+	bcs @full
+
+	ldxy @next
+	cmpw #reloc_tables_end
+	bcc @map
+	beq @map
+@full:	RETURN_ERR ERR_OOM
+
+;-------------------------------------------------------------------------------
+@map:	lda #$00
+	sta @index
+@token:
+	ldx @index
+	lda deferred::code,x
+	cmp #TOK_END
+	beq @header
+	cmp #TOK_SYMBOL
+	bne @skip
+	lda deferred::code+1,x
+	ldy deferred::code+2,x
+	tax
+	jsr get_import_id
+	jcs @ret
+	txa
+	ldx @index
+	sta deferred::code+1,x
+	tya
+	sta deferred::code+2,x
+	lda #TOK_SYMBOL
+
+@skip:	ldy #$03
+	cmp #TOK_PC
+	beq @fragment
+	cmp #TOK_BINARY_OP
+	beq @operator
+	cmp #TOK_UNARY_OP
+	bne @advance
+@operator:
+	dey
+	bne @advance
+
+@fragment:
+	iny
+@advance:
+	tya
+	clc
+	adc @index
+	sta @index
+	jmp @token
+
+;-------------------------------------------------------------------------------
+@header:
+	; mark the record at the relocation table's end as an integer expression
+	ldxy reloctop
+	stxy @ptr
+.ifdef c64
+	lda #FINAL_BANK_LINKER
+	sta reu::reuaddr+2
+.endif
+	lda @flags
+	ora #RELOC_EXPRESSION
+	ldy #$00
+	STOREB_Y @ptr
+
+	; calculate patch offset: first add operand offset to instruction addr
+	lda zp::asmresult
+	clc
+	adc @offset
+	sta @site
+	lda zp::asmresult+1
+	adc #$00
+	sta @site+1
+
+	; subtract section's start address to express the site as an offset
+	; within this section
+	ldx num_reloctables_mapped
+	lda @site
+	sec
+	sbc sections_startlo-1,x
+	sta @site
+	lda @site+1
+	sbc sections_starthi-1,x
+	sta @site+1
+
+	; add section's segment-relative base to get final patch offset
+	lda @site
+	clc
+	adc sections_baselo-1,x
+	sta @site
+	lda @site+1
+	adc sections_basehi-1,x
+	sta @site+1
+
+	; store segment-relative patch offset
+	ldy #$01
+	lda @site
+	STOREB_Y @ptr
+	lda @site+1
+	iny
+	STOREB_Y @ptr
+
+	; store the RPN list's length (+1 for terminator)
+	lda deferred::length
+	iny
+	STOREB_Y @ptr
+	lda #$00
+	iny
+	STOREB_Y @ptr
+
+;-------------------------------------------------------------------------------
+; copy the RPN list to the object code
+	ldx #$00
+@copy:	lda deferred::code,x
+	iny
+	STOREB_Y @ptr
+	inx
+	cpx deferred::length
+	bcc @copy
+
+	ldxy @next
+	stxy reloctop
+	clc			; ok
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1622,6 +1787,11 @@ __obj_split_fragment:
 	cpy #$05
 	bne :-
 	sty @length
+	lda @record
+	and #RELOC_EXPRESSION
+	jne @expression
+
+@compact:
 	lda #$00
 	sta @addendhi
 	lda @record
@@ -1699,6 +1869,10 @@ __obj_split_fragment:
 	sta @runsite+1
 	jcs @bad
 
+	lda @record
+	and #RELOC_EXPRESSION
+	bne @branch
+
 	; get both addend bytes
 	lda @record
 	and #$01
@@ -1721,6 +1895,7 @@ __obj_split_fragment:
 	adc @value+1
 	sta @value+1
 
+@branch:
 	lda @record
 	and #$10
 	beq @store
@@ -1801,6 +1976,70 @@ __obj_split_fragment:
 
 @ioerror:
 	rts
+
+;-------------------------------------------------------------------------------
+@expression:
+	lda @record
+	and #$ae		; expression records: only width/PC-relative
+	jne @bad
+	lda @record+4		; make sure reserved terminator byte is 0
+	jne @bad
+	lda @record+3
+	cmp #MAX_DEFERRED_LEN+$01
+	jcs @bad
+	cmp #$01
+	jcc @bad
+
+	;sec
+	adc #$05-1		; -1 because .C set
+	ldx @remaining+1
+	bne @evaluate
+	cmp @remaining
+	bcc @evaluate
+	beq @evaluate
+	jmp @bad
+
+; evaluate the expression
+@evaluate:
+	ldx #$00
+
+	; save zeropage data used by expression evaluation
+@save:	lda @record,x
+	pha
+	inx
+	cpx #$0e		; r2-rf: record, bounds and current fragment
+	bcc @save
+
+	; evaluate the deferred expression
+	lda @record+3
+	CALL FINAL_BANK_LINKER_AUX, deferred::evaluate
+	sta deferred::code
+	php
+	pla
+	sta deferred::code+1
+
+	; restore zeropage data used by expression evaluation
+	ldx #$0d
+@restore:
+	pla
+	sta @record,x
+	dex
+	bpl @restore
+
+	lda deferred::code+1
+	pha
+	lda deferred::code
+	plp
+	jcs @ioerror
+
+	ldxy expr::value
+	stxy @value
+
+	lda @record+3
+	clc
+	adc #$05
+	sta @length
+	jmp @site
 .endproc
 
 ;*******************************************************************************
@@ -1811,6 +2050,8 @@ __obj_split_fragment:
 ; OUT:
 ;   - .XY: final symbol address (RUN address for relocatable labels), if valid
 ;   - .C: clear on success, set on invalid IMPORT index
+__obj_get_import_address = get_import_address
+.export __obj_get_import_address
 .proc get_import_address
 	cmpw numimports
 	bcs @bad
@@ -1846,6 +2087,8 @@ __obj_get_fragment_run:
 ; OUT:
 ;   - .XY: fragment's RUN base, or $0000 for SEG_ABS
 ;   - .C:  set on invalid fragment ID
+__obj_get_fragment_run_base = get_fragment_run_base
+.export __obj_get_fragment_run_base
 .proc get_fragment_run_base
 	cmp #SEG_ABS
 	bne :+

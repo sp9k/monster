@@ -104,9 +104,8 @@ prefixed with a '#' (e.g. `LDA #(2+4)`)
 
 Labels are supported in expressions and will evaluate to their address when assembled.
 
-When assembling to object files, the difference of two local labels, imported symbols, or one of each,
-can be used.  Differences that cannot be resolved during assembly are deferred for the linker.
-For example:
+When assembling object files, integer expressions involving multiple local
+labels or imported symbols can be deferred until linking. For example:
 
 ```
 .import Sprites
@@ -114,10 +113,30 @@ For example:
 .seg "CODE"
     ldx #(EndOfSprites-Sprites)
     .dw EndOfSprites-Sprites+4
+
+.import BSS.LOAD
+.import BSS.SIZE
+    .dw BSS.LOAD+BSS.SIZE
+
+.import RWDATA.SIZE
+.import RODATA.SIZE
+    lda #((RWDATA.SIZE+RODATA.SIZE+$ff)/$100)
 ```
 
-The deferred difference may also have a constant offset (+ or -) and a byte-selector (`<` or `>`).
-An error will occur if the linker expects a byte operand, but the resolved value is >255 (e.g. `lda #(sprites_end-sprites)`)
+Deferred expressions support integer addition, subtraction, multiplication,
+division, bitwise operators, comparisons, unary signs, and byte selection
+(`<(expression)` or `>(expression)`). They use the same unsigned 16-bit
+arithmetic as assembly-time integer expressions, including wrapping intermediate
+results. Local labels and `*` use their final RUN addresses. Constants, including
+mutable `.set` values, are captured when the expression is assembled.
+
+At link time, division by zero, byte operands over $ff, and branches
+outside the signed byte range generate erorrs. Without an explicit byte selector, unresolved
+addresses are assumed to need absolute addressing.
+
+This support applies to emitted instruction and data operands. The
+`.eq` and `.set` directives, conditional assembly, and sizes for `.res` or `.align` still
+require assembly-time constants.
 
 ````{example}
 ```

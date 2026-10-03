@@ -23,17 +23,20 @@
 .import __expr_symbol
 .import __expr_negative
 .import __expr_value
+.import __expr_verify
 
 VAL_ABS   = 0
 VAL_REL   = 1
 VAL_FLOAT = 2
 VAL_DIFF  = 3
+VAL_DEFERRED = 4	; integer RPN expression evaluated by linker
 
 POSTPROC_NONE = 0
 POSTPROC_LSB  = 1
 POSTPROC_MSB  = 2
 
 .scope expr
+	verify       = __expr_verify
 	end_on_ws    = __expr_end_on_whitespace
 	eval         = __expr_eval
 	syntax_only  = __expr_syntax_only

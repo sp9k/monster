@@ -236,7 +236,9 @@ SYMBOL-relative relocations are _only_ required for external symbols.
 For each SEGMENT, the linker contains a table of _relocation info_.
 
 This table is made up of a number of records, each describing how to relocate a byte or word within the SEGMENT.
-Relocations can either be _segment-relative_ (references to object-local SEGMENT base) or _symbol-relative_ (references to external symbols).
+Compact relocations can be _segment-relative_ (references to an object-local
+fragment base) or _symbol-relative_ (references to external symbols). Expressions
+that cannot use the compact format are stored as integer RPN bytecode, described below.
 
 The following table describes the relocation record format in detail.
 
@@ -246,7 +248,7 @@ The following table describes the relocation record format in detail.
 | offset            |  2   | offset from SEGMENT to relocate
 | symbol/segment id |  2   | the symbol index in the symbol table (for symbol-relative relocation) or segment for segment-relative
 | addend MSB*       |  1   | explicit MSB for post-processing, PC-relative branches, or differences
-| negative base*    |  1   | bit 7 defines meaning of bits 0-6: if clear: fragment ID; set: IMPORT index
+| negative base*    |  2   | bit 15 defines meaning of bits 0-14: if clear: fragment ID; set: IMPORT index
 
 \* see details below for when this field is included
 
@@ -259,6 +261,7 @@ The following table describes the relocation record format in detail.
 | postproc   |  2-3   | post-processing to apply after adding addend (0=NONE, 1=LSB, 2=MSB)
 | PC-relative|   4    | if set, subtract the RUN address after the branch operand
 | difference |   5    | if set, subtract "negative base" before adding the addend
+| expression |   6    | if set, use the complete-expression record below
 
 To apply the relocation table for a SEGMENT, we walk the table, go to the address of that SEGMENT's
 base + the offset for each table entry, and depending on the value of "mode" in the "info" field:
@@ -267,7 +270,7 @@ base + the offset for each table entry, and depending on the value of "mode" in 
  - 1 (fragment relative): look up the fragment's RUN base ($ff denotes a zero base for an absolute branch target).
 
 If the symbol has a negative base, we subtract it, following that the addend is added.
-Bit 7 of the "difference" byte specifies whether we're dealing with a FRAGMENT or IMPORT.
+Bit 15 of the negative-base word specifies whether we're dealing with a FRAGMENT or IMPORT.
 The linker looks up the value for whichever it is and subtracts it to compute the difference.
 
 offset is relative to the containing fragment's LOAD base when patching bytes
@@ -286,7 +289,38 @@ the final 8-bit target.  The LSB of this addend is stored in the instruction str
 this special case the MSB is stored in an extra byte at the end of the relocation entry for that record.
 Records with post-processing or PC-relative branches are 6 bytes instead of 5.
 Difference records always include the explicit high byte and the negative
-fragment ID, making them 7 bytes, including when the target is a word.
+base ID, making them 8 bytes, including when the target is a word.
+
+### Complete-expression relocations
+
+When bit 6 is set, only bits 0 (word) and 4 (PC-relative) may also be set.
+The record is:
+
+| FIELD | SIZE | DESCRIPTION |
+|------------|--------|------------------------------------------------------------|
+| info       | 1      | expression, width, and PC-relative flags                   |
+| offset     | 2      | patch offset within the containing fragment                |
+| length     | 1      | bytecode length including its end marker, at most 40 bytes |
+| reserved   | 1      | must be zero                                               |
+| expression | length | RPN tokens below                                           |
+
+| TOKEN |         OPERAND BYTES       |         DESCRIPTION           |
+|-------|-----------------------------|-------------------------------|
+| `$01` | IMPORT index (2)            | imported symbol's final value |
+| `$03` | value (2)                   | captured integer constant     |
+| `$04` | fragment ID (1), offset (2) | fragment RUN base plus offset |
+| `$05` | operator (1)                | binary integer operation      |
+| `$06` | operator (1)                | unary integer operation       |
+| `$ff` | none                        | end; must be the last byte    |
+
+Operators use the native RPN codes in `rpn.inc`, `fp.inc`, and `keycodes.inc`:
+Floating-point operations are not permitted.
+
+The linker resolves the expression into the expression evaluator's RPN buffer and evaluates
+the value as a 16-bit integer and replaces of the operand with it.  Note that, when using
+this mode, the existing values in the object code are ignored (not treated as an addend).
+Records for relative branches are calculated by subtracting the RUN address immediately
+after the branch operand.
 
 ## Debug information
 This table stores the program to evaluate line numbers and addresses within the object file as well as references to which source files were used to create the object file.  This information allows the linker to produce a single mega debug file (or .D file) that contains all the information for the linked program, which allows for source-level debugging.

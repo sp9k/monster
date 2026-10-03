@@ -27,6 +27,7 @@
 .include "util.inc"
 .include "lexer.inc"
 .include "rpn.inc"
+.include "deferred.inc"
 .import __mem_asmbuffer
 
 .macpack longbranch
@@ -47,6 +48,7 @@ VAL_ABS   = 0
 VAL_REL   = 1
 VAL_FLOAT = 2
 VAL_DIFF  = 3	; base - base + constant
+VAL_DEFERRED = 4	; integer RPN expression evaluated by the linker
 
 ;*******************************************************************************
 ; How the evaluator finishes a result.  By default an expression must reduce to
@@ -203,14 +205,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 ;*******************************************************************************
 ; EVAL
 ; Resolves the contents of the given zp::line and returns its evaluated value
-; If evaluating an expression that contains an external (imported) symbol,
-; there is some slightly stricter syntax required.
-; That symbol must be the first in the expression and its operation must be
-; immediately after that
-; e.g. `GLOBAL + (rest of expr)`
-; If post-processing is to be used, it must be the FIRST character of the
-; expression. Do not use parentheses.
-; e.g. `<GLOBAL+3`
+; Object operands that cannot use a compact relocation are compiled into an
+; integer expression for the linker. Floats must resolve during assembly.
 ;
 ; IN:
 ;  - zp::line: pointer to the expression to evaluate
@@ -224,7 +220,15 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	jsr __expr_parse	; parse the RPN list
 	bcs :-			; -> rts
 
-	; fall through to __expr_eval_list
+	jsr __expr_eval_list
+	bcc @done
+.if FP_SUPPORTED
+	ldx float_mode
+	cpx #FLOAT_MODE_FORCE
+	beq @done		; .DF cannot emit a deferred integer placeholder
+.endif
+	JUMP FINAL_BANK_LINKER_AUX, deferred::compile
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -269,7 +273,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @operands    = operands	    ; operand stack (grows up from here)
 	lda __expr_syntax_only
 	beq @evaluate
-	jsr verify_rpn
+	jsr __expr_verify
 	jcs @ret
 	beq @evaluate
 
@@ -866,13 +870,15 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	jmp @pushval_with_postproc	; keep val1's postproc (if any)
 
 @chkmul:
-	cmp #'*'	; MULTIPLY
-	bne @chkdiv
+	; Multiplication, division and bitwise operations all require constants.
 	jsr @reduce_operation_other
 	bcc :+
 	RETURN_ERR ERR_CANNOT_REDUCE
 
-:	; get the product TODO: 32-bit precision expressions?
+:	lda @operator
+	cmp #'*'	; MULTIPLY
+	bne @chkdiv
+	; get the product TODO: 32-bit precision expressions?
 	ldxy @val1
 	stxy r0
 	ldxy @val2
@@ -884,11 +890,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @chkdiv:
 	cmp #'/'	; DIVIDE
 	bne @chkand
-	jsr @reduce_operation_other
-	bcc :+
-	RETURN_ERR ERR_CANNOT_REDUCE
-
-:	jsr m::div16		; operands already occupy the division slots
+	jsr m::div16		; operands already occupy the division slots
 	bcc :+
 	RETURN_ERR ERR_DIVIDE_BY_ZERO
 :	ldxy @val1		; quotient replaces the first operand
@@ -897,11 +899,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @chkand:
 	cmp #'&'	; AND
 	bne @chkor
-	jsr @reduce_operation_other
-	bcc :+
-	RETURN_ERR ERR_CANNOT_REDUCE
-
-:	lda @val1
+	lda @val1
 	and @val2
 	tax
 	lda @val1+1
@@ -911,11 +909,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 
 @chkor: cmp #K_PIPE	; OR
 	bne @chkeor
-	jsr @reduce_operation_other
-	bcc :+
-	RETURN_ERR ERR_CANNOT_REDUCE
-
-:	lda @val1
+	lda @val1
 	ora @val2
 	tax
 	lda @val1+1
@@ -926,11 +920,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @chkeor:
 	cmp #'^'	; EOR
 	bne @unknownop
-	jsr @reduce_operation_other
-	bcc :+
-	RETURN_ERR ERR_CANNOT_REDUCE
-
-:	lda @val1
+	lda @val1
 	eor @val2
 	tax
 	lda @val1+1
@@ -1277,7 +1267,6 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	lda #VAL_ABS
 	sta @kind1
 	sta @kind2
-	lda #POSTPROC_NONE
 	sta @postproc1
 	sta @postproc2
 	sta @postproc		; post-processing not used for floats
@@ -1388,7 +1377,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 ;         error code on failure
 ;   - .Z: set for a valid literal-only expression
 ;   - .C: set on malformed expression
-.proc verify_rpn
+.export __expr_verify
+.proc __expr_verify
 @symbolic=zp::expr+6
 @index=zp::expr+7
 	ldx #$00
