@@ -34,12 +34,13 @@ Integer only operations otherwise always produce an integer result type.
 
 ```{note}
 - `1/3` is zero, including in `.DF 1/3`. Use `FLOAT(1)/3` or `1.0/3`.
-- `-1` wraps to 65535. Use `-1.0` or `-FLOAT(1)` for a negative float.
+- Integer arithmetic uses 24-bit values, so `FLOAT(-1)` is 16777215.
+Use `-1.0` or `-FLOAT(1)` for a negative float.
 ```
 
-Byte/word output, addresses, counts, and bitwise operations all require a float to be
-integral and within the range [0, 65535].  Fractions and negative or out-of-range values
-generate an error.
+Integer conversion and bitwise operations require a float to be exactly integral
+and within 0..16777215. Byte/word output, addresses, and counts then enforce
+their operand width. Fractions and negative or out-of-range floats generate an error.
 
 ## Functions
 
@@ -58,7 +59,7 @@ Functions may also be nested.
 | `FLOAT(x)` | Promotes an unsigned integer or preserves a float                      |
 | `FLOOR(x)` | Integral float, rounded toward negative infinity                       |
 | `LOG(x)`   | Natural logarithm                                                      |
-| `INT(x)`   | Unsigned integer, only if x is exactly integral and in 0..65535        |
+| `INT(x)`   | Unsigned integer, only if x is exactly integral and in 0..16777215        |
 | `SIN(x)`  | Sine (x is in radians)                                                 |
 | `SQRT(x)`  | Square root                                                            |
 | `ROUND(x)` | Integral float, nearest integer; halfway cases away from zero          |

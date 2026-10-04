@@ -29,7 +29,7 @@ FP_GE = $75
 FP_NEG   = $80
 FP_POS   = $81
 FP_FLOAT = $82
-FP_INT   = $83	; checked unsigned word conversion (no rounding)
+FP_INT   = $83	; checked unsigned 24-bit conversion (no rounding)
 FP_TRUNC = $84
 FP_ROUND = $85	; nearest integral float, ties away from zero
 FP_FLOOR = $86
@@ -45,25 +45,25 @@ FP_EXP   = $8d
 
 .import __fp_arg1
 .import __fp_arg2
-.import __fp_val
 .import __fp_binop
-.import __fp_fromint
-.import __fp_parse
-.import __fp_toint
-.import __fp_unary
 .import __fp_format
+.import __fp_fromwide
+.import __fp_parse
+.import __fp_towide
+.import __fp_unary
+.import __fp_val
 
 .scope fp
 	arg1 = __fp_arg1
 	arg2 = __fp_arg2
 	val  = __fp_val
 
-	binop   = __fp_binop
-	fromint = __fp_fromint
-	parse   = __fp_parse
-	toint   = __fp_toint
-	unary   = __fp_unary
-	format  = __fp_format
+	binop    = __fp_binop
+	fromwide = __fp_fromwide
+	parse    = __fp_parse
+	towide   = __fp_towide
+	unary    = __fp_unary
+	format   = __fp_format
 .endscope
 
 .endif

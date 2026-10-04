@@ -78,8 +78,8 @@ TARGET_SRC=$(filter-out $(BOOTSRC), $(wildcard $(TARGET)/*.asm))
 MODE_SRC=$(wildcard $(TARGET)/$(SCREEN_MODE)/*.asm)
 
 # platform independent source files
-# Standalone utilities must not be linked into Monster.
-PI_SRC=$(filter-out flasher.asm updater.asm updater-main.asm ramtest.asm,$(wildcard *.asm))
+# Standalone utilities and included header sources are not separate modules.
+PI_SRC=$(filter-out flasher.asm updater.asm updater-main.asm ramtest.asm version.asm,$(wildcard *.asm))
 
 SRC=$(TARGET_SRC) $(PI_SRC) $(MODE_SRC) $(EXP_SRC)
 
@@ -121,6 +121,9 @@ installer.prg: installer/install.asm
 	$(CL65) -t $(TARGET) -o $@ -C installer/link-installer.config $^
 
 ASM_INCLUDES=$(wildcard *.inc $(TARGET)/*.inc $(TARGET)/$(SCREEN_MODE)/*.inc $(TARGET)/ultimem/*.inc)
+ifeq ($(TARGET),vic20)
+ASM_INCLUDES+=version.asm VERSION
+endif
 BUILD_OPTIONS=.build-options-$(TARGET)
 .PHONY: FORCE
 FORCE:

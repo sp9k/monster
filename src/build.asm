@@ -196,7 +196,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 ; OUT:
 ;   - .C: set on failure or cancellation
 ;   - .A: error code on failure, zero on cancellation
-;   - image::mode: $02 after successful linking
+;   - image::mode: IMAGE_MODE_READY after successful linking
 .export __build_link
 .proc __build_link
 	; parse the LINK file

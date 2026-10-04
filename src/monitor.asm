@@ -75,6 +75,7 @@ closereq: .byte 0
 ; use __monitor_inputrow for that
 line:      .byte 0
 repeatcmd: .byte 0	; if set, empty line repeats last command
+prompt_len: .byte $00	; number of characters before the command
 
 wintop: .byte 0		; first screen row of the monitor's contents
 winbot: .byte 0		; last screen row (the input line's row)
@@ -210,6 +211,19 @@ __monitor_window:
 .endproc
 
 BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
+
+;*******************************************************************************
+; PUTS MAIN
+; Copies a plain MAIN-bank string to shared RAM before printing it.
+; IN:
+;   - .XY: address of a zero-terminated string in the MAIN bank
+; OUT:
+;   - .C: set on output error
+.export __monitor_puts_main
+.proc __monitor_puts_main
+	RENDER_STR
+	; fall through to __monitor_puts
+.endproc
 
 ;*******************************************************************************
 ; PUTS
@@ -386,7 +400,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; Initializes the monitor
 .export __monitor_init
 .proc __monitor_init
-	lda #$00
+	lda #MON_MODE_VIRTUAL
+	sta moncmd::mode
+	sta moncmd::default_addr+2
 	sta line
 	sta __monitor_windowed
 	sta cyclereq
@@ -441,12 +457,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta line
 	lda winbot
 	sta zp::cury
-	lda #$01
-	sta zp::curx
-	lda #MONITOR_PROMPT
-	sta mem::linebuffer
-	lda #$00
-	sta mem::linebuffer+1
+	ldxy #mem::linebuffer
+	jsr write_prompt
+	stx zp::curx
 	rts
 .endproc
 
@@ -478,20 +491,15 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	ldxy #mem::linebuffer
 	jsr __monitor_inputrow
 	CALLMAIN text::print
-	lda #MONITOR_PROMPT
-	sta mem::linebuffer
-	lda #$00
-	sta mem::linebuffer+1
 @clrline:
-	lda #$00
-	sta mem::linebuffer+1
+	ldxy #mem::linebuffer
+	jsr write_prompt
 
 @loop:	jsr __monitor_inputrow
 	sta zp::cury		; screen row of the input line
 
-	lda #$01
-	sta zp::curx		; move to start of line
-	ldx #$01
+	ldx prompt_len
+	stx zp::curx		; move past the prompt
 	ldy #$00
 	CALLMAIN cur::setmin
 
@@ -521,21 +529,24 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 @submit:
 	pha
-	ldxy #$101
+	ldx prompt_len
+	ldy #$01
 	CALLMAIN str::toupper_unquoted ; preserve literals in monitor assembly/expressions
 
-	ldx #$00
-	lda $101
+	ldx prompt_len
+	ldy #$00
+	lda $100,x
 	beq @exec
 
-:	lda $101,x
-	sta CMD_BUFF,x
+:	lda $100,x
+	sta CMD_BUFF,y
 	beq @exec
 	inx
-	cpx #LINESIZE
+	iny
+	cpy #LINESIZE
 	bcc :-
 	lda #$00
-	sta CMD_BUFF,x		; ran out of room: terminate what we did copy
+	sta CMD_BUFF,y		; ran out of room: terminate what we did copy
 
 @exec:	lda #$00
 	sta __monitor_outfile	; default to screen
@@ -553,8 +564,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	bcs @redirerr
 
 	pla
-	cmp #$02		; 2 because prompt makes min length 1
-	bcs @run
+	cmp prompt_len		; only the prompt means no input
+	bne @run
 
 	; no input, run the last command (if there is one)
 	lda CMD_BUFF
@@ -625,10 +636,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	jsr redraw_win
 
 	; start with a clean prompt
-	lda #MONITOR_PROMPT
-	sta mem::linebuffer
-	lda #$00
-	sta mem::linebuffer+1
+	ldxy #mem::linebuffer
+	jsr write_prompt
 
 	jmp __monitor_reenter
 .endproc
@@ -735,10 +744,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta mem::spare+LINESIZE	; 0 terminate
 	beq @print		; branch always
 
-@input:	lda #MONITOR_PROMPT
-	sta mem::spare
-	lda #$00
-	sta mem::spare+1
+@input:	ldxy #mem::spare
+	jsr write_prompt
 
 @print:	ldx winrow
 	CALLMAIN draw::resetline
@@ -864,6 +871,34 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 .endproc
 
 ;*******************************************************************************
+; WRITE PROMPT
+; Writes an empty prompt for the selected monitor mode.
+; IN:
+;   - .XY: destination buffer
+; OUT:
+;   - .X: prompt length
+.proc write_prompt
+@buff=r0
+	stxy @buff
+	ldy #$00
+	lda moncmd::mode
+	cmp #MON_MODE_IMAGE
+	bne :+
+	lda #'i'
+	sta (@buff),y
+	iny
+:	lda #MONITOR_PROMPT
+	sta (@buff),y
+	iny
+	sty prompt_len
+	lda #$00
+	sta (@buff),y
+	tya
+	tax
+	rts
+.endproc
+
+;*******************************************************************************
 ; INPUT ROW
 ; Calculates the SCREEN row that the monitor's input line is displayed on based
 ; on its current (local) line number
@@ -911,16 +946,16 @@ rowshi:
 ;   - __monitor_outfile: the file ID to store to
 ;   - .C: set on error (failed to open file)
 .proc set___monitor_outfile
-	ldx #$00
+	ldx prompt_len
 
 @findredir:
-	cpx #MAX_LINE_LEN
+	cpx #MAX_LINE_LEN+1
 	bcs @done
-	lda mem::linebuffer+1,x	; start after prompt (+1)
+	lda mem::linebuffer,x	; start after the prompt
 	beq @done		; no redirect, return
 	cmp #'>'		; redirect?
 	bne @next
-	lda mem::linebuffer+2,x	; redirect must be followed by whitespace
+	lda mem::linebuffer+1,x	; redirect must be followed by whitespace
 	jsr is_whitespace	; (to disambiguate from the MSB operator '>')
 	beq @redir
 @next:	inx
@@ -929,11 +964,16 @@ rowshi:
 
 @redir:	; get the filename to redirect the ouput to
 	lda #$00
-	sta mem::linebuffer+1,x	; terminate the line where the redirect was
-	sta $100+1,x
-	sta CMD_BUFF,x		; also terminate the command that will run
+	sta mem::linebuffer,x	; terminate the line where the redirect was
+	sta $100,x
+	txa
+	sec
+	sbc prompt_len
+	tay
+	lda #$00
+	sta CMD_BUFF,y		; also terminate the command that will run
 @l0:	inx
-	lda mem::linebuffer+1,x
+	lda mem::linebuffer,x
 	beq @err_nofile
 
 	jsr is_whitespace
@@ -949,9 +989,9 @@ rowshi:
 	; open the output file
 	pla
 	clc
-	adc #<(mem::linebuffer+1)
+	adc #<mem::linebuffer
 	tax
-	lda #>(mem::linebuffer+1)
+	lda #>mem::linebuffer
 	adc #$00
 	tay
 	CALLMAIN file::open_w
@@ -972,7 +1012,7 @@ rowshi:
 @err_nofile:
 	; display error
 	ldxy #strings::nofile
-	jsr __monitor_puts
+	jsr __monitor_puts_main
 	sec
 	rts
 .endproc

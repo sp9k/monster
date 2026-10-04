@@ -739,7 +739,7 @@ BANKED_CODE "ASMBANK"
 	pha
 
 	; disable VERIFY (assemble)
-	lda #$00
+	lda #IMAGE_MODE_NONE
 	sta zp::verify
 	sta image::mode
 
@@ -1990,8 +1990,16 @@ CUR_BANK .set LABEL_CALLER_BANK
 	lda expr::kind
 	cmp #VAL_DIFF
 	beq :+
-	cmp #VAL_DEFERRED
-	bne @oversized		; other word-sized immediates are illegal
+	cmp #VAL_DEFERRED	; is expression deferred?
+	beq :+			; if so, trust it will be properly sized
+	cmp #VAL_ABS
+	bne @oversized		; word sized immediate value -> error
+	lda expr::value+2
+	and operand+1
+	cmp #$ff		; is operand negative (byte)?
+	bne @oversized		; if not -> oversized
+	bit operand
+	bpl @oversized		; signed immediate range is -128..-1
 :
 	lda #$01		; check the deferred result's byte range at link time
 	sta operandsz

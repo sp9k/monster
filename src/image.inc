@@ -14,6 +14,11 @@ IMAGE_INC = 1
 .global __image_cursor, __image_length, __image_mode, __image_save
 .global __image_start, __image_mapped, __image_copy_address, __image_copy_size, __image_to_vmem, __image_load_program
 .global __image_check_program
+; linked image states
+IMAGE_MODE_NONE     = $00	; standalone assembly; no linked image
+IMAGE_MODE_BUILDING = $01	; incomplete or failed link
+IMAGE_MODE_READY    = $02	; completed linked image
+
 .scope image
 	mode     = __image_mode
 	mapped   = __image_mapped

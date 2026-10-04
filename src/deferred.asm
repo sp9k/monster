@@ -33,7 +33,7 @@ __deferred_length: .byte $00
 index:      .byte $00
 dependent:  .byte $00
 normalized: .byte $00
-number:     .word $0000
+number:     .res 3
 symbol:     .word $0000
 segment:    .byte $00
 error:      .byte $00
@@ -75,7 +75,9 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 
 ;------------------------------------------------------------------------------
 ; read the next token and select the code that handles it
-@next:	ldx index
+@next:	lda #$00
+	sta number+2
+	ldx index
 	cpx expr::rpnlistlen
 	jeq @done
 	jcs @original
@@ -92,9 +94,18 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	jeq @original		; floating-point relocations are unsupported
 	cmp #TOK_VALUE
 	bcc @symbol
+	beq @literal
+	cmp #TOK_WIDE
 	jne @original
+@literal:
 	jsr read_word
 	jcs @original
+	lda token
+	cmp #TOK_WIDE
+	jne @value
+	jsr read_operator
+	jcs @original
+	sta number+2
 	jmp @value
 
 ;------------------------------------------------------------------------------
@@ -158,7 +169,11 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	inc dependent
 	lda #TOK_SYMBOL		; assembler ID, mapped to import ID on export
 	bne @operand
-@value:	lda #TOK_VALUE		; resolved value
+@value:	lda number+2
+	beq :+
+	lda #TOK_WIDE
+	bne @operand
+:	lda #TOK_VALUE		; resolved value
 @operand:
 	jsr emit
 	jcs @ret
@@ -171,7 +186,13 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda number+1
 	jsr emit
 	jcs @ret
-	lda #$03		; each resolved operand occupies 3 RPN bytes
+	lda number+2
+	beq :+
+	jsr emit
+	jcs @ret
+	lda #$04
+	bne @normalized
+:	lda #$03		; ordinary operands occupy three RPN bytes
 	bne @normalized
 
 ;------------------------------------------------------------------------------
@@ -228,6 +249,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	ldxy #$0000
 	stxy expr::value
 	stx expr::postproc
+	stx expr::value+2
 
 	lda #$02			; default to word-sized address
 	ldx __deferred_length
@@ -404,7 +426,9 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	sta index
 	sta expr::rpnlistlen
 
-@next:	jsr take
+@next:	lda #$00
+	sta number+2
+	jsr take
 	jcs @ret
 	cmp #TOK_END
 	jeq @done
@@ -418,11 +442,19 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	cmp #TOK_SYMBOL
 	beq @word
 	cmp #TOK_VALUE
+	beq @word
+	cmp #TOK_WIDE
 	jne @bad
 @word:	jsr take_word
 	jcs @ret
 	lda token
-	cmp #TOK_SYMBOL
+	cmp #TOK_WIDE
+	bne :+
+	jsr take
+	jcs @ret
+	sta number+2
+	jmp @value
+:	cmp #TOK_SYMBOL
 	bne @value
 	ldxy number
 	CALL FINAL_BANK_LINKER, __obj_get_import_address
@@ -446,8 +478,12 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	adc symbol+1
 	sta number+1
 
-@value:	lda #TOK_VALUE
-	jsr append
+@value:	lda number+2
+	beq :+
+	lda #TOK_WIDE
+	bne :++
+:	lda #TOK_VALUE
+:	jsr append
 	bcs @ret
 	lda number
 	jsr append
@@ -455,7 +491,11 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda number+1
 	jsr append
 	bcs @ret
-	jmp @next
+	lda number+2
+	beq :+
+	jsr append
+	bcs @ret
+:	jmp @next
 
 @unary:
 	jsr take

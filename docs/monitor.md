@@ -27,6 +27,45 @@ assembling a program.
 When the monitor is quit (the `x` command), the window is left onscreen (as with other GUI windows).
 Press {c64-key}`F7` to re-enter it.  Press {c64-keys}`C= + Q` while the monitor window has focus to close it, just like other windows.
 
+### Modes
+
+The monitor can operate in two modes: VIRTUAL (the default) and IMAGE.
+
+In VIRTUAL mode, the monitor interacts with the simulated "virtual" state
+of the machine.  This is the same state that is affected during normal debugging.
+
+IMAGE mode exists to allow patching the actual physical RAM where the user program's
+back-up is stored. Use cases for this are quite particular.  If you need to
+store information to the image that cannot be known until AFTER linking (like a
+checksum) you can use this to do so.
+
+Image offsets are 24-bit and begin at `$000000`. The prompt is `I$` in image mode
+and `$` in virtual mode.
+
+In image mode, `m`, `p`, `f`, `move`, `c`, `h`, `dump`, and `s` commands all operate on the
+image. Writes beyond the image's length extend it, and writing below the active image's start address
+lower the image's base to include the new bottom.
+
+
+```
+$mode image
+IMAGE
+I$m $010000 $010008
+I$p $010002 $ea
+I$f $010004 $010008 $00
+I$s $000000 $020000 patched.bin
+I$mode virtual
+VIRTUAL
+```
+
+`mode image` requires a completed linked image; a failed or unfinished rebuild
+makes image memory commands unavailable. Switching modes resets image display
+continuation to zero.
+
+Debug commands (`a`, `d`, and `new`) are only available in virtual mode.
+Registers, execution controls, breakpoints, and watches also always refer to the simulated CPU
+regardless of mode.
+
 ### File redirection
 The output from a given monitor command can be redirected to file instead of the screen by using the
 redirect (`>`) operator.  When placed at the end of a command, the redirect operator writes all output from
@@ -72,6 +111,7 @@ immediately. They may clobber active program state you are debugging.
 | `g`     | `GO`                        | continues execution, optionally at a new address     |
 | `h`     | `HUNT`                      | searches memory for a sequence of values             |
 | `m`     | `SHOW MEMORY`               | displays the contents of memory                      |
+| `mode`  | `ADDRESS SPACE`             | selects virtual or image memory; real is reserved   |
 | `move`  | `MOVE MEMORY`               | copies a range of memory to a new address            |
 | `new`   | `INITIALIZE BASIC`          | re-runs the BASIC warm-start process                 |
 | `n`     | `STEP OVER`                 | runs the next instruction, stepping over subroutines |
@@ -107,7 +147,15 @@ $? 2*24
 $0030
 ```
 
-Floating-point results are printed in decimal; integer results are printed as four hexadecimal digits.
+Floating-point results are printed in decimal. Integer expressions use unsigned
+24-bit arithmetic, wrapping at `$ffffff`.  Literals unrepresentable in 24-bits are not allowed.
+
+```
+$? $ffff+1
+$010000
+$? $10000*3+$20
+$030020
+```
 ````
 
 #### Assemble

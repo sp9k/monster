@@ -41,7 +41,7 @@ PC_SYMBOL_ID   = $ffff	; magic value for '*' (in eval result)
 
 ; These flags tell the expression evaluator what "kind" an operand
 ; is: REL means relocatable (symbol-based) and ABS means absolute (fixed value)
-; FLOAT operands store CBM float values alongside the (unused) 16-bit value;
+; FLOAT operands store CBM float values alongside the unused integer value;
 ; they are always absolute and are coerced back to an integer at the end of the
 ; evaluation
 VAL_ABS   = 0
@@ -58,6 +58,7 @@ VAL_DEFERRED = 4	; integer RPN expression evaluated by the linker
 FLOAT_MODE_COERCE = 0	; float result -> integer (error if not integral)
 FLOAT_MODE_KEEP   = 1	; leave a float result alone (.EQ)
 FLOAT_MODE_FORCE  = 2	; always return a float, promoting integers (.DF)
+FLOAT_MODE_MONITOR = 3	; keep the result type; never defer monitor errors
 
 ;*******************************************************************************
 ; number of named float constants (.EQ) that may be defined
@@ -102,6 +103,13 @@ compiling: .byte 0
 
 .segment "SHAREBSS"
 
+.pushseg
+.DATA
+
+.export __expr_wide_mode
+__expr_wide_mode: .byte $00	; !0 = monitor result; 0 = checked assembly word
+.popseg
+
 .export __expr_rpnlist
 __expr_rpnlist: .res $20
 
@@ -125,7 +133,7 @@ __expr_negative: .word 0
 __expr_postproc: .byte 0
 
 .export __expr_value
-__expr_value: .word 0	; the (full 16-bit) result of the last evaluation
+__expr_value: .res 3	; full 24-bit result of the last evaluation
 
 ;*******************************************************************************
 ; FLOAT VALUE
@@ -138,19 +146,22 @@ __expr_floatval: .res FP_SIZE
 __expr_floatstr: .res 24
 
 .segment "EXPR_BSS"
+literal_high = r2		; get_val accumulator high byte, consumed by appendval
+
 ;*******************************************************************************
 ; OPERANDS
 ; The operand stack used by the evaluator.  Each entry is OPERAND_SIZE bytes:
 ;   +0 value LSB   +1 value MSB
-;   +2 kind        +3 segment ID
+;   +2 kind        +3 segment ID (ABS: signed extension for narrowing)
 ;   +4 symbol LSB  +5 symbol MSB
 ;   +6 postproc
 ;   +7 negative base LSB  +8 negative base MSB (VAL_DIFF only)
-;   +9 float value (only if kind is VAL_FLOAT)
+;   +9 integer high byte
+;   +10 float value (only if kind is VAL_FLOAT)
 .if FP_SUPPORTED
-OPERAND_SIZE = 9+FP_SIZE
+OPERAND_SIZE = 10+FP_SIZE
 .else
-OPERAND_SIZE = 9
+OPERAND_SIZE = 10
 .endif
 operands: .res $100
 
@@ -222,13 +233,38 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 
 	jsr __expr_eval_list
 	bcc @done
-.if FP_SUPPORTED
 	ldx float_mode
 	cpx #FLOAT_MODE_FORCE
-	beq @done		; .DF cannot emit a deferred integer placeholder
-.endif
+	bcs @done		; .DF and monitor evaluations cannot defer errors
 	JUMP FINAL_BANK_LINKER_AUX, deferred::compile
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; EVAL WIDE
+; Evaluates monitor expressions with absolute symbols and a 24-bit result
+; IN:
+;   - zp::line: expression text
+; OUT:
+;   - expr::value:    24-bit integer
+;   - expr::floatval: float result (if applicable)
+;   - expr::kind:     result type
+;   - .C:             set on error
+;   - .A:             error code on failure
+.export __expr_eval_wide
+.proc __expr_eval_wide
+	lda #FLOAT_MODE_MONITOR
+	sta __expr_wide_mode
+	sta float_mode
+	jsr eval
+	php
+	pha
+	lda #$00
+	sta __expr_wide_mode
+	sta float_mode
+	pla
+	plp
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -251,10 +287,9 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 .proc __expr_eval_list
 @i           = zp::expr
 @sp          = zp::expr+1
-@val1        = m::dividend
-@val2        = m::divisor
-@result_size = zp::expr+6
-@negative    = zp::expr+10
+@val1        = zp::expr+2
+@val2        = zp::expr+5
+@negative    = zp::tmp15
 @negative2   = zp::expr+8
 @kind1       = r4
 @segment1    = r5
@@ -269,7 +304,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @segment     = zp::tmp11
 @symbol      = zp::tmp12	; 2 bytes
 @postproc    = zp::tmp14
-@tmp         = zp::tmp15
+@product_hi  = r0		; high three bytes returned by mul24
 @operands    = operands	    ; operand stack (grows up from here)
 	lda __expr_syntax_only
 	beq @evaluate
@@ -281,6 +316,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	ldxy #$0000
 	stxy @val1
 	stx __expr_kind
+	stx @segment
+	stx @val1+2
 	jmp @abs_result
 
 @evaluate:
@@ -293,6 +330,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	RETURN_ERR ERR_VALUE_EXPECTED
 
 @evalloop:
+	lda #$00
+	sta @val1+2
 	ldx @i
 	lda __expr_rpnlist,x
 	jpl @cont
@@ -325,7 +364,31 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	bne @rel_result
 @abs_result:
 	lda #POSTPROC_NONE
-	sta __expr_postproc	; constant results carry no post-processing
+	sta __expr_postproc
+	ldx __expr_wide_mode
+	bne @wide_result
+	lda @segment
+	beq @positive
+	cmp #$ff
+	bne @overflow
+	lda @val1+2
+	cmp #$ff
+	bne @overflow
+	bit @val1+1
+	bmi @word_result
+	bpl @overflow
+@positive:
+	lda @val1+2
+	beq @word_result
+@overflow:
+	RETURN_ERR ERR_OVERSIZED_OPERAND
+
+@wide_result:
+	lda @val1+2
+	beq @word_result
+	lda #$03
+	bne @ok
+@word_result:
 	lda @val1+1		; is MSB of result 0?
 	bne :+
 	lda #$01
@@ -334,6 +397,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	jmp @ok			; -> done
 
 @rel_result:
+	lda @val1+2
+	bne @overflow		; wide addends require deferred evaluation
 	ldxy @symbol
 	stxy __expr_symbol
 	lda @kind
@@ -392,7 +457,11 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	lda #FP_SIZE		; floats are 5 bytes
 .endif
 
-@ok:	ldxy @val1
+@ok:	pha
+	lda @val1+2
+	sta __expr_value+2
+	pla
+	ldxy @val1
 	stxy __expr_value	; save full result (e.g. for relocation addend)
 	clc			; ok
 @ret:	rts
@@ -413,6 +482,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 :	cmp #TOK_PC
 	bne @getoperand
 	inc @i
+	lda __expr_wide_mode
+	bne @abs_pc
 	lda asm::mode		; check if we are in DIRECT mode
 	bne :+			; continue to push relocation value if not
 
@@ -443,6 +514,16 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	tax
 	pla			; restore TOKEN type
 
+	cmp #TOK_WIDE
+	bne :+
+@wide:	stx @val1
+	ldx @i
+	lda __expr_rpnlist,x
+	sta @val1+2		; set MSB of 24 bit vlaue
+	inc @i
+	ldx @val1
+	jmp @const
+:
 .if FP_SUPPORTED
 	cmp #TOK_FLOAT
 	bne :++
@@ -471,7 +552,11 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	cmpw #SYM_UNRESOLVED	; check magic "unresolved" value
 	beq @unresolved
 
-	CALLMAIN lbl::addr_and_mode
+	lda __expr_wide_mode
+	beq :+
+	CALLMAIN lbl::getaddr
+	jmp @const
+:	CALLMAIN lbl::addr_and_mode
 	stxy @val1		; addend
 
 	; get the segment ID
@@ -489,6 +574,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	bne @valdone		; branch always - continue to store
 
 @unresolved:
+	ldx __expr_wide_mode
+	bne @undefined		; monitor expressions require defined symbols
 	; if we're here, the expression is unresolved (so far)
 	; while verifying or in pass 1, that's fine - return and assume we will
 	; figure it out
@@ -499,6 +586,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	bne @dummy		; pass 1 -> proceed with dummy
 
 	; if in pass 2 and haven't seen the label, return error
+@undefined:
 	RETURN_ERR ERR_UNRESOLVABLE_LABEL
 
 @dummy:	; return dummy
@@ -506,9 +594,11 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	sta @segment		; mark segment as undefined
 	ldxy #$00		; dummy value
 	lda #VAL_REL
-	skw
+	bne @setkind
 
 @const: lda #VAL_ABS
+	sta @segment		; absolute literals have no negative extension
+@setkind:
 	sta @kind		; set "kind" to constant
 
 @valdone:
@@ -569,6 +659,12 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	lda #$00
 	sbc @val1+1
 	tay
+	lda #$00
+	sbc @val1+2
+	sta @val1+2
+	lda #$00
+	sbc @segment
+	sta @segment
 	jmp @pushval
 
 .if FP_SUPPORTED
@@ -579,7 +675,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	cmp #VAL_ABS
 	jne @invalid_unary
 	ldxy @val1
-	jsr fp::fromint
+	lda @val1+2
+	jsr fp::fromwide
 	jcs @ret
 	jmp @function_apply
 @function_float:
@@ -588,9 +685,11 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	lda @operator
 	cmp #FP_INT
 	bne :+
-	jsr fp::toint
+	jsr fp::towide
 	jcs @ret
+	sta @val1+2
 	lda #VAL_ABS
+	sta @segment
 	sta @kind
 	jmp @pushval
 :	cmp #FP_FLOAT
@@ -628,11 +727,14 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @lsb:	cmp #'<'
 	bne @msb
 	lda @kind
-	cmp #VAL_ABS
-	beq :+				; if ABS, no need for post-processing
-	lda #POSTPROC_LSB
+	bne :+
+	sta @segment
+	beq :++
+:	lda #POSTPROC_LSB
 	sta @postproc
-:	ldy #$00
+:	lda #$00
+	sta @val1+2
+	tay
 	jmp @pushval_with_postproc
 
 @msb:	cmp #'>'
@@ -650,6 +752,9 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	jmp @pushval_with_postproc
 
 @msb_abs:
+	lda #$00
+	sta @segment
+	sta @val1+2
 	tya
 	tax
 	ldy #$00
@@ -675,19 +780,17 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	sta @operands+2,x
 	inx
 	iny
-	cpy #$05
+	cpy #$07
 	bcc :-
 	ldx @sp
-	lda @negative
-	sta @operands+7,x
-	lda @negative+1
-	sta @operands+8,x
+	lda @val1+2
+	sta @operands+9,x
 
 .if FP_SUPPORTED
 	; store the float value (only meaningful for VAL_FLOAT operands)
 	ldy #$00
 :	lda fbuff,y
-	sta @operands+9,x
+	sta @operands+10,x
 	inx
 	iny
 	cpy #FP_SIZE
@@ -714,6 +817,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	jsr @popval
 	bcs @err
 	stxy @val2
+	lda @val1+2
+	sta @val2+2
 	ldxy @negative
 	stxy @negative2
 .if FP_SUPPORTED
@@ -729,7 +834,6 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	dex
 	bpl :-
 	lda @postproc
-	cmp #POSTPROC_NONE
 	beq @getval1
 	; post-processing ('<'/'>') applies to the final result of the
 	; expression, so it must begin the expression (documented); a
@@ -764,35 +868,6 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 
 @cont_eval:
 .if FP_SUPPORTED
-	lda @operator
-	cmp #FP_EQ
-	bcc @check_float
-	cmp #FP_GE+1
-	bcs @check_float
-
-	; a relational operator: compare as floats only if an operand actually
-	; is one.  Two integers go to the integer comparison in @int_op, which
-	; every target shares (and which avoids entering the BASIC ROM's FP
-	; package for something as common as ".if PASS == 2")
-	lda @kind1
-	cmp #VAL_FLOAT
-	beq @frelational
-	lda @kind2
-	cmp #VAL_FLOAT
-	bne @int_op
-
-@frelational:
-	jsr @promote
-	bcs @err
-	lda @operator
-	jsr fp::binop
-	bcs @err
-	jsr fp::toint
-	bcs @err
-	lda #VAL_ABS
-	sta @kind
-	jmp @pushval
-
 @check_float:
 	; if either operand is a float, operation is a float operation
 	lda @kind1
@@ -814,11 +889,27 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	beq @fmath
 	cmp #'/'
 	beq @fmath
+	cmp #FP_EQ
+	bcc :+
+	cmp #FP_GE+$01
+	bcc @fcompare
+:
 
 	; bitwise operators have no meaning for floats; demote to integers
 	jsr @demote
 	bcs @err
 	jmp @int_op
+
+@fcompare:
+	jsr fp::binop
+	bcs @err
+	jsr fp::towide
+	bcs @err
+	sta @val1+2
+	lda #VAL_ABS
+	sta @segment
+	sta @kind
+	jmp @pushval
 
 @fmath:	jsr fp::binop
 	bcs @err
@@ -850,7 +941,15 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	lda @val1+1
 	adc @val2+1
 	tay
-	jmp @pushval_with_postproc	; keep val1's postproc (if any)
+	lda @val1+2
+	adc @val2+2
+	sta @val1+2
+	lda @kind
+	bne :+
+	lda @segment1
+	adc @segment2
+	sta @segment
+:	jmp @pushval_with_postproc	; keep val1's postproc (if any)
 
 @chksub:
 	cmp #'-'
@@ -867,7 +966,15 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	lda @val1+1
 	sbc @val2+1
 	tay
-	jmp @pushval_with_postproc	; keep val1's postproc (if any)
+	lda @val1+2
+	sbc @val2+2
+	sta @val1+2
+	lda @kind
+	bne :+
+	lda @segment1
+	sbc @segment2
+	sta @segment
+:	jmp @pushval_with_postproc	; keep val1's postproc (if any)
 
 @chkmul:
 	; Multiplication, division and bitwise operations all require constants.
@@ -878,54 +985,53 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 :	lda @operator
 	cmp #'*'	; MULTIPLY
 	bne @chkdiv
-	; get the product TODO: 32-bit precision expressions?
-	ldxy @val1
-	stxy r0
-	ldxy @val2
-	stxy r2
-	jsr m::mul16
-	ldxy ra	; get product
-	jmp @pushval
+	lda @segment1
+	eor @segment2
+	sta @segment
+	jsr m::mul24
+	lda @segment1
+	ora @segment2
+	bne @int_result
+	lda @product_hi		; upper half of the unsigned product
+	ora @product_hi+1
+	ora @product_hi+2
+	beq @int_result
+	lda #$01
+	sta @segment		; positive overflow, rejected when narrowing
+	jmp @int_result
 
 @chkdiv:
-	cmp #'/'	; DIVIDE
-	bne @chkand
-	jsr m::div16		; operands already occupy the division slots
-	bcc :+
+	cmp #'/'
+	bne @bits_start
+	jsr m::div24
+	bcc @int_result
 	RETURN_ERR ERR_DIVIDE_BY_ZERO
-:	ldxy @val1		; quotient replaces the first operand
-	jmp @pushval
 
-@chkand:
-	cmp #'&'	; AND
-	bne @chkor
-	lda @val1
-	and @val2
-	tax
-	lda @val1+1
-	and @val2+1
-	tay
-	jmp @pushval
-
-@chkor: cmp #K_PIPE	; OR
-	bne @chkeor
-	lda @val1
-	ora @val2
-	tax
-	lda @val1+1
-	ora @val2+1
-	tay
-	jmp @pushval
-
-@chkeor:
-	cmp #'^'	; EOR
+@bits_start:
+	lda #$00
+	sta @segment
+	ldx #$02
+@bits:	lda @operator
+	cmp #'&'
+	beq @and
+	cmp #K_PIPE
+	beq @or
+	cmp #'^'
 	bne @unknownop
-	lda @val1
-	eor @val2
-	tax
-	lda @val1+1
-	eor @val2+1
-	tay
+	lda @val1,x
+	eor @val2,x
+	jmp @bitbyte
+@and:	lda @val1,x
+	and @val2,x
+	jmp @bitbyte
+@or:	lda @val1,x
+	ora @val2,x
+@bitbyte:
+	sta @val1,x
+	dex
+	bpl @bits
+@int_result:
+	ldxy @val1
 	jmp @pushval
 @unknownop:
 	; unrecognized operator byte in the RPN list (e.g. from a
@@ -941,7 +1047,10 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 
 	; build a code for the relation that actually holds between the
 	; operands: bit 0 = less than, bit 1 = equal, bit 2 = greater than
-:	lda @val1+1
+:	lda @val1+2
+	cmp @val2+2
+	bne :+
+	lda @val1+1
 	cmp @val2+1
 	bne :+
 	lda @val1
@@ -954,13 +1063,15 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @releq:	lda #%00000010		; val1 = val2
 
 	; true if the relation that holds is one this operator accepts
-:	ldx @operator
+:	ldx #$00
+	stx @segment
+	stx @val1+2
+	ldx @operator
 	and @relations-FP_EQ,x
-	beq @relfalse
-	ldxy #$0001
-	jmp @pushval
-@relfalse:
-	ldxy #$0000
+	beq :+
+	lda #$01
+:	tax
+	ldy #$00
 	jmp @pushval
 
 ; the relations each operator is true for, indexed by operator-FP_EQ
@@ -987,7 +1098,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	; recover the packed float that travelled with this entry
 	ldx @sp
 	ldy #$00
-:	lda @operands+9,x
+:	lda @operands+10,x
 	sta fbuff,y
 	inx
 	iny
@@ -1001,13 +1112,11 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	sta @kind,y
 	inx
 	iny
-	cpy #$05
+	cpy #$07
 	bcc :-
 	ldx @sp
-	lda @operands+7,x
-	sta @negative
-	lda @operands+8,x
-	sta @negative+1
+	lda @operands+9,x
+	sta @val1+2
 	ldy @operands+1,x	; get MSB
 	lda @operands,x		; and LSB
 	tax
@@ -1020,12 +1129,10 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 ; Also validates that the combination of ABS/REL modes is valid
 @reduce_operation_addition:
 	lda @kind1
-	cmp #VAL_ABS
 	bne @add_a_rel
 
 @add_a_abs:
 	lda @kind2
-	cmp #VAL_ABS
 	bne @add_a_abs_b_rel
 
 	; A=ABS, B=ABS keeps the absolute kind from the last pop.
@@ -1034,56 +1141,30 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @add_a_abs_b_rel:
 	ldxy @negative2
 	stxy @negative
+
 	; A=ABS, B=REL, result is REL with b's symbol and segment
 	; (the shared vars hold A's metadata from the last pop, so ALL of
 	; kind/segment/symbol must be replaced with B's)
-	lda @kind2
-	sta @kind
-	lda @segment2
-	sta @segment
-	lda @symbol2
-	sta @symbol
-	lda @symbol2+1
-	sta @symbol+1
+	ldx #$03
+:	lda @kind2,x
+	sta @kind,x
+	dex
+	bpl :-
 	RETURN_OK
 
 @add_a_rel:
 	lda @kind2
-	cmp #VAL_ABS
-	beq :+		; -> ok
-	; A=REL, B=REL is illegal, return err
-	sec
+	cmp #VAL_ABS+$01		; only ABS may be added to a relocatable value
 	rts
-
-; A=REL, B=ABS keeps the metadata from the last pop.
-:	RETURN_OK
 
 ;-------------------------------------------------------------------------------
 ; REDUCE OPERATION SUBTRACTION
 ; Validates/reduces the segment/symbol/and kind for a subtraction operation
 ; Also validates that the combination of ABS/REL modes is valid
 @reduce_operation_subtraction:
-	lda @kind1
-	cmp #VAL_ABS
-	bne @sub_a_rel
-
-@sub_a_abs:
 	lda @kind2
-	cmp #VAL_ABS
-	beq :+
-	; if val1 is ABS, val2 must be too
-	sec
-	rts			; return err
-
-:	RETURN_OK
-
-@sub_a_rel:
-	lda @kind2
-	cmp #VAL_ABS
 	bne @sub_a_rel_b_rel
-
-	; A=REL, B=ABS keeps the left operand's kind, symbol and segment.
-	RETURN_OK
+	RETURN_OK		; subtraction of an absolute value keeps the left kind
 
 @sub_a_rel_b_rel:
 	lda @kind1
@@ -1095,9 +1176,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	; a post-processed ('<'/'>') value cannot take part in a symbol
 	; difference
 	lda @postproc
-	beq @chksegs
-	sec
-	rts
+	bne @bad_difference
 
 @chksegs:
 	; if either operand is not yet resolved (pass 1 forward reference),
@@ -1139,10 +1218,7 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	beq @unresolved_difference	; both symbols unresolved -> can't defer
 
 @defer_difference:
-	lda @segment1
-	sta @segment
-	ldxy @symbol1
-	stxy @symbol
+	; the left operand's segment and symbol remain from the last pop
 	lda @segment2
 	cmp #SEG_UNDEF
 	beq @negative_symbol
@@ -1181,18 +1257,11 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 ; For operators that need to resolve to constant (pretty much anything but
 ; addition and subtraction)
 @reduce_operation_other:
-	; validate that both values are ABSolute
 	lda @kind1
-	cmp @kind2
-	beq :+
-@reduce_err:
-	sec
-	rts		; invalid
-
-:	cmp #VAL_ABS
-	bne @reduce_err
+	ora @kind2
 	sta @kind
-	RETURN_OK
+	cmp #VAL_ABS+$01		; carry clear only when both operands are absolute
+	rts
 
 .if FP_SUPPORTED
 ;-------------------------------------------------------------------------------
@@ -1209,7 +1278,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	cmp #VAL_ABS
 	bne @promote_err
 	ldxy @val1
-	jsr fp::fromint
+	lda @val1+2
+	jsr fp::fromwide
 	bcs @promote_ret
 	ldx #FP_SIZE-1
 :	lda fp::val,x
@@ -1224,7 +1294,8 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	cmp #VAL_ABS
 	bne @promote_err
 	ldxy @val2
-	jsr fp::fromint
+	lda @val2+2
+	jsr fp::fromwide
 	bcs @promote_ret
 	ldx #FP_SIZE-1
 :	lda fp::val,x
@@ -1251,8 +1322,9 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	sta fp::val,x
 	dex
 	bpl :-
-	jsr fp::toint
+	jsr fp::towide
 	bcs @demote_ret
+	sta @val1+2
 	stxy @val1
 
 	ldx #FP_SIZE-1
@@ -1260,13 +1332,16 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 	sta fp::val,x
 	dex
 	bpl :-
-	jsr fp::toint
+	jsr fp::towide
 	bcs @demote_ret
+	sta @val2+2
 	stxy @val2
 
 	lda #VAL_ABS
 	sta @kind1
 	sta @kind2
+	sta @segment1
+	sta @segment2
 	sta @postproc1
 	sta @postproc2
 	sta @postproc		; post-processing not used for floats
@@ -1293,13 +1368,19 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 
 ;------------------------------------------------------------------------------
 ; FLOAT TO INT
-; Coerces the float in fbuff to a 16-bit integer.
+; Coerces the float in fbuff to an unsigned 24-bit integer.
+; IN:
+;   - fbuff: packed floating-point value
 ; OUT:
-;   - .XY: the integer value
-;   - .C:  set if the value is not an integer in 0..65535
+;   - .XY, @val1+2: integer value
+;   - .C: set and .A: error code for a fractional or out-of-range value
 @float_to_int:
 	jsr @load_float
-	jmp fp::toint
+	lda #$00
+	sta @segment
+	jsr fp::towide
+	sta @val1+2
+	rts
 
 ;-------------------------------------------------------------------------------
 ; FINISH RESULT
@@ -1323,10 +1404,10 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 
 	; .DF expects a float; only an absolute value can become one
 	lda @kind
-	cmp #VAL_ABS
 	bne @fr_err
 	ldxy @val1
-	jsr fp::fromint		; int -> float
+	lda @val1+2
+	jsr fp::fromwide		; int -> float
 	bcs @fr_ret
 	jmp @fr_publish
 
@@ -1400,7 +1481,10 @@ nfconsts: .word 0	; bytes of fconsts in use (handles are byte offsets)
 @pc:	inc @symbolic
 	cmp #TOK_PC
 	beq @next
-@value:	inx
+@value:	cmp #TOK_WIDE
+	bne :+
+	inx
+:	inx
 	inx
 	bne @next
 
@@ -2043,7 +2127,7 @@ __expr_float_format:
 	cpx #MAX_RPN_LEN-1	; room for token and terminator?
 	bcs @rpnfull
 	sta __expr_rpnlist,x
-	bcc :++			; branch always
+	bcc @val_end		; branch always
 
 :	pha			; save the token type
 	lda @i
@@ -2056,9 +2140,17 @@ __expr_float_format:
 	sta __expr_rpnlist+2,x	; MSB
 	pla
 	sta __expr_rpnlist,x	; TOKEN type
-	inx
+	cmp #TOK_WIDE
+	bne :+
+	cpx #MAX_RPN_LEN-4
+	bcs @rpnfull
+	lda literal_high
+	sta __expr_rpnlist+3,x
 	inx
 :	inx
+	inx
+@val_end:
+	inx
 	stx @i
 	rts
 .endproc
@@ -2181,15 +2273,6 @@ __expr_float_format:
 ; Recognize binary relations. Consume only the first byte of two-byte tokens;
 ; the parser's usual inc_line consumes the final byte.
 .proc get_comparison
-	; only these characters can begin a comparison
-	cmp #'<'
-	beq @peek
-	cmp #'>'
-	beq @peek
-	cmp #'='
-	beq @peek
-	cmp #'!'
-	bne @no
 @peek:
 	jsr lex::peek
 	bcs @ret
@@ -2266,16 +2349,9 @@ __expr_float_format:
 	rts
 @found:
 	lda fnames+1,x
-	pha
-	tya
-	clc
-	adc zp::line
-	sta zp::line
-	bcc :+
-	inc zp::line+1
-:	pla
-	clc
-	rts
+	sty @entry
+	ldx @entry
+	jmp lex::advance
 fnames:
 	.byte "float",0,FP_FLOAT,"int",0,FP_INT
 	.byte "trunc",0,FP_TRUNC,"round",0,FP_ROUND
@@ -2387,7 +2463,7 @@ fnames:
 	bcs @poolfull
 
 	jsr fp::parse
-	bcs @ret
+	jcs @ret
 
 	ldx fliteralsz
 	txa
@@ -2452,7 +2528,11 @@ fnames:
 
 @value:	jsr get_val
 	bcs @ret
-	lda #TOK_VALUE
+	lda literal_high
+	beq :+
+	lda #TOK_WIDE
+	RETURN_OK
+:	lda #TOK_VALUE
 @ret:	rts
 
 @label:	jsr get_label
@@ -2520,104 +2600,109 @@ fnames:
 
 ;*******************************************************************************
 ; GETVAL
-; Parses zp::line for a decimal or hexadecimal value up to 16 bits in size.
+; Parses a 24-bit decimal or hexadecimal value.
 ; It may also parse a character in the format 'x'.  This must be a 1 byte
 ; value.
+; IN:
 ;  - zp::line: the text to parse a value from
+;  - .X: token length validated by the lexer
 ; OUT:
 ;  - zp::line: updated to point past the value that was parsed
-;  -.XY: the value of the string in zp::line
+;  -.XY: low word; literal_high: high byte of a wide literal
 ;  -.C: set on error and clear if a value was extracted.
 .proc get_val
-@val=zp::expr
+@val=r0			; three-byte accumulator
+@twice=r3		; accumulator multiplied by two
+@hex=r6			; nonzero for hexadecimal
+@end=r7			; lexer-validated token length
+	stx @end
 	ldy #$00
 	sty @val
 	sty @val+1
+	sty @val+2
+	sty @hex
 	lda (zp::line),y
+	cmp #$27
+	beq @char
 	cmp #'$'
-	beq @hex
+	bne @digit
+	inc @hex
+	iny
 
-	cmp #$27		; single quote
-	bne @decimal
-
-;------------------
-@char:
-	jsr inc_line
-	lda (zp::line),y	; read the character value
-	tax			; put it into .X
-	jsr inc_line
-	lda (zp::line),y	; make sure there is a terminating quote
-	cmp #$27		; single quote
-	bne @badchar
-	jsr inc_line
-	lda #$01		; result is 1 byte in size
-	clc			; ok
-@ret:	rts
-
-;------------------
-@decimal:
-	ldxy zp::line
-	CALLMAIN atoi	; convert to binary
-	bcs @ret			; return err
-	adc zp::line
-	sta zp::line
+;-------------------------------------------------------------------------------
+@digit:	lda (zp::line),y
+	cmp #'9'+1
 	bcc :+
-	inc zp::line+1
-:	stxy @val
-	jmp @success
-
-;------------------
-@hex:
-	iny
-@l0:	lda (zp::line),y
-	jsr isseparator
-	beq @done
-
-	jsr chtohex
-	bcc @next
-
-@badchar:
-	RETURN_ERR ERR_UNEXPECTED_CHAR
-
-@next:	asl
-	asl
-	asl
-	asl
-	asl
-	rol @val
-	rol @val+1
-	bcs @err
-	asl
-	rol @val
-	rol @val+1
-	bcs @err
-	asl
-	rol @val
-	rol @val+1
-	bcs @err
-	asl
-	rol @val
-	rol @val+1
-	bcs @err	; oversized value
-	iny
-	bne @l0
-
-@done: 	tya
+	sbc #'a'-'9'-1
+:	and #$0f
+	pha
+	jsr @shift
+	bcs @overflow_pop
+	ldx #$02
+@copy:	lda @val,x
+	sta @twice,x
+	dex
+	bpl @copy
+	ldx #$02
+	lda @hex
+	beq @scale
+	inx
+@scale:	jsr @shift
+	bcs @overflow_pop
+	dex
+	bne @scale
+	lda @hex
+	bne @add
 	clc
-	adc zp::line
-	sta zp::line
-	bcc @success
-	inc zp::line+1
-@success:
+@times10:
+	lda @val,x
+	adc @twice,x
+	sta @val,x
+	inx
+	txa
+	eor #$03		; test the index without changing the addition carry
+	bne @times10
+	bcs @overflow_pop
+@add:	pla
+	clc
+	adc @val
+	sta @val
+	bcc @next
+	inc @val+1
+	bne @next
+	inc @val+2
+	beq @overflow
+@next:	iny
+	cpy @end
+	bcc @digit
+
+
+@advance:
+	tya
+	tax
+	jsr lex::advance
 	ldx @val
 	ldy @val+1
-	beq :+
-	lda #$02	; 2 bytes
-	skw
-:	lda #$01	; 1 byte
-	RETURN_OK
+	clc
+	rts
 
-@err:	RETURN_ERR ERR_OVERSIZED_OPERAND
+;-------------------------------------------------------------------------------
+@overflow_pop:
+	pla
+@overflow:
+	RETURN_ERR ERR_OVERSIZED_OPERAND
+
+@shift:	asl @val
+	rol @val+1
+	rol @val+2
+	rts
+
+;-------------------------------------------------------------------------------
+@char:	iny			; the lexer already checked both quotes
+	lda (zp::line),y
+	sta @val
+	ldy #$03
+	jmp @advance
 .endproc
 
 ;*******************************************************************************
@@ -2673,16 +2758,6 @@ fnames:
 ;  - .AXY: unchanged
 .proc isoperator
 @xsave=zp::util+2
-	cmp #'!'
-	bcc @no
-	cmp #'^'+$01
-	bcc @ascii
-	cmp #K_PIPE
-	rts
-@ascii:	cmp #'0'
-	bcc @scan
-	cmp #'<'
-	bcc @no			; digits and the intervening punctuation
 @scan:	stx @xsave
 	ldx #numchars-$01
 @next:	cmp opchars,x
@@ -2697,12 +2772,6 @@ fnames:
 opchars:	.byte '+', '-', '*', '/', '&', '^', K_PIPE
 	.byte '!', '(', ')', '<', '=', '>', '[', ']'
 numchars=*-opchars
-.endproc
-
-;*******************************************************************************
-; CHTOHEX
-.proc chtohex
-	JUMPMAIN util::chtohex
 .endproc
 
 ;*******************************************************************************

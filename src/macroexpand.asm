@@ -1205,9 +1205,11 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 	cmp #TOK_PC
 	beq @token
 	lda @toktype
-	cmp #TOK_FLOAT		; .C set only for a float literal
-	lda argrecord,y		; operator, or value LSB
-	bcc :+
+	cmp #TOK_FLOAT
+	beq :+
+	lda argrecord,y
+	jmp :++
+:	lda argrecord,y
 	clc
 	adc @fltbase
 :	sta __expr_rpnlist,x
@@ -1218,6 +1220,14 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 	beq @token
 	cmp #TOK_UNARY_OP
 	beq @token
+	lda argrecord,y
+	sta __expr_rpnlist,x
+	inx
+	iny
+
+	lda @toktype
+	cmp #TOK_WIDE
+	bne @token
 	lda argrecord,y
 	sta __expr_rpnlist,x
 	inx

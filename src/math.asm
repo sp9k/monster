@@ -14,7 +14,7 @@ __math_arg = zp::expr
 ;*******************************************************************************
 .exportzp __math_dividend, __math_divisor, __math_remainder
 __math_dividend = zp::expr+2
-__math_divisor = zp::expr+4
+__math_divisor = zp::expr+5
 __math_remainder = zp::expr+8
 
 ; must be in same segment as expr.asm
@@ -22,43 +22,103 @@ __math_remainder = zp::expr+8
 .segment "EXPR"
 
 ;*******************************************************************************
-; MUL16
-; Multiplies the two given 16-bit numbers and returns a 32-bit product
-; From 6502.org
+; MUL24
+; Multiplies two unsigned 24-bit integers modulo $1000000
 ; IN:
-;  - r0: the multiplier
-;  - r2: the multiplicand
+;   - zp::expr+2: multiplier
+;   - zp::expr+5: multiplicand
 ; OUT:
-;  - ra: the product
-.export __math_mul16
-.proc __math_mul16
-@multiplier	= r0
-@multiplicand	= r2
-@product	= ra
-	lda	#$00
-	sta	@product+2	; clear upper bits of product
-	sta	@product+3
-	ldx	#$10		; set binary count to 16
-@shift_r:
-	lsr	@multiplier+1	; divide multiplier by 2
-	ror	@multiplier
-	bcc	@rotate_r
-	lda	@product+2	; get upper half of product and add multiplicand
+;   - zp::expr+2: product
+;   - .C:         clear
+.export __math_mul24
+.proc __math_mul24
+@lhs=zp::expr+2
+@rhs=zp::expr+5
+@work=r0
+	lda #$00
+	sta @work
+	sta @work+1
+	sta @work+2
+	ldx #$18
+@bit:	lda @lhs
+	lsr
+	lda @work+2
+	bcc @rotate
 	clc
-	adc	@multiplicand
-	sta	@product+2
-	lda	@product+3
-	adc	@multiplicand+1
-@rotate_r:
-	ror			; rotate partial product
-	sta	@product+3
-	ror	@product+2
-	ror	@product+1
-	ror	@product
+	lda @work
+	adc @rhs
+	sta @work
+	lda @work+1
+	adc @rhs+1
+	sta @work+1
+	lda @work+2
+	adc @rhs+2
+@rotate:
+	ror
+	sta @work+2
+	ror @work+1
+	ror @work
+	ror @lhs+2
+	ror @lhs+1
+	ror @lhs
 	dex
-	bne	@shift_r
-	ldx @product
-	ldy @product+1
+	bne @bit
+	clc
+	rts
+.endproc
+
+;*******************************************************************************
+; DIV24
+; Divides two unsigned 24-bit integers.
+; IN:
+;   - zp::expr+2: dividend
+;   - zp::expr+5: divisor
+; OUT:
+;   - zp::expr+2: quotient
+;   - C:          set on division by zero
+.export __math_div24
+.proc __math_div24
+@lhs=zp::expr+2
+@rhs=zp::expr+5
+@work=zp::expr+8
+@count=zp::expr+11
+	lda @rhs
+	ora @rhs+1
+	ora @rhs+2
+	bne :+
+	sec
+	rts
+:	lda #$00
+	sta @work
+	sta @work+1
+	sta @work+2
+	lda #$18
+	sta @count
+@divbit:
+	asl @lhs
+	rol @lhs+1
+	rol @lhs+2
+	rol @work
+	rol @work+1
+	rol @work+2
+	lda @work
+	sec
+	sbc @rhs
+	tax
+	lda @work+1
+	sbc @rhs+1
+	tay
+	lda @work+2
+	sbc @rhs+2
+	bcc @shiftdiv
+	sta @work+2
+	sty @work+1
+	stx @work
+	inc @lhs
+@shiftdiv:
+	dec @count
+	bne @divbit
+	clc
 	rts
 .endproc
 
@@ -76,43 +136,10 @@ __math_remainder = zp::expr+8
 ;  - r0-rf
 .export __math_div16
 .proc __math_div16
-@divisor = __math_divisor
-@dividend = __math_dividend
-@remainder = __math_remainder
-@result = @dividend		; return quotient in dividend's place
-	; division by zero is undefined; return with .C set
-	lda @divisor
-	ora @divisor+1
-	bne @start
-	sec			; divide-by-zero -> error
-	rts
-
-@start:	lda #0			; preset remainder to 0
-	sta @remainder
-	sta @remainder+1
-	ldx #16			; repeat for each bit: ...
-
-@divloop:
-	asl @dividend		; dividend lb & hb*2, msb -> Carry
-	rol @dividend+1
-	rol @remainder		; remainder lb & hb * 2 + msb from carry
-	rol @remainder+1
-	lda @remainder
-	sec
-	sbc @divisor		; substract divisor to see if it fits in
-	tay			; lb result -> Y, for we may need it later
-	lda @remainder+1
-	sbc @divisor+1
-	bcc @skip		; if carry=0 then divisor didn't fit in yet
-
-	sta @remainder+1	; else save substraction result as new remainder
-	sty @remainder
-	inc @result		; and INCrement result (divisor fit in 1 time)
-
-@skip:	dex
-	bne @divloop
-	clc			; ok
-	rts
+	lda #$00
+	sta __math_dividend+2
+	sta __math_divisor+2
+	jmp __math_div24
 .endproc
 
 ;*******************************************************************************

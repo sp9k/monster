@@ -312,7 +312,7 @@ BANKED_SEG "LINKER", FINAL_BANK_LINKER
 	sta numsections
 	sta __link_no_debug_info
 	sta image::mapped
-	lda #$01
+	lda #IMAGE_MODE_BUILDING
 	sta image::mode
 	sta activeobj
 	sta linkpass
@@ -1924,14 +1924,14 @@ SET_CUR_BANK FINAL_BANK_LINKER
 ;  - link::no_debug_info: nonzero to omit local symbols and line mappings
 ; OUT:
 ;  - .C: set on error
-;  - image::mode: $02 when the image is complete, $01 on failure
+;  - image::mode: IMAGE_MODE_READY on success, IMAGE_MODE_BUILDING on failure
 .export __link_link
 .proc __link_link
 @objfile=zp::link+2	; pointer to current object file being linked
 @i=zp::link+4
 @segname=zp::link+6
 @tab=zp::link+8
-	lda #$01
+	lda #IMAGE_MODE_BUILDING
 	sta image::mode		; invalidate the previous image before pass 1
 	; init the segment/section pointers using the current linker state
 	; (parsed from the LINK file prior to calling this procedured)
@@ -2114,7 +2114,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	ldxy asm::origin
 	stxy image::start
 @complete:
-	lda #$02
+	lda #IMAGE_MODE_READY
 	sta image::mode
 	RETURN_OK
 

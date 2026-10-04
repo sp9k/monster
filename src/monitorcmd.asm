@@ -5,9 +5,13 @@
 ;*******************************************************************************
 
 .include "asm.inc"
+.include "image.inc"
+.include "kernal.inc"
+.macpack longbranch
 .include "breakpoints.inc"
 .include "ctx.inc"
 .include "monitor.inc"
+.include "monitorcmd.inc"
 .include "cursor.inc"
 .include "debug.inc"
 .include "debuginfo.inc"
@@ -18,6 +22,7 @@
 .include "fp.inc"
 .include "flags.inc"
 .include "labels.inc"
+.include "layout.inc"
 .include "line.inc"
 .include "macros.inc"
 .include "memory.inc"
@@ -44,11 +49,46 @@
 .segment "CONSOLE_VARS"
 
 .export __dbgcmd_default_addr
-__dbgcmd_default_addr:     .word 0	; default start address for command
+__dbgcmd_default_addr: .res 3	; default start address for command
 
 ; buffer for the byte lists parsed by parse_exprs (used by f and h)
 MAX_EXPR_LIST = 32
 exprlist: .res MAX_EXPR_LIST
+
+.export __dbgcmd_memory_mode
+__dbgcmd_memory_mode:
+memory_mode: .byte MON_MODE_VIRTUAL
+addr_hi:     .byte $00	; high bytes for monitor address arguments
+stop_hi:     .byte $00
+target_hi:   .byte $00
+count_hi:    .byte $00
+access_hi:   .byte $00	; high byte for vmem_load / vmem_store
+mem_limit:   .res 3	; exclusive end of the selected address space
+mode_index:  .byte $00
+
+;*******************************************************************************
+; INCADDR
+; Increments a monitor address consisting of a low word and a separate high byte.
+.macro incaddr addr, high
+.local @done
+	incw addr
+	bne @done
+	inc high
+@done:
+.endmacro
+
+;*******************************************************************************
+; CMPADDR
+; Compares two monitor addresses, returning the same flags as CMPW.
+.macro cmpaddr addr, high, other, otherhigh
+.local @done
+	lda high
+	cmp otherhigh
+	bne @done
+	ldxy addr
+	cmpw other
+@done:
+.endmacro
 
 BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
@@ -415,14 +455,17 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ;  - .XY: the parameters for the command
 .proc poke
 @addr=zp::debuggertmp
-	jsr eval
+	jsr eval_address
 	bcs @ret
 	stxy @addr
+	lda expr::value+2
+	sta access_hi
 
 	jsr eat_whitespace
 
 	; get the byte value
 	jsr eval
+	bcs @ret
 	cmp #$02
 	bcc :+
 	RETURN_ERR ERR_OVERSIZED_OPERAND
@@ -430,7 +473,6 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 :	txa
 	ldxy @addr
 	jsr vmem_store
-	clc		; ok
 @ret:	rts
 .endproc
 
@@ -456,21 +498,23 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #$00
 	sta @i
 	beq @chk		; branch to check if start == stop on 1st iter
-@fill:	lda mon::int
+@fill:	lda addr_hi
+	sta access_hi
+	lda mon::int
 	bne @done		; SIGINT, quit
 	ldx @i
 	lda @list,x
 	ldxy @start
 	jsr vmem_store
+	bcs @ret
 	ldx @i
 	inx
 	cpx @listlen
 	bcc :+
 	ldx #$00
 :	stx @i
-	incw @start
-@chk:	ldxy @start
-	cmpw @stop
+	incaddr @start, addr_hi
+@chk:	cmpaddr @start, addr_hi, @stop, stop_hi
 	bne @fill
 @done:	clc		; OK
 @ret:	rts
@@ -550,33 +594,31 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 ;*******************************************************************************
 ; ? <expression>: show a numeric value without interpreting it as an address.
+; IN:
+;   - zp::line: expression text
+; OUT:
+;   - .C: set and .A: error code on evaluation or output failure
 .proc evaluate_value
-.if FP_SUPPORTED
-	CALL FINAL_BANK_EXPR, expr::eval_keep
-.else
-	jsr eval
-.endif
+	CALL FINAL_BANK_EXPR, expr::eval_wide
 	bcs @ret
-	lda expr::kind
-	cmp #VAL_REL
-	bne :+
-	RETURN_ERR ERR_INVALID_EXPRESSION
-:
 .if FP_SUPPORTED
+	lda expr::kind
 	cmp #VAL_FLOAT
 	bne @integer
 	CALL FINAL_BANK_EXPR, expr::float_format
 	bcs @ret
 	ldxy #expr::floatstr
-	jsr mon::puts
-	clc
-	rts
+	jmp mon::puts
 .endif
 @integer:
+	lda expr::value+2
+	ora memory_mode
+	bne @wide
+	ldxy expr::value
 	jsr print_word
-	clc
-@ret:
-	rts
+	RETURN_OK
+@wide:	jmp print_value
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -591,50 +633,70 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @block0 = zp::debuggertmp
 @block1 = zp::debuggertmp+2
 @num = zp::debuggertmp+4
-@tmp = zp::debuggertmp+5
+@tmp = zp::debuggertmp+6
 	; get the start of one of the blocks to compare
-	jsr eval
+	jsr eval_address
 	stxy @block0
-	bcs @done
+	jcs @done
+	lda expr::value+2
+	sta addr_hi
 	jsr process_ws
 
 	; get the start of the other block to compare
-	jsr eval
+	jsr eval_address
 	stxy @block1
-	bcs @done
+	jcs @done
+	lda expr::value+2
+	sta target_hi
 	jsr process_ws
 
 	; get the number of bytes to compare
-	jsr eval
+	jsr eval_address
 	bcs @done
 	stxy @num
+	lda expr::value+2
+	sta count_hi
+	jsr check_compare
+	bcs @done
 	txa
 	ora @num+1
+	ora count_hi
 	beq @done		; if comparing 0 bytes, we're done
 
 @l0:	lda mon::int
 	bne @ok		; SIGINT, quit
+	lda addr_hi
+	sta access_hi
 	ldxy @block0
 	jsr vmem_load	; get a byte from block 0
+	bcs @done
 	sta @tmp
+	lda target_hi
+	sta access_hi
 	ldxy @block1
 	jsr vmem_load	; get a byte from block 1
+	bcs @done
 	cmp @tmp
 	beq @next
 
 	; display the address that had a mismatch
 	jsr @display_item
 
-@next:	incw @block0
-	incw @block1
-	decw @num
+@next:	incaddr @block0, addr_hi
+	incaddr @block1, target_hi
 	lda @num
-	ora @num+1	; decw only sets .Z for the LSB; test all 16 bits
+	ora @num+1
+	bne :+
+	dec count_hi
+:	decw @num
+	lda @num
+	ora @num+1	; decw only sets .Z for the LSB; test all 24 bits
+	ora count_hi
 	bne @l0
 @ok:	clc
 @done:	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @display_item:
 	; push the value from the other block
 	pha
@@ -648,20 +710,46 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	pha
 	lda @block1+1
 	pha
+	lda memory_mode
+	beq :+
+	lda target_hi
+	pha
+:
 
 	; push the address in the first block
 	lda @block0
 	pha
 	lda @block0+1
 	pha
+	lda memory_mode
+	beq :+
+	lda addr_hi
+	pha
+:
 
 	ldxy #@compare_msg
+	lda memory_mode
+	beq @render
+
+	; copy the image format to shared RAM for the text renderer
+	ldx #@compare_image_end-@compare_image_msg-1
+:	lda @compare_image_msg,x
+	sta mem::spare,x
+	dex
+	bpl :-
+	ldxy #mem::spare
+@render:
 	RENDER_STR
 	jmp mon::puts
 
+;-------------------------------------------------------------------------------
+@compare_image_msg: .byte ESCAPE_BYTE, ESCAPE_VALUE, " ", ESCAPE_BYTE
+                    .byte ESCAPE_VALUE, " $", ESCAPE_BYTE, " $", ESCAPE_BYTE, 0
+@compare_image_end:
 .PUSHSEG
 .RODATA
-@compare_msg: .byte ESCAPE_VALUE, " ", ESCAPE_VALUE, " $", ESCAPE_BYTE, " $", ESCAPE_BYTE, 0
+@compare_msg: .byte ESCAPE_VALUE, " ", ESCAPE_VALUE, " $", ESCAPE_BYTE
+              .byte " $", ESCAPE_BYTE, 0
 .POPSEG
 .endproc
 
@@ -699,21 +787,35 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	bcs @ret
 
 	; get the target address
-	jsr eval
+	jsr eval_address
 	stxy @target
 	bcs @ret
+	lda expr::value+2
+	sta target_hi
+	jsr check_move
+	bcs @ret
+
+	cmpaddr @start, addr_hi, @end, stop_hi
+	beq @done
 
 	; move the data
 @l0:	lda mon::int
 	bne @done		; SIGINT, quit
+	lda addr_hi
+	sta access_hi
 	ldxy @start
 	jsr vmem_load
+	bcs @ret
+	pha
+	lda target_hi
+	sta access_hi
+	pla
 	ldxy @target
 	jsr vmem_store
-	incw @target
-	incw @start
-	ldxy @start
-	cmpw @end
+	bcs @ret
+	incaddr @target, target_hi
+	incaddr @start, addr_hi
+	cmpaddr @start, addr_hi, @end, stop_hi
 	bne @l0
 @done:	clc
 @ret:	rts
@@ -732,9 +834,11 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @listlen = zp::debuggertmp+4
 @list    = exprlist
 	; get the start address
-	jsr eval
+	jsr eval_address
 	stxy @start
 	bcs @ret
+	lda expr::value+2
+	sta addr_hi
 	jsr eat_whitespace
 
 	jsr parse_exprs		; get the values to hunt for
@@ -742,10 +846,15 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	lda #$00
 	sta @i
-@l0:	lda mon::int
+@l0:	cmpaddr @start, addr_hi, mem_limit, mem_limit+2
+	jcs @done
+	lda mon::int
 	bne @done		; SIGINT, quit
+	lda addr_hi
+	sta access_hi
 	ldxy @start
 	jsr vmem_load
+	bcs @ret
 	ldx @i
 	cmp @list,x
 	beq @match
@@ -756,9 +865,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sec
 	sbc @i
 	sta @start
-	bcs :+
-	dec @start+1
-:	lda #$00
+	lda @start+1
+	sbc #$00
+	sta @start+1
+	lda addr_hi
+	sbc #$00
+	sta addr_hi
+	lda #$00
 	sta @i
 	beq @next		; branch always
 
@@ -769,11 +882,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	bcs @found
 
 @next:	; start++
-	inc @start
-	bne @l0
-	inc @start+1
-	bne @l0
-	sec			; we wrapped back to $0000, value(s) not found
+	incaddr @start, addr_hi
+	jmp @l0
 @ret:	rts
 
 @found:	; subtract @listlen-1 to get HUNT address
@@ -784,10 +894,20 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda @start+1
 	sbc #$00
 	tay
+	lda addr_hi
+	sbc #$00
+	sta access_hi
 	inx
 	bne :+
 	iny
-:	jsr print_word	; print the address where we found the value
+	bne :+
+	inc access_hi
+:	lda memory_mode
+	beq @word
+	lda access_hi
+	jsr print_long
+	jmp @done
+@word:	jsr print_word	; print the address where we found the value
 
 @done:	RETURN_OK
 .endproc
@@ -822,15 +942,22 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 .endif
 
 	ldxy sim::pc
+	lda memory_mode
+	bne :+
 	stxy __dbgcmd_default_addr
-
-	RETURN_OK
+	lda #$00
+	sta __dbgcmd_default_addr+2
+:	RETURN_OK
 .endproc
 
 ;*******************************************************************************
 ; DISASM
 ; Disassembles from the given expression
 .proc disasm
+	lda memory_mode
+	beq :+
+	RETURN_ERR ERR_INVALID_COMMAND
+:
 @addr=zp::debuggertmp
 @stopaddr=zp::debuggertmp+2
 @buff=mem::spare+40
@@ -839,7 +966,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	jsr get_range_or_default
 	bcs @ret
 
-@l0:	lda mon::int
+@l0:	cmpaddr @addr, addr_hi, @stopaddr, stop_hi
+	bcs @done
+	lda mon::int
 	bne @done			; SIGINT, quit
 	ldxy #@buff
 	stxy r0
@@ -853,12 +982,19 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	jmp @next
 
 @ok:	jsr @drawline
-@next:	ldxy @addr
-	cmpw @stopaddr
+@next:	cmpaddr @addr, addr_hi, @stopaddr, stop_hi
 	bcc @l0
 
-@done:	ldxy @addr
+@done:	lda addr_hi
+	beq :+
+	; stop at the end of virtual memory if the instruction crossed it
+	lda #$00
+	sta @addr
+	sta @addr+1
+:	ldxy @addr
 	stxy __dbgcmd_default_addr
+	lda addr_hi
+	sta __dbgcmd_default_addr+2
 	clc
 @ret:	rts
 
@@ -866,13 +1002,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @drawbyte:
 	; unknown instruction
 	ldxy @addr
-	jsr vmem_load	; get the byte
+	CALLMAIN vmem::load	; get the byte
 	pha
 
 	; if outputting to file, don't render addresses
 	lda mon::outfile
 	beq @db_with_addr
-	incw @addr		; move past the byte we rendered
+	incaddr @addr, addr_hi		; move past the byte we rendered
 	ldxy #@byte_msg_no_addr
 	RENDER_STR
 	jmp mon::puts
@@ -885,7 +1021,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda @addr+1
 	pha
 
-	incw @addr
+	incaddr @addr, addr_hi
 	ldxy #@byte_msg
 	RENDER_STR
 	jmp mon::puts
@@ -905,6 +1041,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta @addr
 	bcc :+
 	inc @addr+1
+	bne :+
+	inc addr_hi
 
 :	ldxy #@buff
 	RENDER_STR
@@ -931,6 +1069,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta @addr
 	bcc :+
 	inc @addr+1
+	bne :+
+	inc addr_hi
 
 :	ldxy #@disasm_msg
 	RENDER_STR
@@ -957,6 +1097,10 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; and assembled at the target address (NOTE: any .ORG directive within will take
 ; precedence)
 .proc assemble
+	lda memory_mode
+	beq :+
+	RETURN_ERR ERR_INVALID_COMMAND
+:
 @addr=zp::debuggertmp
 @line=zp::debuggertmp+2
 @err=r0
@@ -1066,56 +1210,59 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 .proc showmem
 @addr=zp::debuggertmp
 @stop=zp::debuggertmp+2
-@lines=zp::debuggertmp+2
+
 	lda #8*8		; default to 8 lines (64 bytes)
 	jsr get_range_or_default
-	bcs @ret
+	jcs @ret
 
-	ldxy @stop
-	sub16 @addr
-	stx @lines
-	sty @lines+1
-	tya
-	lsr
-	ror @lines
-	lsr
-	ror @lines
-	lsr
-	ror @lines
-	sta @lines+1
-
-	ldxy @lines
-	cmpw #0
-	bne @l0
-	inc @lines		; minimum of 1 line
-
-@l0:	lda mon::int
+@l0:	cmpaddr @addr, addr_hi, @stop, stop_hi
+	bcs @done
+	lda mon::int
 	bne @done		; SIGINT, quit
 	ldxy @addr
+	lda memory_mode
+	bne @image
 	CALLMAIN ui::memline
-	jsr mon::puts
+	lda #$00
+	sta mem::spare+SCREEN_WIDTH	; terminate the fixed-width memory row
+	jmp @print
+@image:	jsr image_memline
+	bcs @ret
+@print:	jsr mon::puts
 
 	; move to address for next row
 	lda @addr
 	clc
-.if .defined(vic20) .and .defined(hard8x8)
-	adc #$04
-.else
-	adc #$08
-.endif
+	ldx memory_mode
+	adc row_widths,x
 	sta @addr
 	bcc :+
 	inc @addr+1
-:	lda @lines
-	bne @declo
-	dec @lines+1		; borrow from the high byte
-@declo:	dec @lines
-	lda @lines
-	ora @lines+1		; count exhausted?
-	bne @l0
+	bne :+
+	inc addr_hi
+:	jmp @l0
+@done:	lda memory_mode
+	beq @virtual
+	cmpaddr @addr, addr_hi, @stop, stop_hi
+	bcc @save
 
-@done:	ldxy @addr
+	ldxy @stop
+	stxy @addr
+	lda stop_hi
+	sta addr_hi
+	jmp @save
+
+@virtual:
+	; stop at the end of virtual memory if the last row crossed it
+	lda addr_hi
+	beq @save
+	lda #$00
+	sta @addr
+	sta @addr+1
+@save:	ldxy @addr
 	stxy __dbgcmd_default_addr
+	lda addr_hi
+	sta __dbgcmd_default_addr+2
 	clc			; OK
 @ret:	rts
 .endproc
@@ -1220,18 +1367,18 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @ok:	clc
 @done:	rts
 
-;--------------------------------------
+;-------------------------------------------------------------------------------
 @draw_item:
 	; get the address of the procedure call
 	ldxy @sp				; LSB of stack address
-	jsr vmem_load
+	CALLMAIN vmem::load
 	sec
 	sbc #$02
 	php
 	sta @addr
 	ldxy @sp
 	inx					; MSB of stack address
-	jsr vmem_load
+	CALLMAIN vmem::load
 	plp
 	sbc #$00
 	sta @addr+1
@@ -1291,11 +1438,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	pha
 	jmp @push_addr
 
+;-------------------------------------------------------------------------------
 .PUSHSEG
 .RODATA
 @backtrace_msg:
 	; <stack address> <address> <symbol>+<offset>
-	.byte "$", ESCAPE_BYTE, " $", ESCAPE_VALUE, " ", ESCAPE_STRING, "+$", ESCAPE_VALUE,0
+	.byte "$", ESCAPE_BYTE, " $", ESCAPE_VALUE, " "
+	.byte ESCAPE_STRING, "+$", ESCAPE_VALUE,0
 .POPSEG
 .endproc
 
@@ -1324,13 +1473,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @nonempty=zp::debuggertmp+4
 	jsr get_range
 	bcs @done
-	ldxy @startaddr
-	cmpw @stopaddr
+	cmpaddr @startaddr, addr_hi, @stopaddr, stop_hi
 	bcs @empty
 
-	decw @stopaddr
-	ldxy @stopaddr
-	stxy file::save_address_end
 	lda #$01
 	bne @range
 @empty:	lda #$00
@@ -1348,7 +1493,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	ldx @nonempty
 	beq @close
 	ldxy @startaddr
-	CALLMAIN file::savebin
+	jsr save_range
 	bcs @saverr
 
 	; close the file
@@ -1385,7 +1530,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	bcc @l0
 :	jmp @done
 
-@l0:	lda mon::int
+@l0:	cmpaddr @addr, addr_hi, @stop, stop_hi
+	jcs @ok
+	lda mon::int
 	bne :-				; SIGINT, quit
 	ldxy #@buff+4
 	stxy @line
@@ -1403,16 +1550,18 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #$08
 	sta @cnt
 
-@l1:	ldxy @addr
-	cmpw @stop
+@l1:	cmpaddr @addr, addr_hi, @stop, stop_hi
 	bcs @cont
 
 	ldy #$00
 	lda #'$'
 	sta (@line),y
 
-	ldy @addr+1	; restore .Y
+	lda addr_hi
+	sta access_hi
+	ldxy @addr
 	jsr vmem_load
+	bcs @done
 	jsr hextostr
 	tya
 	ldy #$01
@@ -1424,7 +1573,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #','
 	sta (@line),y
 
-	incw @addr		; on to the next byte
+	incaddr @addr, addr_hi		; on to the next byte
 
 	lda @line
 	clc
@@ -1443,11 +1592,11 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	ldxy #@buff
 	jsr mon::puts
 
-	ldxy @addr		; @l1 already advanced past the row
-	cmpw @stop
+	cmpaddr @addr, addr_hi, @stop, stop_hi ; @l1 already advanced past row
 	bcs :+
 	jmp @l0			; next row
-:	clc			; ok
+:
+@ok:	clc			; ok
 @done:	rts
 .endproc
 
@@ -1455,6 +1604,10 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; NEW
 ; Reinitializes BASIC in "virtual" (user) memory
 .proc new
+	lda memory_mode
+	beq :+
+	RETURN_ERR ERR_INVALID_COMMAND
+:
 	CALLMAIN run::clr
 	RETURN_OK
 .endproc
@@ -1479,11 +1632,15 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ;   - .C:                set if a (valid) range was not given
 ;   - zp::debuggertmp:   the start of the range
 ;   - zp::debuggertmp+2: the end of the range
+;   - addr_hi:           high byte of the start
+;   - stop_hi:           high byte of the end
 .proc get_range_or_default
 @start = zp::debuggertmp
 @stop  = zp::debuggertmp+2
 @size  = zp::debuggertmp+4
 	sta @size
+	jsr memory_ready
+	jcs @ret
 	ldy #$00
 	lda (zp::line),y
 	bne :+
@@ -1491,12 +1648,16 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	; line is empty use default start address
 	ldxy __dbgcmd_default_addr
 	stxy @start
+	lda __dbgcmd_default_addr+2
+	sta addr_hi
 	jmp @default		; jump ahead to compute default stop address
 
 :	; get the start address
-	jsr eval
+	jsr eval_address
 	stxy @start
-	bcs @ret
+	jcs @ret
+	lda expr::value+2
+	sta addr_hi
 
 	; are we at the end of the line?
 	jsr eat_whitespace
@@ -1514,14 +1675,35 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	adc #$00
 	sta @stop+1
 	sta __dbgcmd_default_addr+1
+	lda addr_hi
+	adc #$00
+	sta stop_hi
+	cmpaddr @stop, stop_hi, mem_limit, mem_limit+2
+	bcc :+
+
+	ldxy mem_limit
+	stxy @stop
+	stxy __dbgcmd_default_addr
+	lda mem_limit+2
+	sta stop_hi
+
+:	lda stop_hi
+	sta __dbgcmd_default_addr+2
 	jsr eat_whitespace
 	RETURN_OK
 
 @cont:	; get the stop address
 	jsr eat_whitespace
-	jsr eval
+	jsr eval_address
+	bcs @ret
 	stxy @stop
 	stxy __dbgcmd_default_addr
+
+	lda expr::value+2
+	sta stop_hi
+	sta __dbgcmd_default_addr+2
+	jsr check_range
+	bcs @ret
 
 	jsr eat_whitespace
 	clc			; ok
@@ -1535,19 +1717,31 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ;   - .C:                set if a (valid) range was not given
 ;   - zp::debuggertmp:   the start of the range
 ;   - zp::debuggertmp+2: the end of the range
+;   - addr_hi:           high byte of the start
+;   - stop_hi:           high byte of the end
 .proc get_range
 @start=zp::debuggertmp
 @stop=zp::debuggertmp+2
 	; get the start address
-	jsr eval
+	jsr eval_address
 	stxy @start
 	bcs @ret
+	lda expr::value+2
+	sta addr_hi
 
 	; get the stop address
 	jsr eat_whitespace
-	jsr eval
+	jsr eval_address
 	stxy @stop
+	bcs @ret
+
+	lda expr::value+2
+	sta stop_hi
+	jsr check_range
+	bcs @ret
+
 	jsr eat_whitespace
+	clc
 @ret:	rts
 .endproc
 
@@ -1604,10 +1798,12 @@ inline_proc hextostr, util::hextostr
 	CALLMAIN asm::disassemble
 
 	; print the disassembled instruction of ??? if we couldn't disassemble
+	bcc :+
 	ldxy #strings::question_marks
-	bcs @print
-	ldxy #$100
-@print:	jsr mon::puts
+	jsr mon::puts_main
+	RETURN_OK
+:	ldxy #$100
+	jsr mon::puts
 	RETURN_OK
 .endproc
 
@@ -1666,21 +1862,76 @@ inline_proc hextostr, util::hextostr
 ;  - .C:       clear on success or set on failure
 ;  - zp::line: updated to point beyond the parsed expression
 .proc eval
-	JUMPMAIN expr::eval
+	CALLMAIN expr::eval
+	bcs @ret
+	cmp #$03
+	bcc @ret
+	RETURN_ERR ERR_OVERSIZED_OPERAND
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
 ; VMEM_LOAD
-; Calls vmem::load
+; Calls vmem::load or image::load for the selected mode
+; IN:
+;  - .XY:       low word of the address
+;  - access_hi: high byte of the address
+; OUT:
+;  - .A: byte read, or error code on failure
+;  - .C: set on error
 .proc vmem_load
-	JUMPMAIN vmem::load
+	lda memory_mode
+	bne @image
+	lda access_hi
+	bne @bad
+	CALLMAIN vmem::load
+	RETURN_OK
+
+@image:	stxy image::cursor
+	lda access_hi
+	sta image::cursor+2
+	JUMP FINAL_BANK_LINKER_AUX, image::load
+@bad:	RETURN_ERR ERR_FILE_TOO_BIG
 .endproc
 
 ;*******************************************************************************
 ; VMEM STORE
-; Calls vmem::store
+; Calls vmem::store or image::store for the selected mode
+; IN:
+;  - .A:        byte to store
+;  - .XY:       low word of the address
+;  - access_hi: high byte of the address
+; OUT:
+;  - .A: error code on failure
+;  - .C: set on error
 .proc vmem_store
-	JUMPMAIN vmem::store
+	pha
+	lda memory_mode
+	bne @image
+	lda access_hi
+	bne @bad
+	pla
+	CALLMAIN vmem::store
+	RETURN_OK
+
+@image:	stxy image::cursor
+	lda access_hi
+	sta image::cursor+2
+	pla
+	CALL FINAL_BANK_LINKER_AUX, image::store
+	bcs @ret
+
+	; include patches below the original image start in subsequent saves
+	cmpaddr image::cursor, image::cursor+2, image::start, image::start+2
+	bcs @ok
+	ldxy image::cursor
+	stxy image::start
+	lda image::cursor+2
+	sta image::start+2
+@ok:	clc
+@ret:	rts
+@bad:	pla
+	RETURN_ERR ERR_FILE_TOO_BIG
 .endproc
 
 ;*******************************************************************************
@@ -1708,8 +1959,454 @@ inline_proc hextostr, util::hextostr
 .endif
 
 ;*******************************************************************************
+; SELECT MODE
+; Selects or reports the monitor address space. Real mode is reserved.
+; IN:
+;   - zp::line: mode name or empty string
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on invalid or unavailable mode
+.proc select_mode
+@name=r0
+	ldy #$00
+	lda (zp::line),y
+	beq @report
+
+	ldx #$00
+@try:	stx mode_index
+	ldy #$00
+@char:	lda @names,x
+	beq @endname
+	cmp (zp::line),y
+	bne @next
+	inx
+	iny
+	bne @char
+
+;-------------------------------------------------------------------------------
+@endname:
+	lda (zp::line),y
+	beq @match
+	cmp #' '
+	bne @next
+@tail:	iny
+	lda (zp::line),y
+	beq @match
+	cmp #' '
+	beq @tail
+@next:	ldx mode_index
+@skip:	lda @names,x
+	inx
+	cmp #$00
+	bne @skip
+	cpx #@names_end-@names
+	bcc @try
+@bad:	RETURN_ERR ERR_INVALID_COMMAND
+
+;-------------------------------------------------------------------------------
+@match:
+	ldx mode_index
+	cpx #@real_name-@names
+	beq @bad
+	lda #MON_MODE_VIRTUAL
+	cpx #@image_name-@names
+	bne @set
+
+	lda image::mode
+	cmp #IMAGE_MODE_READY
+	bne @bad
+	lda #MON_MODE_IMAGE
+@set:	sta memory_mode
+	lda #$00
+	sta __dbgcmd_default_addr
+	sta __dbgcmd_default_addr+1
+	sta __dbgcmd_default_addr+2
+
+@report:
+	ldxy #@virtual_name
+	lda memory_mode
+	beq :+
+	ldxy #@image_name
+:	stxy @name
+
+	; copy the mode name to shared RAM before printing from the main bank
+	ldy #$00
+:	lda (@name),y
+	sta mem::spare,y
+	iny
+	cmp #$00
+	bne :-
+	ldxy #mem::spare
+	jsr mon::puts
+	RETURN_OK
+
+;-------------------------------------------------------------------------------
+@names:
+@virtual_name: .byte "virtual",0
+	       .byte "normal",0
+@image_name:   .byte "image",0
+@real_name:    .byte "real",0
+@names_end:
+.endproc
+
+;*******************************************************************************
+; EVAL ADDRESS
+; Evaluates an address in the selected memory space.
+; IN:
+;   - zp::line: expression to evaluate
+; OUT:
+;   - .XY:           low word
+;   - expr::value+2: high byte
+;   - .C:            set if the expression is invalid or exceeds the space's capacity
+.proc eval_address
+	jsr memory_ready
+	bcs @ret
+	jsr eat_whitespace
+	CALL FINAL_BANK_EXPR, expr::eval_wide
+	bcs @ret
+	lda expr::kind
+	beq :+
+	RETURN_ERR ERR_INVALID_EXPRESSION
+
+:	jsr check_limit
+	ldxy expr::value
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; MEMORY READY
+; Gets the capacity of the selected memory space.
+; IN:
+;   - memory_mode: selected space
+; OUT:
+;   - mem_limit: exclusive address limit
+;   - .C:        set if image mode has no completed image
+.proc memory_ready
+	lda #$00
+	sta mem_limit
+	sta mem_limit+1
+	lda #$01
+	sta mem_limit+2
+	lda memory_mode
+	beq @ok
+	lda image::mode
+	cmp #IMAGE_MODE_READY
+	beq :+
+	RETURN_ERR ERR_INVALID_COMMAND
+
+:	lda #<image::capacity
+	sta mem_limit
+	lda #>image::capacity
+	sta mem_limit+1
+	lda #.bankbyte(image::capacity)
+	sta mem_limit+2
+@ok:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; CHECK LIMIT
+; Checks an address or exclusive endpoint against the selected capacity.
+; IN:
+;   - expr::value: address
+;   - mem_limit: exclusive limit
+; OUT:
+;   - .C: set if the address exceeds the limit
+.proc check_limit
+	cmpaddr mem_limit, mem_limit+2, expr::value, expr::value+2
+	bcs @ok
+	RETURN_ERR ERR_FILE_TOO_BIG
+@ok:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; CHECK RANGE
+; Checks that a memory range's end is not before its start.
+; IN:
+;   - zp::debuggertmp:   low word of the start
+;   - addr_hi:           high byte of the start
+;   - zp::debuggertmp+2: low word of the exclusive end
+;   - stop_hi: high byte of the exclusive end
+; OUT:
+;   - .C: set if the range is reversed
+.proc check_range
+	cmpaddr zp::debuggertmp+2, stop_hi, zp::debuggertmp, addr_hi
+	bcs @ok
+	RETURN_ERR ERR_SEGMENT_OUT_OF_RANGE
+@ok:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; CHECK MOVE
+; Checks that a move fits at its destination before copying bytes.
+; IN:
+;   - zp::debuggertmp:     low word of the start
+;   - addr_hi:             high byte of the start
+;   - zp::debuggertmp+2:   low word of the exclusive end
+;   - stop_hi:             high byte of the exclusive end
+;   - zp::debuggertmp+4:   low word of the destination
+;   - target_hi:           high byte of the destination
+; OUT:
+;   - .C: set if the destination range exceeds capacity
+.proc check_move
+@len=r0
+	sec
+	lda zp::debuggertmp+2
+	sbc zp::debuggertmp
+	sta @len
+
+	lda zp::debuggertmp+3
+	sbc zp::debuggertmp+1
+	sta @len+1
+	lda stop_hi
+	sbc addr_hi
+	sta @len+2
+	clc
+	lda zp::debuggertmp+4
+	adc @len
+	sta expr::value
+
+	lda zp::debuggertmp+5
+	adc @len+1
+	sta expr::value+1
+	lda target_hi
+	adc @len+2
+	sta expr::value+2
+	bcc :+
+	RETURN_ERR ERR_FILE_TOO_BIG
+:	jmp check_limit
+.endproc
+
+;*******************************************************************************
+; CHECK COMPARE
+; Checks that both comparison ranges fit before reading bytes.
+; IN:
+;   - zp::debuggertmp:   low word of the first address
+;   - addr_hi:           high byte of the first address
+;   - zp::debuggertmp+2: low word of the second address
+;   - target_hi:         high byte of the second address
+;   - zp::debuggertmp+4: low word of the byte count
+;   - count_hi:          high byte of the byte count
+; OUT:
+;   - .XY: low word of the count
+;   - .C: set if either range exceeds capacity
+.proc check_compare
+	lda addr_hi
+	ldx #$00
+	jsr @block
+	bcs @ret
+
+	lda target_hi
+	ldx #$02
+	jsr @block
+@ret:	ldxy zp::debuggertmp+4
+	rts
+
+@block:	pha
+	clc
+	lda zp::debuggertmp,x
+	adc zp::debuggertmp+4
+	sta expr::value
+	lda zp::debuggertmp+1,x
+	adc zp::debuggertmp+5
+	sta expr::value+1
+	pla
+	adc count_hi
+	sta expr::value+2
+	bcc :+
+	RETURN_ERR ERR_FILE_TOO_BIG
+:	jmp check_limit
+.endproc
+
+;*******************************************************************************
+; SAVE RANGE
+; Writes bytes from the selected memory space to an open output file.
+; IN:
+;   - .A: file handle
+;   - zp::debuggertmp:   low word of the start
+;   - addr_hi:           high byte of the start
+;   - zp::debuggertmp+2: low word of the exclusive end
+;   - stop_hi:           high byte of the exclusive end
+; OUT:
+;   - .C: set on file or memory error
+.proc save_range
+@addr=zp::debuggertmp
+@stop=zp::debuggertmp+2
+	tax
+	jsr krn::chkout
+	bcs @err
+@l0:	jsr krn::readst
+	bne @err
+	cmpaddr @addr, addr_hi, @stop, stop_hi
+	bcs @done
+
+	lda addr_hi
+	sta access_hi
+	ldxy @addr
+	jsr vmem_load
+	bcs @ret
+	jsr krn::chrout
+
+	incaddr @addr, addr_hi
+	jmp @l0
+
+@err:	RETURN_ERR ERR_IO_ERROR
+@done:	clc
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; PRINT LONG
+; Prints the given 24-bit value to the console in hex.
+; IN:
+;   - .A:  high byte
+;   - .XY: low word
+; OUT:
+;   - .C: set on output error
+.proc print_long
+@buff=zp::debuggertmp
+	pha
+	tya
+	pha
+	txa
+	jsr hextostr
+	stx @buff+6
+	sty @buff+5
+	pla
+	jsr hextostr
+
+	stx @buff+4
+	sty @buff+3
+	pla
+	jsr hextostr
+	stx @buff+2
+	sty @buff+1
+
+	lda #'$'
+	sta @buff
+	lda #$00
+	sta @buff+7
+
+	ldxy #@buff
+	jmp mon::puts
+.endproc
+
+;*******************************************************************************
+; PRINT VALUE
+; Prints the full expression result.
+; IN:
+;   - expr::value: 24-bit result
+; OUT:
+;   - .C: set on output error
+.proc print_value
+	ldxy expr::value
+	lda expr::value+2
+	jmp print_long
+.endproc
+
+;*******************************************************************************
+; IMAGE MEMLINE
+; Returns a line containing image bytes along with their text rendering.
+; IN:
+;   - .XY:               low word of the address to render
+;   - addr_hi:           high byte of the address to render
+;   - zp::debuggertmp+2: low word of the exclusive end
+;   - stop_hi:           high byte of the exclusive end
+; OUT:
+;   - .XY: rendered text in mem::spare
+;   - .C:  set on memory error
+.proc image_memline
+@src=ra
+@col=rc
+@stop=zp::debuggertmp+2
+	stxy @src
+	lda addr_hi
+	sta access_hi
+
+	; initialize line to empty (all spaces)
+	lda #' '
+	ldx #IMAGE_TEXT_END-1
+:	sta mem::spare,x
+	dex
+	bpl :-
+	lda #$00
+	sta mem::spare+IMAGE_TEXT_END
+
+@l0:	; draw the address of this line
+	lda access_hi
+	jsr hextostr
+	sty mem::spare
+	stx mem::spare+1
+	lda @src+1
+	jsr hextostr
+	sty mem::spare+2
+	stx mem::spare+3
+	lda @src
+	jsr hextostr
+	sty mem::spare+4
+	stx mem::spare+5
+	lda #':'
+	sta mem::spare+6
+
+	ldx #$00
+@l1:	stx @col
+	cmpaddr @src, access_hi, @stop, stop_hi
+	bcs @done
+
+	; get a byte to display
+	ldxy @src
+	jsr vmem_load
+	bcs @ret
+	pha			; save the byte
+
+	incaddr @src, access_hi	; update @src to the next byte
+
+@val2ch:
+	; get the character representation of the byte
+	cmp #$20
+	bcc :+
+	cmp #$80
+	bcc @cont
+:	lda #'.'		; use '.' for undisplayable chars
+
+@cont:	ldx @col
+	sta mem::spare+IMAGE_TEXT_START,x ; write the character representation
+	pla			; get the byte we're rendering
+	jsr hextostr		; convert to hex characters
+	txa			; get LSB char
+	pha			; and save temporarily
+	lda @col		; get col*3 (column to draw byte)
+	asl
+	adc @col
+	tax
+	pla			; restore LSB char to render
+	sta mem::spare+9,x	; store to text buffer
+	tya			; get MSB
+	sta mem::spare+8,x	; store to text buffer
+	ldx @col
+	inx
+	cpx #IMAGE_ROW_BYTES	; have we drawn all columns?
+	bcc @l1			; repeat until we have
+
+@done:	ldxy #mem::spare
+	clc
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+.if .defined(vic20) .and .defined(hard8x8)
+IMAGE_ROW_BYTES = $03
+row_widths: .byte $04, IMAGE_ROW_BYTES
+.else
+IMAGE_ROW_BYTES = $04
+row_widths: .byte $08, IMAGE_ROW_BYTES
+.endif
+IMAGE_TEXT_START = 8+IMAGE_ROW_BYTES*3
+IMAGE_TEXT_END = IMAGE_TEXT_START+IMAGE_ROW_BYTES
+
+;*******************************************************************************
 ; COMMANDS
 commands:
+.byte "mode",0
 .byte "clear",0    ; clear the terminal
 .byte "wa",0	   ; watch add
 .byte "wal",0	   ; watch add load
@@ -1747,7 +2444,7 @@ commands:
 .endif
 
 .linecont +
-.define command_vectors clear, add_watch, add_watch_load, add_watch_store, \
+.define command_vectors select_mode, clear, add_watch, add_watch_load, add_watch_store, \
 	remove_watch, list_watches, list_breakpoints, add_break_addr, \
 	add_break_line, remove_break, fill, dump, move, new, goto, compare, \
 	hunt, __dbgcmd_regs, disasm, assemble, showmem, trace, quit, step, \

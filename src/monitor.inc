@@ -6,6 +6,7 @@
 .import __monitor_log
 .import __monitor_outfile
 .import __monitor_puts
+.import __monitor_puts_main
 .import __monitor_reenter
 .import __monitor_quit
 .import __monitor_update_pc_view
@@ -21,6 +22,7 @@
 	log       = __monitor_log
 	outfile   = __monitor_outfile
 	puts      = __monitor_puts
+	puts_main = __monitor_puts_main
 	reenter   = __monitor_reenter
 	quit           = __monitor_quit
 	update_pc_view = __monitor_update_pc_view

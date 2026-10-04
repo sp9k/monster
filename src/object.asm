@@ -970,6 +970,8 @@ __obj_split_fragment:
 	lda #TOK_SYMBOL
 
 @skip:	ldy #$03
+	cmp #TOK_WIDE
+	beq @fragment
 	cmp #TOK_PC
 	beq @fragment
 	cmp #TOK_BINARY_OP
@@ -1971,6 +1973,16 @@ __obj_split_fragment:
 @range:	RETURN_ERR ERR_BRANCH_OUT_OF_RANGE
 
 @byte_range:
+	lda @record
+	and #RELOC_EXPRESSION
+	beq @oversized
+	lda expr::value+2
+	and @value+1
+	cmp #$ff
+	bne @oversized
+	bit @value
+	bmi @storebyte		; a deferred signed byte retains its low byte
+@oversized:
 	RETURN_ERR ERR_OVERSIZED_OPERAND
 @bad:	RETURN_ERR ERR_UNKNOWN_SEGMENT
 

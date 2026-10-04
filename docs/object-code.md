@@ -311,13 +311,15 @@ The record is:
 | `$04` | fragment ID (1), offset (2) | fragment RUN base plus offset |
 | `$05` | operator (1)                | binary integer operation      |
 | `$06` | operator (1)                | unary integer operation       |
+| `$08` | value (3)                   | captured 24-bit integer constant |
 | `$ff` | none                        | end; must be the last byte    |
 
 Operators use the native RPN codes in `rpn.inc`, `fp.inc`, and `keycodes.inc`:
 Floating-point operations are not permitted.
 
 The linker resolves the expression into the expression evaluator's RPN buffer and evaluates
-the value as a 16-bit integer and replaces of the operand with it.  Note that, when using
+the value using 24-bit intermediate arithmetic, checks the final operand width,
+and replaces the operand with it.  Note that, when using
 this mode, the existing values in the object code are ignored (not treated as an addend).
 Records for relative branches are calculated by subtracting the RUN address immediately
 after the branch operand.

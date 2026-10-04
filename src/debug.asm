@@ -944,7 +944,7 @@ blank   = scr::blank
 	ldxy #strings::tracing
 	lda __debug_interface
 	beq @gui
-	JUMP FINAL_BANK_MONITOR, mon::puts
+	JUMP FINAL_BANK_MONITOR, mon::puts_main
 
 @gui:	ldxy #strings::tracing_stop
 	stxy alert::prompt

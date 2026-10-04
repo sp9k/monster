@@ -5,7 +5,7 @@
 ;
 ; Floats are handled in the BASIC ROM's 5-byte format.  Values enter this
 ; module either by parsing a literal (fp::parse) or by promoting a 16-bit
-; integer (fp::fromint) and executed via fp::binop.
+; integer (fp::fromwide) and executed via fp::binop.
 ;*******************************************************************************
 
 FP_IMPL = 1
@@ -74,12 +74,10 @@ ZPC_LEN   = 1
 ; The id passed to `protect' selects both the routine to run and the zeropage
 ; that routine's ROM path needs saved, so the two cannot disagree.
 FPP_BUILD   = 0		; do_build:   MUL10, ADDIGIT, DIV10, MOVMF
-FPP_FROMINT = 1		; do_fromint: GIVAYF, FADDM, MOVMF
-FPP_TOINT   = 2		; do_toint:   MOVFM, INT, MOVMF, QINT
-FPP_BINOP   = 3		; do_binop:   MOVFM, F{ADD,SUB,MULT,DIV}M, FCOMP, GIVAYF
-FPP_UNARY   = 4		; do_unary:   the above plus INT, SQRT, SIN, COS, LOG, EXP
-FPP_FORMAT  = 5		; do_format:  MOVFM, FOUT
-FPP_COUNT   = 6
+FPP_BINOP   = 1		; do_binop:  MOVFM, F{ADD,SUB,MULT,DIV}M, FCOMP, GIVAYF
+FPP_UNARY   = 2		; do_unary:  above plus INT, SQRT, SIN, COS, LOG, EXP
+FPP_FORMAT  = 3		; do_format: MOVFM, FOUT
+FPP_COUNT   = 4
 
 ZPSAVE_MAX = 44		; the largest of the sets below (FPP_UNARY)
 
@@ -118,7 +116,6 @@ __fp_val:  .res FP_SIZE		; result of every fp:: routine
 .if FP_SUPPORTED
 
 tmpf:   .res FP_SIZE		; scratch packed float
-intval: .word 0			; integer in/out for fromint/toint
 
 ;-------------------------------------------------------------------------------
 ; literal scanning state (filled in by fp::parse, consumed by do_build)
@@ -272,46 +269,101 @@ strsave: .res 32		; FOUT uses the bottom of the hardware stack page
 .endproc
 
 ;*******************************************************************************
-; FROM INT
-; Promotes an unsigned 16-bit integer to a float.
+; FROM WIDE
+; Packs an unsigned 24-bit integer without calling the BASIC ROM.
 ; IN:
-;   - .XY: the value to convert
+;   - .A:  high byte of 24-bit value
+;   - .XY: low word
 ; OUT:
-;   - fp::val: the packed value
-;   - .C:      set on error
-.export __fp_fromint
-.proc __fp_fromint
+;   - fp::val: floating-point value
+;   - .C:      clear
+.export __fp_fromwide
+.proc __fp_fromwide
 .if FP_SUPPORTED
-	stx intval
-	sty intval+1
-	lda #FPP_FROMINT
-	jmp protect
+	sta __fp_val
+	sta __fp_val+1
+	sty __fp_val+2
+	stx __fp_val+3
+	ora __fp_val+2
+	ora __fp_val+3
+	beq @done
+	lda #$98
+	sta __fp_val
+
+@normalize:
+	lda __fp_val+1
+	bmi @done
+	asl __fp_val+3
+	rol __fp_val+2
+	rol __fp_val+1
+	dec __fp_val
+	bne @normalize
+
+@done:	and #$7f
+	sta __fp_val+1
+	lda #$00
+	sta __fp_val+4
+	clc
+	rts
 .else
 	RETURN_ERR ERR_INVALID_EXPRESSION
 .endif
 .endproc
 
 ;*******************************************************************************
-; TO INT
-; Coerces a float back to an unsigned 16-bit integer.  The value must be exactly
-; integral and within 0..65535; anything else is an error, which is what makes
-; "1.0/3" a diagnostic rather than a silently rounded 0.
+; TO WIDE
+; Converts an integral float to an unsigned 24-bit integer.
 ; IN:
-;   - fp::val: the value to convert
+;   - fp::val: floating-point value
 ; OUT:
-;   - .XY: the integer value
-;   - .A:  the error code on failure
-;   - .C:  set on error
-.export __fp_toint
-.proc __fp_toint
+;   - .A:  high byte
+;   - .XY: low word
+;   - .C:  set
+;   - .A:  error code on fractional or out-of-range value
+.export __fp_towide
+.proc __fp_towide
 .if FP_SUPPORTED
-	lda #FPP_TOINT
-	jsr protect
-	bcs @ret
-	ldx intval
-	ldy intval+1
+	lda __fp_val
+	beq @zero
+	cmp #$81
+	bcc @fraction
+	cmp #$99
+	bcs @range
+	eor #$ff
 	clc
-@ret:	rts
+	adc #$a1
+	tax			; shift four-byte mantissa down to an integer
+
+	ldy #$03
+@copy:	lda __fp_val+1,y
+	sta tmpf,y
+	dey
+	bpl @copy
+	lda tmpf
+	ora #$80
+	sta tmpf
+
+@shift:	lsr tmpf
+	ror tmpf+1
+	ror tmpf+2
+	ror tmpf+3
+	bcs @fraction
+	dex
+	bne @shift
+	lda __fp_val+1
+	bmi @range
+	ldx tmpf+3
+	ldy tmpf+2
+	lda tmpf+1
+	clc
+	rts
+@zero:	tax
+	tay
+	clc
+	rts
+@fraction:
+	RETURN_ERR ERR_NOT_INTEGRAL
+@range:	RETURN_ERR ERR_OVERSIZED_OPERAND
 .else
 	RETURN_ERR ERR_INVALID_EXPRESSION
 .endif
@@ -421,9 +473,9 @@ docall:	jmp (fpvec)
 ;-------------------------------------------------------------------------------
 ; the routine behind each FPP_ id, in the same order as zpset_start
 fpvecs_lo:
-	.byte <do_build, <do_fromint, <do_toint, <do_binop, <do_unary, <do_format
+	.byte <do_build, <do_binop, <do_unary, <do_format
 fpvecs_hi:
-	.byte >do_build, >do_fromint, >do_toint, >do_binop, >do_unary, >do_format
+	.byte >do_build, >do_binop, >do_unary, >do_format
 .assert fpvecs_hi - fpvecs_lo = FPP_COUNT, error, "fpvecs does not match FPP_COUNT"
 
 ;-------------------------------------------------------------------------------
@@ -505,17 +557,6 @@ zpr_build:				; 25 bytes
 	ZPR $56,1			; FAC temp store
 	ZPR $61,16			; FAC1, FAC2, sign compare, rounding
 	ZPREND
-zpr_fromint:				; 20 bytes
-	ZPR $0d,1			; data type flag, cleared by GIVAYF
-	ZPR $22,2
-	ZPR $56,1
-	ZPR $61,16
-	ZPREND
-zpr_toint:				; 19 bytes
-	ZPR $07,1			; INT() stashes mantissa 4 here
-	ZPR $22,2
-	ZPR $61,16
-	ZPREND
 zpr_binop:				; 26 bytes
 	ZPR $0d,1			; GIVAYF, via do_compare
 	ZPR $22,8
@@ -541,8 +582,6 @@ zpranges_end:
 ; the sentinel at the end belongs to the list
 zpset_start:
 	.byte zpr_build-zpranges
-	.byte zpr_fromint-zpranges
-	.byte zpr_toint-zpranges
 	.byte zpr_binop-zpranges
 	.byte zpr_unary-zpranges
 	.byte zpr_format-zpranges
@@ -696,89 +735,6 @@ zpset_start:
 .endproc
 
 ;*******************************************************************************
-; DO FROMINT
-; Converts intval (unsigned) to a float in fp::val.
-.proc do_fromint
-	lda intval+1
-	ldy intval
-	jsr FP_GIVAYF		; FAC1 = intval, treated as signed
-
-	lda intval+1
-	bpl :+
-
-	; GIVAYF is signed, so anything >= $8000 came out 65536 too small
-	lda #<c_65536
-	ldy #>c_65536
-	jsr FP_FADDM
-
-:	jmp pack_result
-.endproc
-
-c_65536: .byte $91,$00,$00,$00,$00	; 65536.0
-
-;*******************************************************************************
-; DO TOINT
-; Converts fp::val to an unsigned 16-bit integer in intval.
-.proc do_toint
-	; A packed CBM zero is defined by its exponent alone; the ROM can leave
-	; unused mantissa bytes behind. Do not compare those bytes with INT(0).
-	lda __fp_val
-	beq @zero
-	lda #<__fp_val
-	ldy #>__fp_val
-	jsr FP_MOVFM		; FAC1 = val
-	jsr FP_ROM_INT		; FAC1 = INT(val)
-
-	; INT sets the rounding byte from whatever QINT left in .Y, and the pack
-	; below would round by it.  An integral value has nothing below the
-	; mantissa, so clearing it is both correct and what makes the comparison
-	; meaningful.
-	lda #$00
-	sta FAC1_ROUND
-
-	ldxy #tmpf
-	jsr FP_MOVMF		; tmpf = INT(val)
-
-	; comparing the packed forms sidesteps the ROM's rounding byte, which
-	; FCOMP takes into account and which INT does not leave in a state we
-	; can reason about
-	ldx #FP_SIZE-1
-:	lda tmpf,x
-	cmp __fp_val,x
-	bne @notint
-	dex
-	bpl :-
-
-	lda #<tmpf
-	ldy #>tmpf
-	jsr FP_MOVFM		; FAC1 = INT(val), rounding byte cleared
-
-	lda FAC1_SIGN
-	bmi @range		; negative: not an unsigned word
-	lda FAC1_EXP
-	beq @zero		; a zero exponent is the value 0
-	cmp #$91		; exponent $91 is 2^16
-	bcs @range
-
-	jsr FP_QINT		; FAC1 -> 32-bit big endian in $62-$65
-	lda FAC1_EXP+4		; mantissa 4 is the LSB
-	sta intval
-	lda FAC1_EXP+3		; mantissa 3 is the MSB
-	sta intval+1
-	RETURN_OK
-
-@zero:	lda #$00
-	sta intval
-	sta intval+1
-	RETURN_OK
-
-@notint:
-	RETURN_ERR ERR_NOT_INTEGRAL
-
-@range:	RETURN_ERR ERR_OVERSIZED_OPERAND
-.endproc
-
-;*******************************************************************************
 ; DO BINOP
 ; Applies fpop to fp::arg1 and fp::arg2, leaving the result in fp::val.
 .proc do_binop
@@ -790,45 +746,27 @@ c_65536: .byte $91,$00,$00,$00,$00	; 65536.0
 	jmp do_compare
 
 @arithmetic:
-	cmp #'+'
-	bne @sub
-	lda #<__fp_arg1
-	ldy #>__fp_arg1
-	jsr FP_MOVFM
+	; ROM subtraction and division take (AY) as the left operand
 	lda #<__fp_arg2
 	ldy #>__fp_arg2
+	jsr FP_MOVFM
+	lda #<__fp_arg1
+	ldy #>__fp_arg1
+	ldx fpop
+	cpx #'+'
+	bne @sub
 	jsr FP_FADDM
 	jmp @pack
-
-@sub:	cmp #'-'
+@sub:	cpx #'-'
 	bne @mul
-	; FP_FSUBM computes (AY)-FAC1, so the right operand goes in FAC1
-	lda #<__fp_arg2
-	ldy #>__fp_arg2
-	jsr FP_MOVFM
-	lda #<__fp_arg1
-	ldy #>__fp_arg1
 	jsr FP_FSUBM
 	jmp @pack
-
-@mul:	cmp #'*'
+@mul:	cpx #'*'
 	bne @div
-	lda #<__fp_arg1
-	ldy #>__fp_arg1
-	jsr FP_MOVFM
-	lda #<__fp_arg2
-	ldy #>__fp_arg2
 	jsr FP_FMULTM
 	jmp @pack
-
-@div:	cmp #'/'
+@div:	cpx #'/'
 	bne @badop
-	; FP_FDIVM computes (AY)/FAC1, so the divisor goes in FAC1
-	lda #<__fp_arg2
-	ldy #>__fp_arg2
-	jsr FP_MOVFM
-	lda #<__fp_arg1
-	ldy #>__fp_arg1
 	jsr FP_FDIVM
 
 @pack:	jmp pack_result

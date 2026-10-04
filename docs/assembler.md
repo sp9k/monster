@@ -74,7 +74,12 @@ produce the final result of 7.
 Note that `<` and `>` are byte-select post-processing operators if value is expected (`LDA #<LABEL`) and
 comparisons where an operator is expected (`LDA #LABEL<$100`).
 
-Integer comparisons compare unsigned 16-bit values and produce the integer 1 (true)
+Integer expressions use 24-bit intermediate values.
+When producing the assembled code, operands over: `$ffff` result in an overflow error.
+Negative word results in -32768..-1 are allowed and evaluate to their
+two's-complement representation. Immediate operands are likewise accepted in the range -128..-1.
+
+Integer comparisons compare unsigned 24-bit values and produce the integer 1 (true)
 or 0 (false), so they may be used anywhere a value may be.  Their precedence of
 0 is lower than every other operator, meaning arithmetic on either side is always evaluated first.
 For example:
@@ -125,9 +130,8 @@ labels or imported symbols can be deferred until linking. For example:
 
 Deferred expressions support integer addition, subtraction, multiplication,
 division, bitwise operators, comparisons, unary signs, and byte selection
-(`<(expression)` or `>(expression)`). They use the same unsigned 16-bit
-arithmetic as assembly-time integer expressions, including wrapping intermediate
-results. Local labels and `*` use their final RUN addresses. Constants, including
+(`<(expression)` or `>(expression)`). They use the same 24-bit
+arithmetic and final width checks as assembly-time integer expressions. Local labels and `*` use their final RUN addresses. Constants, including
 mutable `.set` values, are captured when the expression is assembled.
 
 At link time, division by zero, byte operands over $ff, and branches

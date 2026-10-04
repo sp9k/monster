@@ -1,5 +1,6 @@
 .import __expr_end_on_whitespace
 .import __expr_eval
+.import __expr_eval_wide
 .import __expr_syntax_only
 .import __expr_floatval
 .import __expr_floatstr
@@ -22,6 +23,7 @@
 .import __expr_segment
 .import __expr_symbol
 .import __expr_negative
+.import __expr_wide_mode
 .import __expr_value
 .import __expr_verify
 
@@ -38,6 +40,7 @@ POSTPROC_MSB  = 2
 .scope expr
 	verify       = __expr_verify
 	end_on_ws    = __expr_end_on_whitespace
+	eval_wide    = __expr_eval_wide
 	eval         = __expr_eval
 	syntax_only  = __expr_syntax_only
 	floatval     = __expr_floatval
@@ -61,5 +64,6 @@ POSTPROC_MSB  = 2
 	symbol       = __expr_symbol
 	negative     = __expr_negative
 	postproc     = __expr_postproc
+	wide_mode    = __expr_wide_mode
 	value        = __expr_value
 .endscope

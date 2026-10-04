@@ -73,7 +73,7 @@
 
 .include "../firmware.inc"
 .assert * = $a000+FIRMWARE_OFFSET, error, "firmware header moved"
-.res FIRMWARE_SIZE, $ff ; stamped by make-ultimem-cart.py
+.include "../version.asm"
 
 ; copy cart binary ($0000-$6000) to RAM
 cart_start:

@@ -1,4 +1,4 @@
-"""Stamp the ROM version and checksum; emit a padded ROM or trimmed disk image."""
+"""Validate the assembled firmware header and fill its checksum; package the ROM."""
 import argparse
 from pathlib import Path
 
@@ -8,7 +8,6 @@ HEADER_OFFSET = 9
 VERSION_OFFSET = 13
 BLOCKS_OFFSET = 18
 CHECKSUM_OFFSET = 20
-HEADER_SIZE = 13
 MAGIC = b'MUP1'
 
 
@@ -21,13 +20,15 @@ def stamp_image(data, version):
         raise ValueError('image must contain 1..128 complete 8 KiB banks')
     if data[4:9] != b'A0\xc3\xc2\xcd':
         raise ValueError('not a VIC-20 cartridge image')
-    if data[HEADER_OFFSET:HEADER_OFFSET + HEADER_SIZE] != b'\xff' * HEADER_SIZE:
-        raise ValueError('missing reserved firmware header')
     data = bytearray(data)
-    data[HEADER_OFFSET:VERSION_OFFSET] = MAGIC
-    data[VERSION_OFFSET:BLOCKS_OFFSET] = version.encode('ascii')
-    data[BLOCKS_OFFSET:CHECKSUM_OFFSET] = (len(data) // BANK_SIZE).to_bytes(2, 'little')
-    data[CHECKSUM_OFFSET:CHECKSUM_OFFSET + 2] = b'\0\0'
+    if data[HEADER_OFFSET:VERSION_OFFSET] != MAGIC:
+        raise ValueError('missing firmware header')
+    if data[VERSION_OFFSET:BLOCKS_OFFSET] != version.encode('ascii'):
+        raise ValueError('assembled firmware version does not match VERSION; rebuild the ROM')
+    if int.from_bytes(data[BLOCKS_OFFSET:CHECKSUM_OFFSET], 'little') != len(data) // BANK_SIZE:
+        raise ValueError('assembled bank count does not match image size; update version.asm')
+    if data[CHECKSUM_OFFSET:CHECKSUM_OFFSET + 2] != b'\0\0':
+        raise ValueError('firmware checksum is already filled')
     checksum = sum(data) & 0xffff
     data[CHECKSUM_OFFSET:CHECKSUM_OFFSET + 2] = checksum.to_bytes(2, 'little')
     return bytes(data)

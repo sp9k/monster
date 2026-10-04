@@ -3914,7 +3914,7 @@ goto_buffer:
 BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 .proc load_debug_binary
 @addr=zp::editortmp+1
-	lda #$00
+	lda #IMAGE_MODE_NONE
 	sta image::mode
 	sta asm::has_output
 
@@ -4103,7 +4103,7 @@ flat:
 ;   - None
 .proc command_savebin
 	lda image::mode
-	cmp #$01
+	cmp #IMAGE_MODE_BUILDING
 	bne :+
 	jmp image_error
 :

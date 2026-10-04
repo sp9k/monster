@@ -570,9 +570,9 @@ tempbuff:
 	lda render_off
 	beq :+
 
-	; if rendering is disabled don't fill buffer with spaces
+	; if rendering is disabled terminate even a full-width buffer
 	lda #$00
-	jsr @appendch
+	sta @buff,x
 	jmp @buffdone
 
 :	; if rendering, pad line with spaces

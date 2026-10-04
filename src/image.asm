@@ -16,16 +16,18 @@
 
 .segment "DATA"
 .export __image_mode
-__image_mode: .byte $00 ; 0 = no linked image, 1 = building, 2 = ready
+__image_mode: .byte IMAGE_MODE_NONE
 .export __image_mapped
 __image_mapped: .byte $00 ; 0 = CPU-addressed image, 1 = explicit OFFSET layout
 
-.segment "IMAGE_VARS"
+.segment "SHAREBSS"
 .export __image_cursor, __image_length, __image_page
 __image_cursor: .res 3
 __image_length: .res 3
 .export __image_start, __image_copy_address, __image_copy_size
 __image_start: .res 3            ; first byte to save
+
+.segment "IMAGE_VARS"
 __image_copy_address: .word $0000
 __image_copy_size: .res 3
 copy_end: .res 3
@@ -229,7 +231,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 ; Writes the completed linked image, or the current standalone assembly, to a file.
 ; IN:
 ;   - .A: output file handle
-;   - image::mode: linked image state (0 selects standalone assembly)
+;   - image::mode: linked image state (IMAGE_MODE_NONE selects standalone assembly)
 ; OUT:
 ;   - .C: set and .A = error code on failure.
 .export __image_save
@@ -302,7 +304,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 .proc __image_check_program
 	lda __image_mode
 	beq @ok                  ; standalone assembly/debug-file result
-	cmp #$02
+	cmp #IMAGE_MODE_READY
 	bne @bad
 	lda __image_mapped
 	bne @bad
@@ -321,7 +323,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 .export __image_load_program
 .proc __image_load_program
 	lda __image_mode
-	cmp #$02
+	cmp #IMAGE_MODE_READY
 	bne @bad
 	jsr __image_check_program
 	bcs @done
@@ -362,7 +364,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 .export __image_to_vmem
 .proc __image_to_vmem
 	lda __image_mode
-	cmp #$02
+	cmp #IMAGE_MODE_READY
 	beq :+
 	RETURN_ERR ERR_INVALID_COMMAND
 :	clc
