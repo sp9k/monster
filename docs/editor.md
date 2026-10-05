@@ -63,7 +63,7 @@ unsaved changes in that buffer. The editor does not ask for confirmation.
 Reads the manifest file `BUILD` from the selected disk.
 
 This file may optionally start with `DEBUG` or `NODEBUG` to select debug information for the build.
-It must be the first nonempty, non-comment line in the file if provided. Subsequent entries contain a
+Headers precede the source/object pairs. Each header may appear once. Subsequent entries contain a
 quoted source filename and a quoted object filename:
 
 ```
@@ -87,6 +87,40 @@ are still produced in this mode.
 
 Header keywords are case-insensitive and may have a trailing `;` comment.
 
+#### Multidisk Builds
+
+In some cases, the source code being assembled (and referenced in the BUILD
+manifest) will not all fit on a single disk.  Monster supports two options to mitigate this.
+
+The first option available is to store the source code on a disk in one drive and write the
+emitted object code to another drive:
+
+```
+NODEBUG
+OUTPUT 9
+BUILDONLY
+"BOOT.S" "BOOT.O"
+"LINE.S" "LINE.O"
+"UTIL.S" "UTIL.O"
+```
+
+However, even reserving a whole disk for the source and/or object code is sometimes
+not enough. If an object write generates a **DISK FULL** error, Monster closes and scratches the
+incomplete object, then displays **enter new output disk on #<number>**.
+Wait for drive activity to stop, insert a formatted disk with room for the object,
+and press RETURN. Monster will then rewrite the object that failed to fit.
+
+For final linking, keep the full BUILD manifest and LINK layout on the selected
+input drive. C= + L reads objects from the configured output drive (or the
+manifest's OUTPUT override ) and prompts for missing object files during both linker passes.
+
+#### Relink (without assembly)
+
+**Shortcut:** {c64-keys}`C= + L`
+
+If `BUILD` exists, links the referenced object files in order without performing the
+usual assembly pass.
+
 #### Help
 
 Press {c64-keys}`Shift + Slash` (`?`) to display the assembled program and debugger memory ranges,
@@ -106,7 +140,20 @@ The help overlay summarizes memory allocation and assembler resource usage
 
 The current drive selection is displayed with a `#` prefix in the status bar.
 {c64-keys}`C= + Plus` selects the _next_ available drive and {c64-keys}`C= + Minus` selects
-the _previous_ available drive.  The valid device range is 8-15.
+the _previous_ available drive. The shortcut scans devices 8-15.
+
+
+#### System Configuration
+
+Press {c64-key}`F2` to open the configuration menu. Press {c64-key}`F1` to cycle
+between memory and drive configuration.
+
+The drive configuration menu tells Monster where to look for source files and where
+to emit object files during a BUILD. Use up/down to select **input drive**, where source files
+are read, or **output drive**, where the object files are written to.
+Press left/right to cycle between device numbers 8-30.
+In addition to device numbers, the output setting can be **same**.  This
+will output objects to the same device as the single-drive workflow (this is also the default).
 
 #### Directory viewer
 
@@ -208,7 +255,7 @@ actually recorded for a macro.  See the [Assembler](assembler.md) document for t
 |  KEY          | NAME               |   DESCRIPTION                                                                                |
 |---------------|--------------------|----------------------------------------------------------------------------------------------|
 | {c64-key}`F1` | `RUN           `   | saves Monster's state and transfers control to the last assembly (or enters BASIC if none)   |
-| {c64-key}`F2` | `MEMORY CONFIG `   | selects which expansion blocks the user's program (and BASIC) run with                       |
+| {c64-key}`F2` | `CONFIGURATION `   | opens memory/drive configuration; F1 cycles pages on the VIC-20                              |
 | {c64-key}`F3` | `BUFFERS       `   | displays a list of the currently open buffers                                                |
 | {c64-key}`F4` | `LOG           `   | displays the active log file (if any)                                                        |
 | {c64-key}`F5` | `BREAKPOINTS   `   | activates the breakpoint viewer                                                              |

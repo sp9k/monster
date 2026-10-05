@@ -143,3 +143,72 @@
 .proc __kernal_clrchn
 	KERNAL_JUMP $ffcc
 .endproc
+
+; serial command-channel calls are used only by FILEDIR code
+.segment "FILEDIR"
+
+;*******************************************************************************
+; TALK
+; Calls the KERNAL serial bus TALK entry point
+; IN:
+;   - .A: device number
+.export __kernal_talk
+.proc __kernal_talk
+	KERNAL_JUMP $ffb4
+.endproc
+
+;*******************************************************************************
+; TKSA
+; Calls the KERNAL serial bus TKSA entry point
+; IN:
+;   - .A: secondary address
+.export __kernal_tksa
+.proc __kernal_tksa
+	KERNAL_JUMP $ff96
+.endproc
+
+;*******************************************************************************
+; ACPTR
+; Calls the KERNAL serial bus ACPTR entry point
+; OUT:
+;   - .A: received byte
+.export __kernal_acptr
+.proc __kernal_acptr
+	KERNAL_JUMP $ffa5
+.endproc
+
+;*******************************************************************************
+; UNTLK
+; Calls the KERNAL serial bus UNTLK entry point
+.export __kernal_untlk
+.proc __kernal_untlk
+	KERNAL_JUMP $ffab
+.endproc
+
+;*******************************************************************************
+; LISTEN
+; Calls the KERNAL serial bus LISTEN entry point
+; IN:
+;   - .A: device number
+.export __kernal_listen
+.proc __kernal_listen
+	KERNAL_JUMP $ffb1
+.endproc
+
+;*******************************************************************************
+; SECOND
+; Calls the KERNAL serial bus SECOND entry point
+; IN:
+;   - .A: secondary address
+.export __kernal_second
+.proc __kernal_second
+	KERNAL_JUMP $ff93
+.endproc
+
+;*******************************************************************************
+; UNLSN
+; Calls the KERNAL serial bus UNLSN entry point
+.export __kernal_unlsn
+.proc __kernal_unlsn
+	KERNAL_JUMP $ffae
+.endproc

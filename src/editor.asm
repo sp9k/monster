@@ -21,6 +21,7 @@
 .include "build.inc"
 .include "directory.inc"
 .include "draw.inc"
+.include "drivecfg.inc"
 .include "expr.inc"
 .include "errors.inc"
 .include "errlog.inc"
@@ -590,13 +591,17 @@ CUR_BANK .set FINAL_BANK_LINKER_AUX
 	CALLMAIN log::new
 	bcs @error
 
-	ldxy #strings::assembling
-	CALL FINAL_BANK_EDIT, blank
+	CALLMAIN scr::blank
 
 	; build all the objects
 	ldxy #@filename
 	jsr build::objects
 	bcs @result
+
+	; check BUILDONLY flag
+	lda build::options
+	and #build::ONLY_OBJECTS
+	bne @result			; if "BUILD ONLY" set -> skip link
 
 	; link all the objects
 	ldxy #strings::linking
@@ -656,6 +661,12 @@ CUR_BANK .set FINAL_BANK_LINKER_AUX
 	ldxy #strings::linking
 	CALLMAIN log::out
 
+	; link in the order defined in the BUILD file if one exists
+	jsr build::find_manifest
+	bcc @manifest
+	cmp #ERR_FILE_NOT_FOUND
+	bne @err				; unknown error
+
 	; parse the LINK file to setup the linking context
 	CALL FINAL_BANK_LINKER, link::parse
 	bcs @err				; error
@@ -673,8 +684,14 @@ CUR_BANK .set FINAL_BANK_LINKER_AUX
 	; link all object files that were found
 	CALL FINAL_BANK_LINKER, link::link
 	bcs @err
+	bcc @image
+
+@manifest:
+	jsr build::link
+	bcs @err
 
 	; check layout of image
+@image:
 	lda image::mapped
 	bne @done		; explicit offset done
 
@@ -1255,13 +1272,9 @@ CUR_BANK .set FINAL_BANK_EDIT
 
 ;*******************************************************************************
 ; MEM CONFIG
-; Opens the memory configuration window
+; Opens the memory and drive configuration window
 .proc mem_config
-.if .defined(vic20) .and .defined(ultimem)
-	jmp memcfg::edit
-.else
-	rts
-.endif
+	JUMPMAIN drivecfg::edit
 .endproc
 
 ;*******************************************************************************

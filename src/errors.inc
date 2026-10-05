@@ -143,6 +143,8 @@ ERR_SID_ADDRESS          = 84
 ; RPN list, operator stack or float literal pool exhausted
 ERR_EXPRESSION_TOO_COMPLEX = 85
 
+ERR_DISK_FULL = 86
+
 ;*******************************************************************************
 ; DOS STATUS CODES
 ; Stands in for the code the drive reports in its error message when that

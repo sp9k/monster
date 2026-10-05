@@ -1,3 +1,10 @@
+.import __kernal_talk
+.import __kernal_tksa
+.import __kernal_acptr
+.import __kernal_untlk
+.import __kernal_listen
+.import __kernal_second
+.import __kernal_unlsn
 .import __kernal_chrin
 .import __kernal_chrout
 .import __kernal_readst
@@ -13,6 +20,14 @@
 .import __kernal_clrchn
 
 .scope krn
+	talk = __kernal_talk
+	tksa = __kernal_tksa
+	acptr = __kernal_acptr
+	untlk = __kernal_untlk
+	listen = __kernal_listen
+	second = __kernal_second
+	unlsn = __kernal_unlsn
+
 	chrin  = __kernal_chrin
 	chrout = __kernal_chrout
 	readst = __kernal_readst

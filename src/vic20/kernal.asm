@@ -68,3 +68,55 @@ __kernal_clall = $ffe7
 ; CLRCHN
 .export __kernal_clrchn
 __kernal_clrchn = $ffcc
+
+;*******************************************************************************
+; TALK
+; Calls the KERNAL serial bus TALK entry point
+; IN:
+;   - .A: device number
+.export __kernal_talk
+__kernal_talk = $ffb4
+
+;*******************************************************************************
+; TKSA
+; Calls the KERNAL serial bus TKSA entry point
+; IN:
+;   - .A: secondary address
+.export __kernal_tksa
+__kernal_tksa = $ff96
+
+;*******************************************************************************
+; ACPTR
+; Calls the KERNAL serial bus ACPTR entry point
+; OUT:
+;   - .A: received byte
+.export __kernal_acptr
+__kernal_acptr = $ffa5
+
+;*******************************************************************************
+; UNTLK
+; Calls the KERNAL serial bus UNTLK entry point
+.export __kernal_untlk
+__kernal_untlk = $ffab
+
+;*******************************************************************************
+; LISTEN
+; Calls the KERNAL serial bus LISTEN entry point
+; IN:
+;   - .A: device number
+.export __kernal_listen
+__kernal_listen = $ffb1
+
+;*******************************************************************************
+; SECOND
+; Calls the KERNAL serial bus SECOND entry point
+; IN:
+;   - .A: secondary address
+.export __kernal_second
+__kernal_second = $ff93
+
+;*******************************************************************************
+; UNLSN
+; Calls the KERNAL serial bus UNLSN entry point
+.export __kernal_unlsn
+__kernal_unlsn = $ffae

@@ -5,7 +5,13 @@
 ;*******************************************************************************
 
 .include "asm.inc"
+.include "source.inc"
+.include "screen.inc"
+.include "text.inc"
+.include "key.inc"
+.include "keycodes.inc"
 .include "debuginfo.inc"
+.include "drivecfg.inc"
 .include "edit.inc"
 .include "errlog.inc"
 .include "errors.inc"
@@ -20,6 +26,12 @@
 .include "ram.inc"
 .include "runtime.inc"
 .macpack longbranch
+
+; manifest header and source/object pair flags
+OPTION_DEBUG      = $01
+OPTION_PAIRS      = $02
+OPTION_OUTPUT     = $04
+OPTION_BUILDONLY  = $08
 
 .segment "BUILD_VARS"
 
@@ -48,7 +60,19 @@ result:           .byte $00
 list_end:         .word $0000
 list_count:       .byte $00
 debug_info:       .byte $00
+
+;*******************************************************************************
+; parsed header and source/object pair flags
+.export __build_options
+__build_options:
 manifest_started: .byte $00
+object_device:    .byte $00
+cache_bank:       .byte $00
+cache_end:        .word $0000
+cache_column:     .byte $00
+
+.import __src_data
+CACHE_LIMIT = __src_data+$2000
 
 BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 
@@ -81,7 +105,12 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	sta skip_lf
 	sta manifest_file
 	sta manifest_started
+	sta cache_bank
 	sta zp::verify
+	lda drivecfg::output_device
+	bne :+
+	lda zp::device
+:	sta object_device
 	lda #$01
 	sta debug_info
 
@@ -111,6 +140,8 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	CALLMAIN file::open_r
 	jcs @finish
 	sta manifest_file
+	jsr cache_manifest
+	jcs @finish
 
 @next:	lda edit::sigint
 	jne @cancel
@@ -137,9 +168,12 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	cmp #MAX_OBJS
 	bcs @large
 
+	ldxy #source_filename
+	jsr __build_require_file
+	jcs @finish
 	jsr assemble		; assemble the source file
 	jcs @finish
-	jsr save_object		; save the assembled object code
+	jsr save_on_device	; save the assembled object code
 	jcs @finish
 	inc __build_completed
 	jmp @next		; repeat for next source file
@@ -176,7 +210,13 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 
 ;-------------------------------------------------------------------------------
 @closed:
-	plp
+	lda cache_bank
+	beq :+
+	CALLMAIN src::release_bank
+
+	lda #$00
+	sta cache_bank
+:	plp
 	pla
 	sta zp::verify
 	pla
@@ -199,8 +239,19 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 ;   - image::mode: IMAGE_MODE_READY after successful linking
 .export __build_link
 .proc __build_link
-	; parse the LINK file
+	lda drivecfg::output_device
+	bne :+
+	lda zp::device
+
+:	sta object_device
+	lda #$00
+	sta cache_bank
 	CALL FINAL_BANK_LINKER, link::init
+	ldxy #@layout
+	jsr __build_require_file
+	jcs @ret
+
+	; parse the LINK file
 	CALL FINAL_BANK_LINKER, link::parse
 	jcs @ret
 
@@ -216,6 +267,9 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	ldxy #link::objfiles
 	stxy list_end
 
+	ldxy #build_filename
+	jsr __build_require_file
+	jcs @ret
 	ldxy #build_filename
 	jsr filename
 	CALLMAIN file::open_r
@@ -263,8 +317,40 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda debug_info
 	eor #$01
 	sta link::no_debug_info
+	lda zp::device
+	pha
+	lda object_device
+	sta zp::device
 	CALL FINAL_BANK_LINKER, link::link
+	sta result
+	pla
+	sta zp::device
+	lda result
 @ret:	rts
+@layout: .byte "link",$00
+.endproc
+
+;*******************************************************************************
+; FIND MANIFEST
+; Selects the default BUILD manifest and checks that it exists
+; OUT:
+;   - build_filename: default manifest filename
+;   - .C:             set if the manifest could not be opened
+;   - .A:             error code (if .C set)
+.export __build_find_manifest
+.proc __build_find_manifest
+	ldy #$05
+@copy:	lda @name,y
+	sta build_filename,y
+	dey
+	bpl @copy
+
+	ldxy #build_filename
+	jsr filename
+	JUMPMAIN file::exists
+
+;-------------------------------------------------------------------------------
+@name:	.byte "build",0
 .endproc
 
 ;*******************************************************************************
@@ -346,12 +432,18 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 ;   - .C:         set on error
 ;   - A:          error code on read failure or oversized input
 .proc read_line
+	lda cache_bank
+	bne @cached
 	ldx manifest_file
 	jsr krn::chkin
 	bcs @io
 	ldy #$00
 
-@next:	CALLMAIN file::readb
+@cached:
+	ldy #$00
+@next:	sty cache_column
+	jsr manifest_byte
+	ldy cache_column
 	bcs @ret
 	ldx file::eof
 	bne @done
@@ -374,7 +466,12 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	bne @next
 
 @cr:	inc skip_lf
-@done:	lda #$00
+@done:	; preserve EOI before another channel selection clears KERNAL status
+	lda cache_bank
+	bne :+
+	jsr krn::readst
+	sta file::eof
+:	lda #$00
 	sta linebuffer,y
 	clc
 @ret:	rts
@@ -384,12 +481,14 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 
 ;*******************************************************************************
 ; PARSE PAIR
-; Reads an optional mode header or a quoted source/object pair with comments
+; Reads a build header or a quoted source/object pair with comments
 ; IN:
 ;   - linebuffer: zero-terminated manifest line
 ; OUT:
 ;   - source_filename, obj_filename: parsed filenames
-;   - debug_info: updated by a leading DEBUG or NODEBUG header
+;   - debug_info: updated by DEBUG or NODEBUG
+;   - object_device: updated by OUTPUT
+;   - manifest_started: updated header and pair flags
 ;   - .Z:    set for a mode header, blank, or comment-only line
 ;   - .C:    set on error
 ;   - .A:    error code (if .C set)
@@ -398,6 +497,7 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	sta position
 	jsr whitespace
 	beq @empty
+
 	cmp #';'
 	beq @empty
 	cmp #'"'
@@ -405,23 +505,29 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	jmp parse_mode
 
 @source:
-	lda #$01
+	lda manifest_started
+	ora #OPTION_PAIRS
 	sta manifest_started
+
 	ldxy #source_filename
 	jsr quoted_name
 	bcs @ret
 	cpx #$10
 	beq @long
+
 	ldxy #source_filename
 	jsr object_suffix
 	beq @bad		; source names cannot be object output names
+
 	jsr whitespace
 	ldxy #obj_filename
 	jsr quoted_name
 	bcs @ret
+
 	ldxy #obj_filename
 	jsr object_suffix
 	bne @bad
+
 	jsr whitespace
 	beq @pair
 	cmp #';'
@@ -439,59 +545,165 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 
 ;*******************************************************************************
 ; PARSE MODE
-; Reads the DEBUG or NODEBUG header from the BUILD file (if it's provided)
+; Reads DEBUG, NODEBUG, OUTPUT, or BUILDONLY before the source/object pairs
 ; IN:
-;   - linebuffer, position: manifest line and first nonspace character offset
-;   - manifest_started: nonzero if a header or source/object pair was already read
+;   - linebuffer:       contains line of the BUILD file
+;   - position:         first nonspace character offset in the line
+;   - manifest_started: previously parsed header and source-pair flags
 ; OUT:
 ;   - debug_info:       1 for DEBUG, 0 for NODEBUG
-;   - manifest_started: 1 to flag after a valid header
+;   - object_device:    output drive from OUTPUT
+;   - manifest_started: updated header flags
 ;   - .Z:               set on success (no source/object pair)
 ;   - .C:               set on error
 ;   - .A:               error code (if .C set)
 .proc parse_mode
-@mode=r2
+@option=r2
+@value=r3
+	; reject headers after the first source/object pair
 	lda manifest_started
-	bne @bad		; only 1 header is allowed
-
-	ldy position
-	lda linebuffer,y
-	jsr uppercase
+	and #OPTION_PAIRS
+	jne @bad
 	ldx #$00
-	cmp #$4e		; N selects NODEBUG; otherwise match DEBUG
-	beq @start
 
-	ldx #$02
-@start: stx @mode
-@match: lda @keyword,x
-	beq @end
+	; match the header against each keyword without case sensitivity
+@keyword:
+	ldy position
+@match:	lda @words,x
+	beq @matched
 	lda linebuffer,y
 	jsr uppercase
-	cmp @keyword,x
-	bne @bad
+	cmp @words,x
+	bne @skip
 	inx
 	iny
 	bne @match
 
-@end:	sty position
-	jsr whitespace
+	; advance past the unmatched keyword and its option bit
+@skip:	lda @words,x
+	inx
+	cmp #$00
+	bne @skip
+	inx		; skip option bit
+	lda @words,x
+	bne @keyword
+	beq @bad	; no options to check left -> error
+
+	; reject a header whose option bit is already set
+@matched:
+	inx			; .X = offset to option bit
+	lda @words,x		; read the option we parsed
+	sta @option
+	and manifest_started
+	bne @bad
+
+	; parse device number for OUTPUT
+	sty position
+	lda @option
+	cmp #OPTION_OUTPUT
+	bne @tail
+
+	; require a space or tab after OUTPUT
+	lda linebuffer,y
+	cmp #' '
+	beq :+
+	cmp #$09
+	bne @bad		; no whitespace -> error
+
+	; skip whitespace and require the first decimal digit
+:	jsr whitespace
+	cmp #$30
+	bcc @bad
+	cmp #$3a
+	bcs @bad
+
+	; store the first digit and check for a second
+	and #$0f
+	sta @value
+	inc position
+	jsr whitespace_digit
+	bcc @device		; decimal device # found -> continue
+
+	; get decimal value (first * 10 + second)
+	lda @value
+	asl
+	asl
+	adc @value
+	asl
+	sta @value
+	lda linebuffer,y
+	and #$0f
+	clc
+	adc @value
+	sta @value
+	inc position
+
+@device:
+	; validate that IEC device numbers is between 8 and 30
+	lda @value
+	cmp #$08
+	bcc @bad
+	cmp #$1f
+	bcs @bad
+	sta object_device
+
+	; allow only whitespace or a comment after the header
+@tail:	jsr whitespace
 	beq @commit
 	cmp #';'
 	bne @bad
 
+	; record the header and check whether it selects debug output
 @commit:
-	lda @mode
-	lsr
-	sta debug_info
-	inc manifest_started
+	lda @option
+	ora manifest_started
+	sta manifest_started
+	lda @option
+	cmp #OPTION_DEBUG
+	bne @ok
+
+	; enable debug output for DEBUG at offset 6, disable it for NODEBUG
 	lda #$00
+	cpx #$06
+	bne :+
+	lda #$01
+:	sta debug_info
+
+	; return with Z set and carry clear for success
+@ok:	lda #$00
 	clc
 	rts
 
+	; report an invalid, duplicate, or misplaced header
 @bad:	RETURN_ERR ERR_SYNTAX_ERROR
 
 ;-------------------------------------------------------------------------------
-@keyword: .byte "nodebug",0
+; pair each header keyword with its option bit
+@words: .byte "debug",    $00, OPTION_DEBUG
+	.byte "nodebug",  $00, OPTION_DEBUG
+	.byte "output",   $00, OPTION_OUTPUT
+	.byte "buildonly",$00, OPTION_BUILDONLY, $00
+.endproc
+
+;*******************************************************************************
+; WHITESPACE DIGIT
+; Checks if the next character is a decimal digit
+; IN:
+;   - position: character offset
+; OUT:
+;   - .Y: character offset
+;   - .C: set if decimal digit
+.proc whitespace_digit
+	ldy position
+	lda linebuffer,y
+	cmp #$30
+	bcc @ret
+	cmp #$3a
+	bcs @no
+	sec
+@ret:	rts
+@no:	clc
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -713,20 +925,24 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	CALLMAIN file::exists
 	bcc @replace
 	cmp #ERR_FILE_NOT_FOUND
-	bne @error
+	jne @error
 	beq @open
 
 @replace:
 	ldxy #obj_filename
 	jsr filename
 	CALLMAIN file::scratch
-	bcs @ret
+	jcs @ret
 
 @open:	ldxy #obj_filename
 	jsr filename
 	CALLMAIN file::open_w			; open output file
-
-	bcs @ret
+	bcc :+
+	cmp #ERR_DISK_FULL
+	beq @remove
+	sec
+	rts
+:
 	sta output_file
 	tax
 	jsr krn::chkout
@@ -755,6 +971,12 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	lda output_file
 	CALLMAIN file::close
 	lda result
+	beq @remove
+	CALLMAIN file::geterr
+	cmp #ERR_DISK_FULL
+	bne :+
+	sta result
+:	lda result
 
 ;-------------------------------------------------------------------------------
 ; delete the object file (if closing failed); it's probably a splat file
@@ -763,7 +985,342 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	ldxy #obj_filename
 	jsr filename
 	CALLMAIN file::scratch
+	bcs @ret
 	lda result
 @error:	sec
 @ret:	rts
+.endproc
+
+;*******************************************************************************
+; CACHE MANIFEST
+; Copies the BUILD file into a temporary source-pool bank
+; IN:
+;   - manifest_file: open BUILD handle
+; OUT:
+;   - cache_bank: allocated bank, released by build::objects
+;   - list_end:   next cached byte
+;   - .C:         set on read failure or a manifest larger than 8 KiB
+;   - .A:         error code on failure
+.proc cache_manifest
+	CALLMAIN src::reserve_bank
+	bcc :+
+	RETURN_ERR ERR_OOM
+
+:	sta cache_bank
+	ldxy #__src_data
+	stxy list_end
+	ldx manifest_file
+	jsr krn::chkin
+	jcs @io
+
+;-------------------------------------------------------------------------------
+@load:	; read the BUILD file into the source buffer we're borrowing
+	lda edit::sigint
+	jne @cancel
+	CALLMAIN file::readb
+	jcs @ret
+	ldx file::eof
+	bne @done
+	pha
+	ldxy list_end
+	cmpw #CACHE_LIMIT
+	pla
+	bcs @large
+.ifdef c64
+	pha
+	stxy reu::reuaddr
+	lda cache_bank
+	sta reu::reuaddr+2
+	pla
+	CALLMAIN reu::store1
+.else
+	sta zp::bankval
+	ldxy list_end
+	lda cache_bank
+	CALLMAIN ram::store
+.endif
+	incw list_end
+	jsr krn::readst
+	beq @load
+
+	and #$bf			; EOI?
+	bne @io				; if not, some other error occurred
+
+;-------------------------------------------------------------------------------
+@done:	ldxy list_end
+	stxy cache_end
+	ldxy #__src_data
+	stxy list_end
+
+	lda manifest_file
+	CALLMAIN file::close		; close the BUILD file
+	lda #$00
+	sta manifest_file
+	clc
+@ret:	rts
+@cancel:
+	lda #$00
+	sec
+	rts
+
+;-------------------------------------------------------------------------------
+@large:	RETURN_ERR ERR_FILE_TOO_BIG
+@io:	RETURN_ERR ERR_IO_ERROR
+.endproc
+
+;*******************************************************************************
+; MANIFEST BYTE
+; Reads the next byte from the cached BUILD or its live channel during relinking
+; IN:
+;   - cache_bank: temporary bank or zero for the live channel
+; OUT:
+;   - .A: next character
+;   - file::eof: nonzero after the final cached byte
+;   - .C: set on a read error
+.proc manifest_byte
+	lda cache_bank
+	bne @cached
+	JUMPMAIN file::readb
+@cached:
+	ldxy list_end
+	cmpw cache_end
+	beq @eof
+.ifdef c64
+	stxy reu::reuaddr
+	lda cache_bank
+	sta reu::reuaddr+2
+	CALLMAIN reu::load1
+.else
+	lda cache_bank
+	CALLMAIN ram::load
+.endif
+	incw list_end
+	ldx #$00
+	stx file::eof
+	clc
+	rts
+
+@eof:	lda #$01
+	sta file::eof
+	clc
+	rts
+.endproc
+
+;*******************************************************************************
+; REQUIRE FILE
+; Prompts for missing input media before opening source or object channel
+; IN:
+;   - .XY:        0-terminated filename
+;   - zp::device: input drive
+; OUT:
+;   - .XY: shared filename buffer on success
+;   - .C:  set on failure or cancellation
+;   - .A:  error code on failure, 0 on cancellation
+.export __build_require_file
+.proc __build_require_file
+@name=r0
+	stxy @name
+
+	ldy #$00
+@copy:	lda (@name),y
+	sta source_filename,y
+	beq @exists
+	iny
+	bne @copy
+
+@exists:
+	ldxy #source_filename
+	jsr filename
+	CALLMAIN file::exists
+	bcc @ok
+	cmp #ERR_FILE_NOT_FOUND
+	jne @error		; i/oerror
+
+	; file not found, ask user to insert disk
+	lda #$00
+	jsr disk_prompt
+	bcs @ret
+	bcc @exists
+
+@ok:	ldxy #source_filename
+	jsr filename
+	clc
+@ret:	rts
+@error:	sec
+	rts
+.endproc
+
+;*******************************************************************************
+; OPEN READ
+; Opens an input file after prompting for its disk if necessary
+; IN:
+;   - .XY: filename
+;   - zp::device: input drive
+; OUT:
+;   - .A: file handle, error code, or zero on cancellation
+;   - .C: set on failure or cancellation
+.export __build_open_read
+.proc __build_open_read
+	jsr __build_require_file
+	jcs @ret
+	CALLMAIN file::open_r
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; SAVE ON DEVICE
+; Writes the assembled object to the configured output drive, retrying full media
+; IN:
+;   - object_device: output drive
+; OUT:
+;   - .C: set on failure or cancellation
+;   - .A: error code on failure, zero on cancellation
+.proc save_on_device
+	lda zp::device
+	pha
+	lda object_device
+	sta zp::device
+@try:	jsr save_object
+	bcc @done
+	cmp #ERR_DISK_FULL
+	bne @error
+	lda #$01
+	jsr disk_prompt
+	bcs @done
+	jmp @try
+@error:	sec
+@done:	sta result
+	pla
+	sta zp::device
+	lda result
+	rts
+.endproc
+
+;*******************************************************************************
+; DISK PROMPT
+; Displays the required disk and waits for the user to confirm (RETURN) or
+; cancel (RUN/STOP)
+; IN:
+;   - .A:              0 for an input filename, nonzero for a new output disk
+;   - source_filename: missing input filename
+;   - zp::device:      drive requiring a disk
+; OUT:
+;   - .C: set if user cancelled
+;   - .A: 0 if user cancelled (RUN/STOP)
+.proc disk_prompt
+@message=$100
+	pha
+	CALLMAIN scr::unblank
+	pla
+	ldx #$00
+	cmp #$00
+	beq @source
+
+;-------------------------------------------------------------------------------
+; copy the "enter new output disk" prompt
+@output:
+	lda @output_text,x
+	sta @message,x
+	beq @drive
+	inx
+	bne @output
+
+;-------------------------------------------------------------------------------
+; copy the "enter disk with" prompt
+@source:
+	lda @source_text,x
+	sta @message,x
+	beq @name
+	inx
+	bne @source
+@name:	ldy #$00
+@copy:	lda source_filename,y
+	beq @drive
+	sta @message,x
+	inx
+	iny
+	bne @copy
+
+;-------------------------------------------------------------------------------
+@drive:	ldy #$00
+@append:
+	lda @drive_text,y
+	beq @number
+	sta @message,x
+	inx
+	iny
+	bne @append
+@number:
+	lda zp::device
+	ldy #$30
+@tens:	cmp #10
+	bcc @units
+	sbc #10
+	iny
+	bne @tens
+
+@units:
+	pha
+	tya
+	sta @message,x
+	inx
+	pla
+	ora #$30
+	sta @message,x
+	inx
+	lda #$00
+	sta @message,x
+	ldxy #@message
+	lda edit::status_row
+	sec
+	sbc #$01
+	CALLMAIN text::print
+
+;-------------------------------------------------------------------------------
+; print the user instructions (confirm/cancel)
+	ldx #$00
+@help:	lda @help_text,x
+	sta @message,x
+	beq @show
+	inx
+	bne @help
+
+@show:	ldxy #@message
+	lda edit::status_row
+	CALLMAIN text::print
+	CALLMAIN key::flush
+@wait:	CALLMAIN key::waitch
+	cmp #K_QUIT
+	beq @cancel
+	ldx edit::sigint
+	bne @cancel
+	cmp #K_RETURN
+	bne @wait
+	clc
+	skb
+@cancel:
+	sec				; flag that user canceled
+@finish:
+	php
+	lda #$00
+	sta @message
+	ldxy #@message
+	lda edit::status_row
+	sec
+	sbc #$01
+	CALLMAIN text::print
+
+	ldxy #@message
+	lda edit::status_row
+	CALLMAIN text::print
+	CALLMAIN scr::blank
+	plp
+	lda #$00
+	rts
+
+;-------------------------------------------------------------------------------
+@source_text: .byte "enter disk with ",$00
+@output_text: .byte "enter new output disk",$00
+@drive_text:  .byte " on #",$00
+@help_text:   .byte "return: retry   run/stop: cancel",$00
 .endproc

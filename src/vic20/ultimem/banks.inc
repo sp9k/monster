@@ -14,7 +14,7 @@ FINAL_BANK_EXPR            = $03
 FINAL_BANK_FP              = FINAL_BANK_EXPR
 
 FINAL_BANK_HELP            = $04
-FINAL_BANK_MEMCFG          = $04
+FINAL_BANK_MEMCFG          = $15
 FINAL_BANK_MACROS          = $05
 FINAL_BANK_LINKER          = $06
 FINAL_BANK_BUFF            = $07

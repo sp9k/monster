@@ -1,3 +1,5 @@
+.import __src_reserve_bank
+.import __src_release_bank
 .importzp __src_line
 .importzp __src_lines
 
@@ -67,6 +69,8 @@ FLAG_DIRTY = 1	; flag that source buffer has been changed since last save
 GAPSIZE = 20	; size of gap in gap buffer
 
 .scope src
+	reserve_bank = __src_reserve_bank
+	release_bank = __src_release_bank
 	activebuff     = __src_activebuff
 	after_cursor   = __src_after_cursor
 	anydirty       = __src_anydirty

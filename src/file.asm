@@ -355,10 +355,13 @@ OSPROC fgetline
 	jmp @l0			; continuation: next line overwrites the marker
 
 @noext:	iny			; restore the count (undo the peek)
-@term:	lda #$00
+@term:	jsr krn::readst
+	sta __file_eof		; save EOI flag
+
+	lda #$00
 	sta (__file_load_address),y	; 0-terminate the string
-	tya		; put # of bytes read in .A
-@ok:	clc		; no error
+	tya				; put # of bytes read in .A
+@ok:	clc				; no error
 @ret:	rts
 ENDOSPROC
 
@@ -371,18 +374,32 @@ ENDOSPROC
 ;   - .C: set on error
 OSPROC fscratch
 	stxy r0
-	jsr init_drive
 
 	ldx #<@s_colon
 	ldy #>@s_colon
 	jsr str::cat		; s:<filename>
-	lda #15			; SA (command channel)
-	jsr fopen
 	bcs @err
-	jsr fclose	; close logical file of deleted file
-	jmp fgeterr	; return the drive's response to the scratch
+	stxy r0
+	jsr krn::clrchn
 
-@err:	rts			; return error from open
+	lda #$00
+	sta zp::io_status
+	lda zp::device
+	jsr krn::listen
+	lda #$6f		; send command
+	jsr krn::second
+
+	; cend the scratch command
+	ldy #$00
+@send:	lda (r0),y
+	beq @done
+	jsr krn::ciout
+	iny
+	bne @send
+
+@done:	jsr krn::unlsn
+	jmp fgeterr
+@err:	rts
 
 @s_colon:
 	.byte "s:",0
@@ -456,6 +473,7 @@ OSPROC fopen
 :	stxy @filename
 	jsr str::len
 	pha
+	jsr krn::clrchn		; release the current IEC channel before OPEN
 
 	; find a free file ID in KERNAL's file table
 	lda #FIRST_FILE_ID-1
@@ -512,30 +530,35 @@ ENDOSPROC
 ;  - .C: set on error
 ;  - .Z: set if the file exists; clear if it does
 OSPROC fexists
-@file=r0
+@file=r7
 	jsr openr
 	bcs @ret
 
 	sta @file
 	tax
-	jsr krn::chkin		; CHKIN (file in .X now used as input)
-	jsr __file_readb	; read one byte
-	jsr krn::readst		; call READST (read status byte)
-	cmp #20
-	bcs :+
-	lda #$00		; ignore errors 0-19 (file exists)
-:	pha
+	jsr krn::chkin
+	jsr __file_readb
+	bcs @close
+	jsr krn::readst
+	and #$bf		; clear EOI bit
+	beq @ok			; if no other statuses -> ok
 
-	; close the file we were testing
+	; check what error occurred
+	jsr fgeterr
+	jmp @close
+@ok:	clc
+
+@close: php
+	pha
+
+	; close the probe while preserving its translated read error
 	lda @file
 	jsr fclose
-
 	pla
-	bne @done
-	clc			; ok
+	plp
+	bcs @ret
+	lda #$00
 @ret:	rts
-
-@done:	jmp fgeterr
 ENDOSPROC
 
 ;*******************************************************************************
@@ -634,6 +657,9 @@ ENDOSPROC
 	bne :+
 	RETURN_OK
 
+:	cpx #$48		; DOS 72: disk full
+	bne :+
+	RETURN_ERR ERR_DISK_FULL
 :	lda #ERR_IO_ERROR	; default (unknown) file error
 	cpx #$3e		; err code $3e (file not found)?
 	sec

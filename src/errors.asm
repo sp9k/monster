@@ -359,6 +359,8 @@ err_expression_too_complex:
 .byte $2e,$10,$91,$53,$9a,$4f,$76,$d4,$7b,$db,$1b,$cd,$83,$5,$c0,$0
 
 ;*******************************************************************************
+err_disk_full: .byte $22,$53,$5e,$c6,$ab,$0c,$00
+
 .linecont +
 .define errors \
 	err_unknown_err, \
@@ -446,7 +448,8 @@ err_expression_too_complex:
 	err_watch_exists, \
 	err_sid_format, \
 	err_sid_address, \
-	err_expression_too_complex
+	err_expression_too_complex, \
+	err_disk_full
 .linecont -
 errorslo: .lobytes errors
 errorshi: .hibytes errors

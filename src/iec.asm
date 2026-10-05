@@ -34,40 +34,27 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 ;  - mem::drive_err: the drive error message
 .proc readerr
 @ch=rf
-	lda #$00		; no filename
-	tax
-	tay
+	jsr krn::clrchn
+	lda #$00
 	sta @ch
-	jsr krn::setnam		; SETNAM
-
-	lda #$0f		; file number 15 (error channel)
-	ldx zp::device
-	tay			; secondary address 15 (error channel)
-	jsr krn::setlfs		; SETLFS
-	jsr krn::open		; OPEN
-	bcc @ok
-
-	pha			; save the KERNAL error code
-	lda #$0f
-	jsr krn::close		; close command channel
-	pla			; restore the KERNAL error code
-	cmp #$05		; DEVICE NOT PRESENT?
-	bne :+
+	sta zp::io_status
+	lda zp::device
+	jsr krn::talk
+	lda #$6f		; command channel, without opening or closing files
+	jsr krn::tksa
+	jsr krn::readst
+	beq @ok
+	jsr krn::untlk
 	ldxy #strings::device_not_present
 	jmp seterr
 
-	; we couldn't read the drive's message
-:	ldxy #strings::drive_error
-	jmp seterr
-
-@ok:	ldx #$0f		; filenumber 15
-	jsr krn::chkin		; CHKIN (file 15 now used as input)
+@ok:
 
 	; read the error message to mem::drive_err
 @loop:	jsr krn::readst		; READST (read status byte)
 	bne @eof		; either EOF or read error
 
-	jsr krn::chrin		; CHRIN (get a byte from file)
+	jsr krn::acptr		; receive command-channel data
 	cmp #$0d
 	beq @eof
 	ldx @ch
@@ -81,10 +68,7 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	lda #$00
 	sta mem::drive_err,x
 
-@done:	; close the command channel (file 15)
-	lda #15			; filenumber 15 (command channel)
-	jsr krn::close		; CLOSE 15
-	jsr krn::clrchn		; UNTALK & restore default I/O
+@done:	jsr krn::untlk
 	ldxy #mem::drive_err
 	jmp atoi
 .endproc

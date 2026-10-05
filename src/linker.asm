@@ -7,6 +7,7 @@
 ;*******************************************************************************
 
 .include "asm.inc"
+.include "build.inc"
 .include "config.inc"
 .include "debuginfo.inc"
 .include "edit.inc"
@@ -1976,7 +1977,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 	ldxy @objfile
 	stxy obj::filename
 	ldxy #link_filename
-	CALLMAIN file::open_r
+	CALL FINAL_BANK_LINKER_AUX, build::open_read
 	jcs log_error			; failed to open object file -> error
 	pha				; save file handle
 	tax
@@ -2143,7 +2144,7 @@ SET_CUR_BANK FINAL_BANK_LINKER
 ;   - .XY: address of the object filename to link
 .proc link_object
 @err=objerr	; NOTE: must survive file::close (which may clobber r0-r15)
-	CALLMAIN file::open_r
+	CALL FINAL_BANK_LINKER_AUX, build::open_read
 	bcs @ret		; failed to open the object file -> error
 
 	pha			; save file ID

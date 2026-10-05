@@ -272,6 +272,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; OUT:
 ;  - .A: the bank that was allocated
 ;  - .C: set if the pool is exhausted
+.export __src_reserve_bank = alloc_bank
 .proc alloc_bank
 	ldx #FINAL_BANK_SOURCE0
 @l0:	lda next_of,x
@@ -352,6 +353,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Returns every bank in the chain containing the given bank to the pool
 ; IN:
 ;  - .A: any bank in the chain
+.export __src_release_bank = free_chain
 .proc free_chain
 	tax
 	jsr head_of
