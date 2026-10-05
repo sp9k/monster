@@ -116,6 +116,31 @@ menu:
 @done:	rts
 .endproc
 
+;*******************************************************************************
+; GET CURRENT
+; Checks if there is a breakpoint at the current source line and returns its ID
+; if so.
+; IN:
+;  - src::activebuff: source buffer to check
+;  - src::line:       source line to check
+; OUT:
+;  - .A: flags for the breakpoint if one exists
+;  - .X: ID of the breakpoint if one exists
+;  - .C: set if there is no breakpoint at the current source line
+.ifdef ultimem
+.export __brkpt_get_current
+.proc __brkpt_get_current
+	lda dbg::numbreakpoints
+	beq @missing
+	jsr edit::currentfile
+	bcs @done
+	jmp __brkpt_getbyline
+@missing:
+	sec
+@done:	rts
+.endproc
+.endif
+
 BANKED_CODE "DBGUI"
 
 ;*******************************************************************************

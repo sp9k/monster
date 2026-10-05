@@ -732,9 +732,11 @@ getline:
 ;  - .X: index of the error (if one exists)
 ;  - .C: set if the line has no mapped error
 .proc get_current
-	jsr current_owners
 	ldx numerrs
 	beq @missing
+
+	jsr current_owners
+	ldx numerrs
 	dex
 @loop:	jsr matches_owner
 	bne @next

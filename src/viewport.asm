@@ -10,6 +10,7 @@
 .include "memory.inc"
 .include "zeropage.inc"
 .include "edit.inc"
+.include "errlog.inc"
 .include "source.inc"
 .include "text.inc"
 .include "cursor.inc"
@@ -44,6 +45,22 @@ __view_init: JUMP FINAL_BANK_VSCREEN, init
 ; IN:
 ;  - .A: the screen row to draw
 __view_draw: JUMP FINAL_BANK_VSCREEN, draw_row
+
+;*******************************************************************************
+; NAVIGATE
+; Redraws the current source row after edits, cache invalidation, or selection
+; IN:
+;  - zp::cury: destination screen row
+.ifdef ultimem
+.export __view_navigate
+.proc __view_navigate
+	JUMP FINAL_BANK_VSCREEN, navigate
+.endproc
+.else
+.export __view_navigate
+__view_navigate = edit::redrawline
+.endif
+
 .export __view_command
 __view_command:     JUMP FINAL_BANK_VSCREEN, command
 __view_pan:         JUMP FINAL_BANK_VSCREEN, pan
@@ -296,89 +313,95 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 .endproc
 
 ;*******************************************************************************
+; NAVIGATE
+; Redraws the current source row after edits, cache invalidation, or selection
+; IN:
+;  - zp::cury: destination screen row
+.ifdef ultimem
+.proc navigate
+	lda cur::mode
+	bne @draw
+	lda errlog::editpending
+	bne @draw
+
+	ldx zp::cury
+	lda slots,x
+	tax
+	lda valid,x
+	bne @done
+
+@draw:	JUMPMAIN edit::redrawline
+@done:	rts
+.endproc
+.endif
+
+;*******************************************************************************
 ; EXPAND
 ; Expands linebuffer into the current cache row, including tabs and padding.
-; Fills the remaining columns with spaces.
+; IN:
+;  - mem::linebuffer: source text to expand
+;  - row: destination cache row
+; OUT:
+;  - cache row: expanded, space-padded characters
+;  - valid: destination slot is valid
 .proc expand
-@index=zp::text
-@column=zp::text+1
-@tabstop=zp::text+2
-@tabend=zp::text+3
+@chars=r0
+@tabstop=zp::text
 	jsr pointers
-	lda #$00
-	sta @index
-	sta @column
 	lda #TAB_WIDTH
 	sta @tabstop
+	ldx #$00
+	ldy #$00
 
-@next:	ldx @index
-	lda mem::linebuffer,x
+@next:	lda mem::linebuffer,x
 	beq @pad
-	cmp #13
+	cmp #$0d
 	beq @pad
-	inc @index
-	cmp #9
+	inx
+	cmp #$09
 	beq @tab
-	cmp #32
-	bcs :+
+	cmp #' '
+	bcs @char
 	lda #' '
-:	jsr append
+@char:	sta (@chars),y
+	iny
+	cpy #MAX_LINE_LEN
 	bcc @next
 	bcs @done
 
-@tab:	lda @tabstop
-	sta @tabend
-@tabchar:
-	lda #' '
-	ldx text::show_ws
-	beq :+
-	lda #VIS_WS_CHAR
-:	jsr append
-	bcs @done
-	lda @column
-	cmp @tabend
-	bne @tabchar
-	jmp @next
-
-@pad:	lda #' '
-	jsr append
-	bcc @pad
-
-@done:	ldx slot
-	lda #1
-	sta valid,x
-	rts
-.endproc
-
-;*******************************************************************************
-; APPEND
-; Appends one character to the expanded cache row and advances the tab stop.
-; IN:
-;  - .A: character
-;  - r0: character buffer pointer
-;  - zp::text+1: expanded column
-;  - zp::text+2: next tab stop
-; OUT:
-;  - .C: set when the expanded row is full
-.proc append
-@chars=r0
-@column=zp::text+1
-@tabstop=zp::text+2
-	ldy @column
-	sta (@chars),y
-	iny
-	sty @column
+@tab:	; locate the next tab stop from the expanded column
 	cpy @tabstop
-	bcc :+
-
-	; advance the tab stop when the column reaches it
-	php
+	bcc @tabfill
 	lda @tabstop
 	clc
 	adc #TAB_WIDTH
 	sta @tabstop
-	plp
-:	cpy #MAX_LINE_LEN
+	bne @tab
+
+@tabfill:
+	lda text::show_ws
+	beq :+
+	lda #VIS_WS_CHAR
+	bne @tabchar
+:	lda #' '
+@tabchar:
+	sta (@chars),y
+	iny
+	cpy #MAX_LINE_LEN
+	bcs @done
+	cpy @tabstop
+	bcc @tabchar
+	bcs @next
+
+@pad:	lda #' '
+@space:	sta (@chars),y
+	iny
+	cpy #MAX_LINE_LEN
+	bcc @space
+
+@done:	ldx slot
+	lda #$01
+	sta valid,x
 	rts
 .endproc
 

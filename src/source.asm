@@ -1377,9 +1377,24 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Moves left until at the start of the source buffer or the start of the line
 .export __src_home
 .proc __src_home
+.ifdef ultimem
+	; stop at line boundary or scan back with the source bank mapped
+	jsr __src_atcursor
+	cmp #$0d
+	beq @done
+	jsr __src_start
+	beq @done
+
+	jsr __src_up
+@done:	lda #$00
+	sta srcx
+	sec
+	rts
+.else
 :	jsr __src_left
 	bcc :-
 	rts
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -1601,6 +1616,16 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 @xsave=zp::util
 	jsr __src_end
 	beq @end
+.ifdef ultimem
+	; peek byte after gap
+	ldx poststartzp
+	lda poststartzp+1
+	sec
+	sbc #>__src_data
+	tay
+	lda bank
+	jsr __src_seg_peek
+.else
 	lda srcx
 	sta @xsave
 	jsr __src_next
@@ -1609,6 +1634,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	lda @xsave	; restore srcx (clobbered if next/prev crossed a newline)
 	sta srcx
 	pla
+.endif
 	RETURN_OK
 
 @end:	lda #$00	; no character, return 0

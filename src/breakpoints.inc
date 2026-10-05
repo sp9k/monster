@@ -1,5 +1,8 @@
 .import __breakpoint_edit
 .import __brkpt_getbyline
+.ifdef ultimem
+.import __brkpt_get_current
+.endif
 .import __brkpt_anyinbuff
 .import __brkpt_delete_in_buff
 
@@ -17,4 +20,7 @@ BREAKPOINT_ACTIVE   = 2
 	delinbuff = __brkpt_delete_in_buff
 	edit      = __breakpoint_edit
 	getbyline = __brkpt_getbyline
+.ifdef ultimem
+	get_current = __brkpt_get_current
+.endif
 .endscope

@@ -1,4 +1,5 @@
 .import __text_char_index
+.import __text_char_index_a
 .import __text_buffer
 .import __text_bufferon
 .import __text_bufferoff
@@ -71,6 +72,7 @@ CH_R_ARROW	    = 135
 	bufferon         = __text_bufferon
 	bufferoff        = __text_bufferoff
 	char_index	 = __text_char_index
+	char_index_a     = __text_char_index_a
 	clrinfo          = __text_clrinfo
 	clrline          = __text_clrline
 	drawline         = __text_drawline

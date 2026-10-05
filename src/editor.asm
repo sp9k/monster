@@ -4712,9 +4712,17 @@ clear_message = text::clrinfo
 .endproc
 .popseg
 
+;*******************************************************************************
+; MOVE UP
+; moves to the previous source line and restores the cursor column
+; IN:
+;  - zp::curx: column to restore on the destination line
+; OUT:
+;  - .C: set if the cursor could not be moved
 .proc move_up
 @xend=r9
 @ch=ra
+@index=ra
 	; are we already on the first line of the buffer?
 	jsr src::currline
 	tya			; is MSB of line 0?
@@ -4824,7 +4832,7 @@ clear_message = text::clrinfo
 	ldx height
 	jsr scrolldown		; cursor wasn't moved, scroll
 @redraw:
-	jsr print_current_line
+	jsr viewport::navigate
 
 	; if in VISUAL_LINE mode, just rvs the line and return
 	lda mode
@@ -4833,12 +4841,27 @@ clear_message = text::clrinfo
 	jsr rvs_current_line
 	RETURN_OK
 
-@movex: jsr sync_cur		; update physical cursor based on source one
-	lda zp::curx
-	cmp @xend		; is physical cursor at end yet?
-	bcs :+			; if so, we're done
-	jsr src_right		; if not, move source cursor right again
-	bcc @movex		; and repeat unless we couldn't move source cur
+@movex:	; find the destination source index and its rendered column
+	lda @xend
+	jsr text::char_index_a
+	sty @index
+	tya
+	jsr text::index2cursor
+	cpx @xend
+	bcs @restore
+
+	; advance past a tab whose insert cursor is before the target column
+	inc @index
+
+@restore:
+	lda zp::srcx
+	cmp @index
+	bcs @synced
+	jsr src_right
+	bcc @restore
+
+@synced:
+	jsr sync_cur
 
 :
 ; fallthrough to ccup_highlight
@@ -5154,6 +5177,13 @@ clear_message = text::clrinfo
 :	rts
 .endproc
 
+;*******************************************************************************
+; MOVE DOWN
+; moves to the next source line and restores the cursor column
+; IN:
+;  - zp::curx: column to restore on the destination line
+; OUT:
+;  - .C: set if the cursor could not be moved
 .proc move_down
 @xend=r9
 @selecting=ra
@@ -5257,7 +5287,7 @@ clear_message = text::clrinfo
 	lda height
 	sta zp::cury
 @redraw:
-	jsr print_line
+	jsr viewport::navigate
 
 	; if in VISUAL_LINE mode, just rvs the line and return
 	lda mode
@@ -5271,8 +5301,15 @@ clear_message = text::clrinfo
 	bcs @end
 	jsr src_right
 	bcs @end
-	jsr cur::right
-	jmp @movex
+
+	; expand the character just crossed using its known source index
+	ldx zp::srcx
+	lda mem::linebuffer-1,x
+	cmp #$09
+	bne @char
+	jsr advance_tab
+@char:	inc zp::curx
+	bne @movex
 
 @end:	; if we ended on a TAB, advance to next tab col
 	jsr src::after_cursor
@@ -5494,9 +5531,13 @@ clear_message = text::clrinfo
 	pha			; save the row
 
 	; if there's a breakpoint on this line, draw it
+.ifdef ultimem
+	jsr brkpt::get_current
+.else
 	jsr edit_current_file
 	bcs @nobrk		; no file ID -> nothing is mapped to this line
 	jsr brkpt::getbyline
+.endif
 	bcs @nobrk
 	adc #$01		; 1 = inactive, 2 = active
 	tay
@@ -6349,9 +6390,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 ; Reports a general error in an alert and waits for the user to acknowledge it
 ; IN:
 ;   - .XY: address of string to report
-.proc report_error
-	jmp alert::show
-.endproc
+report_error = alert::show
 
 ;*******************************************************************************
 ; REPORT ERRCODE
@@ -6426,37 +6465,30 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 ;  - .A: the row that the line number resides on
 ;  - .C: set if the line number is not on screen
 .proc edit_src2screen
-@line=zp::editortmp
-@startline=zp::editortmp+2
-@endline=zp::editortmp+4
-	stxy @line
-
+@top=zp::editortmp
+	; find the first source line displayed in the window
 	lda src::line
 	sec
 	sbc zp::cury
-	sta @startline
+	sta @top
 	lda src::line+1
 	sbc #$00
-	sta @startline+1
+	sta @top+1
 
-	lda @startline
-	sec			; +1
-	adc height
-	sta @endline
-	lda @startline+1
-	adc #$00
-	sta @endline+1
-
-	ldxy @line
-	cmpw @startline
-	bcc @done
-	cmpw @endline
-	bcs @done
-
-	lda @line
+	; subtract the first line and reject rows outside the source window
+	txa
 	sec
-	sbc @startline		; will be [0, BRKVIEW_START)
-	RETURN_OK
+	sbc @top
+	tax
+	tya
+	sbc @top+1
+	bne @done
+	bcc @done
+	txa
+	cmp height
+	bne @ret
+	clc
+@ret:	rts
 
 @done:	sec			; line off screen
 	rts

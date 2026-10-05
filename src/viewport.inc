@@ -9,6 +9,7 @@ VIEWPORT_INC = 1
 .import __view_clear
 .import __view_command
 .import __view_draw
+.import __view_navigate
 .import __view_follow
 .import __view_init
 .import __view_invalidate
@@ -28,6 +29,7 @@ VIEWPORT_INC = 1
 	clear       = __view_clear
 	command     = __view_command
 	draw        = __view_draw
+	navigate    = __view_navigate
 	follow      = __view_follow
 	init        = __view_init
 	invalidate  = __view_invalidate
