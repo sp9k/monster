@@ -530,8 +530,23 @@ ENDOSPROC
 ;  - .C: set on error
 ;  - .Z: set if the file exists; clear if it does
 OSPROC fexists
+@name=r3
 @file=r7
+	; are we loading the directory ("$")?
+	stxy @name
+	ldy #$00
+	lda (@name),y
+	ldy @name+1
+	cmp #'$'
+	bne @regular
+
+	; if opening directory, use SA=0
+	jsr openrprg
+	jmp @opened
+
+@regular:
 	jsr openr
+@opened:
 	bcs @ret
 
 	sta @file

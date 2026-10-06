@@ -35,6 +35,13 @@ CUR_BANK .set FINAL_BANK_MAIN
 HEIGHT = SCREEN_HEIGHT-2
 
 ;*******************************************************************************
+.ifdef ultimem
+DIR_MAX_FILES   = $0200
+DIR_NAME_BUFFER = mem::spare+40
+DIR_CACHE_BANK  = FLASH_CHECK_RAM_BANK
+.endif
+
+;*******************************************************************************
 ; GEOMETRY
 DIR_LCOL     = 0		; column the left border is drawn in
 DIR_RCOL     = LINESIZE-1	; column the right border is drawn in
@@ -66,6 +73,11 @@ DIR_NUM_FILE_ROWS = DIR_MAX_ROW-DIR_FILE_ROW
 
 .if .defined(c64) .and .defined(CART)
 sidmode: .byte 0
+.endif
+.ifdef ultimem
+scrollmax: .word $0000
+.else
+scrollmax = mem::spareend-2	; unused tail of the disk-name buffer
 .endif
 rowbuf: .res LINESIZE		; row being composed
 
@@ -290,11 +302,7 @@ __dir_get_by_type:
 
 ;*******************************************************************************
 ; DIR VIEW
-; Enters the directory viewer
-; NOTE: this routine is limited to 128 files
-; The max supported by the 1541 is 144 and this routine could easily be
-; modified to support as many.
-; It could also easily be modified to support more (e.g. for the 1581)
+; opens the directory viewer
 ; OUT:
 ;   - .C: set on error
 ;   - .A: error code (on error)
@@ -302,14 +310,16 @@ __dir_get_by_type:
 @line=r8
 @row=ra
 @select=rb
-@cnt=rc			; number of files extracted from listing
-@scrollmax=rd		; maximum amount to allow scrolling
-@scroll=re
+@cnt=rc			; 16-bit count of cached filenames
+@scrollmax=scrollmax
+@scroll=re		; 16-bit index of the first visible filename
 @file=zp::tmp10
+@namebuff=mem::spareend-40	; buffer for the disk name
+.ifndef ultimem
 @dirbuff=mem::spare+40		; 0-40 will be corrupted by text routines
-@namebuff=mem::spareend-40	; buffer for the file name
 @fptrslo=@namebuff-(128*2)	; room for 128 files
 @fptrshi=@namebuff-(128)	; room for 128 files
+.endif
 	jsr open_dir
 	bcc :+
 	pha			; screen restoration clobbers the drive error and flags
@@ -329,8 +339,10 @@ __dir_get_by_type:
 
 	; reset the screen so that we can print the file names normally
 
+.ifndef ultimem
 	ldxy #@dirbuff+5
 	stxy @line
+.endif
 
 	ldx #DIR_FILE_ROW
 	stx @row
@@ -338,6 +350,8 @@ __dir_get_by_type:
 	stx @select
 	stx @scroll
 	stx @cnt
+	stx @cnt+1
+	stx @scroll+1
 
 	; draw the window's top border
 	lda #DIR_TOP_ROW
@@ -365,11 +379,17 @@ __dir_get_by_type:
 	ldy #DIR_TEXT_COL	; reverse everything between the borders
 	ldx #DIR_RCOL
 	lda #DIR_NAME_ROW
-	CALLMAIN scr::rvsline_part
+	CALLMAIN scr::rvsline_part_physical
 
 ;-------------------------------------------------------------------------------
 ; parse filenames and render initial view
 @getfilenames:
+.ifdef ultimem
+	lda @cnt+1
+	cmp #>DIR_MAX_FILES
+	bcs @cont
+	ldxy #DIR_NAME_BUFFER
+.else
 	; make sure there is room for another (max-length) filename before
 	; the file-pointer tables; if not, just show the files we have so far
 	ldxy @line
@@ -384,7 +404,8 @@ __dir_get_by_type:
 	sta @fptrslo,x
 	tax
 
-	; read a filename into (@line)
+.endif
+	; read the next filename into the directory cache
 	jsr read_filename
 	bcs @cont		; eof -> continue
 .if .defined(c64) .and .defined(CART)
@@ -395,6 +416,10 @@ __dir_get_by_type:
 	bcc @getfilenames
 :
 .endif
+.ifdef ultimem
+	ldxy @cnt
+	CALL FINAL_BANK_VIEWERS, store_name
+.else
 	ldxy @line
 	sec			; +1
 	adc @line
@@ -402,7 +427,9 @@ __dir_get_by_type:
 	bcc :+
 	inc @line+1
 
-:	; print the line (if visible)
+:
+.endif
+	; print the line (if visible)
 	lda @row
 	cmp #DIR_MAX_ROW
 	bcs :+			; if line isn't visible, don't draw
@@ -410,9 +437,14 @@ __dir_get_by_type:
 	inc @row
 
 :	; next line
+.ifdef ultimem
+	incw @cnt
+	jmp @getfilenames
+.else
 	inc @cnt
 	bpl @getfilenames
 	bmi @cont		; only 128 files allowed; show what we have
+.endif
 
 
 ;-------------------------------------------------------------------------------
@@ -433,15 +465,14 @@ __dir_get_by_type:
 	sbc #DIR_FILE_ROW
 	sta @row
 
-	; max a user can scroll is (# of files - # of visible rows)
-	ldx #$00
+	; subtract the visible rows from the number of cached files
 	lda @cnt
-	cmp #DIR_NUM_FILE_ROWS
-	bcc :+
-	;sec
-	sbc #DIR_NUM_FILE_ROWS
-	tax
-:	stx @scrollmax
+	sec
+	sbc @row
+	sta @scrollmax
+	lda @cnt+1
+	sbc #$00
+	sta @scrollmax+1
 
 	; highlight the first item
 	jsr @toggle
@@ -458,10 +489,8 @@ __dir_get_by_type:
 
 ; check the arrow keys (used to select a file)
 @checkdown:
-.ifdef c64
-	ldx @cnt
+	ldx @row
 	beq @nextkey		; empty list
-.endif
 	jsr key::isdown
 	bne @checkup
 @rowdown:
@@ -473,11 +502,16 @@ __dir_get_by_type:
 	dec @select
 
 @scrolldown:
+	lda @scroll+1
+	cmp @scrollmax+1
+	bcc @advance
+	bne @hiselection
 	lda @scroll
 	cmp @scrollmax
 	bcs @hiselection
 
-	inc @scroll
+@advance:
+	incw @scroll
 
 	; scroll up and redraw the bottom line
 	ldx #DIR_FILE_ROW
@@ -499,6 +533,7 @@ __dir_get_by_type:
 	bpl @hiselection
 	inc @select		; lowest valid select value is 0
 	lda @scroll
+	ora @scroll+1
 	beq @hiselection	; if nothing to scroll, continue
 
 	; scroll down and redraw the top line
@@ -506,7 +541,7 @@ __dir_get_by_type:
 	ldx #DIR_MAX_ROW-1
 	jsr text::scrolldown
 
-	dec @scroll
+	decw @scroll
 	lda @select
 	jsr @getname
 	lda #DIR_FILE_ROW	; top row
@@ -535,6 +570,7 @@ __dir_get_by_type:
 	ldx #$00
 	stx @select
 	stx @scroll
+	stx @scroll+1
 	beq @redraw		; branch always
 
 ; if 'G', go to bottom of directory list
@@ -544,16 +580,13 @@ __dir_get_by_type:
 
 	jsr @toggle
 
-	; set scroll to scrollmax
+	; select the last cached filename
 	lda @scrollmax
 	sta @scroll
-
-	; set selection (row) to min(DIR_NUM_FILE_ROWS, @cnt)
-	ldx @cnt
-	cpx #DIR_NUM_FILE_ROWS
-	bcc :+
-	ldx #DIR_NUM_FILE_ROWS
-:	dex
+	lda @scrollmax+1
+	sta @scroll+1
+	ldx @row
+	dex
 	stx @select
 @redraw:
 	jsr @refresh
@@ -583,17 +616,24 @@ __dir_get_by_type:
 	clc
 	adc @scroll
 	tax
+.ifdef ultimem
+	lda @scroll+1
+	adc #$00
+	tay
+	JUMP FINAL_BANK_VIEWERS, load_name
+.else
 	ldy @fptrshi,x
 	lda @fptrslo,x
 	tax
 	rts
+.endif
 
 ;-------------------------------------------------------------------------------
 ; TOGGLE
 ; Reverses the selected filename
 @toggle:
 @nameptr=r6
-	lda @cnt
+	lda @row
 	beq @toggle_done	; no files -> nothing to highlight
 
 	; measure the selected filename
@@ -615,7 +655,7 @@ __dir_get_by_type:
 	lda @select
 	clc
 	adc #DIR_FILE_ROW	; the row the name is on
-	CALLMAIN scr::rvsline_part
+	CALLMAIN scr::rvsline_part_physical
 @toggle_done:
 	rts
 
@@ -635,12 +675,8 @@ __dir_get_by_type:
 
 	inc @i
 	lda @i
-	cmp #DIR_NUM_FILE_ROWS
-	bcs @refresh_done	; no more room in the window
-	clc
-	adc @scroll
-	cmp @cnt
-	bcc :-			; more files to draw
+	cmp @row
+	bcc :-			; more visible rows to draw
 
 @refresh_done:
 	rts
@@ -908,4 +944,93 @@ getb:	jsr krn::readst	; call READST
 	clc			; not a SID file
 	rts
 .endproc
+.endif
+
+.ifdef ultimem
+.pushseg
+.segment "VIEWERS"
+
+;*******************************************************************************
+; STORE NAME
+; Stores a filename in a sixteen-byte directory cache slot
+; IN:
+;  - .XY:             file index
+;  - DIR_NAME_BUFFER: zero-terminated filename
+; OUT:
+;  - .XY: address of the shared filename buffer
+.proc store_name
+	lda #$01
+	bne copy_name
+.endproc
+
+;*******************************************************************************
+; LOAD NAME
+; Copies a filename into the shared filename buffer
+; IN:
+;  - .XY: file index
+; OUT:
+;  - .XY: address of the zero-terminated filename
+.proc load_name
+	lda #$00
+	; fall through to copy_name
+.endproc
+
+;*******************************************************************************
+; COPY NAME
+; Transfers a sixteen-byte filename between shared RAM and the directory cache
+; IN:
+;  - .A:              0 to load, nonzero to store
+;  - .XY:             file index
+;  - DIR_NAME_BUFFER: filename to store
+; OUT:
+;  - .XY: address of the zero-terminated shared filename
+.proc copy_name
+@slot=r0
+@write=r4
+	sta @write
+	stxy @slot
+
+	; *16
+.repeat 4
+	asl @slot
+	rol @slot+1
+.endrepeat
+
+	lda @slot+1
+	ora #$20
+	sta @slot+1
+
+	; map scratch RAM to BLK1
+	lda $9ff8
+	pha
+	lda $9ff2
+	pha
+	ora #$03
+	sta $9ff2
+	lda #DIR_CACHE_BANK
+	sta $9ff8
+
+	; copy name
+	ldy #$0f
+@copy:	ldx @write
+	bne @store
+	lda (@slot),y
+	sta DIR_NAME_BUFFER,y
+	jmp @next
+@store:	lda DIR_NAME_BUFFER,y
+	sta (@slot),y
+@next:	dey
+	bpl @copy
+
+	pla
+	sta $9ff2
+	pla
+	sta $9ff8
+
+	lda #$00
+	sta DIR_NAME_BUFFER+16
+	ldxy #DIR_NAME_BUFFER
+	rts
+.endproc
+.popseg
 .endif

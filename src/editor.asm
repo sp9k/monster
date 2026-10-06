@@ -6381,8 +6381,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	lda mem::drive_err
 	bne :+				; if drive gave us a message, report it
 	ldxy #strings::drive_error	; if it didn't, report a generic error
-:
-	; fall through to report_error
+:	jmp report_error
 .endproc
 
 ;*******************************************************************************

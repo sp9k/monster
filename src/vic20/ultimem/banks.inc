@@ -48,7 +48,7 @@ NUM_BANKS                  = $15
 ;  34..60   source pool
 ;  61..63   error log
 ;  64..94   symbol store
-;      95   flash validation
+;      95   flash validation / directory cache
 ;  96..127  link image
 ; These are physical RAM banks, independent of virtual bank IDs and ROM banks.
 
@@ -77,7 +77,7 @@ FINAL_BANK_SOURCE0 = 34	; pool of source banks shared by all buffers (34-60)
 SOURCE_POOL_SIZE   = 27
 ERRLOG_RAM_BANK    = 61
 ERRLOG_ROM_BANK    = 28
-FLASH_CHECK_RAM_BANK = 95 ; private disk-validation workspace
+FLASH_CHECK_RAM_BANK = 95 ; scratch RAM for disk validation & directory browsing
 
 ;*******************************************************************************
 ; output area for linker
