@@ -40,9 +40,9 @@ plasma
     ; init
     lda #$05       ; vertical centering
     sta $9001
-    lda #SCREEN_H.1 ; # of rows
+    lda #SCREEN_H|1 ; # of rows
     sta $9003
-    lda #SCREEN_W.$80   ; # of columns
+    lda #SCREEN_W|$80   ; # of columns
     sta $9002
     lda #$fd
     sta $9005
@@ -50,7 +50,7 @@ plasma
     sta $900e       ; auxiliary color
     lda #$eb
     sta $900f       ; screen/border
-    lda #SCREEN_W.$80
+    lda #SCREEN_W|$80
     sta $9002
 
     lda #$00
@@ -320,24 +320,24 @@ addSpeed   .db $ff
 .db $bb,$ee,$bb,$ee,$bb,$ee,$bb,$ee
 
 colors
-.db $04.8
-.db $04.8
+.db $04|8
+.db $04|8
 
-.db $04.8
-.db $04.8
-.db $04.8
-.db $04.8
-.db $04.8
+.db $04|8
+.db $04|8
+.db $04|8
+.db $04|8
+.db $04|8
 
-.db $04.8
-.db $04.8
-.db $04.8
-.db $04.8
-.db $03.8
-.db $03.8
-.db $03.8
-.db $03.8
-.db $03.8
+.db $04|8
+.db $04|8
+.db $04|8
+.db $04|8
+.db $03|8
+.db $03|8
+.db $03|8
+.db $03|8
+.db $03|8
 
 chars:
 .db 2  ; char (solid) - white
