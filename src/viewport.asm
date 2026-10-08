@@ -23,13 +23,12 @@
 
 ;*******************************************************************************
 ; SHARED STATE
-; Viewport position and repaint state.
-
+; Viewport position and draw status
 .segment "VIEW_SHARED"
 .export __view_x
 __view_x:   .byte 0	; first visible source column
 manual:     .byte 0	; suppress following after a manual pan
-repainting: .byte 0	; preserve selection masks during a repaint
+redrawing:  .byte 0	; preserve selection masks during a redraw
 
 ;*******************************************************************************
 ; MAIN-BANK ENTRY POINTS
@@ -123,7 +122,7 @@ __view_invalidate: JUMP FINAL_BANK_VSCREEN, invalidate
 	lda zp::curx
 	cmp __view_x
 	bcc @move
-	sec
+	;sec
 	sbc __view_x
 	cmp #SCREEN_WIDTH
 	bcc @done
@@ -149,7 +148,7 @@ selected: .res SCREEN_HEIGHT		  ; !0 if slot has selected characters
 
 row:      .byte 0		; current screen row
 slot:     .byte 0		; current cache slot
-paintrow: .byte 0		; next row to draw during a full repaint
+drawrow:  .byte 0		; next row to draw during a full redraw
 joined:   .res MAX_LINE_LEN+1
 
 ;*******************************************************************************
@@ -171,7 +170,7 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	lda #$00
 	sta __view_x
 	sta manual
-	sta repainting
+	sta redrawing
 
 	ldx #SCREEN_HEIGHT-1
 :	sta valid,x
@@ -227,8 +226,8 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	CALLMAIN src::getwide
 	pla
 	tax
-	ldy #$00
 
+	ldy #$00
 @append:
 	lda mem::linebuffer,y
 	beq @terminate
@@ -300,16 +299,16 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 
 ;*******************************************************************************
 ; DRAW ROW
-; Expands and paints a source row, clearing its previous selection on edits.
+; Expands and draws a source row, clearing its previous selection on edits.
 ; IN:
 ;  - .A: screen row
 .proc draw_row
 	sta row
-	lda repainting
+	lda redrawing
 	bne :+
 	jsr reset_mask
 :	jsr expand
-	jmp paint
+	jmp draw_row_slice
 .endproc
 
 ;*******************************************************************************
@@ -406,9 +405,9 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 .endproc
 
 ;*******************************************************************************
-; PAINT
+; DRAW ROW SLICE
 ; Draws the visible slice of a cached row and reapplies its selection mask.
-.proc paint
+.proc draw_row_slice
 @chars=r0
 @maskptr=r2
 @column=zp::text	; physical column in the selection redraw loop
@@ -429,14 +428,15 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	ldxy #mem::linebuffer2
 	lda row
 	CALLMAIN text::puts
+
 	ldx slot
 	lda selected,x
 	beq @done
 
 	; reverse each visible character marked in the selection mask
-	lda #0
+	lda #$00
 	sta @column
-@mask: jsr pointers
+@mask:	jsr pointers
 	lda @column
 	clc
 	adc __view_x
@@ -447,7 +447,7 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	ldy @column
 	tya
 	clc
-	adc #1
+	adc #$01
 	tax
 	lda row
 	CALLMAIN scr::rvsline_part_physical
@@ -456,40 +456,39 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	lda @column
 	cmp #SCREEN_WIDTH
 	bne @mask
-@done:
-	rts
+@done:	rts
 .endproc
 
 ;*******************************************************************************
 ; REPAINT
 ; Redraws the source window, reading invalid rows through the editor.
-.proc repaint
-	lda #$01
-	sta repainting
-	lda #$00
-	sta paintrow
+.proc redraw
+	ldx #$00
+	stx drawrow
+	inx
+	stx redrawing
 
-@row:	lda paintrow
-	sta row
-	lda row
-	tax
+@row:	ldx drawrow
+	stx row
 	lda slots,x
 	tax
 	lda valid,x
 	beq @read
-	jsr paint
+
+	jsr draw_row_slice
 	jsr highlight
 	jmp @next
 
-@read:	lda paintrow
+@read:	lda drawrow
 	CALLMAIN edit::render_row
 
-@next:	inc paintrow
+@next:	inc drawrow
 	lda edit::height
-	cmp paintrow
+	cmp drawrow
 	bcs @row
-	lda #0
-	sta repainting
+	lda #$00
+	sta redrawing
+
 	; Selection cursors were already restored by the cached masks.
 	; The editor redraws an ordinary cursor after following the viewport.
 	ldx cur::mode
@@ -500,9 +499,9 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 
 ;*******************************************************************************
 ; HIGHLIGHT
-; Restores the debugger underline after painting a cached row.
+; Restores the debugger underline after drawing a cached row.
 .proc highlight
-	; match the current buffer and painted row against the highlighted line
+	; match the current buffer and drawn row against the highlighted line
 	lda edit::highlight_en
 	beq @done
 	CALLMAIN edit::currentfile
@@ -513,7 +512,7 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	ldxy edit::highlight_line
 	CALLMAIN edit::src2screen
 	bcs @done
-	cmp paintrow
+	cmp drawrow
 	bne @done
 	JUMPMAIN draw::rvs_underline
 
@@ -522,12 +521,12 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 
 ;*******************************************************************************
 ; FOLLOW
-; Moves the viewport to follow the source cursor and repaints the window.
+; Moves the viewport to follow the source cursor and redraws the window.
 .proc follow
 	lda zp::curx
 	cmp __view_x
 	bcc @left
-	sec
+	;sec
 	sbc #SCREEN_WIDTH-VIEW_SCROLL_STEP
 	bcs @clamp
 
@@ -541,7 +540,7 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	lda #MAX_LINE_LEN-SCREEN_WIDTH
 :	and #256-VIEW_SCROLL_ALIGN
 	sta __view_x
-	jmp repaint
+	jmp redraw
 .endproc
 
 ;*******************************************************************************
@@ -554,10 +553,10 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	cmp #$6c
 	bne @done
 	lda #VIEW_SCROLL_STEP
-	bne pan
+	bne pan				; branch always
 
 @left:	lda #256-VIEW_SCROLL_STEP
-	bne pan
+	bne pan				; branch always
 
 @done:	rts
 .endproc
@@ -568,10 +567,9 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 ; IN:
 ;  - .A: signed number of columns to pan
 .proc pan
-	tax
-	lda #$01
-	sta manual
-	txa
+	ldx #$01
+	stx manual
+
 	pha
 	lda cur::mode
 	bne :+			; a selection cursor belongs to the cached selection
@@ -588,9 +586,10 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 :	cmp __view_x
 	beq @done
 	sta __view_x
+
 	lda #$01
 	sta manual
-	jsr repaint
+	jsr redraw
 
 @done:	rts
 .endproc
@@ -669,6 +668,7 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 @again: ldx scroll_first
 	lda slots,x
 	sta scroll_savedslot
+
 :	cpx scroll_last
 	beq @last
 	lda slots+1,x
