@@ -66,7 +66,7 @@ LOG_BUFFER  = MAX_SOURCES 	; reserved buffer for logging (not counted in src::nu
 
 FLAG_DIRTY = 1	; flag that source buffer has been changed since last save
 
-GAPSIZE = 20	; size of gap in gap buffer
+GAPSIZE = $100	; size of gap in gap buffer
 
 .scope src
 	reserve_bank = __src_reserve_bank

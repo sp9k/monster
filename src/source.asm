@@ -31,6 +31,7 @@
 .import __src_readspan
 .import __src_insert
 .import __src_init_buff
+.import __src_open_gap
 .import __src_next
 .import __src_prev
 
@@ -1644,7 +1645,10 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 
 ;*******************************************************************************
 ; REWIND
-; Moves the cursor back to the start of the buffer
+; Moves the cursor to the start of the buffer and opens the default-sized gap
+; OUT:
+;  - .A: error code if the gap could not be opened
+;  - .C: set if bank pool is used up and gap remains closed
 .export __src_rewind
 .proc __src_rewind
 	lda #$00
@@ -1659,7 +1663,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	lda #$00
 	sta line+1
 	sta srcx
-	rts
+	jmp __src_open_gap
 .endproc
 
 ;*******************************************************************************

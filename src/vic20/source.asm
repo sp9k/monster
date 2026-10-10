@@ -105,44 +105,17 @@ seglen: .word 0
 :	pha		; save char to insert
 
 	jsr __src_mark_dirty
-	jsr gaplen
-	cmpw #0		; is gap closed?
+	ldxy cursorzp
+	cmpw poststartzp	; is gap closed?
 	bne @ins	; no, insert as usual
 
-	; check if there is room to expand the gap
-	; (the expansion moves [poststart, end) up by $100, so it is END that
-	; must stay below the top of the buffer)
-	lda end+1
-	cmp #>(BUFFER_SIZE+data)-1	; -1 to save space for a $100 byte gap
-	bcc @ok
-
-	; segment is full; split it
-	jsr split
-	bcc @ok
+	jsr __src_open_gap
+	bcc @ins
 
 @err:	; buffer overflow, cannot insert character
 	pla				; clean stack
 	lda #ERR_BUFFER_FULL
 	rts
-
-@ok:	; gap is closed, create a new one
-	; copy data[poststart] to data[poststart + GAPSIZE]
-	ldxy cursorzp
-	stxy ram::src
-
-	inc poststartzp+1
-	inc end+1		; increase size by $100
-	ldxy poststartzp
-	stxy ram::dst
-
-	; get number of bytes to copy
-	ldxy end
-	sub16 poststartzp
-
-	lda __src_bank
-	sta ram::src+2
-	sta ram::dst+2
-	jsr ram::copy
 
 @ins:	pla
 	ldy cursorzp+1
@@ -165,14 +138,50 @@ seglen: .word 0
 .endproc
 
 ;*******************************************************************************
-; GAPLEN
-; Returns the length of the gap
+; OPEN GAP
+; Opens the default-sized gap at the cursor, splitting a full segment if needed
+; IN:
+;  - cursorzp:    cursor at the closed gap
+;  - poststartzp: equal to cursorzp
+;  - end:         end of active segment's text
 ; OUT:
-;  - .XY: the length of the gap
-.proc gaplen
-	ldxy poststartzp
-	sub16 cursorzp
+;  - .A: error code if the gap could not be opened
+;  - .C: set if the bank pool is used up
+.export __src_open_gap
+.proc __src_open_gap
+	; check if there is room to expand the gap
+	; (the expansion moves [poststart, end) up by $100, so it is END that
+	; must stay below the top of the buffer)
+	lda end+1
+	cmp #>(BUFFER_SIZE+data)-1	; -1 to save space for a $100 byte gap
+	bcc @ok
+
+	; segment is full; split it
+	jsr split
+	bcc @ok
+
+	lda #ERR_BUFFER_FULL
 	rts
+
+@ok:	; gap is closed, create a new one
+	; copy data[poststart] to data[poststart + GAPSIZE]
+	ldxy cursorzp
+	stxy ram::src
+
+	inc poststartzp+1
+	inc end+1		; increase size by $100
+	ldxy poststartzp
+	stxy ram::dst
+
+	; get number of bytes to copy
+	ldxy end
+	sub16 poststartzp
+
+	lda __src_bank
+	sta ram::src+2
+	sta ram::dst+2
+	jsr ram::copy
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************

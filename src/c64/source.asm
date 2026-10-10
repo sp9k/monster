@@ -190,10 +190,53 @@ readbuf: .res READ_CHUNK
 
 :	pha
 	jsr __src_mark_dirty
-	jsr gaplen
-	cmpw #0			; is gap closed?
+	ldxy cursorzp
+	cmpw poststartzp	; is gap closed?
 	bne @ins		; no, insert as usual
 
+	jsr __src_open_gap
+	bcc @ins
+
+@err:	; buffer overflow, cannot insert character
+	pla				; clean stack
+	lda #ERR_BUFFER_FULL
+	rts
+
+@ins:	pla
+	ldy cursorzp+1
+	bmi @done	; out of range
+
+	; write the character to insert
+	ldy __src_bank
+	sty reu::reuaddr+2
+	STOREB cursorzp
+
+	cmp #$0d
+	bne @insdone
+	incw line
+	jsr on_line_inserted
+	incw lines
+	lda #$ff
+	sta zp::srcx		; reset cursor "column"
+
+@insdone:
+	inc zp::srcx		; move to next "column"
+	incw cursorzp
+@done:	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; OPEN GAP
+; opens the default-sized gap at the cursor, splitting a full segment as needed
+; IN:
+;  - cursorzp: cursor at the closed gap
+;  - poststartzp: equal to cursorzp
+;  - end: end of the active segment's text
+; OUT:
+;  - .A: error code if the gap could not be opened
+;  - .C: set if the bank pool is exhausted
+.export __src_open_gap
+.proc __src_open_gap
 	; check if there is room to expand the gap
 	; the expansion moves [poststart, end) up by $100, so it is END that
 	; must stay below the top of the buffer
@@ -205,8 +248,6 @@ readbuf: .res READ_CHUNK
 	jsr split
 	bcc @ok
 
-@err:	; buffer overflow, cannot insert character
-	pla				; clean stack
 	lda #ERR_BUFFER_FULL
 	rts
 
@@ -233,27 +274,7 @@ readbuf: .res READ_CHUNK
 
 	; move the memory (open a new gap)
 	jsr reu::move
-
-@ins:	pla
-	ldy cursorzp+1
-	bmi @done	; out of range
-
-	; write the character to insert
-	ldy __src_bank
-	sty reu::reuaddr+2
-	STOREB cursorzp
-
-	cmp #$0d
-	bne @insdone
-	incw line
-	jsr on_line_inserted
-	incw lines
-	lda #$ff
-	sta zp::srcx		; reset cursor "column"
-@insdone:
-	inc zp::srcx		; move to next "column"
-	incw cursorzp
-@done:	RETURN_OK
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -442,17 +463,6 @@ readbuf: .res READ_CHUNK
 @done:	; get the character at the new cursor position
 	jsr __src_atcursor
 	RETURN_OK
-.endproc
-
-;*******************************************************************************
-; GAPLEN
-; Returns the length of the gap
-; OUT:
-;  - .XY: the length of the gap
-.proc gaplen
-	ldxy poststartzp
-	sub16 cursorzp
-	rts
 .endproc
 
 ;*******************************************************************************
