@@ -60,6 +60,7 @@ BANKED_SEG "EXPR", FINAL_BANK_EXPR
 	bne @source		; not in asmbuffer
 	cpx token_length
 	bcs @source
+
 	lda token_kinds,x
 	beq @source		; not the start of a saved token
 	cmp #LEX_INTEGER
@@ -85,6 +86,7 @@ BANKED_SEG "EXPR", FINAL_BANK_EXPR
 	bcs @printing
 	jsr whitespace
 	beq @spaces
+
 @printing:
 	cmp #';'
 	jeq @comment
@@ -102,8 +104,8 @@ BANKED_SEG "EXPR", FINAL_BANK_EXPR
 	lda (zp::line),y
 	jsr digit
 	dey
-	jcc @number
-	lda #'.'
+	jcc @number		; . followed by digit -> number
+	lda #'.'		; restore '.'
 :	cmp #':'
 	bne @name
 	iny
@@ -113,11 +115,11 @@ BANKED_SEG "EXPR", FINAL_BANK_EXPR
 	bne :+
 	iny
 	jmp @word
-:
-	lda #':'
+
+:	lda #':'
 	jmp @single
-@name:
-	jsr namechar
+
+@name:	jsr namechar
 	bcc @word
 	jmp @punctuation
 
@@ -139,6 +141,7 @@ BANKED_SEG "EXPR", FINAL_BANK_EXPR
 	bcc @wordnext
 	jsr digit
 	bcc @wordnext
+
 	cmp #':'
 	bne @span
 	iny
@@ -258,8 +261,8 @@ BANKED_SEG "EXPR", FINAL_BANK_EXPR
 	beq @sign
 	cmp #'-'
 	bne @expdigit
-@sign:
-	iny
+
+@sign:	iny
 	beq @long_pop
 	lda (zp::line),y
 @expdigit:
@@ -274,6 +277,7 @@ BANKED_SEG "EXPR", FINAL_BANK_EXPR
 	jsr digit
 	bcc @expnext
 	jmp @span
+
 @notexp:
 	pla
 	tay

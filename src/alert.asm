@@ -257,7 +257,6 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 	adc #ALERT_TEXT_COL
 	sta rvsstart
 	sta textcol
-	clc
 	adc @len
 	sta rvsstop
 

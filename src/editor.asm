@@ -5416,8 +5416,6 @@ clear_message = text::clrinfo
 	dec zp::cury
 
 	; scroll everything up from below the line we are bumping up to
-	ldx zp::cury
-	inx
 	cpx height
 	bcs @noscroll	; if cursor is at end of screen, nothing to scroll
 	lda height
@@ -6254,6 +6252,8 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 .proc __edit_update_progress
 .if .defined(vic20) .and .defined(soft4x8)
 @bm=r0
+	lda zp::verify
+	bne @done			; don't update if just verifying
 	jsr get_progress_addr
 	ldy progress_count
 	lda (@bm),y
@@ -6263,6 +6263,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	tya
 	and #$07
 	sta progress_count
+@done:
 .else
 .endif
 	rts

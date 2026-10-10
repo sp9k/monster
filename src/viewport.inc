@@ -1,10 +1,6 @@
-;*******************************************************************************
-; VIEWPORT.INC
-; Entry points for the 80-column source viewport in the editor.
-;*******************************************************************************
-
 .ifndef VIEWPORT_INC
 VIEWPORT_INC = 1
+
 .import __view_chars
 .import __view_clear
 .import __view_command
@@ -42,6 +38,7 @@ VIEWPORT_INC = 1
 	slots       = __view_slots
 	valid       = __view_valid
 	offset      = __view_x
+
 	toggle_cursor = __view_toggle_cursor
 .endscope
 .endif

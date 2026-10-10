@@ -565,10 +565,10 @@ __gui_refresh:
 	cpx #$06
 	bcc :-
 
-	ldy #WIN_SCROLL
+	; read scroll and selection with .Y at WIN_SCROLL
 	lda (r0),y
 	sta scroll
-	ldy #WIN_SELECT
+	iny
 	lda (r0),y
 	sta select
 
@@ -632,7 +632,7 @@ __gui_refresh:
 	ldy #WIN_SCROLL
 	lda scroll
 	sta (r0),y
-	ldy #WIN_SELECT
+	iny
 	lda select
 	sta (r0),y
 @done:	rts
@@ -992,7 +992,6 @@ __gui_refresh:
 ;-------------------------------------------------------------------------------
 ; not open yet; create a new window on top of the stack
 @create:
-	ldx depth
 	cpx #MAX_WINDOWS
 	bcs @done	; too many windows
 	jsr recptr
@@ -1008,9 +1007,9 @@ __gui_refresh:
 	lda #$00
 	ldy #WIN_SCROLL
 	sta (r0),y
-	ldy #WIN_SELECT
+	iny
 	sta (r0),y
-	ldy #WIN_PREMAX
+	iny
 	sta (r0),y
 
 	inc depth
@@ -1026,7 +1025,6 @@ __gui_refresh:
 	beq @settype	; already active
 
 	; save the record
-	jsr recptr
 	ldy #WIN_SIZE-1
 :	lda (r0),y
 	sta rectmp,y
@@ -1154,7 +1152,6 @@ __gui_refresh:
 	beq geom	; already at min height
 	bcc geom
 
-	sec
 	sbc #$01
 	ldy #WIN_HEIGHT
 	sta (r0),y
@@ -1222,7 +1219,7 @@ __gui_refresh:
 	lda (r0),y
 	cmp scroll
 	bne @full
-	ldy #WIN_SELECT
+	iny
 	lda (r0),y
 	cmp select
 	bne @full
@@ -1326,7 +1323,7 @@ __gui_refresh:
 @min:	; resize window to its minimum height
 	ldy #WIN_MINH
 	lda (r0),y
-	ldy #WIN_HEIGHT
+	dey
 	sta (r0),y
 
 @done:	rts
@@ -1368,7 +1365,6 @@ __gui_refresh:
 	ldy #WIN_TYPE
 	lda (r0),y
 	sta __gui_active_type
-	clc		; windows remain open
 	rts
 
 @last:	; that was the last window; restore whole window area to the editor
