@@ -2189,6 +2189,8 @@ command_vectorshi: .hibytes command_vectors
 disabled_commands:
 	.byte K_CLOSE_BUFF
 	.byte K_ASM_DEBUG
+	.byte K_BUILD
+	.byte K_LINK
 	.byte K_REFRESH
 	.byte $76		; v (enter visual)
 	.byte $56		; V (enter visual line)
