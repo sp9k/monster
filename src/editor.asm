@@ -1467,7 +1467,8 @@ cancel = enter_command
 	dex
 	stx height
 	stx gui::baserow	; windows sit above the debug info rows
-	rts
+	jmp refresh
+
 :	lda #STATUS_ROW
 	sta status_row
 	lda #EDITOR_HEIGHT
