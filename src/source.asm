@@ -1693,9 +1693,9 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	lda #$00		; disable <- continuation (READLINE entry)
 	sta @cont		; set/clear continue flag
 
-	; set read limit to LINESIZE for reading physical lines or
+	; set read limit to MAX_LINE_LEN for reading physical lines or
 	; MAX_LINE_LEN+1 if reading a logical line (has continuation chars)
-	ldx #LINESIZE
+	ldx #MAX_LINE_LEN
 	lda @cont
 	beq :+
 	ldx #MAX_LINE_LEN+1

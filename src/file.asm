@@ -564,12 +564,11 @@ OSPROC fexists
 @ok:	clc
 
 @close: php
-	pha
+	pha			; save error code
 
-	; close the probe while preserving its translated read error
 	lda @file
 	jsr fclose
-	pla
+	pla			; restore error code
 	plp
 	bcs @ret
 	lda #$00
