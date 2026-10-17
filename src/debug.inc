@@ -11,6 +11,7 @@
 .import __debug_setbrkatline
 .import __debug_edit_watches
 .import __debug_enable_expansion
+.import __debug_extended_state
 .import __debug_gotoaddr
 .import __debug_gotolabel
 .import __debug_load_file
@@ -57,6 +58,7 @@
 	setbrkataddr         = __debug_setbrkataddr
 	edit_watches         = __debug_edit_watches
 	enable_expansion     = __debug_enable_expansion
+	extended_state       = __debug_extended_state
 	gotoaddr             = __debug_gotoaddr
 	gotolabel            = __debug_gotolabel
 	loadfile             = __debug_load_file

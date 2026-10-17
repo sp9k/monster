@@ -1457,11 +1457,16 @@ cancel = enter_command
 .proc reset_size
 	lda debugging
 	beq :+
-	lda #DEBUG_MESSAGE_LINE-1
-	sta height
-	sta gui::baserow	; windows sit above the debug info rows
-	lda #DEBUG_MESSAGE_LINE
-	sta status_row
+
+	ldx #DEBUG_MESSAGE_LINE
+	lda dbg::extended_state		; is debugger showing extended state?
+	beq @dbgrows			; if not, use normal base for status row
+	ldx #DEBUG_MESSAGE_LINE_EXT	; if os, use base for extended display
+@dbgrows:
+	stx status_row
+	dex
+	stx height
+	stx gui::baserow	; windows sit above the debug info rows
 	rts
 :	lda #STATUS_ROW
 	sta status_row

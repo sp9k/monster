@@ -131,7 +131,9 @@ progvecs: .res DBGVECS_SIZE
 __debug_user_program_active: .byte 0
 .POPSEG
 
-show_extended_state: .byte 0	; if !0, show extra info about machine state
+.export __debug_extended_state
+show_extended_state:
+__debug_extended_state: .byte 0	; if !0, debugger shows extra machine state
 
 lineset: .byte 0		; not zero if we know the line number we're on
 
@@ -271,7 +273,7 @@ blank   = scr::blank
 	txs			; initialize stack to $1ff
 
 	; clear any existing colors in the debugger UI area
-	ldx #DEBUG_MESSAGE_LINE
+	ldx #DEBUG_MESSAGE_LINE_EXT
 @resetrow:
 	txa
 	pha
@@ -574,16 +576,12 @@ blank   = scr::blank
 @iface_gui:
 	; restore the debug view's layout (windows stay open; the window
 	; manager keeps the editor sized above them)
-	ldx #DEBUG_MESSAGE_LINE
-	stx edit::status_row
-	lda gui::active_type
+	jsr set_layout
+	ldx gui::active_type
 	bne :+
+	sta zp::editor_height	; no windows open
 
-	; no windows open, set editor to max size
-	ldx #DEBUG_MESSAGE_LINE-1
-	stx zp::editor_height
-
-:	jsr show_aux		; refresh any open windows
+:	jsr gui::refresh	; redraw any open windows
 
 @showbrk:
 	; set color for the message row
@@ -816,6 +814,24 @@ blank   = scr::blank
 .endproc
 
 ;*******************************************************************************
+; SET LAYOUT
+; Configure the layout of the status row and base row for GUI windows based
+; on if the extended register state view is enabled or disabled.
+; OUT:
+;  - .A: editor's height if no windows are open
+.proc set_layout
+	ldx #DEBUG_MESSAGE_LINE
+	lda show_extended_state
+	beq :+
+	ldx #DEBUG_MESSAGE_LINE_EXT
+:	stx edit::status_row
+	dex
+	stx gui::baserow	; set GUI base row to (status_row - 1)
+	txa			; .A = editor's height if no windows open
+	rts
+.endproc
+
+;*******************************************************************************
 ; TOGGLE EXTENDED INFO
 ; Toggles the display of additional information (e.g. current raster line)
 .proc toggle_extended_info
@@ -826,19 +842,21 @@ blank   = scr::blank
 	; the machine-state view reuses the register rows, no resize needed
 	rts
 .else
-	beq :+
+	beq @disable
 
-	; enable color for the message row
-	ldx #DEBUG_MESSAGE_LINE-2
-	stx edit::status_row
-	jsr draw::hiline
-	ldx #DEBUG_MESSAGE_LINE-2
+	ldx #DEBUG_MESSAGE_LINE
 	skw
-:	ldx #DEBUG_MESSAGE_LINE
-	stx edit::status_row
-	dex
-	txa
-	jmp edit::resize
+@disable:
+	ldx #DEBUG_MESSAGE_LINE_EXT
+
+	; clear highlight the message row left behind
+	jsr draw::resetline
+
+	jsr set_layout
+	ldx gui::active_type
+	beq @nogui
+	jmp gui::refresh	; GUI is open, let GUI manager handle refresh
+@nogui:	jmp edit::resize	; .A = the editor's new height
 .endif
 .endproc
 
@@ -1111,13 +1129,6 @@ __debug_step:
 	jsr bsp::save_prog_visual
 	jmp bsp::restore_debug_visual
 .endif
-.endproc
-
-;*******************************************************************************
-; SHOW AUX
-; Redraws any open windows (memory viewer, breakpoint viewer, monitor, etc.)
-.proc show_aux
-	jmp gui::refresh
 .endproc
 
 ;*******************************************************************************
