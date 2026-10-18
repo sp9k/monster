@@ -72,10 +72,15 @@ closereq: .byte 0
 .segment "CONSOLE_VARS"
 
 ; the buffer row that the monitor's input is on
-; use __monitor_inputrow for that
+.export __monitor_line
+__monitor_line:
 line:      .byte 0
 repeatcmd: .byte 0	; if set, empty line repeats last command
 prompt_len: .byte $00	; number of characters before the command
+
+; screen rows printed by the current command
+.export __monitor_rows_printed
+__monitor_rows_printed: .byte $00
 
 wintop: .byte 0		; first screen row of the monitor's contents
 winbot: .byte 0		; last screen row (the input line's row)
@@ -242,8 +247,10 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	; if output is redirected, write to file ONLY
 	lda __monitor_outfile
-	beq :+
+	beq @count
 	jmp @file
+
+@count:	inc __monitor_rows_printed
 
 	; check if we need to scroll
 :	lda line
@@ -404,6 +411,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta moncmd::mode
 	sta moncmd::default_addr+2
 	sta line
+	sta __monitor_rows_printed
 	sta __monitor_windowed
 	sta cyclereq
 	sta closereq

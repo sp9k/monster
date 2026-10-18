@@ -62,13 +62,14 @@ exprlist: .res MAX_EXPR_LIST
 __dbgcmd_memory_mode:
 
 memory_mode: .byte MON_MODE_VIRTUAL
-addr_hi:     .byte $00	; high bytes for monitor address arguments
-stop_hi:     .byte $00
-target_hi:   .byte $00
-count_hi:    .byte $00
-access_hi:   .byte $00	; high byte for vmem_load / vmem_store
-mem_limit:   .res 3	; exclusive end of the selected address space
-mode_index:  .byte $00
+default_addr: .byte $00	; flag that default range size is being used
+addr_hi:      .byte $00	; high bytes for monitor address arguments
+stop_hi:      .byte $00
+target_hi:    .byte $00
+count_hi:     .byte $00
+access_hi:    .byte $00	; high byte for vmem_load / vmem_store
+mem_limit:    .res 3	; exclusive end of the selected address space
+mode_index:   .byte $00
 .if FP_SUPPORTED
 row_bytes:      .byte $00	; bytes per memory display row
 memformat_type: .byte MEM_FORMAT_DEFAULT
@@ -116,6 +117,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	ldy #$00
 	ldx #$00
 	sty @cnt
+	sty mon::rows_printed	; init count of rows output
 
 	; eat whitespace to get to the command
 @l0:	lda (zp::line),y
@@ -976,6 +978,10 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 @l0:	cmpaddr @addr, addr_hi, @stopaddr, stop_hi
 	bcs @done
+	lda #$01
+	jsr check_stop
+	bcs @done
+
 	lda mon::int
 	bne @done			; SIGINT, quit
 	ldxy #@buff
@@ -1253,6 +1259,16 @@ range:
 	jcs @ret
 
 @l0:	cmpaddr @addr, addr_hi, @stop, stop_hi
+	bcs @done
+	lda #$01
+.if .defined(hard8x8) .and FP_SUPPORTED
+	ldx memformat_type
+	cpx #MEM_FORMAT_FLOAT
+	bne :+
+	lda #$02		; signal that next value needs 2 rows to print
+:
+.endif
+	jsr check_stop
 	bcs @done
 	lda mon::int
 	bne @done		; SIGINT, quit
@@ -1587,6 +1603,10 @@ range:
 
 @l0:	cmpaddr @addr, addr_hi, @stop, stop_hi
 	jcs @ok
+	lda #$01
+	jsr check_stop
+	jcs @ok
+
 	lda mon::int
 	bne :-				; SIGINT, quit
 	ldxy #@buff+4
@@ -1651,7 +1671,11 @@ range:
 	bcs :+
 	jmp @l0			; next row
 :
-@ok:	clc			; ok
+@ok:	ldxy @addr
+	stxy __dbgcmd_default_addr
+	lda addr_hi
+	sta __dbgcmd_default_addr+2
+	clc			; ok
 @done:	rts
 .endproc
 
@@ -1689,6 +1713,7 @@ range:
 ;   - zp::debuggertmp+2: the end of the range
 ;   - addr_hi:           high byte of the start address
 ;   - stop_hi:           high byte of the end address
+;   - default_addr:      nonzero if the range size was defaulted
 .proc get_range_or_default
 @start = zp::debuggertmp
 @stop  = zp::debuggertmp+2
@@ -1696,7 +1721,9 @@ range:
 	sta @size
 	jsr memory_ready
 	jcs @ret
+
 	ldy #$00
+	sty default_addr
 	lda (zp::line),y
 	bne :+
 
@@ -1721,6 +1748,7 @@ range:
 	bne @cont
 
 @default:
+	inc default_addr
 	lda @size
 	clc
 	adc @start
@@ -2577,6 +2605,40 @@ inline_proc hextostr, util::hextostr
 @done:	ldxy #mem::spare
 	clc
 @ret:	rts
+.endproc
+
+;*******************************************************************************
+; CHECK STOP
+; If the user is using the default stop range, checks if the number of rows
+; output exceeds one screenful (which is also used as the max when using the
+; default range).
+; IN:
+;   - .A: rows needed for next logical "row"
+; OUT:
+;   - .C: set if we should stop output
+.proc check_stop
+@tmp=r0
+	tax
+	lda default_addr
+	beq @no
+	lda mon::outfile
+	bne @no
+
+	txa
+	clc
+	adc mon::rows_printed
+	bcs @yes
+	tax
+	jsr mon::winheight
+	sta @tmp
+	txa
+	cmp @tmp
+	rts
+
+@yes:	sec
+	rts
+
+@no:	RETURN_OK
 .endproc
 
 ;*******************************************************************************
