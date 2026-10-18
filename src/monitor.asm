@@ -913,6 +913,22 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 .endproc
 
 ;*******************************************************************************
+; WINHEIGHT
+; Returns the height, in rows, of the monitor's contents (including the input
+; line).  This is the full screen height when the monitor isn't windowed.
+; OUT:
+;   - .A: the number of rows
+.export __monitor_winheight
+.proc __monitor_winheight
+	lda winbot
+	sec
+	sbc wintop
+	clc
+	adc #$01
+	rts
+.endproc
+
+;*******************************************************************************
 ; ROWPTR
 ; Returns the address of the given row in the monitor's screen buffer
 ; IN:

@@ -46,6 +46,9 @@
 .include "vic20/flash.inc"
 .endif
 
+MEM_FORMAT_DEFAULT = $00
+MEM_FORMAT_FLOAT   = $01
+
 .segment "CONSOLE_VARS"
 
 .export __dbgcmd_default_addr
@@ -57,6 +60,7 @@ exprlist: .res MAX_EXPR_LIST
 
 .export __dbgcmd_memory_mode
 __dbgcmd_memory_mode:
+
 memory_mode: .byte MON_MODE_VIRTUAL
 addr_hi:     .byte $00	; high bytes for monitor address arguments
 stop_hi:     .byte $00
@@ -65,6 +69,10 @@ count_hi:    .byte $00
 access_hi:   .byte $00	; high byte for vmem_load / vmem_store
 mem_limit:   .res 3	; exclusive end of the selected address space
 mode_index:  .byte $00
+.if FP_SUPPORTED
+row_bytes:      .byte $00	; bytes per memory display row
+memformat_type: .byte MEM_FORMAT_DEFAULT
+.endif
 
 ;*******************************************************************************
 ; INCADDR
@@ -1203,15 +1211,44 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 .endproc
 
 ;*******************************************************************************
+; SHOWFLOAT
+; Displays memory (as with the MEMORY command), but renders 5 bytes per row
+; and displays their corresponding CBM float rendering instead of ASCII
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
+.if FP_SUPPORTED
+.proc showfloat
+	lda #FP_SIZE
+	sta row_bytes
+	lda #MEM_FORMAT_FLOAT
+	sta memformat_type
+	lda #8*FP_SIZE
+	jmp ::showmem::range
+.endproc
+.endif
+
+;*******************************************************************************
 ; SHOWMEM
 ; Shows the contents of memory at the target of the given expression
 ; e.g.
 ;  `>M $1000 $1020`
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc showmem
-@addr=zp::debuggertmp
-@stop=zp::debuggertmp+2
+.if FP_SUPPORTED
+	lda #MEM_FORMAT_DEFAULT
+	sta memformat_type
+	ldx memory_mode
+	lda row_widths,x
+	sta row_bytes
+.endif
 
 	lda #8*8		; default to 8 lines (64 bytes)
+range:
+@addr=zp::debuggertmp
+@stop=zp::debuggertmp+2
 	jsr get_range_or_default
 	jcs @ret
 
@@ -1220,6 +1257,17 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda mon::int
 	bne @done		; SIGINT, quit
 	ldxy @addr
+.if FP_SUPPORTED
+	lda memformat_type
+	cmp #MEM_FORMAT_FLOAT	; render line as FLOAT?
+	bne :+			; no -> continue for default rendering
+
+	; render the row with CBM float conversion
+	jsr float_memline
+	bcs @ret
+	jmp @print
+:
+.endif
 	lda memory_mode
 	bne @image
 	CALLMAIN ui::memline
@@ -1229,12 +1277,19 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @image:	jsr image_memline
 	bcs @ret
 @print:	jsr mon::puts
+	bcc :+
+	ldx mon::outfile		; were we redirecting output?
+	bne @ret			; if so, an error occurred there -> exit
 
-	; move to address for next row
+:	; move to address for next row
 	lda @addr
 	clc
+.if FP_SUPPORTED
+	adc row_bytes
+.else
 	ldx memory_mode
 	adc row_widths,x
+.endif
 	sta @addr
 	bcc :+
 	inc @addr+1
@@ -1632,8 +1687,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ;   - .C:                set if a (valid) range was not given
 ;   - zp::debuggertmp:   the start of the range
 ;   - zp::debuggertmp+2: the end of the range
-;   - addr_hi:           high byte of the start
-;   - stop_hi:           high byte of the end
+;   - addr_hi:           high byte of the start address
+;   - stop_hi:           high byte of the end address
 .proc get_range_or_default
 @start = zp::debuggertmp
 @stop  = zp::debuggertmp+2
@@ -2304,6 +2359,138 @@ inline_proc hextostr, util::hextostr
 .endproc
 
 ;*******************************************************************************
+; FLOAT MEMLINE
+; Renders up to 5 bytes
+; 22-column displays print the bytes before returning the numeric value
+; IN:
+;   - .XY:               low word of the address to render
+;   - addr_hi:           high byte of the address to render
+;   - zp::debuggertmp+2: low word of the exclusive end
+;   - stop_hi:           high byte of the exclusive end
+; OUT:
+;   - .XY: rendered text
+;   - .A:  error code on failure
+;   - .C:  set on error
+.if FP_SUPPORTED
+.proc float_memline
+@src=ra
+@col=rc
+@stop=zp::debuggertmp+2
+.ifdef hard8x8
+@text_start=8+FP_SIZE*2
+.else
+@text_start=8+FP_SIZE*3
+.endif
+	stxy @src
+	lda addr_hi
+	sta access_hi
+
+	; clear the byte columns and terminate the row
+	lda #' '
+	ldx #@text_start-1
+:	sta mem::spare,x
+	dex
+	bpl :-
+	lda #$00
+	sta mem::spare+@text_start
+
+;-------------------------------------------------------------------------------
+; render the address (24-bit)
+	lda addr_hi
+	jsr hextostr
+	sty mem::spare
+	stx mem::spare+1
+
+	; write MSB byte of address
+	lda @src+1
+	jsr hextostr
+	sty mem::spare+2
+	stx mem::spare+3
+
+	; write LSB byte of address
+	lda @src
+	jsr hextostr
+	sty mem::spare+4
+	stx mem::spare+5
+
+	lda #':'
+	sta mem::spare+6
+
+;-------------------------------------------------------------------------------
+; render the hex value of the float and copy it to the expr float buffer
+	ldx #$00
+@byte:	stx @col
+	cmpaddr @src, access_hi, @stop, stop_hi
+	bcs @done
+
+	ldxy @src
+	jsr vmem_load
+	bcs @ret
+
+	; store the byte to the expression's buffer for later rendering
+	ldx @col
+	sta expr::floatval,x
+
+	jsr hextostr
+	txa
+	pha
+	lda @col
+	asl
+.ifndef hard8x8
+	adc @col
+.endif
+	tax
+	pla
+	sta mem::spare+9,x
+	tya
+	sta mem::spare+8,x
+
+	incaddr @src, access_hi
+	ldx @col
+	inx
+	cpx #FP_SIZE
+	bcc @byte
+
+;-------------------------------------------------------------------------------
+; render the 5-byte float value
+	CALL FINAL_BANK_EXPR, expr::float_format
+	bcs @ret
+.ifdef hard8x8
+	jsr @rowptr
+	jsr mon::puts
+	bcc :+
+	ldx mon::outfile		; screen drawing leaves carry unspecified
+	bne @ret
+
+:	ldxy #expr::floatstr
+	RETURN_OK
+.else
+
+;-------------------------------------------------------------------------------
+; copy the formatted float to the end of the buffer
+	ldx #$00
+@copy:	lda expr::floatstr,x
+	sta mem::spare+@text_start,x
+	inx
+	cmp #$00
+	bne @copy
+.endif
+
+@done:	jsr @rowptr
+	clc
+@ret:	rts
+
+;-------------------------------------------------------------------------------
+@rowptr:
+	ldxy #mem::spare
+	lda memory_mode
+	bne :+
+	ldxy #mem::spare+2	; VIRTUAL_MODE, don't show MSB of 24-bit addr
+:	rts
+.endproc
+.endif
+
+;*******************************************************************************
 ; IMAGE MEMLINE
 ; Returns a line containing image bytes along with their text rendering.
 ; IN:
@@ -2439,6 +2626,9 @@ commands:
 .byte "s",0	   ; save memory
 .byte "files",0	   ; shows all files that are loaded in debug-info
 .byte "?",0	   ; evaluate an integer or floating point expression
+.if FP_SUPPORTED
+.byte "mf",0	   ; show memory as five-byte CBM floats
+.endif
 .ifdef vic20
 .byte "update",0   ; leave Monster and run the updater
 .endif
@@ -2451,10 +2641,16 @@ commands:
 	step_over, go, backtrace, step_out, poke, savemem, show_files, evaluate_value
 .linecont -
 commandslo: .lobytes command_vectors
+.if FP_SUPPORTED
+	.lobytes showfloat
+.endif
 .ifdef vic20
 	.lobytes flash_update
 .endif
 commandshi: .hibytes command_vectors
+.if FP_SUPPORTED
+	.hibytes showfloat
+.endif
 .ifdef vic20
 	.hibytes flash_update
 .endif

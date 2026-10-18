@@ -12,6 +12,7 @@
 .import __monitor_update_pc_view
 .import __monitor_window
 .import __monitor_windowed
+.import __monitor_winheight
 
 .scope mon
 	clear     = __monitor_clear
@@ -28,4 +29,5 @@
 	update_pc_view = __monitor_update_pc_view
 	window         = __monitor_window
 	windowed       = __monitor_windowed
+	winheight      = __monitor_winheight
 .endscope

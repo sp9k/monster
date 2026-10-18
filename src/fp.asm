@@ -55,7 +55,7 @@ BASIC_ERR_DIV0 = $14	; BASIC error $14: division by zero
 ; entry points below touches anything outside these; what each individual
 ; operation actually saves is the much smaller set in `zpranges'.
 ZPA_START = $02
-ZPA_LEN   = $29-$02+1
+ZPA_LEN   = $2a-$02+1
 ZPA_END   = ZPA_START+ZPA_LEN-1
 ZPB_START = $4e
 ZPB_LEN   = $8f-$4e+1
@@ -570,8 +570,8 @@ zpr_unary:				; 44 bytes
 	ZPR $4e,5			; the transcendentals pack FAC1 into $4e,
 	ZPR $56,29			; ..$72: $57 and $5c as well, then FAC1/2
 	ZPREND
-zpr_format:				; 31 bytes
-	ZPR $22,8
+zpr_format:				; 32 bytes
+	ZPR $22,9			; division during FOUT also uses $2a
 	ZPR $47,1			; FOUT's powers of ten index (gui::num)
 	ZPR $56,1
 	ZPR $5d,21			; ..$71: FAC temps, FAC1/2, output index
