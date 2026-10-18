@@ -24,6 +24,7 @@
 .import __edit_run
 .import __edit_set_breakpoint
 .import __edit_sethighlight
+.import __edit_hl_redraw
 .import __edit_sigint
 .import __edit_src2screen
 .import __edit_statusrow
@@ -58,6 +59,7 @@
 	run             = __edit_run
 	setbreakpoint   = __edit_set_breakpoint
 	sethighlight    = __edit_sethighlight
+	hl_redraw       = __edit_hl_redraw
 	sigint          = __edit_sigint
 	src2screen      = __edit_src2screen
 	status_row      = __edit_statusrow

@@ -9,13 +9,15 @@ are user activated, like the text-based monitor, breakpoint viewer, etc.
 Navigation to and from these windows as well as cycling between active ones can be performed with the following
 commands.
 
-| COMMAND    |  KEY               |  DESCRIPTION
-|------------|--------------------|----------------------------------------------------------------------------------------------------
-| `NEXT WIN` | {c64-keys}`C= + W` | Cycles to the next available window (if already in the editor, enters the active window)
-| `EXIT    ` | {c64-key}`RUN/STOP`| If a window is active, returns focus to the editor.  The window is left open, its rows still onscreen
-| `CLOSE   ` | {c64-keys}`C= + Q` | Closes the active window.  Focus moves to the next open window, or back to the editor if it was the last one
-| `CLOSE ALL` | {c64-key}`RESTORE` | Closes every window and returns focus to the source editor, from the editor or any focused window
-| `HIDE    ` | {c64-keys}`C= + H` | Toggles the display of windows entirely
+| COMMAND    |  KEY                    |  DESCRIPTION
+|------------|-------------------------|----------------------------------------------------------------------------------------------------
+| `FOCUS`    | {c64-keys}`C= + W`      | Enters the active window from the editor, or returns focus to the editor while leaving the windows open
+| `WINDOW UP`| {c64-keys}`Ctrl + K`    | Cycles up through open windows while a window has focus, wrapping at the top
+| `WINDOW DOWN` | {c64-keys}`Ctrl + J` | Cycles down through open windows while a window has focus, wrapping at the bottom
+| `EXIT    ` | {c64-key}`RUN/STOP`     | If a window is active, returns focus to the editor.  The window is left open, its rows still onscreen
+| `CLOSE   ` | {c64-keys}`C= + Q`      | Closes the active window.  Focus moves to the next open window, or back to the editor if it was the last one
+| `CLOSE ALL` | {c64-key}`RESTORE`     | Closes every window and returns focus to the source editor, from the editor or any focused window
+| `HIDE    ` | {c64-keys}`C= + H`      | Toggles the display of windows entirely
 
 Note that `EXIT` only gives focus back to the editor; the window remains open above the
 status row.  Use `CLOSE ALL` to restore the fullscreen editor or hide the windows with `HIDE`.

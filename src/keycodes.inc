@@ -68,7 +68,7 @@ K_JUMPFORWARD    = $a2	; C= + i
 K_NEXT_DRIVE     = $a6  ; C= + +
 K_PREV_DRIVE     = $dc  ; C= + -
 K_EDIT_STATE     = $89	; F2
-K_SWAP_WINS      = $b3	; C= + w
+K_SWAP_WINS      = $b3	; C= + w (toggle window focus)
 K_NEXT_ERR       = $b1  ; C= + e
 K_DISMISS_ERR    = $bd  ; C= + x
 K_CHECK_LINE     = $a3  ; C= + t
@@ -103,6 +103,8 @@ K_ADD_WATCH = $b3	; C= + w (for use in WATCH editor)
 
 ;*******************************************************************************
 ; WINDOW KEYS
+K_WIN_UP		= $0b	; ctrl + k (cycle up through windows)
+K_WIN_DOWN		= $0a	; ctrl + j (cycle down through windows)
 K_WIN_GROW		= $a1	; C= + k (grow the active window)
 K_WIN_SHRINK		= $b5	; C= + j (shrink the active window)
 K_WIN_MAXIMIZE		= $ad	; C= + z (maximize/restore the active window)

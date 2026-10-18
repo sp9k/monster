@@ -514,7 +514,9 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	bcs @done
 	cmp drawrow
 	bne @done
-	JUMPMAIN draw::rvs_underline
+
+	lda drawrow
+	JUMPMAIN edit::hl_redraw
 
 @done:	rts
 .endproc

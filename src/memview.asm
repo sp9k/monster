@@ -199,25 +199,8 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	CALLMAIN cur::set		; move back to home row/col (draws the cursor)
 	jmp @edit
 
-:	cmp #K_QUIT
-	bne @chkclose
-@quit:	jmp @done
-
-@chkclose:
-	cmp #K_RESTORE
-	bne :+
-	lda #GUI_RET_CLOSEALL
-	rts
-
-:	cmp #K_WIN_CLOSE
-	bne @chkcycle
-	lda #GUI_RET_CLOSE	; close this window
-	rts
-
-@chkcycle:
-	cmp #K_SWAP_WINS
-	bne :+
-	lda #GUI_RET_CYCLE	; activate the next window
+:	CALLMAIN gui::handlekey
+	bcc :+
 	rts
 
 :	cmp #K_WIN_GROW
@@ -293,9 +276,6 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 
 	CALLMAIN beep::short	; beep to confirm add
 	jmp @edit
-
-@done:	lda #GUI_RET_QUIT
-	rts
 
 @replace_val:
 	jsr @set_nybble	; replace the nybble under cursor

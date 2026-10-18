@@ -495,6 +495,8 @@ nop_handler:
 @mon0:	CALL FINAL_BANK_MONITOR, mon::reenter
 	cmp #GUI_RET_CYCLE	; no window manager here to cycle windows;
 	beq @mon0		; just re-prompt
+	cmp #GUI_RET_CYCLE_DOWN
+	beq @mon0
 
 	; return to the editor or monitor (whichever is active)
 	lda edit::debugging

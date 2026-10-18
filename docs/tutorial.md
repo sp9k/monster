@@ -462,8 +462,9 @@ or {c64-keys}`C= + Z` to _maximize_/_unmaximize_
 closing it) and refocuses the editor.
 
 Note that multiple windows may be open at once.  If the MEMORY VIEWER is active, you may still invoke
-the BREAKPOINT VIEWER without closing it.  If multiple windows are active, you can cycle through them
-with {c64-keys}`C= + W` (also re-enters the visible window if the editor is in focus).
+the BREAKPOINT VIEWER without closing it.  Press {c64-keys}`C= + W` to switch focus between the editor
+and the active window.  While a window has focus, {c64-keys}`Ctrl + K` cycles up through the open windows
+and {c64-keys}`Ctrl + J` cycles _down_.
 
 Finally, all active windows can be hidden with {c64-keys}`C= + H`.  Repeating the command also unhides
 them if they are already hidden.

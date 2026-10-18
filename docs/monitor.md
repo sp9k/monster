@@ -752,14 +752,16 @@ The two instructions take eight cycles, and the return restores SP to `$ff`.
 These keys perform monitor or window actions directly; they are not typed at
 the monitor prompt.
 
-| KEY                | NAME                 | DESCRIPTION                                                          |
-|--------------------|----------------------|----------------------------------------------------------------------|
-| {c64-key}`F1`      | `VIEW SCREEN`        | toggles `$1000`-`$2000` between monitor and program memory           |
-| {c64-key}`F2`      | `ENTER USER PROGRAM` | enters the running program, or BASIC if no program has been debugged |
-| {c64-keys}`C= + L` | `CLEAR`              | clears the monitor display, like the `clear` command                 |
-| {c64-keys}`C= + K` | `GROW WINDOW`        | grows the monitor window by one row in windowed mode                 |
-| {c64-keys}`C= + J` | `SHRINK WINDOW`      | shrinks the monitor window by one row in windowed mode               |
-| {c64-keys}`C= + Z` | `MAXIMIZE WINDOW`    | toggles the monitor window between maximized and its last size       |
-| {c64-keys}`C= + Q` | `CLOSE WINDOW`       | closes the monitor window (windowed mode only)                       |
-| {c64-key}`RESTORE` | `CLOSE ALL WINDOWS`  | closes every window and returns to the source editor                |
-| {c64-keys}`C= + W` | `NEXT WINDOW`        | leaves the monitor open and cycles to the next window                |
+| KEY                  | NAME                 | DESCRIPTION                                                          |
+|----------------------|----------------------|----------------------------------------------------------------------|
+| {c64-key}`F1`        | `VIEW SCREEN`        | toggles `$1000`-`$2000` between monitor and program memory           |
+| {c64-key}`F2`        | `ENTER USER PROGRAM` | enters the running program, or BASIC if no program has been debugged |
+| {c64-keys}`C= + L`   | `CLEAR`              | clears the monitor display, like the `clear` command                 |
+| {c64-keys}`C= + K`   | `GROW WINDOW`        | grows the monitor window by one row in windowed mode                 |
+| {c64-keys}`C= + J`   | `SHRINK WINDOW`      | shrinks the monitor window by one row in windowed mode               |
+| {c64-keys}`C= + Z`   | `MAXIMIZE WINDOW`    | toggles the monitor window between maximized and its last size       |
+| {c64-keys}`C= + Q`   | `CLOSE WINDOW`       | closes the monitor window (windowed mode only)                       |
+| {c64-key}`RESTORE`   | `CLOSE ALL WINDOWS`  | closes every window and returns to the source editor                |
+| {c64-keys}`C= + W`   | `FOCUS EDITOR`       | returns focus to the editor while leaving the monitor open           |
+| {c64-keys}`Ctrl + K` | `WINDOW UP`          | cycles up through open windows, wrapping at the top                  |
+| {c64-keys}`Ctrl + J` | `WINDOW DOWN`        | cycles down through open windows, wrapping at the bottom             |

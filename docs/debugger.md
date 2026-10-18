@@ -219,7 +219,8 @@ are supported within the memory viewer:
 
 | SHORTCUT              | NAME      |  DESCRIPTION                                     |
 |-----------------------|-----------|--------------------------------------------------|
-| {c64-keys}`C= + W`    | ADD WATCH | Add watch to the highlighted address             |
+| {c64-key}`W`          | ADD WATCH | Add watch to the highlighted address             |
+| {c64-keys}`C= + W`    | EXIT      | Returns focus to the editor                      |
 | {c64-key}`Slash`      | FIND VALUE| Seeks from current memory address for given value|
 | {c64-key}`RUN/STOP`   | EXIT      | Returns to the debugger (the view stays open)    |
 | {c64-keys}`C= + Q`    | CLOSE     | Closes the memory viewer                         |
@@ -277,9 +278,9 @@ The following keys are supported within the watch viewer:
 
 | SHORTCUT              | NAME       |  DESCRIPTION                                            |
 |-----------------------|------------|---------------------------------------------------------|
-| {c64-keys}`C= + W`    | ADD WATCH  | Prompt the user for expressions to watch                |
+| {c64-keys}`C= + W`    | EXIT       | Returns focus to the editor                             |
 | {c64-key}`RETURN`     | SELECT/EDIT| Enters the memory editor at the watch's address         |
-| **DEL**              | DELETE     | Removes the selected watch                             |
+| **DEL**               | DELETE     | Removes the selected watch                              |
 | {c64-key}`RUN/STOP`   | EXIT       | Returns to the debugger (the view stays open)           |
 | {c64-keys}`C= + Q`    | CLOSE      | Closes the watch viewer                                 |
 
@@ -341,7 +342,7 @@ NOTE: breakpoints can only be added to buffers that have been named.
 
 ## Watches
 Watches are set within the memory editor. When the cursor is over the
-desired byte to watch, then press {c64-keys}`C= + W` to add a watch to the address of the
+desired byte to watch, then press {c64-key}`W` to add a watch to the address of the
 byte under the cursor.  A beep will confirm that the watch
 was added.
 

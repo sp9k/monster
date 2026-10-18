@@ -709,6 +709,35 @@ __gui_refresh:
 .endproc
 
 ;*******************************************************************************
+; HANDLE KEY
+; Translates common window keys into window manager actions
+; IN:
+;   - .A: key to handle
+; OUT:
+;   - .A: GUI_RET_x action if handled, else original key
+;   - .C: set if handled
+.export __gui_handlekey
+.proc __gui_handlekey
+	ldx #@count-$01
+@loop:	cmp @keys,x
+	beq @found
+	dex
+	bpl @loop
+	clc
+	rts
+
+@found:	lda @actions,x
+	rts
+
+;-------------------------------------------------------------------------------
+@keys:	.byte K_QUIT, K_SWAP_WINS, K_RESTORE, K_WIN_CLOSE, K_WIN_UP, K_WIN_DOWN
+@count = *-@keys
+@actions:
+	.byte GUI_RET_QUIT, GUI_RET_QUIT, GUI_RET_CLOSEALL, GUI_RET_CLOSE
+	.byte GUI_RET_CYCLE, GUI_RET_CYCLE_DOWN
+.endproc
+
+;*******************************************************************************
 ; LIST ENTER
 ; The interaction loop shared by all LIST windows.  Handles selection
 ; movement and the common window keys; all other keys are passed to the
@@ -729,26 +758,14 @@ __gui_refresh:
 	jsr draw::resetline
 
 :	pla
-	cmp #K_QUIT
-	beq @quit
-
-	cmp #K_RESTORE
-	bne :+
-	lda #GUI_RET_CLOSEALL
-	rts
-
-:	cmp #K_WIN_CLOSE
-	bne :+
-	lda #GUI_RET_CLOSE
-	rts
-
-:	cmp #K_SWAP_WINS
-	bne :+
+	jsr __gui_handlekey
+	bcc @local
+	pha
 	jsr list_savevars
-	lda #GUI_RET_CYCLE
+	pla
 	rts
 
-:	cmp #K_WIN_GROW
+@local:	cmp #K_WIN_GROW
 	bne :+
 	jsr __gui_grow
 	jmp @rehl
@@ -763,10 +780,6 @@ __gui_refresh:
 	bne :+
 	jsr __gui_maximize
 	jmp @loop
-
-@quit:	jsr list_savevars
-	lda #GUI_RET_QUIT
-	rts
 
 :	jsr key::isup
 	bne @chkdown
@@ -855,10 +868,18 @@ __gui_refresh:
 	lda #$01
 	sta infocus
 
-@loop:	jsr draw_all
+@loop:	; restore editor cursor before entering a window
+	lda __gui_cursave_x
+	sta zp::curx
+	lda __gui_cursave_y
+	sta zp::cury
+	jsr draw_all
+
 	jsr dispatch_enter
 	cmp #GUI_RET_CYCLE
 	beq @cycle
+	cmp #GUI_RET_CYCLE_DOWN
+	beq @cycledown
 	cmp #GUI_RET_SWITCH
 	beq @loop
 	cmp #GUI_RET_CLOSEALL
@@ -873,11 +894,6 @@ __gui_refresh:
 	jsr __gui_close
 	bcs @quit		; that was the last one: back to the editor
 
-	; restore the physical cursor before entering the next window
-	lda __gui_cursave_x
-	sta zp::curx
-	lda __gui_cursave_y
-	sta zp::cury
 	jsr key::flush
 	jmp @loop
 
@@ -885,6 +901,7 @@ __gui_refresh:
 	jsr unhide_editor	; give the editor its rows back if it has none
 	lda #$00
 	sta infocus
+	sta dbg::interface
 	jsr cur::unlimit
 	lda __gui_cursave_x
 	sta zp::curx
@@ -897,6 +914,9 @@ __gui_refresh:
 	jmp cur::on
 
 @cycle:	jsr rotate
+	jmp @loop
+@cycledown:
+	jsr rotate_down
 	jmp @loop
 .endproc
 
@@ -924,16 +944,8 @@ __gui_refresh:
 	cmp #$02
 	bcc @done	; nothing to rotate
 
-	; restore physical cursor before entering the next window
-	lda __gui_cursave_x
-	sta zp::curx
-	lda __gui_cursave_y
-	sta zp::cury
-
 	; save the active record
-	ldx depth
-	dex
-	jsr recptr
+	jsr active
 	ldy #WIN_SIZE-1
 :	lda (r0),y
 	sta rectmp,y
@@ -958,6 +970,18 @@ __gui_refresh:
 	dex
 	bpl :-
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; ROTATE DOWN
+; Rotates the window stack in reverse to select the window below, wrapping at
+; the bottom.
+.proc rotate_down
+@record=r0
+	ldx #$00
+	jsr recptr
+	ldxy @record
+	jmp __gui_select
 .endproc
 
 ;*******************************************************************************

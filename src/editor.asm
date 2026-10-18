@@ -101,6 +101,10 @@ height = zp::editor_height	; height of the text-editor (shrinks when
 				; displaying error, showing debugger, etc.)
 mode   = zp::editor_mode	; editor mode (COMMAND, INSERT)
 
+;*******************************************************************************
+; magic value for highlight_row when mark isn't visible
+HL_NONE = $ff
+
 .export __edit_height
 __edit_height = height
 
@@ -151,7 +155,9 @@ __edit_highlight_en: .byte 0	; highlight flag: if !0 highlight highlight_line
 __edit_highlight_line:	.word 0 	; the line we are highlighting
 .export __edit_highlight_file = highlight_file
 highlight_file:   	.byte 0		; debug file ID of the highlighted line
-highlight_status:	.byte 0		; if !0 highlight is active
+
+; screen row the highlight mark is currently displayed on (HL_NONE not visible)
+highlight_row:		.byte 0
 
 ; the status row is where the text status is displayed.
 ; It is also where the program accepts commands (see get_command)
@@ -182,6 +188,7 @@ getsvec: .word 0		; key handler for gets
 .export __edit_gotoline
 .export __edit_src2screen
 .export __edit_sethighlight
+.export __edit_hl_redraw
 .export __edit_current_file
 .export __edit_refreshline
 .export __edit_redrawline
@@ -200,6 +207,7 @@ __edit_load:           JUMP FINAL_BANK_EDIT, edit_load
 __edit_gotoline:       JUMP FINAL_BANK_EDIT, edit_gotoline
 __edit_src2screen:     JUMP FINAL_BANK_EDIT, edit_src2screen
 __edit_sethighlight:   JUMP FINAL_BANK_EDIT, edit_sethighlight
+__edit_hl_redraw:     JUMP FINAL_BANK_EDIT, hl_redraw
 __edit_current_file:   JUMP FINAL_BANK_EDIT, edit_current_file
 __edit_refreshline:    JUMP FINAL_BANK_EDIT, edit_refreshline
 __edit_redrawline:     JUMP FINAL_BANK_EDIT, print_current_line
@@ -231,6 +239,7 @@ __edit_load            = edit_load
 __edit_gotoline        = edit_gotoline
 __edit_src2screen      = edit_src2screen
 __edit_sethighlight    = edit_sethighlight
+__edit_hl_redraw       = hl_redraw
 __edit_current_file    = edit_current_file
 __edit_refreshline     = edit_refreshline
 __edit_redrawline      = print_current_line
@@ -246,6 +255,9 @@ guidismissall = gui::dismissall
 ; INIT
 ; Initializes the editor state
 .proc edit_init
+	lda #HL_NONE
+	sta highlight_row	; no highlight mark is on the display yet
+
 	jsr scr::blank
 	ldx #$ff
 	txs			; reset hardware stack
@@ -1833,6 +1845,7 @@ cancel = enter_command
 
 	; end of buffer: clear the line we deleted
 	lda zp::cury
+	jsr hl_rowgone		; clearing the row takes any mark on it
 	jsr scr::clrline
 	dec zp::cury		; and don't leave cursor on same line (that line
 	                        ; is gone now)
@@ -2862,7 +2875,7 @@ cancel = enter_command
 	.byte K_BRKVIEW		; breakpoint viewer/editor (same as while debugging)
 	.byte K_WATCHVIEW	; watch viewer/editor (same as while debugging)
 	.byte K_MONITOR_WIN	; enter console in a window
-	.byte K_SWAP_WINS	; C= + w (swap windows)
+	.byte K_SWAP_WINS	; C= + w (focus windows)
 	.byte K_REFRESH		; refresh
 	.byte K_LIST_SYMBOLS	; list symbols
 	.byte K_VIEW_MACROS	; open macro viewer
@@ -3279,9 +3292,10 @@ edit_refresh:
 	jsr editor_getline		; get the contents of current line
 	jsr text::savebuff	; save the line buffer
 
+	jsr hl_erase		; the redraw below takes the highlight mark with it
+
 	ldx zp::cury		; get # of rows to go up in source
 	ldy #$00
-	sty highlight_status	; disable highlight
 	sty zp::cury		; go to top row
 	jsr src::upn		; move source to top line on screen
 
@@ -3341,26 +3355,26 @@ edit_refresh:
 ; IN:
 ;  - .A: the row to print the linebuffer to
 .proc print_line
+	pha				; save the row being drawn
 	jsr draw_src_line
 
 	lda __edit_highlight_en
 	beq @done
 
-	; check if the current line is the highlighted one
+	; check if the line that was drawn is the highlighted one
 	jsr edit_current_file		; .A = file ID, .XY = current line #
 	bcs @done			; no file ID -> not a match
 	cmp highlight_file
 	bne @done			; different file -> not the highlight
 	cmpw __edit_highlight_line	; compare .XY to the highlighted line #
 	bne @done
-	lda #$01
-	sta highlight_status
 
-.ifndef hard8x8
-	; the highlight was destroyed by drawing the line, re-highlight it
-	jmp toggle_highlight
-.endif
-@done:	rts
+	; highlight was destroyed- redraw it
+	pla
+	jmp hl_redraw
+
+@done:	pla
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -4601,6 +4615,7 @@ flat:
 ;  - .A: the row to clear
 .proc clear_row
 	jsr viewport::clear
+	jsr hl_rowgone			; clearing the row takes any mark on it
 	pha
 	tax
 	lda #$00
@@ -5495,6 +5510,12 @@ clear_message = text::clrinfo
 	jsr text::scrollupn
 	jsr viewport::scroll_up
 
+	; follow the highlight mark to the row it was scrolled to
+	lda highlight_row
+	sec
+	sbc @num
+	jsr hl_scrolled
+
 	; shift colors up by the same amount
 	ldx @start
 	ldy @stop
@@ -5503,10 +5524,10 @@ clear_message = text::clrinfo
 
 .ifdef hard8x8
 	; redraw the hard gutter for the newly scrolled screen
-	jsr scr::draw_gutter
+	jmp scr::draw_gutter
+.else
+	rts
 .endif
-
-	jmp highlight	; handle highlight (if enabled)
 .endproc
 
 ;*******************************************************************************
@@ -6297,42 +6318,6 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 .endif
 
 ;*******************************************************************************
-; HIGHLIGHT
-; If the row that should be highlighted is visible, highlight it
-.proc highlight
-@was_visible=r4
-	lda __edit_highlight_en
-	beq @done
-
-	; check if the active buffer contains the highlighted line
-	jsr edit_current_file		; .A = current buffer's file ID
-	bcs @notvisible			; no file ID -> not the highlight's file
-	cmp highlight_file
-	bne @notvisible			; different file -> not visible here
-
-	lda highlight_status
-	sta @was_visible
-
-	; update the status (check if the highlight was scrolled out)
-	lda #$00
-	sta highlight_status
-	ldxy __edit_highlight_line
-	jsr edit_src2screen
-	bcc @ok
-@done:	rts
-
-@notvisible:
-	lda #$00
-	sta highlight_status	; highlight is not on this screen
-	rts
-
-@ok:	inc highlight_status	; flag highlight as now visible
-	lda @was_visible
-	bne @done		; if highlight was, and still is, visible: skip
-	jmp toggle_highlight	; highlight was NOT visible, but is now
-.endproc
-
-;*******************************************************************************
 ; SCROLLDOWN
 ; Scrolls everything in the given range of rows by 1 and highlights the row that
 ; is scrolled in (if highlight is enabled)
@@ -6363,6 +6348,12 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	jsr text::scrolldownn
 	jsr viewport::scroll_down
 
+	; follow the highlight mark to the row it was scrolled to
+	lda highlight_row
+	clc
+	adc @num
+	jsr hl_scrolled
+
 	; shift colors down by 1
 	ldx @start
 	ldy @stop
@@ -6371,13 +6362,10 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 
 .ifdef hard8x8
 	; redraw the hard gutter for the newly scrolled screen
-	jsr scr::draw_gutter
-.endif
-
-	ldxy __edit_highlight_line
-	cmpw src::line
-	bne highlight
+	jmp scr::draw_gutter
+.else
 	rts
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -6727,15 +6715,8 @@ report_error = alert::show
 ; IN:
 ;  - .XY: the line to highlight
 .proc edit_sethighlight
-@newhighlight=zp::editortmp+6
-	lda highlight_status		; is highlight active?
-	beq @set
-
-	stxy @newhighlight
-	jsr toggle_highlight		; toggle off old highlight if it's on
-	ldxy @newhighlight
-
-@set:	stxy __edit_highlight_line
+	stxy __edit_highlight_line
+	jsr hl_erase			; clear highlight marker
 
 	jsr edit_current_file		; .A = current buffer's file ID
 	bcc @setfile
@@ -6745,27 +6726,105 @@ report_error = alert::show
 
 	lda #$01
 	sta __edit_highlight_en		; flag highlight as ON
-	sta highlight_status		; and flag highlight as on
 
-	; fall through to toggle_highlight
+	; display the mark on the row the line occupies
+	ldxy __edit_highlight_line
+	jsr edit_src2screen
+	bcc hl_mark			; .A = that row
+	rts
 .endproc
 
 ;*******************************************************************************
-; TOGGLE_HIGHLIGHT
-; Unhighlights the highlighted row if it's already highlighted or highlights
-; if it it isn't
-.proc toggle_highlight
-	lda __edit_highlight_en
-	beq @done		; highlight disabled
-
-	ldxy __edit_highlight_line
-	jsr edit_src2screen
-	bcs @done		; off screen
+; HL MARK
+; Moves the highlight mark to the given row
+; IN:
+;  - .A: row to display the mark on
+.proc hl_mark
+	cmp highlight_row
+	beq @done		; the mark is already on this row
+	pha
+	jsr hl_erase		; take it off the row it's on now
+	pla
+	sta highlight_row
 	jmp draw::rvs_underline
+@done:	rts
+.endproc
 
-@done:	lda #$00
-	sta highlight_status
-	rts
+;*******************************************************************************
+; HL REDRAW
+; Redraws the highlight row on the newly redrawn row containing the highlight
+; IN:
+;  - .A: the row that was redrawn (the caller already checked that it displays
+;                                 the highlighted line)
+.proc hl_redraw
+.ifndef hard8x8
+	jsr hl_rowgone		; redraw clobbered the highlight
+.endif
+	jmp hl_mark		; (text mode draws the mark in the gutter, not the row)
+.endproc
+
+;*******************************************************************************
+; HL ROWGONE
+; Clears the highlight mark if it was on the given row, whose contents have
+; just been destroyed by a redraw or clear.
+; IN:
+;  - .A: the row whose contents were destroyed
+; OUT:
+;  - .A: unchanged
+.proc hl_rowgone
+	cmp highlight_row
+	bne @done
+	ldx #HL_NONE
+	stx highlight_row
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; HL SCROLLED
+; Updates the row the highlight mark is displayed on after the rows in
+; [@start, @stop] were scrolled.  The mark is displayed in the contents of the
+; row it is on, which the scroll moves (draw::scrollcolors carries the hard8x8
+; gutter marker along with them), so only the recorded row changes here.
+; Does nothing if the mark is not on a row that moved, and drops the mark if
+; its row was scrolled out of the range.
+; IN:
+;  - .A: the row the mark moved to (its row -/+ the number of rows scrolled)
+.proc hl_scrolled
+@start=r1
+@stop=r2
+	; HL_NONE ($ff) is > every row, so undisplayed mark fails this check
+	ldx highlight_row
+	cpx @start
+	bcc @done		; above the scrolled rows: it didn't move
+
+	cpx @stop
+	beq :+
+	bcs @done		; below the scrolled rows: it didn't move
+
+:	cmp @start
+	bcc @off		; scrolled off the top of the range
+	cmp @stop
+	beq @set
+	bcc @set
+@off:	lda #HL_NONE		; its row was scrolled away
+@set:	sta highlight_row
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; HL ERASE
+; Clears the highlight mark off the row it is displayed on (if any).
+.proc hl_erase
+	lda highlight_row
+	cmp #HL_NONE
+	beq @done		; the mark isn't on the display
+	ldx #HL_NONE
+	stx highlight_row
+.ifdef hard8x8
+	txa
+.endif
+	jmp draw::rvs_underline	; toggle the mark back off its row
+@done:	rts
 .endproc
 
 ;*******************************************************************************

@@ -316,17 +316,17 @@ savebank2: .byte 0
 ;*******************************************************************************
 ; CTRLTAB
 ; CTRL keyboard decode table to allow use of CTRL+{key} bindings.
-; Used for K_GOTO_BUFF[N], K_NEXT_BUFF, and K_PREV_BUFF
+; maps buffer, window, and comment banner navigation keys
 ctrltab:
 	.byte K_GOTO_BUFF1,K_GOTO_BUFF3,K_GOTO_BUFF5,K_GOTO_BUFF7
 	.byte $ff,$ff,$ff,$ff			; 9 + pound DEL
 	.byte $ff,$ff,$ff,$ff,$09,$ff,$ff,$ff	; larrow W R Y I(TAB) P * RETURN
-	.byte $ff,$ff,$ff,$ff,$ff,K_NEXT_BUFF	; CTRL A D G J L
+	.byte $ff,$ff,$ff,$ff,K_WIN_DOWN,K_NEXT_BUFF ; CTRL A D G J L
 	.byte K_NEXT_BANNER,$ff			; ; CRSR-R
 	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; STOP SHIFT X V N , / CRSR-D
 	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; SPACE Z C B M . SHIFT F1
 	.byte $ff,$ff,$ff,K_PREV_BUFF		; C= S F H
-	.byte $ff,K_PREV_BANNER,$ff,$ff		; K : = F3
+	.byte K_WIN_UP,K_PREV_BANNER,$ff,$ff	; K : = F3
 	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; Q E T U O @ uarrow F5
 	.byte K_GOTO_BUFF2,K_GOTO_BUFF4,K_GOTO_BUFF6,K_GOTO_BUFF8
 	.byte $ff,$ff,$ff,$ff			; 0 - HOME F7

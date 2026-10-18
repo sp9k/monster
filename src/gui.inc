@@ -6,6 +6,7 @@
 .import __gui_cursave_x
 .import __gui_cursave_y
 .import __gui_enter
+.import __gui_handlekey
 .import __gui_grow
 .import __gui_maximize
 .import __gui_open
@@ -24,6 +25,7 @@
 	cursave_x	= __gui_cursave_x
 	cursave_y	= __gui_cursave_y
 	enter		= __gui_enter
+	handlekey	= __gui_handlekey
 	grow		= __gui_grow
 	maximize	= __gui_maximize
 	open		= __gui_open

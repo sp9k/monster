@@ -63,11 +63,8 @@ CMD_BUFF: .res LINESIZE+1
 .export __monitor_windowed
 __monitor_windowed: .byte 0
 
-; set (by the key handler) when the user asks to cycle to the next window
-cyclereq: .byte 0
-
-; GUI_RET_CLOSE or GUI_RET_CLOSEALL requested by the key handler (0 if none)
-closereq: .byte 0
+; pending window action with bit 7 set (0 if none)
+winreq: .byte 0
 
 .segment "CONSOLE_VARS"
 
@@ -150,7 +147,9 @@ __monitor_window:
 
 ;*******************************************************************************
 ; GETCH
-; Handles the key (called by the keyboard gets handler)
+; handles the key read by the monitor input handler
+; OUT:
+;   - .A: input key (0 if handled) or K_QUIT to end input
 .export __monitor_getch
 .proc __monitor_getch
 	jsr key::getui
@@ -163,9 +162,7 @@ __monitor_window:
 	cmp #K_MON_CLEAR
 	bne :+
 	CALL FINAL_BANK_MONITOR, __monitor_clear
-	lda zp::cury		; (clear reset the linebuffer to a prompt)
-	jsr text::drawline
-	jmp @handled		; text::drawline leaves garbage in .A
+	jmp @redrawline		; clear reset the linebuffer to a prompt
 
 :	cmp #K_WIN_GROW
 	bne :+
@@ -185,30 +182,22 @@ __monitor_window:
 	jsr text::drawline	; redraw the input line being edited
 	jmp @handled
 
-:	cmp #K_RESTORE
+:	cmp #K_QUIT
+	beq @done		; RUN/STOP cancels only the monitor input
+	cmp #K_WIN_CLOSE
 	bne :+
-	lda #GUI_RET_CLOSEALL	; if RESTORE- flag to close EVERYTHING
-	bne @close
-
-:	cmp #K_WIN_CLOSE
-	bne :+
-	lda __monitor_windowed
-	beq @handled		; not in a window: nothing to close
-	lda #GUI_RET_CLOSE
-@close:	sta closereq
-	lda #K_QUIT		; force the input to end
-	rts
-
-:	cmp #K_SWAP_WINS
-	bne :+
-	inc cyclereq
+	ldx __monitor_windowed
+	beq @handled		; no window to close
+:	jsr gui::handlekey
+	bcc :+
+	ora #$80		; mark even GUI_RET_QUIT as a pending action
+	sta winreq
 	lda #K_QUIT		; force the input to end
 	rts
 
 :	cmp #K_SWAP_USERMEM_TUI
 	bne @done
 	jsr dbg::swapusermem
-	jmp @handled
 
 @handled:
 	lda #$00
@@ -253,7 +242,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @count:	inc __monitor_rows_printed
 
 	; check if we need to scroll
-:	lda line
+	lda line
 	cmp #HEIGHT-1
 	bcc @print
 
@@ -413,8 +402,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta line
 	sta __monitor_rows_printed
 	sta __monitor_windowed
-	sta cyclereq
-	sta closereq
+	sta winreq
 	sta wintop
 	sta winoff
 	lda #HEIGHT-1
@@ -474,15 +462,15 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ;*******************************************************************************
 ; REENTER
 ; Activates the monitor without clearing the screen.
-; Returns a GUI_RET_x code for the window manager in .A
+; OUT:
+;   - .A: GUI_RET_x code for the window manager
 .export __monitor_reenter
 .proc __monitor_reenter
 @err=r0
 	; initialize QUIT and INT signal states
 	lda #$00
 	sta __monitor_quit
-	sta cyclereq
-	sta closereq
+	sta winreq
 
 	; set the interface so the debugger knows to return to the monitor
 	; and not editor (GUI)
@@ -515,24 +503,18 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	CALLMAIN edit::gets
 	bcc @submit
 
-	; did user ask to close the window?
-	lda closereq
-	beq @chkcycle
-	pha
-	lda #$00
-	sta closereq
-	sta __monitor_windowed	; the window is closing
-	sta dbg::interface	; exit TUI interface (if debugging)
-	pla			; restore closereq (CLOSE or CLOSE ALL)
-	jmp @leave
-
-@chkcycle:
-	; did user prompt us to cycle windows?
-	lda cyclereq
-	beq @clrline
-	lda #$00
-	sta cyclereq
-	lda #GUI_RET_CYCLE
+	; return the pending action to the window manager
+	lda winreq
+	bpl @clrline
+	and #$7f
+	ldx #$00
+	stx dbg::interface
+	cmp #GUI_RET_CLOSE
+	beq @close
+	cmp #GUI_RET_CLOSEALL
+	bne @leavewin
+@close:	stx __monitor_windowed
+@leavewin:
 	jmp @leave
 
 @submit:
@@ -616,6 +598,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	; the window manager restores the editor's state
 	lda #GUI_RET_QUIT
+	sta dbg::interface
 
 @leave:	; restore expression parsing so that whitespace is not considered
 	; a separator
