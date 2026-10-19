@@ -117,6 +117,7 @@ __key_restore_pending: .byte 0
 	.byte $c0	; Shift *
 	.byte $94	; SHIFT DEL (INS)
 	.byte $8d	; SHIFT RETURN
+	.byte $83	; SHIFT RUN/STOP
 .ifdef soft4x8
 	.byte $5f	; Arrow left
 	;.byte $xx	; Shift left-arrow TODO: ?
@@ -128,6 +129,7 @@ __key_restore_pending: .byte 0
 	.byte 125	; }
 	.byte $14	; DEL
 	.byte $0d	; RETURN
+	.byte K_QUIT	; RUN/STOP
 .ifdef soft4x8
 	.byte 96	; `
 	;.byte 126	; ~
@@ -247,15 +249,13 @@ __key_restore_pending: .byte 0
 ;  - .C: set if the given key is 0-9
 .export __key_isdec
 .proc __key_isdec
-	cmp #'0'
-	bcc @done
 	cmp #'9'+1
 	bcs @notdec
-	sec
+	cmp #'0'
 	rts
 @notdec:
 	clc
-@done:	rts
+	rts
 .endproc
 
 ;*******************************************************************************
