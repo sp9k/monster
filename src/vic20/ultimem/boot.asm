@@ -4,6 +4,10 @@
 .include "../../kernal.inc"
 .include "../../macros.inc"
 
+.ifndef JIFFYDOS
+JIFFYDOS = 0
+.endif
+
 .import __IRQ_LOAD__
 .import __IRQ_RUN__
 .import __IRQ_SIZE__
@@ -24,6 +28,10 @@
 .import __ULTICFG_LOAD__
 .import __ULTICFG_RUN__
 .import __ULTICFG_SIZE__
+
+.if JIFFYDOS
+.import __JIFFY_GATE_LOAD__, __JIFFY_GATE_RUN__, __JIFFY_GATE_SIZE__
+.endif
 
 .import __DATA_LOAD__
 .import __DATA_RUN__
@@ -229,6 +237,10 @@ __ultimem_clear_view_shared:
 ; RELOCS
 ; Table of start and target addresses for segments that need to be relocated
 relocs:
+.if JIFFYDOS
+.word __JIFFY_GATE_LOAD__, __JIFFY_GATE_RUN__, __JIFFY_GATE_SIZE__
+.endif
+
 ; BANK CODE
 .word __BANKCODE_LOAD__, __BANKCODE_RUN__, __BANKCODE_SIZE__
 

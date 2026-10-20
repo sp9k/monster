@@ -76,6 +76,7 @@ VMEM_BLK5_BANK     = 33	; $a000-$c000 ($2000 bytes)
 FINAL_BANK_SOURCE0 = 34	; pool of source banks shared by all buffers (34-60)
 SOURCE_POOL_SIZE   = 27
 ERRLOG_RAM_BANK    = 61
+JIFFY_ROM_BANK     = $20
 ERRLOG_ROM_BANK    = 28
 FLASH_CHECK_RAM_BANK = 95 ; scratch RAM for disk validation & directory browsing
 

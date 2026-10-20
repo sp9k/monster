@@ -1,6 +1,9 @@
 TARGET ?= vic20
 REGION ?= NTSC
 
+# embedded VIC-20 serial bank; opt in while drive compatibility is validated
+JIFFYDOS ?= 0
+
 SCREEN_MODE ?= soft4x8
 #SCREEN_MODE ?= hard8x8
 
@@ -36,7 +39,7 @@ ASMFLAGS=--asm-define $(TARGET) --asm-define $(REGION) --asm-define $(SCREEN_MOD
 ifeq ($(TARGET),vic20)
 # the vic20 build always targets the UltiMem expansion
 CART_FLAGS=--version $(VERSION)
-ASMFLAGS+=--asm-define ultimem
+ASMFLAGS+=--asm-define ultimem --asm-define JIFFYDOS=$(JIFFYDOS)
 # UltiMem Profile extension (1) or stock ULTIMEM (0)
 #ULTIMEM_P?=1
 ULTIMEM_P?=0
