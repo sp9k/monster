@@ -33,6 +33,7 @@
 .import __INTS_SIZE__
 
 .import PROGRAM_STACK_START
+.import prog00
 
 ;*******************************************************************************
 ; BRK/NMI HANDLER ADDRESSES
@@ -117,13 +118,10 @@ save9002: .byte 0
 	lda #$7f
 	sta $911e			; disable NMI's
 
-	; initalize RAM ($00-$400)
+	; clear stack
 	lda #$00
 	tax
-:	sta $00,x
-	sta $100,x
-	sta $200,x
-	sta $300,x
+:	sta $100,x
 	dex
 	bne :-
 
@@ -159,12 +157,14 @@ save9002: .byte 0
 	sta sim::reg_y
 	sta sim::reg_p
 
-	; initialize debug BRK/NMI vectors
+	; initialize BRK/NMI vectors
+	jsr ultim::select_prog00
 	ldx #DBGVECS_SIZE-1
 :	lda DBGVECS,x
-	sta dbg::progvecs,x
+	sta prog00+DBGVECS+($a000-$2000),x
 	dex
 	bpl :-
+	jsr ultim::reset_blk5
 
 	ldxy #@save_done	; need to pass return address
 	jmp dbg::save_user_zp

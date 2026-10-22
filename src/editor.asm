@@ -265,6 +265,8 @@ guidismissall = gui::dismissall
 	inx			; ldx #$00
 	stx zp::banksp		; reset "far" (bank byte) stack
 	stx zp::gendebuginfo
+	stx mode		; reset mode to COMMAND
+
 	jsr errlog::reset
 	jsr enter_command
 

@@ -20,6 +20,7 @@
 .include "../kernal.inc"
 .include "../key.inc"
 .include "../labels.inc"
+.include "../layout.inc"
 .include "../log.inc"
 .include "../macros.inc"
 .include "../memory.inc"
@@ -66,7 +67,7 @@
 .else ; CART
 .segment "CART"
 .word cart_start	; Entry point for power up
-.word edit::init	; Entry point for warm start (RESTORE)
+.word cart_start	; entry point for KERNAL warm start (RESTORE)
 
 ; cartridge header
 .byte "a0",$C3,$C2,$CD	; "A0CBM"
@@ -75,17 +76,46 @@
 .assert * = $a000+FIRMWARE_OFFSET, error, "firmware header moved"
 .include "../version.asm"
 
-; copy cart binary ($0000-$6000) to RAM
-cart_start:
+;*******************************************************************************
+; CART START
+; Initializes KERNAL and hardware
+.proc cart_start
+	sei
+	cld
 	ldx #$ff
 	txs
 
-	jsr $fd52	; init vectors
-	jsr $fdf9	; init I/O
-
-	sei
+	; Disable both VIAs
 	lda #$7f
 	sta $911e
+	sta $912e
+	bit $9111	; ack pending NMI
+
+	; reset KERNAL tables
+	lda #$00
+	ldx #$00
+:	sta $0200,x
+	sta $0300,x
+	inx
+	bne :-
+
+	; clear $90-$ce
+	ldx #$ce
+:	sta $00,x
+	dex
+	cpx #$90
+	bcs :-
+
+	; set default output device to 3 (screen)
+	lda #$03
+	sta zp::io_output_dev
+
+	jsr $fd52	; init vectors
+	jsr $fdf9	; init I/O
+	lda #$7f
+	sta $911e
+	sta $912e
+	jsr $e5c3	; init VIC registers
 
 	lda #DEFAULT_900F
 	sta $900f		; white/white
@@ -98,6 +128,7 @@ cart_start:
 .ifdef ultimem
 	jmp ultim::init
 .endif
+.endproc
 
 ;-----------------------
 .segment "SETUP"
@@ -221,23 +252,19 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 	sta dbg::numbreakpoints	; clear breakpoints
 	sta watch::num		; clear watches
 
+.ifndef ultimem
 	lda #$4c
 	sta zp::bankjmpaddr	; write the JMP instruction
+.endif
 
 	sei
 
 	; clear row colors
-	ldx #24-1
+	ldx #SCREEN_HEIGHT-1
 :	lda #DEFAULT_900F
 	sta mem::rowcolors,x
 	lda #COLOR_NORMAL
 	sta mem::rowcolors_idx,x
-	lda #$00
-	sta mem::breakpoint_rows,x
-
-.ifdef hard8x8
-	sta mem::highlight_rows,x	; clear current-line marker flags
-.endif
 	dex
 	bpl :-
 
@@ -308,6 +335,9 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 
 @init:
 	lda #$00
+.ifdef CART
+	sta mem::init_sig	; invalidate recovery until initialization completes
+.endif
 	sta dbg::user_program_active
 	jsr src::init
 	jsr src::new
@@ -318,8 +348,8 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 
 	lda #$00
 	sta mem::linebuffer
-	CALL FINAL_BANK_MONITOR, mon::init
 	jsr run::clr		; init user state (run BASIC startup proc)
+	CALL FINAL_BANK_MONITOR, mon::init
 
 @enter:
 .ifndef TEST
@@ -357,7 +387,7 @@ RECOVER_COL = (LINESIZE - .strlen(RECOVER_MSG)) / 2 - 1
 .PUSHSEG
 .RODATA
 init_sig:
-	.byte 6,5,6,0	; magic value to detect reset for recovery
+	.byte $06,$05,$06,$00
 init_sig_len=*-init_sig
 
 recover_reset:
@@ -383,8 +413,17 @@ recover_reset:
 
 	lda #$00
 	sta zp::banksp
-	sta zp::numfiles
-	sta $c6
+
+	; clear $90-$ce
+	ldx #$ce
+:	sta $00,x
+	dex
+	cpx #$90
+	bcs :-
+
+	; set default output device (screen)
+	lda #$03
+	sta zp::io_output_dev
 	lda #DEFAULT_DEVICE
 	sta zp::device
 	lda #MODE_COMMAND

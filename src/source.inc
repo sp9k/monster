@@ -57,6 +57,7 @@
 .import __src_set
 .import __src_setflags
 .import __src_start
+.import __src_sp
 
 ;*******************************************************************************
 ; CONSTANTS
@@ -125,6 +126,7 @@ GAPSIZE = $100	; size of gap in gap buffer
 	setbuff          = __src_set
 	setflags         = __src_setflags
 	start            = __src_start
+	sp               = __src_sp
 	up               = __src_up
 	upn              = __src_upn
 .endscope

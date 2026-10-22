@@ -1,4 +1,8 @@
 .include "../../config.inc"
+.include "../../edit.inc"
+.include "../../memory.inc"
+.include "../../monitor.inc"
+.include "../../source.inc"
 .include "banks.inc"
 .include "../ram.inc"
 .include "../../kernal.inc"
@@ -40,6 +44,12 @@ JIFFYDOS = 0
 .import __BSS_LOAD__
 .import __BSS_SIZE__
 .import __VIEW_SHARED_RUN__, __VIEW_SHARED_SIZE__
+.import __SHAREBSS_RUN__, __SHAREBSS_SIZE__
+.import __SHAREBSS2_RUN__, __SHAREBSS2_SIZE__
+.import __BSS_NOINIT_RUN__, __BSS_NOINIT_SIZE__
+.import __SRCVARS_RUN__, __SRCVARS_SIZE__
+.import __LINEBUFF_RUN__, __LINEBUFF_SIZE__
+.import __ultimem_bank
 
 .import enter
 .ifdef ultimem_p
@@ -92,6 +102,16 @@ JIFFYDOS = 0
 .proc __ultimem_init
 @cnt=r7
 @relocs=r8
+	; restart the unlock sequence and expose hidden UltiMem registers
+	bit $9ff0
+	bit $9f55
+	bit $9faa
+	bit $9f01
+
+	; turn on LED
+	lda #$01
+	sta $9ff0
+
 	; configure Ultimem so that RAM123 and IO2/3 use RAM0
 	lda #$3f
 	sta $9ff1
@@ -103,10 +123,11 @@ JIFFYDOS = 0
 	sta $9ff6	; also set I/O to bank 0
 	sta $9ff7
 
-	; init MSB's of bank selection registers and I/O bank
+	; clear bank high bytes and select the boot ROM in BLK5
 	sta $9ff9
 	sta $9ffb
 	sta $9ffd
+	sta $9ffe
 	sta $9fff
 
 	; Map BLK1/2/3 to the MAIN bank's ROM
@@ -157,6 +178,18 @@ JIFFYDOS = 0
 	inc @relocs+1
 :	dec @cnt
 	bne @reloc
+
+	jsr clear_cold_state
+
+	; reset shared UI state
+	lda #$00
+	sta edit::debugging
+	sta edit::sigint
+	sta mon::windowed
+	sta mem::coloron
+	sta src::sp
+	lda #CUR_BLINK_SPEED
+	sta zp::curtmr
 
 	; initialize the JMP vector
 	lda #$4c		; JMP
@@ -227,11 +260,102 @@ __ultimem_clear_view_shared:
 	; activate the main CODE bank and begin the app
 	lda #$00
 	sta zp::banksp
+	lda #FINAL_BANK_MAIN
+	sta __ultimem_bank
 	lda #$4c		; JMP
 	sta zp::jmpaddr
 	sta zp::bankjmpaddr
 	JUMP FINAL_BANK_MAIN, enter
 .endproc
+
+;*******************************************************************************
+; CLEAR COLD STATE
+; Clears shared state from "cold" (non-reset) state
+.proc clear_cold_state
+@dst=r0
+@size=r2
+	; see if signature exists to determine if cold reset needed
+	ldx #<(boot_init_sig_len-1)
+:	lda boot_init_sig,x
+	cmp mem::init_sig,x
+	bne @cold
+	dex
+	bpl :-
+	rts
+
+@cold:	ldx #$00
+@l0:	; get base and size of a region of state to clear/init
+	lda cold_regions,x
+	sta @dst
+	lda cold_regions+1,x
+	sta @dst+1
+	lda cold_regions+2,x
+	sta @size
+	lda cold_regions+3,x
+	sta @size+1
+	jsr clear_region
+
+	; move to next region's pointers
+	txa
+	clc
+	adc #$04
+	tax
+	cpx #cold_regions_size
+	bne @l0
+
+	rts
+.endproc
+
+;*******************************************************************************
+; CLEAR REGION
+; Clears the givven range
+; IN:
+;  - r0/r1: address to clear
+;  - r2/r3: size in bytes to clear
+.proc clear_region
+@dst=r0
+@size=r2
+	ldy #$00
+	lda @size+1
+	beq @tail		; skip to last page if MSB is 0
+
+	lda #$00
+@page:	sta (@dst),y
+	iny
+	bne @page
+	inc @dst+1
+	dec @size+1
+	bne @page
+
+@tail:	; clear the final page
+	ldy @size
+	beq @done
+	lda #$00
+:	dey
+	sta (@dst),y
+	cpy #$00
+	bne :-
+
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; BOOT INIT SIGNATURE
+; expected recovery signature in the boot ROM bank, matching init_sig
+boot_init_sig:
+	.byte $06,$05,$06,$00
+boot_init_sig_len=*-boot_init_sig
+
+;*******************************************************************************
+; COLD REGIONS
+; Addresses and sizes to clear on "cold" boot
+cold_regions:
+.word __SHAREBSS_RUN__, __SHAREBSS_SIZE__
+.word __SHAREBSS2_RUN__, __SHAREBSS2_SIZE__
+.word __BSS_NOINIT_RUN__, __BSS_NOINIT_SIZE__
+.word __SRCVARS_RUN__, __SRCVARS_SIZE__
+.word __LINEBUFF_RUN__, __LINEBUFF_SIZE__
+cold_regions_size=*-cold_regions
 
 ;*******************************************************************************
 ; RELOCS
