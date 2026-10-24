@@ -5,6 +5,8 @@
 ;*******************************************************************************
 
 .include "../alert.inc"
+.include "../border.inc"
+.include "../draw.inc"
 .include "../key.inc"
 .include "../layout.inc"
 .include "../alert-layout.inc"
@@ -12,6 +14,7 @@
 .include "../memory.inc"
 .include "../ram.inc"
 .include "../screen.inc"
+.include "../text.inc"
 .include "../zeropage.inc"
 
 .include "flashcheck.inc"
@@ -36,6 +39,14 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 .assert __FLASH_RODATA_RUN__ = __FLASH_CODE_RUN__ + __FLASH_CODE_SIZE__, lderror, "flasher RAM must be contiguous"
 .assert __FLASH_BSS_RUN__ + __FLASH_BSS_SIZE__ <= $1e00, lderror, "flasher overlaps KERNAL screen"
 .assert $1000 + FLASH_COPY_PAGES*$100 <= $1e00, lderror, "flasher copy overlaps KERNAL screen"
+
+;*******************************************************************************
+; CONFIRMATION LAYOUT
+CONFIRM_HEADING_ROW = (SCREEN_HEIGHT-4)/2
+CONFIRM_TOP_ROW     = CONFIRM_HEADING_ROW-1
+
+.segment "FLASH_CHECK_BSS"
+heading_color:	.byte 0
 
 .segment "FLASH_LAUNCH"
 
@@ -83,6 +94,20 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 
 @ready:
 	; copy alert message to shared RAM for display from MAIN bank
+	ldx #current_end-current-1
+@current:
+	lda current,x
+	sta mem::linebuffer+ALERT_TEXT_LEN+1,x
+	dex
+	bpl @current
+
+	ldx #$04
+@installed:
+	lda flashcheck::installed,x
+	sta mem::linebuffer+ALERT_TEXT_LEN+1+current_version-current,x
+	dex
+	bpl @installed
+
 	ldx #message_end-message-1
 @message:
 	lda message,x
@@ -93,7 +118,7 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 	ldx #4
 @version:
 	lda flashcheck::filename+7,x
-	sta mem::linebuffer+6,x
+	sta mem::linebuffer+message_version-message,x
 	dex
 	bpl @version
 
@@ -107,13 +132,12 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 	ldxy #mem::linebuffer2
 	stxy alert::prompt
 	jsr center_message
-	ldxy #mem::linebuffer
-	CALLMAIN alert::open
+	jsr open_confirmation
 
 	CALLMAIN key::flush
 	CALLMAIN key::waitch
 	pha
-	CALLMAIN alert::close
+	jsr close_confirmation
 	pla
 
 	and #$7f
@@ -198,6 +222,65 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 .segment "FLASH_LAUNCH"
 
 ;*******************************************************************************
+; OPEN CONFIRMATION
+; Displays the confirmation modal. This leverages the alert modal code with
+; some modifications.
+.proc open_confirmation
+	ldxy #mem::linebuffer
+	CALLMAIN alert::open
+
+	; save an additional row's state (this modal is bigger than the default)
+	lda mem::rowcolors_idx+CONFIRM_TOP_ROW
+	sta heading_color
+	lda #CONFIRM_TOP_ROW
+	CALLMAIN scr::save_row
+	ldx #CONFIRM_TOP_ROW
+	CALLMAIN draw::resetline
+
+	; configure bounds for printing modal
+	lda #ALERT_LCOL
+	sta text::puts_start
+	lda #ALERT_RCOL+1
+	sta text::puts_stop
+
+	; hack in the installed version as the "top border" for the alert code
+	lda #CONFIRM_TOP_ROW
+	ldx #BORDER_TL
+	ldy #BORDER_TR
+	CALLMAIN alert::border
+
+	; draw the real top border for this modal
+	lda #ALERT_TEXT_COL
+	sta alert::textcol
+	ldxy #mem::linebuffer+ALERT_TEXT_LEN+1
+	lda #CONFIRM_HEADING_ROW
+	CALLMAIN alert::textrow
+
+	; restore normal text bounds
+	lda #$00
+	sta text::puts_start
+	lda #SCREEN_WIDTH
+	sta text::puts_stop
+	rts
+.endproc
+
+;*******************************************************************************
+; CLOSE CONFIRMATION
+; Restores the area that was used by the confirmation dialog
+.proc close_confirmation
+	; close the default alert modal area
+	CALLMAIN alert::close
+
+	; restore one more row (this alert modal uses an extra)
+	lda #CONFIRM_TOP_ROW
+	CALLMAIN scr::restore_row
+
+	lda heading_color
+	ldx #CONFIRM_TOP_ROW
+	JUMPMAIN draw::hline
+.endproc
+
+;*******************************************************************************
 ; CENTER MESSAGE
 ; Pads the message in the linebuffer so that it is centered for display in
 ; the alert modal.
@@ -249,7 +332,17 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 ;*******************************************************************************
 ; ALERT STRINGS
 ; Messages and prompts (copied to shared RAM before calling the MAIN bank)
-message:		.byte "flash 00000?", 0
+.define CURRENT_LABEL "installed "
+current:
+	.repeat .max(0, (ALERT_TEXT_LEN-.strlen(CURRENT_LABEL)-5)/2)
+	.byte ' '
+	.endrepeat
+	.byte CURRENT_LABEL
+current_version:
+	.byte "00000", 0
+current_end:
+message:		.byte "update to "
+message_version:	.byte "00000?", 0
 message_end:
 prompt:			.byte "y: flash  n: cancel", 0
 prompt_end:

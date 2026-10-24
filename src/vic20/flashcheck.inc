@@ -7,6 +7,7 @@ VIC20_FLASHCHECK_INC = 1
 .import __flashcheck_close_update_file
 .import __flashcheck_filename
 .import __flashcheck_device
+.import __flashcheck_installed
 .import __flashcheck_name_length
 
 .scope flashcheck
@@ -16,6 +17,7 @@ VIC20_FLASHCHECK_INC = 1
 	close    = __flashcheck_close_update_file
 	filename = __flashcheck_filename
 	device   = __flashcheck_device
+	installed = __flashcheck_installed
 	namelen  = __flashcheck_name_length
 .endscope
 

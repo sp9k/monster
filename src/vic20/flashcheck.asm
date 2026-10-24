@@ -32,6 +32,8 @@ header:			.res 22
 __flashcheck_filename:	.res 16
 .export __flashcheck_device
 __flashcheck_device:	.byte 0
+.export __flashcheck_installed
+__flashcheck_installed:	.res 5
 check_file:		.byte 0
 checked_blocks:		.byte 0
 file_open:		.byte 0
@@ -183,6 +185,7 @@ image_last:		.word 0
 	dex
 	bpl @template
 
+	; init version string to version 00000
 	ldx #4
 @zero:	lda #'0'
 	sta __flashcheck_filename+7,x
@@ -206,6 +209,8 @@ image_last:		.word 0
 	dex
 	bpl @version
 
+	; copy the version string from ROM to the filename to check for updates
+	; against
 	ldx #4
 @copy_version:
 	lda INSTALLED_ROM_BASE+FIRMWARE_VERSION,x
@@ -214,9 +219,12 @@ image_last:		.word 0
 	bpl @copy_version
 
 @directory:
-	lda #<msg_installed
-	ldy #>msg_installed
-	jsr __flashcheck_printz
+	ldx #$04
+@installed:
+	lda __flashcheck_filename+7,x
+	sta __flashcheck_installed,x
+	dex
+	bpl @installed
 
 	lda #$00
 	sta found_update
@@ -575,7 +583,6 @@ filename_template:	.byte "MONSTER00000.BIN"
 cart_signature:		.byte "A0", $c3, $c2, $cd
 update_magic:		.byte "MUP1"
 directory_name:		.byte "$"
-msg_installed:		.byte "INSTALLED ", 0
 msg_available:		.byte "UPDATE    ", 0
 msg_searching:		.byte "CHECKING FOR UPDATE", $0d, 0
 msg_current:		.byte "NO NEWER VERSION", $0d, 0
