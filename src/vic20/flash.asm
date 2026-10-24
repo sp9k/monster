@@ -6,6 +6,8 @@
 
 .include "../alert.inc"
 .include "../key.inc"
+.include "../layout.inc"
+.include "../alert-layout.inc"
 .include "../macros.inc"
 .include "../memory.inc"
 .include "../ram.inc"
@@ -59,6 +61,7 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 
 	ldxy #mem::linebuffer2
 	stxy alert::prompt
+	jsr center_message
 	ldxy #mem::linebuffer
 	CALLMAIN alert::open
 
@@ -71,15 +74,15 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 	plp
 	bcc @ready
 
-	; The validator left the reason in shared RAM. Stay in Monster.
+	; linebuffer contains the validation error; center it
+	jsr center_message
 	ldxy #mem::linebuffer
 	CALLMAIN alert::show
 	clc
 	rts
 
 @ready:
-	; The alert runs in MAIN. Supply its strings through shared RAM so the
-	; bank switch cannot hide them. Alert drawing has its own row buffer.
+	; copy alert message to shared RAM for display from MAIN bank
 	ldx #message_end-message-1
 @message:
 	lda message,x
@@ -103,6 +106,7 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 
 	ldxy #mem::linebuffer2
 	stxy alert::prompt
+	jsr center_message
 	ldxy #mem::linebuffer
 	CALLMAIN alert::open
 
@@ -194,9 +198,58 @@ FLASH_COPY_PAGES = (FLASH_COPY_SIZE + $ff) / $100
 .segment "FLASH_LAUNCH"
 
 ;*******************************************************************************
+; CENTER MESSAGE
+; Pads the message in the linebuffer so that it is centered for display in
+; the alert modal.
+; IN:
+;  - mem::linebuffer: 0-terminated message
+; OUT:
+;  - mem::linebuffer: updated centered message
+.proc center_message
+@padding=r0
+	ldx #$00
+
+	; get length of the message
+@len:	lda mem::linebuffer,x
+	beq @center			; empty -> done
+	inx
+	cpx #ALERT_TEXT_LEN
+	bcc @len
+	rts
+
+@center:
+	; .Y = (TEXT_LEN - padding ) / 2 + padding
+	stx @padding
+	lda #ALERT_TEXT_LEN
+	sec
+	sbc @padding
+	lsr
+	beq @done		; if nothing to pad -> done
+	sta @padding
+	txa
+	clc
+	adc @padding
+	tay
+
+	; move the message and terminator to centered position
+@shift:	lda mem::linebuffer,x
+	sta mem::linebuffer,y
+	dey
+	dex
+	bpl @shift
+
+	; clear padded region before the message
+	lda #' '
+@fill:	sta mem::linebuffer,y
+	dey
+	bpl @fill
+@done:	rts
+.endproc
+
+;*******************************************************************************
 ; ALERT STRINGS
-; Messages and prompts copied to shared RAM before calling the MAIN bank.
-message:		.byte "flash 00000? save work", 0
+; Messages and prompts (copied to shared RAM before calling the MAIN bank)
+message:		.byte "flash 00000?", 0
 message_end:
 prompt:			.byte "y: flash  n: cancel", 0
 prompt_end:
