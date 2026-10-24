@@ -1350,7 +1350,7 @@ range:
 
 ;*******************************************************************************
 ; STEP
-; Steps to the next instruction while debugging
+; Steps to the next instruction
 .proc step
 	CALLMAIN dbg::step
 	jsr mon::update_pc_view		; follow the PC in the source view
@@ -1361,8 +1361,7 @@ range:
 
 ;*******************************************************************************
 ; STEP_OVER
-; Steps over the next instruction while debugging.  Subroutines (JSR) are
-; treated as one instruction
+; Steps over the next instruction.  Subroutines (JSR) are treated as one
 ; instruction
 .proc step_over
 	CALLMAIN dbg::step_over
@@ -1888,30 +1887,6 @@ inline_proc hextostr, util::hextostr
 :	ldxy #$100
 	jsr mon::puts
 	RETURN_OK
-.endproc
-
-;*******************************************************************************
-; DEBUGGING
-; Checks if the user is currently debugging a program.
-; Some commands are only valid while debugging
-; OUT:
-;  - .C: set if the user is debugging a program
-.proc debugging
-	; get the debugging flag
-	lda edit::debugging
-	bne :+
-	ldxy #@not_debugging_msg
-	RENDER_STR
-	jsr mon::puts
-	clc		; flag NOT debugging
-	rts
-
-:	sec		; flag that we ARE debugging
-	rts
-.PUSHSEG
-.RODATA
-@not_debugging_msg: .byte "not debugging",0
-.POPSEG
 .endproc
 
 ;*******************************************************************************
@@ -2673,17 +2648,17 @@ commands:
 .byte "g",0	   ; goto given expression/address
 .byte "c",0	   ; compare the memory in the two given ranges
 .byte "h",0	   ; hunts the given address range for the given data
-.byte "r",0	   ; shows the contents of the registers (if debugging)
+.byte "r",0	   ; shows the contents of the registers
 .byte "d",0	   ; disassembles from the given address
 .byte "a",0	   ; assembles the given instruction given address
 .byte "m",0	   ; show contents of memory at the given address
 .byte "t",0	   ; start TRACE'ing
 .byte "x",0	   ; quit the debugger
-.byte "z",0	   ; step to the next instruction (if debugging)
-.byte "n",0	   ; step over the next instruction (if debugging)
-.byte "g",0	   ; go (continue program execution) (if debugging)
-.byte "bt",0	   ; backtrace (if debugging)
-.byte "zo",0	   ; step out of current subroutine (if debugging)
+.byte "z",0	   ; step to the next instruction
+.byte "n",0	   ; step over the next instruction
+.byte "g",0	   ; go (continue program execution)
+.byte "bt",0	   ; backtrace
+.byte "zo",0	   ; step out of current subroutine
 .byte "p",0	   ; poke a single byte to the given address
 .byte "s",0	   ; save memory
 .byte "files",0	   ; shows all files that are loaded in debug-info
