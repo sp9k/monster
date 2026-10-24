@@ -87,6 +87,18 @@ memformat_type: .byte MEM_FORMAT_DEFAULT
 .endmacro
 
 ;*******************************************************************************
+; DECADDR
+; decrements a monitor address consisting of a low word and a separate high byte
+.macro decaddr addr, high
+.local @word
+	lda addr
+	ora addr+1
+	bne @word
+	dec high
+@word:	decw addr
+.endmacro
+
+;*******************************************************************************
 ; CMPADDR
 ; Compares two monitor addresses, returning the same flags as CMPW.
 .macro cmpaddr addr, high, other, otherhigh
@@ -784,36 +796,71 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 ;*******************************************************************************
 ; MOVE
-; m <expr> <expr> <expr>
-; Moves the given range of memory to the specified destination address.
-; Example:
-;  `m $1000 $2000 $3000`
-; Will move the memory in [$1000, $2000) to the address $3000.
+; copies [start, end) to destination, preserving bytes when the ranges overlap
+; IN:
+;   - zp::line: start, exclusive end and destination expressions
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc move
 @start = zp::debuggertmp
 @end = zp::debuggertmp+2
 @target = zp::debuggertmp+4
 	jsr get_range
-	bcs @ret
+	jcs @ret
 
-	; get the target address
+	; validate destination and retain its exclusive end in expr::value
 	jsr eval_address
 	stxy @target
-	bcs @ret
+	jcs @ret
 	lda expr::value+2
 	sta target_hi
 	jsr check_move
-	bcs @ret
+	jcs @ret
 
 	cmpaddr @start, addr_hi, @end, stop_hi
+	jeq @done
+
+	; copy backward when source < destination < end
+	cmpaddr @start, addr_hi, @target, target_hi
+	bcs @forward
+	cmpaddr @target, target_hi, @end, stop_hi
+	bcs @forward
+
+	ldxy expr::value
+	stxy @target
+	lda expr::value+2
+	sta target_hi
+@backward:
+	lda mon::int
+	bne @done
+	decaddr @end, stop_hi
+	decaddr @target, target_hi
+	lda stop_hi
+	ldxy @end
+	jsr @copy
+	bcs @ret
+	cmpaddr @start, addr_hi, @end, stop_hi
+	bne @backward
 	beq @done
 
-	; move the data
-@l0:	lda mon::int
-	bne @done		; SIGINT, quit
+@forward:
+	lda mon::int
+	bne @done
 	lda addr_hi
-	sta access_hi
 	ldxy @start
+	jsr @copy
+	bcs @ret
+	incaddr @target, target_hi
+	incaddr @start, addr_hi
+	cmpaddr @start, addr_hi, @end, stop_hi
+	bne @forward
+@done:	clc
+@ret:	rts
+
+;-------------------------------------------------------------------------------
+; copy the byte at .A:.XY to the current destination
+@copy:	sta access_hi
 	jsr vmem_load
 	bcs @ret
 	pha
@@ -821,14 +868,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta access_hi
 	pla
 	ldxy @target
-	jsr vmem_store
-	bcs @ret
-	incaddr @target, target_hi
-	incaddr @start, addr_hi
-	cmpaddr @start, addr_hi, @end, stop_hi
-	bne @l0
-@done:	clc
-@ret:	rts
+	jmp vmem_store
 .endproc
 
 ;*******************************************************************************
@@ -1911,18 +1951,56 @@ inline_proc hextostr, util::hextostr
 
 ;*******************************************************************************
 ; EVAL
-; Calls "expr::eval" and returns
+; evaluates a fully resolved monitor argument using checked word arithmetic
 ; IN:
-;   - zp::line: the text for the expression to evaluate
+;   - zp::line: expression text
 ; OUT:
-;  - .A:       the size of the returned value in bytes or the error code
-;  - .XY:      the result of the evaluated expression
-;  - .C:       clear on success or set on failure
-;  - zp::line: updated to point beyond the parsed expression
+;   - .A:       size in bytes on success, or error code on failure
+;   - .XY:      evaluated word
+;   - .C:       set on error
+;   - zp::line: updated to point beyond the parsed expression
 .proc eval
+MAX_RESULT_BYTES = $02
+@result=r0
+	; save state used by expression parser that we need to override
+	lda zp::verify
+	pha
+	lda zp::pass
+	pha
+	lda expr::syntax_only
+	pha
+	lda asm::mode
+	pha
+
+	; temporarily force pass-2 non-verify for evaluation
+	lda #$00
+	sta zp::verify
+	sta expr::syntax_only
+	sta asm::mode
+	lda #$02
+	sta zp::pass		; eval as in pass 2 (require resolved symbols)
+
 	CALLMAIN expr::eval
+	sta @result
+
+	; restore saved assembly state
+	pla
+	sta asm::mode
+	pla
+	sta expr::syntax_only
+	pla
+	sta zp::pass
+	pla
+	sta zp::verify
+	lda @result
 	bcs @ret
-	cmp #$03
+
+	; require fully resolved result (kind == 0)
+	lda expr::kind
+	beq :+
+	RETURN_ERR ERR_UNRESOLVABLE_LABEL
+:	lda @result
+	cmp #MAX_RESULT_BYTES+1
 	bcc @ret
 	RETURN_ERR ERR_OVERSIZED_OPERAND
 @ret:	rts
