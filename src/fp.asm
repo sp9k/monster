@@ -79,7 +79,7 @@ FPP_UNARY   = 2		; do_unary:  above plus INT, SQRT, SIN, COS, LOG, EXP
 FPP_FORMAT  = 3		; do_format: MOVFM, FOUT
 FPP_COUNT   = 4
 
-ZPSAVE_MAX = 44		; the largest of the sets below (FPP_UNARY)
+ZPSAVE_MAX = 45		; the largest of the sets below (FPP_UNARY)
 
 ;*******************************************************************************
 ; IRQ SAFE
@@ -552,21 +552,21 @@ ZPRLEN .set 0
 .endmacro
 
 zpranges:
-zpr_build:				; 25 bytes
-	ZPR $22,8			; misc temps and the product area
+zpr_build:				; 26 bytes
+	ZPR $22,9			; misc temps and the product area
 	ZPR $56,1			; FAC temp store
 	ZPR $61,16			; FAC1, FAC2, sign compare, rounding
 	ZPREND
-zpr_binop:				; 26 bytes
+zpr_binop:				; 27 bytes
 	ZPR $0d,1			; GIVAYF, via do_compare
-	ZPR $22,8
+	ZPR $22,9
 	ZPR $56,1
 	ZPR $61,16
 	ZPREND
-zpr_unary:				; 44 bytes
+zpr_unary:				; 45 bytes
 	ZPR $07,1
 	ZPR $12,1			; comparison flag, used by SIN/COS
-	ZPR $22,8
+	ZPR $22,9
 	ZPR $4e,5			; the transcendentals pack FAC1 into $4e,
 	ZPR $56,29			; ..$72: $57 and $5c as well, then FAC1/2
 	ZPREND

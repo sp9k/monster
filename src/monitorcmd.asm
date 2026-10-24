@@ -10,8 +10,10 @@
 .macpack longbranch
 .include "breakpoints.inc"
 .include "ctx.inc"
+.include "config.inc"
 .include "monitor.inc"
 .include "monitorcmd.inc"
+.include "object.inc"
 .include "cursor.inc"
 .include "debug.inc"
 .include "debuginfo.inc"
@@ -301,14 +303,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; Deletes the watch with the given ID. The ID's can be found by listing watches
 ; with the w command or going to the watch viewer.
 ; IN:
-;  - .XY: the parameters for the command
+;   - zp::line: hexadecimal ID text
+; OUT:
+;   - .A: error code on invalid ID text
+;   - .C: set on invalid ID text
 .proc remove_watch
-	; get the ID
-	ldxy zp::line
-	CALLMAIN atoi
+	jsr parse_id
 	bcs @done
-@ok:	cpy #$00
-	bne @done				; there can't be > $ff watches
 	txa
 	CALLMAIN watch::remove
 	clc
@@ -390,83 +391,146 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; bl file <expr>
 ; Adds a breakpoint at the given line/expression
 ; IN:
-;  - .XY: the parameters for the command
+;   - zp::line: filename and line expression
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc add_break_line
 @fileid=zp::debuggertmp
 @line=zp::debuggertmp+1
-	; get the filename of the file to add the breakpoint in
-	skb
-@err:	rts
-	ldy #$ff
-:	iny
-	lda (zp::line),y
-	beq @err		; no filename
+@addr=zp::debuggertmp+3
+	; copy the filename so the command is repeatable
+	ldy #$00
+@name:	lda (zp::line),y
+	beq @named
 	jsr is_whitespace
-	bne :-
+	beq @named
+	cpy #MAX_BUFFER_NAME_LEN
+	bcc :+
+	RETURN_ERR ERR_FILENAME_TOO_LONG
 
-	lda #$00
-	sta (zp::line),y
+:	sta mem::filename,y
+	iny
+	bne @name
+@named:
+	cpy #$00
+	bne :+
+	RETURN_ERR ERR_NO_FILENAME
+
+:	lda #$00
+	sta mem::filename,y
 	tya
-	ldxy zp::line
-	sec			; +1
+	clc
 	adc zp::line
 	sta zp::line
 	bcc :+
 	inc zp::line+1
-
-:	CALLMAIN dbgi::getfileid
-	bcs @done				; no file found
-	pha					; save file ID
-
-	; move past the filename and whitespace
+:	ldxy #mem::filename
+	CALLMAIN dbgi::getfileid
+	bcc :+
+	RETURN_ERR ERR_FILE_NOT_FOUND
+:	sta @fileid
 	jsr process_ws
-
-	; evaluate the expression to get break line
 	jsr eval
+	bcs @ret
 	stxy @line
-	pla
-	sta @fileid
-	bcs @err		; invalid line #
 
-	; add the breakpoint
-	lda @fileid
-	CALLMAIN dbg::setbrkatline
-
-	; get the address for the given line
-	ldxy @line
+	; resolve the line to its address
 	lda @fileid
 	CALLMAIN dbgi::line2addr
-	bcs @done				; no matching line found
+	bcs @ret
+	stxy @addr
+	ldxy @line
+	lda @fileid
+	CALLMAIN dbg::setbrkatline
+	bcc :+
+	RETURN_ERR ERR_TOO_MANY_BREAKPOINTS
 
+:	ldxy @addr
 	stxy r0
-	; map the address we looked up to the line
 	ldxy @line
 	lda @fileid
 	CALLMAIN dbg::brksetaddr
 	clc
-@done:	rts
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
 ; REMOVE BREAK
 ; br <id>
 ; Deletes the breakpoint with the given ID. The IDs can be found by listing
-; breakpoints (bl) or going to the breakpoint viewer
+; breakpoints (b) or going to the breakpoint viewer
 ; IN:
-;  - .XY: the parameters for the command
+;   - zp::line: hexadecimal ID text
+; OUT:
+;   - .A: error code on invalid ID text
+;   - .C: set on invalid ID text
 .proc remove_break
-	; get the ID
-	ldxy zp::line
-	CALLMAIN atoi
+	jsr parse_id
 	bcs @done
-
-@ok:	cpy #$00
-	bne @done	; there can't be > $ff breakpoints
 
 	; .X is the ID to remove
 	CALLMAIN dbg::removebreakpointbyid
 	clc
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; PARSE ID
+; Parses a hexadecimal ID; may have an optional '$' prefix
+; IN:
+;   - zp::line: ID text
+; OUT:
+;   - .X: parsed ID
+;   - .A: error code on failure
+;   - .C: set on error
+.proc parse_id
+@id=r0
+@digits=r1
+@digit=r2
+	jsr eat_whitespace
+	lda #$00
+	sta @id
+	sta @digits
+	lda (zp::line),y
+	cmp #'$'
+	bne @next
+	incw zp::line
+
+@next:	lda (zp::line),y
+	beq @end
+	jsr is_whitespace
+	beq @end
+	CALLMAIN util::chtohex
+	bcs @bad
+	sta @digit
+	lda @id
+	and #$f0
+	beq :+
+	RETURN_ERR ERR_OVERSIZED_OPERAND
+
+:	lda @id
+	asl
+	asl
+	asl
+	asl
+	ora @digit
+	sta @id
+	inc @digits
+	incw zp::line
+	jmp @next
+
+@end:	lda @digits
+	bne :+
+	RETURN_ERR ERR_VALUE_EXPECTED
+
+:	jsr eat_whitespace
+	lda (zp::line),y
+	bne @bad
+	ldx @id
+	RETURN_OK
+
+@bad:	RETURN_ERR ERR_UNEXPECTED_CHAR
 .endproc
 
 ;*******************************************************************************
@@ -577,11 +641,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 :	txa			; store LSB of expression as fill val
 	sta @list,y
 	inc @listlen
-	ldy #$00
-	lda (zp::line),y	; are we at the end?
+	jsr eat_whitespace
+	lda (zp::line),y
 	beq @ok
+	cmp #','
+	bne @l0
 
-	incw zp::line		; move past separator
+	incw zp::line		; if comma found, get another value
 	jsr eat_whitespace
 	jmp @l0
 
@@ -1147,9 +1213,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; Assembles the given instruction at the address of the given expression
 ; e.g.
 ;  `>A $1000, lda #$00`
-; If an enquoted value is provided, it will attempt to be opened as a file
-; and assembled at the target address (NOTE: any .ORG directive within will take
-; precedence)
+; OUT:
+;   - .A: error code on mode or address evaluation failure
+;   - .C: set on failure
 .proc assemble
 	lda memory_mode
 	beq :+
@@ -1160,7 +1226,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @err=r0
 	; get the address to assemble at
 	jsr eval
-	bcs @ret		; return if address is invalid expression
+	jcs @ret		; return if address is invalid expression
 	stxy @addr
 	CALLMAIN asm::setpc
 
@@ -1181,9 +1247,24 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	pha
 	lda zp::gendebuginfo
 	pha
+	lda zp::pass
+	pha
+	lda asm::mode
+	pha
+	lda asm::segtype
+	pha
+	lda asm::segment
+	pha
+
+	; force segment type to ABS (in case we are in a BSS one)
 	lda #$00
 	sta zp::verify
 	sta zp::gendebuginfo
+	sta asm::mode
+	lda #TYPE_ABS
+	sta asm::segtype
+	lda #SEG_ABS
+	sta asm::segment
 
 	; do first pass of assembly on the entered line
 	lda #$01
@@ -1194,18 +1275,27 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @pass1:	CALLMAIN asm::tokenize	; assemble the instruction
 	bcs @asmdone		; if error occurred, skip pass 2
 
-@pass2:	; do first pass of assembly on the entered line
+@pass2:	; assemble the resolved instruction on pass 2
 	lda ctx::open
 	bne :+
 	ldxy @addr
 	CALLMAIN asm::setpc
 
 :	inc zp::pass
+	lda #FINAL_BANK_MAIN
 	ldxy @line
 	CALLMAIN asm::tokenize	; assemble the instruction (again)
 
 @asmdone:
 	sta @err
+	pla
+	sta asm::segment
+	pla
+	sta asm::segtype
+	pla
+	sta asm::mode
+	pla
+	sta zp::pass
 	pla
 	sta zp::gendebuginfo
 	pla
@@ -1249,7 +1339,10 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	ldxy #mon::getch
 	CALLMAIN edit::gets
-	ldxy #mem::linebuffer
+	bcc :+
+	RETURN_OK		; if cancelled, abort
+
+:	ldxy #mem::linebuffer
 	jsr __monitor_puts
 	ldxy #mem::linebuffer+3
 	stxy zp::line

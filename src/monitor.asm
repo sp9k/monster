@@ -503,6 +503,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	CALLMAIN edit::gets
 	bcc @submit
 
+@cancel:
 	; return the pending action to the window manager
 	lda winreq
 	bpl @clrline
@@ -590,7 +591,10 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	CALLMAIN err::get
 	jsr __monitor_puts
 
-@ok:	lda __monitor_quit	; was QUIT signal sent?
+@ok:	lda winreq
+	bpl :+
+	jmp @cancel
+:	lda __monitor_quit	; was QUIT signal sent?
 	bne @done
 	jmp @prompt
 
