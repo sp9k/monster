@@ -1534,9 +1534,8 @@ prepared:
 
 @store_offset:
 	; Both site and target are absolute: write the final displacement.
-	lda #$01
-	sta operandsz	; force operand size to 1 for branches
-	tay		; .Y = 1 (offset to operand)
+	ldy #$01	; .Y = 1 (offset to operand)
+	sty operandsz	; force operand size to 1 for branches
 	txa		; .A = relative offset (operand)
 	jsr writeb	; write the offset (no relocation)
 	bcs @opdone	; if error, return

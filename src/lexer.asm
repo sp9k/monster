@@ -54,22 +54,19 @@ BANKED_SEG "EXPR", FINAL_BANK_EXPR
 	lda zp::line
 	sec
 	sbc #<mem::asmbuffer
-	tax
+	tay
 	lda zp::line+1
 	sbc #>mem::asmbuffer
 	bne @source		; not in asmbuffer
-	cpx token_length
+	cpy token_length
 	bcs @source
 
-	lda token_kinds,x
+	lda token_kinds,y
 	beq @source		; not the start of a saved token
 	cmp #LEX_INTEGER
 	bcs @integer_span	; values are a 1-byte placeholder
-	pha
-	lda token_spans,x
-	tax
-	pla
-	bne @cached_return
+	ldx token_spans,y
+	jmp @cached_return
 @integer_span:
 	ldx #$01
 @cached_return:

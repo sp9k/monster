@@ -953,9 +953,8 @@ __gui_refresh:
 	bpl :-
 
 	; shift every other record up one slot
-	ldx depth
-	lda recoffs,x
-	tax
+	ldy depth
+	ldx recoffs,y
 	dex
 @l0:	lda windows-WIN_SIZE,x
 	sta windows,x

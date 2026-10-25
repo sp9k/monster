@@ -134,8 +134,7 @@ params = zp::inline+2
 
 	; read the indirect address
 @addr0=*+1
-	lda $f0
-	tax
+	ldx $f0
 @addr1=*+1
 	lda $0d
 

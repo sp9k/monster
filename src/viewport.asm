@@ -270,10 +270,9 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 ;  - r2:   selection mask pointer
 ;  - slot: cache slot for this row
 .proc pointers
-	ldx row
-	lda slots,x
-	sta slot
-	tax
+	ldy row
+	ldx slots,y
+	stx slot
 	jmp viewcache::row
 .endproc
 
@@ -323,9 +322,8 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	lda errlog::editpending
 	bne @draw
 
-	ldx zp::cury
-	lda slots,x
-	tax
+	ldy zp::cury
+	ldx slots,y
 	lda valid,x
 	bne @done
 
@@ -468,10 +466,9 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	inx
 	stx redrawing
 
-@row:	ldx drawrow
-	stx row
-	lda slots,x
-	tax
+@row:	ldy drawrow
+	sty row
+	ldx slots,y
 	lda valid,x
 	beq @read
 
