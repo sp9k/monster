@@ -333,7 +333,6 @@ __ultimem_clear_view_shared:
 	lda #$00
 :	dey
 	sta (@dst),y
-	cpy #$00
 	bne :-
 
 @done:	rts

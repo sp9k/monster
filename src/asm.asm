@@ -2253,7 +2253,6 @@ CUR_BANK .set LABEL_CALLER_BANK
 	stx @cnt
 @l0:	ldy #$01
 @l1:	lda directives,x
-	cmp #$00
 	beq @found
 	cmp (zp::line),y
 	bne @next

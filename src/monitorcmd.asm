@@ -237,8 +237,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	jsr eat_whitespace
 	ldy #$00
 	lda (zp::line),y
-	cmp #$00				; was there a 2nd argument?
-	beq @set				; if not, continue
+	beq @set				; no second argument
 	cmp #','				; skip the separator (if any)
 	bne :+
 	incw zp::line
@@ -328,7 +327,6 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	lda dbg::numbreakpoints
 	sta @num
-	cmp #$00
 	beq @done
 
 @loop:	lda @cnt
