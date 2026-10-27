@@ -1720,6 +1720,9 @@ range:
 ; DUMP
 ; Outputs a dump of the given memory range in a format that can be assembled
 ; (as .db statements)
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc dump
 @addr=zp::debuggertmp
 @stop=zp::debuggertmp+2
@@ -1751,8 +1754,11 @@ range:
 	lda #' '
 	sta @buff+3
 
-	; get 8 bytes (1 row of .DB's)
+.if .defined(vic20) .and .defined(hard8x8)
+	lda #$04
+.else
 	lda #$08
+.endif
 	sta @cnt
 
 @l1:	cmpaddr @addr, addr_hi, @stop, stop_hi

@@ -466,7 +466,6 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ;   - .A: GUI_RET_x code for the window manager
 .export __monitor_reenter
 .proc __monitor_reenter
-@err=r0
 	; initialize QUIT and INT signal states
 	lda #$00
 	sta __monitor_quit
@@ -574,7 +573,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	jsr install_nmi		; install INT signal NMI
 	ldxy #CMD_BUFF
 	jsr moncmd::run
-	ror @err		; save error bit
+	php			; save error bit (.C)
 	pha
 
 	; close the output file (if not screen)
@@ -586,7 +585,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sta __monitor_outfile	; back to the screen (the handle is closed now)
 
 :	pla
-	rol @err		; restore error bit
+	plp			; restore error bit (.C)
 	bcc @ok			; if it succeeded, continue
 	CALLMAIN err::get
 	jsr __monitor_puts
@@ -957,21 +956,54 @@ rowshi:
 ;   - __monitor_outfile: the file ID to store to
 ;   - .C: set on error (failed to open file)
 .proc set___monitor_outfile
+@quote=r0
+	lda #$00
+	sta @quote
 	ldx prompt_len
 
 @findredir:
 	cpx #MAX_LINE_LEN+1
-	bcs @done
+	bcs @noredir
 	lda mem::linebuffer,x	; start after the prompt
-	beq @done		; no redirect, return
+	beq @noredir		; no redirect, return
+
+	ldy @quote		; are we reading a quote?
+	bne @quoted		; if so, continue to handle that
+	cmp #'"'		; double quote?
+	beq @string		; if so, start processing quoted string
+	cmp #$27		; single quote?
+	beq @character		; if so, get one char
+
 	cmp #'>'		; redirect?
 	bne @next
 	lda mem::linebuffer+1,x	; redirect must be followed by whitespace
 	jsr is_whitespace	; (to disambiguate from the MSB operator '>')
 	beq @redir
+
 @next:	inx
 	bne @findredir
-	beq @done		; unreachable: the bound above stops us first
+@noredir:
+	RETURN_OK
+
+@quoted:
+	cmp @quote		; matching quote?
+	bne @next		; if not, read next char
+	lda #$00
+	sta @quote		; clear quote flag
+	beq @next		; branch always
+
+@character:
+	sta @quote
+	inx			; eat extra character (to handle the ''' case)
+	cpx #MAX_LINE_LEN+1
+	bcs @noredir
+	lda mem::linebuffer,x	; end of line?
+	beq @noredir		; if so, we're done
+	bne @next		; if not, continue processing character
+
+@string:
+	sta @quote
+	jmp @next
 
 @redir:	; get the filename to redirect the ouput to
 	lda #$00
