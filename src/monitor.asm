@@ -476,7 +476,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #$01		; DEBUG_IFACE_TEXT
 	sta dbg::interface
 
-	jsr install_nmi
+	jsr __monitor_install_nmi
 
 	; treat whitespace as separator for expressions in the monitor
 	lda #$01
@@ -570,7 +570,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	jmp @prompt
 
 @run:	; run the command
-	jsr install_nmi		; install INT signal NMI
+	jsr __monitor_install_nmi	; install INT signal NMI
 	ldxy #CMD_BUFF
 	jsr moncmd::run
 	php			; save error bit (.C)
@@ -1078,16 +1078,18 @@ rowshi:
 
 ;*******************************************************************************
 ; INSTALL NMI
-; Points the NMI vector at the monitor's handler and enables CA1 (RESTORE key)
-; interrupts to catch the INT signal
-.proc install_nmi
+; installs the RESTORE handler used by the monitor on the current platform
+.export __monitor_install_nmi
+.proc __monitor_install_nmi
 .ifdef vic20
 	ldxy #monitor_nmi
 	stxy $0318
 	lda #$82
 	sta $911e		; enable NMIs from RESTORE key
-.endif
 	rts
+.else
+	JUMPMAIN run::install_restore
+.endif
 .endproc
 
 .ifdef vic20

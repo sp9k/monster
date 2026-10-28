@@ -1,6 +1,7 @@
 .import __monitor_clear
 .import __monitor_getch
 .import __monitor_init
+.import __monitor_install_nmi
 .import __monitor_int
 .import __monitor_inputrow
 .import __monitor_line
@@ -20,6 +21,7 @@
 	clear          = __monitor_clear
 	getch          = __monitor_getch
 	init	       = __monitor_init
+	install_nmi    = __monitor_install_nmi
 	int	       = __monitor_int
 	inputrow       = __monitor_inputrow
 	line           = __monitor_line

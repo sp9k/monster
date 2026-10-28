@@ -18,6 +18,7 @@
 .include "debug.inc"
 .include "debuginfo.inc"
 .include "edit.inc"
+.include "errlog.inc"
 .include "errors.inc"
 .include "expr.inc"
 .include "file.inc"
@@ -1208,9 +1209,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 ;*******************************************************************************
 ; ASSEMBLE
-; Assembles the given instruction at the address of the given expression
-; e.g.
-;  `>A $1000, lda #$00`
+; assembles an instruction or quoted source file at the given address
+; IN:
+;   - zp::line: address expression and instruction or quoted filename
 ; OUT:
 ;   - .A: error code on mode or address evaluation failure
 ;   - .C: set on failure
@@ -1230,16 +1231,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	jsr process_ws
 	lda (zp::line),y
-	bne @getfile
+	bne :+
 	RETURN_OK		; if no instruction provided, we're done
 
-@getfile:
-	; check if a filename was provided e.g.: >A $1000 "hello.asm"
-	CALLMAIN util::parse_enquoted_string
-	bcs @getop		; if failed to parse, try parsing opcode
-
-@assemble_file:
-	; TODO:
+:	cmp #'"'
+	bne @getop
+	ldxy @addr
+	jmp assemble_file
 
 @getop:	lda zp::verify
 	pha
@@ -1345,6 +1343,151 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	ldxy #mem::linebuffer+3
 	stxy zp::line
 	jmp assemble
+.endproc
+
+;*******************************************************************************
+; ASSEMBLE FILE
+; Runs both assembly passes on the contents of the given file, starting at the
+; provided address
+; IN:
+;   - .XY:      base assembly address
+;   - zp::line: quoted filename to assemble
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
+.proc assemble_file
+@addr=zp::debuggertmp
+	stxy @addr
+	ldy #$01		; skip the opening quote
+
+	; read the filename
+@name:	lda (zp::line),y
+	beq @syntax
+	cmp #'"'
+	beq @cont
+	cpy #MAX_BUFFER_NAME_LEN+1
+	bcc :+
+	RETURN_ERR ERR_FILENAME_TOO_LONG
+:	sta mem::filename-1,y
+	iny
+	bne @name
+
+@cont:	cpy #$01
+	bne :+
+	RETURN_ERR ERR_NO_FILENAME
+
+:	lda #$00
+	sta mem::filename-1,y	; terminate filename
+
+	; move zp::line past filename
+	iny
+	tya
+	clc
+	adc zp::line
+	sta zp::line
+	bcc :+
+	inc zp::line+1
+
+:	; make sure rest of line is empty or comment
+	jsr eat_whitespace
+	lda (zp::line),y
+	beq @asm
+	cmp #';'
+	beq @asm
+@syntax:
+	RETURN_ERR ERR_SYNTAX_ERROR
+
+;-------------------------------------------------------------------------------
+@asm:	CALLMAIN run::install_sigint
+	CALLMAIN scr::blank
+
+	; make sure file exists
+	ldxy #mem::filename
+	CALLMAIN file::exists
+	bcc :+
+	lda #ERR_FAILED_OPEN_INCLUDE
+	;sec
+	bcs @finish		; branch always
+
+:	CALLMAIN errlog::reset
+	lda #$00
+	sta asm::mode
+	sta zp::gendebuginfo
+
+	lda #$01		; pass #1
+@pass:	CALLMAIN asm::startpass
+
+	ldxy @addr
+	CALLMAIN asm::setpc
+
+	; use absolute segment
+	lda #TYPE_ABS
+	sta asm::segtype
+	lda #SEG_ABS
+	sta asm::segment
+
+	; assemble the file via the "include" directive handler
+	ldxy #mem::filename
+	CALLMAIN asm::include
+	bcs @failed
+	lda edit::sigint	; check if assembly was interrupted
+	bne @cancel		; if so, abort
+	lda errlog::asmerrors
+	beq :+
+	lda #ERR_SYNTAX_ERROR
+	bne @failed		; branch always
+
+:	CALLMAIN asm::endpass
+	bcs @failed
+
+	lda zp::pass
+	cmp #$02
+	beq @ok			; if both passes done, continue
+	lda #$02		; set pass # to 2
+	bne @pass		; branch always to assemble second pass
+
+;-------------------------------------------------------------------------------
+@ok:	ldxy zp::asmresult
+	stxy __dbgcmd_default_addr
+	lda #$00
+	sta __dbgcmd_default_addr+2
+	clc
+	bcc @finish
+
+@cancel:
+	lda #$00
+@failed:
+	; discard unfinished contexts before accepting another monitor command
+	pha
+	lda #$02
+	CALLMAIN asm::startpass
+	pla
+	cmp #$01		; cancellation returns success without an error
+@finish:
+	php
+	pha
+	CALLMAIN scr::unblank
+
+	; restore default assembly state
+	lda #$00
+	sta edit::sigint
+	sta asm::mode
+	sta zp::gendebuginfo
+
+	lda #SEG_ABS
+	sta asm::segment
+	lda #TYPE_ABS
+	sta asm::segtype
+	lda #$02
+	sta zp::pass
+	lda #$01
+	sta zp::verify
+	CALL FINAL_BANK_EXPR, expr::end_on_ws
+
+	jsr mon::install_nmi	; reinstall monitor NMI handler
+	pla
+	plp
+	rts
 .endproc
 
 ;*******************************************************************************
