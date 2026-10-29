@@ -2330,12 +2330,14 @@ CUR_BANK .set LABEL_CALLER_BANK
 .endproc
 
 ;*******************************************************************************
-; HANDLE_REPEAT
-; Handler for .endrep.
-; Generates the repeated assembly block defined between here and the
-; corresponding .rep directive
+; HANDLE REPEAT
+; Closes, replays, and releases the repeat block ending at .endrep
+; IN:
+;   - zp::verify: !0 to check syntax without executing the block
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on failure
 .proc handle_repeat
-@itername=$100
 	lda zp::verify
 	beq :+
 	lda #ASM_DIRECTIVE
@@ -2344,35 +2346,50 @@ CUR_BANK .set LABEL_CALLER_BANK
 :	; close the context
 	lda #CTX_REPEAT
 	jsr ctx::end
-	bcs @reterr		; no matching context -> return the error
+	bcs @ret
 
-	; if the number of iterations is zero, we're done
+	; playback the stored .REP context
+	jsr replay_repeat
+
+	; release the .REP context
+	php
+	pha
+	jsr release_repeat
+	pla
+	plp
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; REPLAY REPEAT
+; Executes a closed repeat.
+; IN:
+;   - zp::ctx: closed repeat context to replay
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on failure
+.proc replay_repeat
+@itername=$100
+	; init iterator to 0
+	lda #$00
+	sta zp::ctx+repctx::iter
+	sta zp::ctx+repctx::iter+1
+	jsr ctx::rewind
+
 	iszero zp::ctx+repctx::iter_end
 	beq @done
 
-	; rewind context to its first line
-	jsr ctx::rewind
-
-	; load the parameter (iterator name)
-	ldxy #@itername
-	jsr ctx::getparams
-
 ;-------------------------------------------------------------------------------
-; define a label with the value of the iteration
+; update the iterator symbol, including iteration zero on every replay
 @l0:	jsr ctx::rewind
 
 	lda zp::ctx+repctx::numparams	; was an iterator given?
 	beq @l1				; if not, just assemble the lines
 
-	; iteration 0: add a symbol for the iterator
-	;              this will error if the symbol is already defined
-	; iteration n: "set" (replace) the iterator's value
 	lda zp::ctx+repctx::iter
 	sta zp::label_value
 	lda zp::ctx+repctx::iter+1
 	sta zp::label_value+1
-	ora zp::label_value
-	beq @l1			; label already defined in repeat
 
 	; (re)load the iterator name from the context.  $100 is a shared
 	; scratch buffer so the name must be refreshed on every iteration
@@ -2385,31 +2402,20 @@ CUR_BANK .set LABEL_CALLER_BANK
 	lda #$01		; define label as 16-bit (ABSOLUTE)
 	sta zp::label_mode
 
-@set:	CALLMAIN lbl::set		; successive iterations- set (replace)
-	bcs @errpop
+	CALLMAIN lbl::set
+	bcs @ret
 
 ;-------------------------------------------------------------------------------
 ; assemble all lines for the iteration
 ; each line sets asm::linenum to the source line it was captured from
 @l1:	jsr ctx::getrecord	; get a line to assemble
-	bcs @errpop
+	bcs @ret
 	cmp #$00
 	beq @next		; if at the end, continue to next iteration
 
 	jsr assemble_tokens
 	bcc @l1			; ok -> repeat
-
-@errpop:
-	; error during expansion: unwind the context before returning
-	pha			; save the error code
-	jsr ctx::pop		; pop the context
-	lda ctx::active
-	bne :+
-	CALLMAIN lbl::popscope	; all contexts popped, pop the scope
-:	pla			; restore the error code
-	sec			; return err
-@reterr:
-	rts
+@ret:	rts
 
 @next:	; increment iterator and repeat if more iterations left
 	incw zp::ctx+repctx::iter
@@ -2417,14 +2423,26 @@ CUR_BANK .set LABEL_CALLER_BANK
 	cmpw zp::ctx+repctx::iter_end
 	bne @l0
 
-@done:  jsr ctx::pop		; pop the context
+@done:	RETURN_OK
+.endproc
 
-	; did we close all contexts?
+;*******************************************************************************
+; RELEASE REPEAT
+; Releases a repeat context.
+; IN:
+;   - zp::ctx: context to release
+; OUT:
+;   - .A: error code on failure
+;   - .C: set if no context is active
+.proc release_repeat
+	jsr ctx::pop
+	bcs @ret
+
 	lda ctx::active
 	bne :+
 	CALLMAIN lbl::popscope	; all contexts popped, pop the scope
-	clc
-:	rts
+:	clc
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
