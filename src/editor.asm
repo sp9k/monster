@@ -121,6 +121,9 @@ __edit_sigint: .byte 0		; cancel flag for long running commands
 .export __edit_base
 __edit_base: .word 0	; base source row on screen DURING ASSEMBLY ONLY
 
+.export __edit_assembly_quiet
+__edit_assembly_quiet: .byte 0	; suppress assembly status (used by monitor)
+
 ;*******************************************************************************
 .BSS
 
@@ -6281,8 +6284,11 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 .proc __edit_update_progress
 .if .defined(vic20) .and .defined(soft4x8)
 @bm=r0
+	; if verifying or in monitor, don't show visual progress
 	lda zp::verify
-	bne @done			; don't update if just verifying
+	ora __edit_assembly_quiet
+	bne @done
+
 	jsr get_progress_addr
 	ldy progress_count
 	lda (@bm),y
@@ -6841,10 +6847,8 @@ report_error = alert::show
 :	sta (@bm),y
 	dey
 	bpl :-
-.else
-	lda #$00
-.endif
 	sta progress_count
+.endif
 	rts
 .endproc
 
@@ -6869,6 +6873,8 @@ unblank = scr::unblank
 ; Refreshes assembly status when entering or returning from an include.
 .export __edit_assembly_file
 .proc __edit_assembly_file
+	lda __edit_assembly_quiet
+	bne assembly_info_done
 	lda dbgi::file
 	CALLMAIN dbgi::get_filename
 	bcs assembly_info_done

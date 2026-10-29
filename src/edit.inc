@@ -31,6 +31,7 @@
 .import __edit_sync_cur
 .import __edit_update_progress
 .import __edit_assembly_file
+.import __edit_assembly_quiet
 .import __edit_linking_file
 
 .scope edit
@@ -66,6 +67,7 @@
 	sync_cur        = __edit_sync_cur
 	update_progress = __edit_update_progress
 	assembly_file   = __edit_assembly_file
+	assembly_quiet  = __edit_assembly_quiet
 	linking_file    = __edit_linking_file
 .endscope
 

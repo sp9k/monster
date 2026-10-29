@@ -1,3 +1,7 @@
+; assembler control flags; zero selects normal assembly behavior
+ASM_CTRL_MONITOR_DIRECTIVES  = $01	; monitor directive allowlist
+ASM_CTRL_SIZE_ONLY     = $40	; advance PC without writing bytes (BIT/BVS)
+ASM_CTRL_NOEXPAND_REPEAT = $80	; leave closed repeat for caller (LDA/BMI)
 
 MODE_IMMEDIATE=$01
 MODE_ZP=$02

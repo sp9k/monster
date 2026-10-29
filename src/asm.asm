@@ -145,6 +145,8 @@ includeabort: .byte 0	; error code that stopped assembly (0 if none)
 MAX_SEGSTACK = $10
 segstack_ids:   .res MAX_SEGSTACK
 segstacksp:     .byte $00
+.export __asm_segdepth
+__asm_segdepth = segstacksp
 
 .ifdef ultimem
 .segment "BSS_NOINIT"
@@ -230,6 +232,11 @@ __asm_segmentid: .byte 0	; The current SEGMENT id (set by .SEG/.SEGZP)
 ;   zp::asmresult
 .export __asm_mode
 __asm_mode: .byte 0
+
+;*******************************************************************************
+; assembler control flags (ASM_CTRL_* in asmflags.inc)
+.export __asm_control_flags
+__asm_control_flags: .byte 0
 
 ;*******************************************************************************
 ; ASMBUFFER
@@ -475,57 +482,95 @@ num_opcode_singles=*-opcode_singles
 
 ;*******************************************************************************
 ; DIRECTIVES
-DIRECTIVE_ORG   = 4
-DIRECTIVE_IF    = 8
-DIRECTIVE_ELSE  = 9
-DIRECTIVE_ENDIF = 10
-DIRECTIVE_IFDEF = 11
+; keep enum, names and handlers in the same order
+.enum
+; directives accepted by interactive monitor assembly
+DIRECTIVE_DB
+DIRECTIVE_EQ
+DIRECTIVE_DW
+DIRECTIVE_DF
+DIRECTIVE_REP
+DIRECTIVE_MAC
+DIRECTIVE_ENDMAC
+DIRECTIVE_ENDREP
+DIRECTIVE_INCBIN
+DIRECTIVE_RES
+DIRECTIVE_ALIGN
+DIRECTIVE_LOCAL
+; remaining directives require normal assembly
+DIRECTIVE_INC
+DIRECTIVE_ORG
+DIRECTIVE_RORG
+DIRECTIVE_IF
+DIRECTIVE_ELSE
+DIRECTIVE_ENDIF
+DIRECTIVE_IFDEF
+DIRECTIVE_IMPORT
+DIRECTIVE_EXPORT
+DIRECTIVE_SEG
+DIRECTIVE_SEGZP
+DIRECTIVE_BSS
+DIRECTIVE_BSSZP
+DIRECTIVE_IMPORTZP
+DIRECTIVE_PUSHSEG
+DIRECTIVE_POPSEG
+DIRECTIVE_SCOPE
+DIRECTIVE_ENDSCOPE
+DIRECTIVE_PROC
+DIRECTIVE_ENDPROC
+DIRECTIVE_SET
+.endenum
+
+NUM_MONITOR_DIRECTIVES = DIRECTIVE_LOCAL+1
+
 directives:
 	.byte "db",0
 	.byte "eq",0
 	.byte "dw",0
+	.byte "df",0
+	.byte "rep",0
+	.byte "mac",0
+	.byte "endmac",0
+	.byte "endrep",0
+	.byte "incbin",0
+	.byte "res",0
+	.byte "align",0
+	.byte "local",0
 	.byte "inc",0
 	.byte "org",0
 	.byte "rorg",0
-	.byte "rep",0
-	.byte "mac",0
 	.byte "if",0
 	.byte "else",0
 	.byte "endif",0
 	.byte "ifdef",0
-	.byte "endmac",0
-	.byte "endrep",0
-	.byte "incbin",0
 	.byte "import",0
 	.byte "export",0
-	.byte "res",0
 	.byte "seg",0
 	.byte "segzp",0
 	.byte "bss",0
 	.byte "bsszp",0
-	.byte "align",0
 	.byte "importzp",0
-	.byte "df",0
 	.byte "pushseg",0
 	.byte "popseg",0
 	.byte "scope",0
 	.byte "endscope",0
 	.byte "proc",0
 	.byte "endproc",0
-	.byte "local",0
 	.byte "set",0
 directives_len=*-directives
 .assert directives_len <= $ff, error, "directive names exceed byte index"
 
 ;*******************************************************************************
 .linecont +
-.define directive_vectors definebyte, defineconst, defineword, includefile, \
-defineorg, define_psuedo_org, repeat, macro, do_if, do_else, do_endif, \
-do_ifdef, create_macro, handle_repeat, incbinfile, import, export, \
-directive_res, directive_seg, directive_segzp, directive_bss, directive_bsszp, \
-directive_align, importzp, definefloat, directive_pushseg, directive_popseg, \
-directive_scope, directive_endscope, directive_proc, directive_endproc, \
-directive_local, directive_set
+.define directive_vectors definebyte, defineconst, defineword, definefloat, \
+	repeat, macro, create_macro, handle_repeat, \
+	incbinfile, directive_res, directive_align, directive_local, \
+	includefile, defineorg, define_psuedo_org, do_if, \
+	do_else, do_endif, do_ifdef, import, \
+	export, directive_seg, directive_segzp, directive_bss, \
+	directive_bsszp, importzp, directive_pushseg, directive_popseg, \
+	directive_scope, directive_endscope, directive_proc, directive_endproc, \
+	directive_set
 .linecont -
 
 .pushseg
@@ -707,6 +752,7 @@ BANKED_CODE "ASMBANK"
 	lda #$00
 	sta ifstacksp
 	sta segstacksp
+	sta __asm_control_flags
 	sta ifdefidx		; restart the .IFDEF result log (pass 1)
 
 	jsr ctx::init
@@ -744,6 +790,7 @@ BANKED_CODE "ASMBANK"
 	sta image::mode
 
 	sta ifstacksp		; reset the .IF stack (may leak from prior pass)
+	sta __asm_control_flags
 	sta segstacksp		; reset saved segment selections for this pass
 	sta includesp		; reset the include stack
 	sta includeabort	; and the "stop assembling" latch
@@ -1003,6 +1050,7 @@ prepared:
 	bcs @ctx		; if not directive -> continue
 	jsr getdirective
 	bcs @ret		; return error
+	sta resulttype		; save result type
 
 	; if a context is capturing lines (an open .MAC/.REP body or a
 	; nested context), directives are part of the body: store them
@@ -1022,22 +1070,11 @@ prepared:
 	bpl @exec_directive	; parent isn't capturing -> execute
 
 @chkctl:
-	cpx #<macro
-	bne :+
-	cpy #>macro
-	beq @exec_directive
-:	cpx #<create_macro
-	bne :+
-	cpy #>create_macro
-	beq @exec_directive
-:	cpx #<repeat
-	bne :+
-	cpy #>repeat
-	beq @exec_directive
-:	cpx #<handle_repeat
-	bne :+
-	cpy #>handle_repeat
-:	bne @ctx		; not context-control: store in the body
+	lda resulttype		; restore directive's type
+	cmp #DIRECTIVE_REP
+	bcc @ctx
+	cmp #DIRECTIVE_ENDREP+1
+	bcs @ctx		; not context-control: store in the body
 
 @exec_directive:
 	lda #ASM_DIRECTIVE
@@ -2260,22 +2297,16 @@ CUR_BANK .set LABEL_CALLER_BANK
 	iny
 	bne @l1
 
-@next:	cpx #directives_len
-	bcc @ok
-	RETURN_ERR ERR_INVALID_DIRECTIVE
+@next:	inc @cnt		; move to next directive
 
-@ok:	inc @cnt		; move to next directive
+	; every name in the fixed table has a terminator
+@l2:	inx
+	lda directives-1,x
+	bne @l2
 
-@l2:	lda directives,x
-	inx
-	cmp #$00
-	beq :+
-	cpx #directives_len
-	bcc @l2
-	RETURN_ERR ERR_INVALID_DIRECTIVE
-
-:	cpx #directives_len			; end of the table?
+	cpx #directives_len			; end of the table?
 	bcc @l0					; if not, check next directive
+@invalid:
 	RETURN_ERR ERR_INVALID_DIRECTIVE
 
 @found: ; make sure there are no trailing characters
@@ -2284,7 +2315,20 @@ CUR_BANK .set LABEL_CALLER_BANK
 	jsr util::is_whitespace
 	bne @next		; trailing char -> continue
 
-:	; move the line pointer to after the directive
+:	; check flags for directive restrictions during capture/expansion
+	lda __asm_control_flags
+	and #ASM_CTRL_MONITOR_DIRECTIVES
+	beq @allowed		; no directive restriction
+	lda zp::verify
+	bne @allowed		; if just verifying -> also allow all directives
+
+	; check if directive is legal within the monitor
+	lda @cnt
+	cmp #NUM_MONITOR_DIRECTIVES
+	bcs @invalid
+
+@allowed:
+	; move the line pointer to after the directive
 	tya
 	clc
 	adc zp::line
@@ -2347,6 +2391,10 @@ CUR_BANK .set LABEL_CALLER_BANK
 	lda #CTX_REPEAT
 	jsr ctx::end
 	bcs @ret
+
+	lda __asm_control_flags
+	;clc
+	bmi @ret		; if ASM_CTRL_NOEXPAND_REPEAT, don't expand .REP
 
 	; playback the stored .REP context
 	jsr replay_repeat
@@ -4616,6 +4664,8 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 	sta zp::bankval
 	lda zp::verify
 	bne @ok			; if just verifying, don't write
+	bit __asm_control_flags
+	bvs @ok			; ASM_CTRL_SIZE_ONLY skips byte emission
 
 	lda __asm_segtype
 	cmp #TYPE_BSS
@@ -4775,6 +4825,8 @@ ifdefmasks: .byte $01,$02,$04,$08,$10,$20,$40,$80
 .export __asm_is_opcode
 .export __asm_word_type
 .export __asm_type_to_mode
+.export __asm_replay_repeat
+.export __asm_release_repeat
 
 .if .defined(CART) .and .defined(c64)
 .CODE
@@ -4790,8 +4842,12 @@ __asm_disassemble:  JUMP FINAL_BANK_ASM, disassemble
 __asm_is_opcode:    JUMP FINAL_BANK_ASM, isopcode
 __asm_word_type:    JUMP FINAL_BANK_ASM, word_type
 __asm_type_to_mode: JUMP FINAL_BANK_ASM, type2mode
+__asm_replay_repeat: JUMP FINAL_BANK_ASM, replay_repeat
+__asm_release_repeat: JUMP FINAL_BANK_ASM, release_repeat
 .else
 __asm_reset        = areset
+__asm_replay_repeat = replay_repeat
+__asm_release_repeat = release_repeat
 __asm_startpass    = startpass
 __asm_endpass      = endpass
 __asm_tokenize     = tokenize

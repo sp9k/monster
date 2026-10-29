@@ -7,6 +7,7 @@
 .import __mac_top
 .import __mac_view
 .import __mac_reset_expansion, __mac_source, __mac_depth
+.import __mac_get_invocation_num, __mac_set_invocation_num
 .import __mac_local, __mac_filename
 .import __mac_verify_property, __mac_verify_name
 .import __mac_namespace_floor
@@ -24,6 +25,8 @@
 	view    = __mac_view
 
 	reset_expansion = __mac_reset_expansion
+	get_invocation_num = __mac_get_invocation_num
+	set_invocation_num = __mac_set_invocation_num
 	source          = __mac_source
 	depth           = __mac_depth
 	local           = __mac_local

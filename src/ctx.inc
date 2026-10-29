@@ -12,6 +12,7 @@
 .import __ctx_write
 .import __ctx_write_parent
 .import __ctx_init
+.import __ctx_reset_assembly
 
 ; the max number of lines stored in contexts for macros
 MAX_CTX_LINES = 16
@@ -39,6 +40,7 @@ CTX_PARENT_OPEN = $80	; set in a context's type if its parent was open
 	end          = __ctx_end
 	getparams    = __ctx_getparams
 	init         = __ctx_init
+	reset_assembly = __ctx_reset_assembly ; direct entry in FINAL_BANK_CTX
 	numlines     = __ctx_numlines
 	push         = __ctx_push
 	open         = __ctx_open

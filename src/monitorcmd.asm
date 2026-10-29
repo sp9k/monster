@@ -5,6 +5,7 @@
 ;*******************************************************************************
 
 .include "asm.inc"
+.include "asmflags.inc"
 .include "image.inc"
 .include "kernal.inc"
 .macpack longbranch
@@ -27,6 +28,7 @@
 .include "labels.inc"
 .include "layout.inc"
 .include "line.inc"
+.include "macro.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "memview.inc"
@@ -73,6 +75,11 @@ count_hi:     .byte $00
 access_hi:    .byte $00	; high byte for vmem_load / vmem_store
 mem_limit:    .res 3	; exclusive end of the selected address space
 mode_index:   .byte $00
+
+assembly_pc:              .word 0
+assembly_invocation_num:  .word 0
+assembly_context:         .byte 0
+
 .if FP_SUPPORTED
 row_bytes:      .byte $00	; bytes per memory display row
 memformat_type: .byte MEM_FORMAT_DEFAULT
@@ -1209,11 +1216,11 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 ;*******************************************************************************
 ; ASSEMBLE
-; assembles an instruction or quoted source file at the given address
+; assembles instructions, interactive blocks, or a quoted source file
 ; IN:
 ;   - zp::line: address expression and instruction or quoted filename
 ; OUT:
-;   - .A: error code on mode or address evaluation failure
+;   - .A: error code on failure
 ;   - .C: set on failure
 .proc assemble
 	lda memory_mode
@@ -1221,13 +1228,10 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	RETURN_ERR ERR_INVALID_COMMAND
 :
 @addr=zp::debuggertmp
-@line=zp::debuggertmp+2
-@err=r0
 	; get the address to assemble at
 	jsr eval
 	jcs @ret		; return if address is invalid expression
 	stxy @addr
-	CALLMAIN asm::setpc
 
 	jsr process_ws
 	lda (zp::line),y
@@ -1239,73 +1243,20 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	ldxy @addr
 	jmp assemble_file
 
-@getop:	lda zp::verify
-	pha
-	lda zp::gendebuginfo
-	pha
-	lda zp::pass
-	pha
-	lda asm::mode
-	pha
-	lda asm::segtype
-	pha
-	lda asm::segment
-	pha
-
-	; force segment type to ABS (in case we are in a BSS one)
-	lda #$00
-	sta zp::verify
-	sta zp::gendebuginfo
-	sta asm::mode
-	lda #TYPE_ABS
-	sta asm::segtype
-	lda #SEG_ABS
-	sta asm::segment
-
-	; do first pass of assembly on the entered line
+@getop:	jsr reset_assembly_state
 	lda #$01
-	sta zp::pass
-	lda #FINAL_BANK_MAIN
-	ldxy zp::line
-	stxy @line
-@pass1:	CALLMAIN asm::tokenize	; assemble the instruction
-	bcs @asmdone		; if error occurred, skip pass 2
+	sta edit::assembly_quiet
 
-@pass2:	; assemble the resolved instruction on pass 2
-	lda ctx::open
-	bne :+
+	CALL FINAL_BANK_CTX, ctx::reset_assembly
 	ldxy @addr
 	CALLMAIN asm::setpc
 
-:	inc zp::pass
-	lda #FINAL_BANK_MAIN
-	ldxy @line
-	CALLMAIN asm::tokenize	; assemble the instruction (again)
-
-@asmdone:
-	sta @err
-	pla
-	sta asm::segment
-	pla
-	sta asm::segtype
-	pla
-	sta asm::mode
-	pla
-	sta zp::pass
-	pla
-	sta zp::gendebuginfo
-	pla
-	sta zp::verify
-	bcc @nexti
-
-	; error
-	lda @err
-	CALLMAIN err::get
-	jsr mon::puts				; print the error
-	clc
-@ret:	rts
+@line:	jsr assemble_input
+	jcs @done
 
 @nexti:	; prepopulate input buffer with ".A <next address> "
+	lda #'$'
+	sta mem::linebuffer
 	lda #$61			; 'a'
 	sta mem::linebuffer+1
 	lda #' '
@@ -1334,15 +1285,196 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	CALLMAIN cur::setmin
 
 	ldxy #mon::getch
+	lda #$01
+	sta zp::verify
 	CALLMAIN edit::gets
 	bcc :+
-	RETURN_OK		; if cancelled, abort
+	clc			; cancellation discards unfinished capture
+	jmp @done
 
 :	ldxy #mem::linebuffer
 	jsr __monitor_puts
 	ldxy #mem::linebuffer+3
 	stxy zp::line
-	jmp assemble
+	jsr eval
+	bcs @done
+	stxy @addr
+
+	lda ctx::active			; is a context active?
+	beq @address			; if no, continue for direct assembly
+
+	; we're in a context, make sure user did not specify a new assembly
+	; address
+	cmpw zp::asmresult
+	beq @address			; no new address -> continue
+
+	; user specified a new address within a context block -> err
+	lda #ERR_INVALID_COMMAND
+	sec
+	bcs @done			; branch always
+
+@address:
+	ldxy @addr
+	CALLMAIN asm::setpc
+	jsr process_ws
+	lda (zp::line),y
+	jne @line			; if more input, assemble it
+	clc
+	lda ctx::active
+	beq @done			; context is closed -> done
+	lda #ERR_UNCLOSED_CTX
+	sec
+
+@done:	php
+	pha
+	CALL FINAL_BANK_CTX, ctx::reset_assembly
+	jsr reset_assembly_state
+	pla
+	plp
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; RESET ASSEMBLY STATE
+; Reinitializes assembly default state used for monitor commands.
+.proc reset_assembly_state
+	lda #$00
+	sta edit::assembly_quiet
+	sta asm::mode
+	sta zp::gendebuginfo
+	lda #SEG_ABS
+	sta asm::segment
+	lda #TYPE_ABS
+	sta asm::segtype
+	lda #$02
+	sta zp::pass
+	lda #$01
+	sta zp::verify
+	JUMP FINAL_BANK_EXPR, expr::end_on_ws
+.endproc
+
+;*******************************************************************************
+; ASSEMBLE INPUT
+; Assembles the input line or runs both passes of a completed assembly unit
+; IN:
+;   - zp::line: source text in shared RAM
+;   - zp::asmresult: assembly address
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on failure
+;   - zp::asmresult: next assembly address
+.proc assemble_input
+	; copy input to the linebuffer for assembly
+	ldy #$00
+@copy:	lda (zp::line),y
+	sta mem::linebuffer,y
+	beq @begin
+	iny
+	bne @copy
+
+@begin:
+	CALLMAIN scr::blank
+	ldxy zp::asmresult
+	stxy assembly_pc
+
+	lda ctx::active
+	sta assembly_context
+
+	; save current invocation value
+	CALL FINAL_BANK_MACROS, mac::get_invocation_num
+	stxy assembly_invocation_num
+
+	; set assembly state
+	lda #$00
+	sta zp::verify
+	CALL FINAL_BANK_EXPR, expr::end_on_ws
+	lda #$01
+	sta zp::pass
+	lda #(ASM_CTRL_MONITOR_DIRECTIVES|ASM_CTRL_SIZE_ONLY)
+	sta asm::control_flags
+	lda assembly_context
+	cmp #$01
+	bne @tokenize
+	lda zp::ctx+repctx::type
+	cmp #CTX_REPEAT
+	bne @tokenize
+	; retain this context if the input closes it
+	lda asm::control_flags
+	ora #ASM_CTRL_NOEXPAND_REPEAT
+	sta asm::control_flags
+
+@tokenize:
+	jsr assembly_tokenize
+	bcs @done
+
+	lda ctx::active		; is context active?
+	beq @ordinary		; if not, assemble normally
+	lda ctx::open		; is context open?
+	bne @ok			; if so, the body is still being captured
+
+	; .endrep retained the outer context for both complete passes
+	lda #(ASM_CTRL_MONITOR_DIRECTIVES|ASM_CTRL_SIZE_ONLY)
+	sta asm::control_flags
+	CALLMAIN asm::replay_repeat
+	bcs @rep_done
+	jsr assembly_pass2		; setup pass 2
+	CALLMAIN asm::replay_repeat	; assemble the .REP block
+@rep_done:
+	php
+	pha
+	CALLMAIN asm::release_repeat
+	pla
+	plp
+	jmp @done
+
+@ordinary:
+	lda assembly_context
+	bne @ok			; .endmac installed its definition once
+
+	jsr assembly_pass2	; setup for second assembly pass
+	jsr assembly_tokenize	; perform the second pass
+	skb
+@ok:	clc
+@done:	php
+	pha
+
+	CALLMAIN scr::unblank
+	lda #$01
+	CALL FINAL_BANK_EXPR, expr::end_on_ws
+
+	pla
+	plp
+	rts
+.endproc
+
+;*******************************************************************************
+; ASSEMBLY PASS2
+; Restores the start address for assembly (e.g. $1000 for "a $1000" and updates
+; state for the second pass.
+.proc assembly_pass2
+	ldxy assembly_invocation_num
+	CALL FINAL_BANK_MACROS, mac::set_invocation_num
+	ldxy assembly_pc
+	CALLMAIN asm::setpc
+	lda #$02
+	sta zp::pass
+	lda #ASM_CTRL_MONITOR_DIRECTIVES
+	sta asm::control_flags
+	rts
+.endproc
+
+;*******************************************************************************
+; ASSEMBLY TOKENIZE
+; Assembles the given input line for the current pass
+; IN:
+;   - mem::linebuffer: source text
+; OUT:
+;   - .A: result type or error code
+;   - .C: set on failure
+.proc assembly_tokenize
+	lda #FINAL_BANK_MAIN
+	ldxy #mem::linebuffer
+	JUMPMAIN asm::tokenize
 .endproc
 
 ;*******************************************************************************
@@ -1398,7 +1530,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	RETURN_ERR ERR_SYNTAX_ERROR
 
 ;-------------------------------------------------------------------------------
-@asm:	CALLMAIN run::install_sigint
+@asm:	lda #$01
+	sta edit::assembly_quiet
+	CALLMAIN run::install_sigint
 	CALLMAIN scr::blank
 
 	; make sure file exists
@@ -1468,21 +1602,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	pha
 	CALLMAIN scr::unblank
 
-	; restore default assembly state
 	lda #$00
 	sta edit::sigint
-	sta asm::mode
-	sta zp::gendebuginfo
-
-	lda #SEG_ABS
-	sta asm::segment
-	lda #TYPE_ABS
-	sta asm::segtype
-	lda #$02
-	sta zp::pass
-	lda #$01
-	sta zp::verify
-	CALL FINAL_BANK_EXPR, expr::end_on_ws
+	jsr reset_assembly_state
 
 	jsr mon::install_nmi	; reinstall monitor NMI handler
 	pla

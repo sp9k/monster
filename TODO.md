@@ -6,7 +6,7 @@
 - [ ] Support variable width characters (8x8 UDG's)
 - [ ] Add settings / project configuration file
 - [ ] History in monitor
-- [ ] Support illegal opcodes
+- [x] Support illegal opcodes
 - [ ] Advanced (sd2iec) file stuff (create/navigate to partitions)
 
 ### TODO V1.1
@@ -16,9 +16,9 @@
 - [x] Save/restore raster position while debugging
 
 ### TODO V1
-- [ ] Support .REP and .MAC in monitor
-- [ ] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
-- [ ] fix linking/object code generation for C64
+- [x] Ultimem: allow labels, objects, debug info, source buffers to occupy N banks
+- [x] fix linking/object code generation for C64
+- [x] Support .REP and .MAC in monitor
 - [x] Investigate error color artifacts after failed assembly
 - [x] get disk access working from BASIC
 - [x] Fix unstable file mappings in debug info

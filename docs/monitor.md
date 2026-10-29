@@ -179,6 +179,37 @@ $a $2006
 The monitor begins each new line with the next address. Press RETURN without an instruction at `$2006` to finish.
 ````
 
+Macros and repeat blocks (`.REP`) can be defined in the monitor too as
+shown below:
+
+```
+$a $2000 .mac color value
+$a $2000 lda #value
+$a $2000 sta $900f
+$a $2000 .endmac
+$a $2000 color 7
+$a $2005 .rep 3,I
+$a $2005 rol $1000+I
+$a $2005 .endrep
+$a $200b
+```
+
+As with normal assembly, nested repeats (including repeats inside macro definitions and
+macro calls inside repeats) are supported.
+
+As long as the assembly state is not reset (e.g. via a full assembly of a buffer), macros defined
+in this way are available.
+
+#### Assemble File
+
+An entire file can be assembled with the `a` command as well.
+
+```{example}
+$a $1000 hello.s
+```
+
+This will perform the full two pass assembly on the contents of `hello.s`.
+
 #### List breakpoints
 
 **Syntax:** `b`

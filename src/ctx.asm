@@ -11,6 +11,7 @@
 .include "asm.inc"
 .include "config.inc"
 .include "errors.inc"
+.include "labels.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "ram.inc"
@@ -19,6 +20,8 @@
 .include "zeropage.inc"
 .include "context_tokens.inc"
 .import __ctx_encode
+.import __asm_ifdepth
+.import __asm_segdepth
 
 ;*******************************************************************************
 .exportzp __ctx_numlines
@@ -116,6 +119,19 @@ __ctx_end:	    JUMP FINAL_BANK_CTX, end
 __ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
 
 BANKED_SEG "CTX", FINAL_BANK_CTX
+
+;*******************************************************************************
+; RESET ASSEMBLY CONTEXT
+; clears transient block state without removing symbols or macro definitions
+.export __ctx_reset_assembly
+.proc __ctx_reset_assembly
+	lda #$00
+	sta asm::control_flags
+	sta __asm_ifdepth
+	sta __asm_segdepth
+	CALLMAIN __ctx_init
+	JUMP FINAL_BANK_SYMBOLS, lbl::namespace_reset
+.endproc
 
 ;*******************************************************************************
 ; IS WHITESPACE

@@ -7,6 +7,9 @@
 .import __asm_origin
 .import __asm_pcset
 .import __asm_reset
+.import __asm_replay_repeat
+.import __asm_release_repeat
+.import __asm_control_flags
 .import __asm_segmentid
 .import __asm_set_pc
 .import __asm_startpass
@@ -35,6 +38,9 @@
 	operand         = __asm_raw_operand
 	pcset           = __asm_pcset
 	reset           = __asm_reset
+	replay_repeat   = __asm_replay_repeat
+	release_repeat  = __asm_release_repeat
+	control_flags   = __asm_control_flags
 	setpc           = __asm_set_pc
 	startpass       = __asm_startpass
 	section_size    = __asm_section_size

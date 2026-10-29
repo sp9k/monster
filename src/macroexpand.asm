@@ -38,7 +38,7 @@ MAX_DEPTH = 4	; max nesting depth of macro invocations (each uses a scope)
 F_BODY = 0		; address of the next body line
 F_PARAMS = 2		; address of the parameter names
 F_COUNT = 4		; number of parameters
-F_SERIAL = 5		; invocation number (makes local names unique)
+F_INVOCATION_NUM = 5	; invocation number (makes local names unique)
 F_RAWSTART = 8		; offset of each argument's spelling (from F_RAW)
 F_BOUNDSTART = 12	; offset of each compiled argument (from F_BOUND)
 F_FLAGS = 16		; ARG_* flags for each argument
@@ -78,7 +78,7 @@ __mac_source = mem::spare+$80	; the line being assembled (original case)
 __mac_depth: .byte 0
 
 .segment "MACRO_VARS"
-serial: .word 0
+invocation_num: .word 0
 input = __mac_source
 
 .export __mac_argrecord
@@ -135,9 +135,31 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 	lda #$00
 	sta __mac_depth
 	sta lex::cached
-	sta serial
-	sta serial+1
+	sta invocation_num
+	sta invocation_num+1
 	RETURN_OK
+.endproc
+
+;*******************************************************************************
+; GET INVOCATION NUM
+; Returns the invocation counter for the macro.
+; OUT:
+;   - .XY: invocation counter
+.export __mac_get_invocation_num
+.proc __mac_get_invocation_num
+	ldxy invocation_num
+	rts
+.endproc
+
+;*******************************************************************************
+; SET INVOCATION NUM
+; Restores the invocation counter for macro assembly.
+; IN:
+;   - .XY: invocation counter
+.export __mac_set_invocation_num
+.proc __mac_set_invocation_num
+	stxy invocation_num
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -231,19 +253,19 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 	lda src+1
 	STOREB_Y frame		; set param pointer for frame (MSB)
 
-	incw serial		; increment local label name counter
-	lda serial
-	ora serial+1
+	incw invocation_num		; increment local label name counter
+	lda invocation_num
+	ora invocation_num+1
 	bne :+
 	lda #ERR_TOO_MANY_MACROS
 	jmp @fail
 
-:	; store the serial id for the invocation
-	ldy #F_SERIAL
-	lda serial
+:	; store the invocation number
+	ldy #F_INVOCATION_NUM
+	lda invocation_num
 	STOREB_Y frame
 	iny
-	lda serial+1
+	lda invocation_num+1
 	STOREB_Y frame
 
 	; move the operands (in their original case) to the start of input
@@ -1473,7 +1495,7 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 ; Defines a label ("pSSSS.pc") at the address of the invocation so that '*'
 ; in an argument has the same value wherever the argument is used.
 ; IN:
-;  - frame:         the current frame (for its serial number)
+;  - frame:         the current frame (for its invocation number)
 ;  - zp::virtualpc: the current PC
 ; OUT:
 ;  - .XY: the id of the label
@@ -1482,12 +1504,12 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 .proc __mac_bind_pc
 	lda #'p'
 	sta token
-	ldy #F_SERIAL+1
+	ldy #F_INVOCATION_NUM+1
 	LOADB_Y frame
 	ldx #$01
 	jsr @hex
 
-	ldy #F_SERIAL
+	ldy #F_INVOCATION_NUM
 	LOADB_Y frame
 	ldx #$03
 	jsr @hex
@@ -1795,7 +1817,7 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 ; Writes token as a WORD that is unique to this invocation ("mSSSS.name").
 ; IN:
 ;  - token: the name
-;  - frame: the current frame (for its serial number)
+;  - frame: the current frame (for its invocation number)
 ; OUT:
 ;  - .A: the error code (if .C set)
 ;  - .C: set if the output is full
@@ -1812,17 +1834,17 @@ BANKED_SEG "MACROCODE", FINAL_BANK_MACROS
 
 :	txa
 	clc
-	adc #$06		; 'm', four serial digits and '.'
+	adc #$06		; 'm', four invocation digits and '.'
 	jsr put
 	bcs @ret
 	lda #'m'
 	jsr put
 	bcs @ret
-	ldy #F_SERIAL+1
+	ldy #F_INVOCATION_NUM+1
 	LOADB_Y frame
 	jsr hexbyte
 	bcs @ret
-	ldy #F_SERIAL
+	ldy #F_INVOCATION_NUM
 	LOADB_Y frame
 	jsr hexbyte
 	bcs @ret
