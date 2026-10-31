@@ -603,7 +603,7 @@ __dir_get_by_type:
 	JUMPMAIN edit::load_sid
 :
 .endif
-	JUMPMAIN edit::load		; load the file
+	JUMPMAIN edit::open		; open the file
 
 ;-------------------------------------------------------------------------------
 ; GETNAME

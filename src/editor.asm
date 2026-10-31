@@ -189,6 +189,7 @@ getsvec: .word 0		; key handler for gets
 .export __edit_refresh
 .export __edit_set_breakpoint
 .export __edit_load
+.export __edit_open
 .export __edit_gotoline
 .export __edit_goto_buffer = goto_buffer
 .export __edit_src2screen
@@ -3440,8 +3441,12 @@ cancel = enter_command
 ; OUT:
 ;  - .C: set if a buffer could not be made
 .proc new_buffer
+	jsr jumps::begin
 	jsr src::new
-	bcc home_refresh
+	bcs @error
+	jsr home_refresh
+	jmp jumps::commit
+@error:
 	jmp beep::short		; too many open buffers
 .endproc
 
@@ -4138,7 +4143,7 @@ buffer8: lda #$07
 @num_ex_commands=*-@ex_commands
 
 .linecont +
-.define ex_command_vecs edit_load, command_rename, command_save, \
+.define ex_command_vecs __edit_open, command_rename, command_save, \
 	command_saveall, command_scratch, command_assemble_file, \
 	command_savebin, command_saveprg, command_savedbg, command_loaddbg, \
 	command_loadimage, command_asm_obj
@@ -4601,7 +4606,7 @@ write_result = @write_result
 
 ;*******************************************************************************
 ; LOAD
-; Loads the file from disk into the source buffer
+; Loads or navigates to an already loaded buffer of the given name.
 ; IN:
 ;  - .XY: the filename to load
 ; OUT:
@@ -6972,12 +6977,24 @@ report_error = alert::show
 ; IN:
 ;  - .XY: destination line
 .proc jump_line
-@line=r2
-	stxy @line
 	jsr jumps::begin
-	ldxy @line
 	jsr edit_gotoline
 	jmp jumps::commit
+.endproc
+
+;*******************************************************************************
+; OPEN
+; Loads the given file.
+; IN:
+;  - .XY: filename to open
+; OUT:
+;  - .C: set if opening failed
+.proc __edit_open
+	jsr jumps::begin
+	jsr edit_load
+	bcs @done
+	jmp jumps::commit
+@done:	rts
 .endproc
 
 ;*******************************************************************************

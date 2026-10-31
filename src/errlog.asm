@@ -1147,6 +1147,7 @@ getline:
 .proc inserted
 @line=r0
 @preserve=r3
+@offset=r2
 	jsr current_owners
 	lda insertmode
 	sta @preserve		; preserve text when opening a blank line
@@ -1158,6 +1159,11 @@ getline:
 	bne :+
 	dec @line+1
 :	dec @line		; original line that was split
+
+	lda #$01
+	sta @offset
+	jsr __jump_shift
+
 	lda @preserve
 	cmp #BLANK_ABOVE
 	bne @shift
@@ -1169,7 +1175,6 @@ getline:
 	dec @line+1
 :	dec @line
 @shift:
-	lda #1
 	jmp edit_lines
 .endproc
 
@@ -1205,6 +1210,7 @@ getline:
 .proc deleted
 @line=r0
 @preserve=r3
+@offset=r2
 	jsr current_owners
 	lda deletemode
 	sta @preserve
@@ -1219,6 +1225,9 @@ getline:
 	decw @line
 :
 	lda #$ff
+	sta @offset
+
+	jsr __jump_shift
 	; fall through
 .endproc
 
@@ -1227,15 +1236,12 @@ getline:
 ; Shifts mapped errors, dismissals and breakpoints after an insertion/deletion.
 ; Invalidate both sides of a join; syntax/assembly results there are stale.
 ; IN:
-;  - .A:    line offset ($01 for insertion, $ff for deletion)
+;  - r2:    line offset ($01 for insertion, $ff for deletion)
 ;  - r0-r1: affected line (entries after it are shifted)
 ;  - r3:    nonzero to preserve mapped errors on the affected line
 ;  - r4:    primary owner ID
 ;  - r5:    alternate debug file ID ($ff if none)
 .proc edit_lines
-@offset=r2
-	sta @offset
-	jsr __jump_shift
 	jsr edit_annotations
 	jmp shift_dismissed
 .endproc

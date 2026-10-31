@@ -14,6 +14,7 @@
 .import __edit_highlight_file
 .import __edit_init
 .import __edit_load
+.import __edit_open
 .if .defined(c64) .and .defined(CART)
 .import __edit_load_sid
 .endif
@@ -51,6 +52,7 @@
 	highlight_file  = __edit_highlight_file
 	init            = __edit_init
 	load            = __edit_load
+	open            = __edit_open
 .if .defined(c64) .and .defined(CART)
 	load_sid        = __edit_load_sid
 .endif

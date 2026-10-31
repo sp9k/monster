@@ -7,6 +7,7 @@
 
 .include "config.inc"
 .include "errors.inc"
+.include "errlogconst.inc"
 .include "macros.inc"
 .include "ram.inc"
 .include "source.inc"
@@ -81,6 +82,8 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 ; BEGIN
 ; Prepares a new jump at the current source position. Call jumps::commit to
 ; confirm the jump.
+; PRESERVED:
+;  - .XY: caller's navigation target
 .proc jump_begin
 	lda src::activebuff
 	sta jumppending+J_BUFFER
@@ -223,10 +226,24 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	lda jumpcount
 	beq @none
 	ldx jumpindex
-	beq @none
 	cpx jumpcount
-	bcc @save
+	bcs @append
 
+	lda jumplist+J_BUFFER,x
+	cmp src::activebuff
+	bne @branch
+	cpx #$00
+	beq @none
+	bne @save		; branch always
+
+	; an unrecorded buffer switch must not overwrite its return point
+@branch:
+	txa
+	clc
+	adc #JUMP_SIZE
+	sta jumpcount
+
+@append:
 	jsr reserve
 @save:	jsr store_current
 @prev:	lda jumpindex
@@ -258,6 +275,9 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	cmp jumpcount
 	bcs @none
 	ldx jumpindex
+	lda jumplist+J_BUFFER,x
+	cmp src::activebuff
+	bne @none
 	jsr store_current
 
 @next:	lda jumpindex
@@ -391,7 +411,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 ; IN:
 ;  - r0-r1:           line before the affected range
 ;  - r2:              $01 to insert, $ff to delete
-;  - r3:              zero for a split/join, nonzero for whole-line insertion/deletion
+;  - r3:              insertion/deletion mode (ERRLOG_* constants)
 ;  - src::activebuff: source being edited
 ;  - zp::srcx:        byte column at the split/join
 .export __jump_shift
@@ -420,7 +440,8 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	lda @offset
 	bmi @next
 	lda @preserve
-	bne @next
+	cmp #ERRLOG_BLANK_BELOW
+	beq @next		; opening below leaves the original line intact
 	lda jumplist+J_COLUMN,x
 	sec
 	sbc zp::srcx
@@ -465,7 +486,7 @@ BANKED_CODE "DBGUI", FINAL_BANK_DBGUI
 	clc
 	adc #JUMP_SIZE
 	tax
-	bne @l0
+	jmp @l0
 
 @done:	rts
 .endproc
