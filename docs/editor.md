@@ -31,7 +31,6 @@ below for more info on modes).
 | {c64-keys}`C= + D`         | `DEBUG         `| begins debugging at the origin of the assembled program                                         |
 | {c64-keys}`C= + B`         | `SET BREAKPOINT`| sets a breakpoint at the current line                                                           |
 | {c64-keys}`C= + C`         | `REFRESH       `| refreshes the screen by redrawing the source buffer                                             |
-| {c64-key}`Minus`           | `FILE VIEWER   `| list directory, shows the files on the current disk                                             |
 | {c64-keys}`C= + N`         | `NEW BUFFER    `| creates a new source buffer and sets it as the active buffer                                    |
 | {c64-keys}`C= + Q`         | `CLOSE BUFFER  `| closes the current buffer and opens the next one that is open (if a window has focus, closes that window instead) |
 | {c64-key}`RESTORE`         | `CLOSE WINDOWS `| closes all windows and restores the source editor area                                          |
@@ -42,16 +41,22 @@ below for more info on modes).
 | {c64-keys}`C= + T`         | `CHECK LINE    `| checks and formats the current line                                                            |
 | {c64-keys}`C= + F`         | `AUTOFORMAT    `| toggles automatic formatting and syntax checking                                                |
 | {c64-keys}`Shift + RETURN` | `FORCE NEWLINE `| inserts a newline and advances even if the completed line has an error                          |
+| {c64-key}`F1`              | `BASIC         `| enters BASIC                                                                                   |
+| {c64-key}`F2`              | `CONFIGURATION `| opens memory and drive configuration                                                          |
+| {c64-key}`F4`              | `VIEW LOG      `| switches to the log buffer, or back to the previous buffer                                     |
+| {c64-key}`F7`              | `MONITOR       `| opens the monitor window                                                                      |
+| {c64-keys}`Ctrl + Plus`    | `NEXT PALETTE  `| selects the next color palette                                                                |
+| {c64-keys}`Ctrl + Minus`   | `PREV PALETTE  `| selects the previous color palette                                                            |
+| {c64-keys}`C= + V`         | `WHITESPACE    `| toggles visible tabs                                                                          |
+| {c64-keys}`C= + U`         | `UDG EDITOR    `| opens the graphics editor                                                                     |
 | {c64-key}`F3`              | `SHOW BUFFERS  `| displays a list of the currently open buffers                                                   |
 | {c64-keys}`C= + L`         | `LINK          `| links the object files in the project using the LINK file on disk                               |
 | {c64-keys}`C= + S`         | `BUILD         `| assembles and links the modules listed in BUILD, using the LINK layout                          |
 | {c64-key}`F8`              | `MEMVIEW       `| opens the memory viewer/editor                                                                  |
 | {c64-key}`F5`              | `BRKVIEW       `| opens the breakpoint viewer/editor                                                              |
 | {c64-key}`F6`              | `WATCHVIEW     `| opens the watch viewer/editor                                                                   |
-| {c64-keys}`Shift + Slash`  | `HELP          `| displays memory ranges and current resource usage                                               |
 | {c64-keys}`C= + Plus`      | `NEXT DRIVE    `| Selects the next drive (limited to #15)                                                         |
 | {c64-keys}`C= + Minus`     | `PREV DRIVE    `| Selects the previous drive (limited to #8)                                                      |
-| {c64-key}`Colon`           | `EX COMMAND    `| Enters EX mode (see the EX commands section below for more on this)                             |
 
 ```{warning}
 Closing a source buffer with {c64-keys}`C= + Q` immediately discards any
@@ -484,6 +489,28 @@ The following keys are handled in command mode.
 
 |  KEY                                       | NAME         | DESCRIPTION                                                                             |
 |--------------------------------------------|--------------|-----------------------------------------------------------------------------------------|
+| {c64-key}`Minus`                           | `FILE VIEWER`| list directory, shows the files on the current disk                                             |
+| {c64-keys}`Shift + Slash`                  | `HELP       `| displays memory ranges and current resource usage                                               |
+| {c64-key}`Colon`                           | `EX COMMAND `| Enters EX mode (see the EX commands section below for more on this)                             |
+| {c64-key}`Slash`                           | `FIND       `| prompts for text to find                                                               |
+| {c64-key}`N`                               | `FIND NEXT  `| moves to the next search result                                                        |
+| {c64-keys}`Shift + N`                      | `FIND PREV  `| moves to the previous search result                                                    |
+| {c64-key}`I`                               | `INSERT     `| enters insert mode at the cursor                                                       |
+| {c64-key}`R`                               | `REPLACE CHAR`| replaces the character under the cursor with the next key typed                       |
+| {c64-keys}`Shift + R`                      | `REPLACE    `| enters overwrite mode                                                                  |
+| {c64-key}`X`                               | `ERASE CHAR `| deletes the character under the cursor                                                 |
+| {c64-key}`V`                               | `VISUAL     `| starts a character selection                                                           |
+| {c64-keys}`Shift + V`                      | `VISUAL LINE`| starts a line selection                                                                |
+| {c64-sequence}`YY`                         | `YANK LINE  `| copies the current line                                                                |
+| {c64-key}`Semicolon` then {c64-keys}`Shift + ;` | `BANNER ABOVE`| inserts a banner above the cursor (`;]`)                                            |
+| {c64-key}`E`                               | `WORD END   `| moves to the end of the word                                                           |
+| {c64-key}`B`                               | `WORD START `| moves to the beginning of the word                                                     |
+| {c64-key}`W`                               | `NEXT WORD  `| advances to the next word                                                              |
+| {c64-key}`RETURN`                          | `NEXT LINE  `| moves to the start of the next line                                                    |
+| {c64-key}`DEL`                             | `BACKSPACE  `| deletes the preceding character                                                       |
+| {c64-key}`Space`                           | `RIGHT      `| moves the cursor right                                                                 |
+| {c64-sequence}`ZH`                         | `PAN LEFT   `| pans the viewport left                                                                 |
+| {c64-sequence}`ZL`                         | `PAN RIGHT  `| pans the viewport right                                                                |
 | {c64-key}`HOME`                            | `HOME       `| moves the cursor to column 0                                                            |
 | {c64-key}`Colon` + _n_                     | `GOTO LINE  `| at the EX prompt, enter a line number to move the cursor to it                          |
 | {c64-key}`Ctrl` + {c64-key}`1`–{c64-key}`8`| `GOTO BUFFER`| opens the buffer corresponding to the number key that is pressed                        |
@@ -518,8 +545,8 @@ The following keys are handled in command mode.
 | {c64-key}`P`                               | `PASTE BELOW`| pastes the contents of the copy-buffer to the line below the cursor                     |
 | {c64-keys}`Shift + P`                      | `PASTE ABOVE`| pastes the contents of the copy-buffer to the line above the cursor                     |
 | {c64-keys}`Shift + I`                      | `INSERT LINE`| enters insert mode and moves to the first character in the current line                 |
-| {c64-key}`Left-bracket`                    | `PREV BLOCK `| moves to the previous empty line or start of file if there isn't one                    |
-| {c64-key}`Right-bracket`                   | `NEXT BLOCK `| moves to the next empty line or end of file if there isn't one                          |
+| {c64-keys}`Shift + :`                      | `PREV BLOCK `| moves to the previous empty line or start of file if there isn't one                    |
+| {c64-keys}`Shift + ;`                      | `NEXT BLOCK `| moves to the next empty line or end of file if there isn't one                          |
 | {c64-keys}`Ctrl + :`                       | `PREV BANNER`| moves to the previous comment banner - `;;;;;;;...`                                     |
 | {c64-keys}`Ctrl + ;`                       | `NEXT BANNER`| moves to the next comment banner - `;;;;;;;...`                                         |
 

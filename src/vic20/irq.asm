@@ -297,7 +297,7 @@ savebank2: .byte 0
 ; KEYDECODE
 ; Custom keyboard decode logic, installed at the KERNAL's decode-logic
 ; vector ($028f) and called by its keyscan ($eb1e).
-; Uses a custom CTRL decode tabl
+; Uses a custom CTRL decode table.
 .export __irq_keydecode
 .proc __irq_keydecode
 	lda $028d	; get the modifier flags
@@ -319,7 +319,7 @@ savebank2: .byte 0
 ; maps buffer, window, and comment banner navigation keys
 ctrltab:
 	.byte K_GOTO_BUFF1,K_GOTO_BUFF3,K_GOTO_BUFF5,K_GOTO_BUFF7
-	.byte $ff,$ff,$ff,$ff			; 9 + pound DEL
+	.byte $ff,K_NEXT_PAL,$ff,$ff		; 9 + pound DEL
 	.byte $ff,$ff,$ff,$ff,$09,$ff,$ff,$ff	; larrow W R Y I(TAB) P * RETURN
 	.byte $ff,$ff,$ff,$ff,K_WIN_DOWN,K_NEXT_BUFF ; CTRL A D G J L
 	.byte K_NEXT_BANNER,$ff			; ; CRSR-R
@@ -329,7 +329,7 @@ ctrltab:
 	.byte K_WIN_UP,K_PREV_BANNER,$ff,$ff	; K : = F3
 	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; Q E T U O @ uarrow F5
 	.byte K_GOTO_BUFF2,K_GOTO_BUFF4,K_GOTO_BUFF6,K_GOTO_BUFF8
-	.byte $ff,$ff,$ff,$ff			; 0 - HOME F7
+	.byte $ff,K_PREV_PAL,$ff,$ff		; 0 - HOME F7
 	.byte $ff				; no key
 .assert * - ctrltab = 65, error, "ctrltab must be 65 bytes"
 

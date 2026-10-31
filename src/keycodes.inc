@@ -1,3 +1,6 @@
+; command codes are unique within each input mode; window/debugger bindings
+; may reuse editor codes when that view has focus
+
 ; NAVIGATION KEYS
 K_LEFT      = $9d	; cursor left
 K_RIGHT     = $1d	; cursor right
@@ -37,9 +40,9 @@ K_LINK           = $b6  ; C= + l (link)
 K_BUILD          = $ae	; C= + s (build and link BUILD)
 K_MONITOR_WIN    = $88	; F7
 
-K_NEXT_PAL       = $db	; SHIFT + +
-K_PREV_PAL       = $dd  ; SHIFT + -
-K_TOGGLE_FMT     = $bb
+K_NEXT_PAL       = $e8	; CTRL + + (custom decode on both machines)
+K_PREV_PAL       = $e9  ; CTRL + - (leaves SHIFT + - for underscore)
+K_TOGGLE_FMT     = $bb  ; C= + f
 
 K_HELP           = $3f	; ?
 
@@ -52,11 +55,12 @@ K_DIR            = $2d  ; -
 K_LIST_SYMBOLS   = $b7  ; C= + y
 K_VIS_WHITESPACE = $be	; C= + v
 K_FIND           = $2f	; /
-K_FIND_PREV      = $2f	; /
+K_FIND_NEXT      = $6e	; n (command mode)
+K_FIND_PREV      = $4e	; SHIFT + n (command mode)
 K_GETCMD         = ':'  ; :
 
 K_GOTO_BUFF1     = $90  ; CTRL + 1
-K_GOTO_BUFF2     = $05  ; CTRL + 2 (NOTE: CTRL + e produces this too)
+K_GOTO_BUFF2     = $05  ; CTRL + 2
 K_GOTO_BUFF3     = $1c  ; CTRL + 3
 K_GOTO_BUFF4     = $9f  ; CTRL + 4
 K_GOTO_BUFF5     = $9c  ; CTRL + 5
@@ -122,6 +126,6 @@ K_CARET       = $5e	; up-arrow
 K_UNDERSCORE  = $5f	; SHIFT + minus
 K_GRAVE       = $60	; left-arrow
 K_CURLY_OPEN  = $7b	; SHIFT + @
-K_PIPE        = $7c	; SHIFT + #
+K_PIPE        = $7c	; SHIFT + pound
 K_CURLY_CLOSE = $7d	; SHIFT + *
 K_TILDE       = $7e	; SHIFT + left-arrow

@@ -2817,7 +2817,7 @@ cancel = enter_command
 	jmp ccup
 
 @check_ban_up:
-	cmp #':'	; SHIFT-; (generate banner above)
+	cmp #$5d	; SHIFT + ; (generate banner above)
 	bne @done
 	jsr open_line_above_noindent
 	jsr comment_banner
@@ -7523,8 +7523,8 @@ ro_commands:
 	.byte $20		; SPACE (right)
 	.byte $47		; G (goto end)
 	.byte $67		; g (goto start)
-	.byte $6e		; n (go to next search result)
-	.byte $4e		; N (go to previous search result)
+	.byte K_FIND_NEXT	; n (go to next search result)
+	.byte K_FIND_PREV	; N (go to previous search result)
 	.byte $24		; $ (end of line)
 	.byte $5b		; [ (previous empty line)
 	.byte $5d		; ] (next empty line)
