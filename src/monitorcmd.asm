@@ -709,8 +709,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	ora memory_mode
 	bne @wide
 	ldxy expr::value
-	jsr print_word
-	RETURN_OK
+	jmp print_word
+
 @wide:	jmp print_value
 @ret:	rts
 .endproc
@@ -1996,8 +1996,7 @@ range:
 @buff=mem::spare+40
 	lda #8*8			; default size of range
 	jsr get_range_or_default
-	bcc @l0
-:	jmp @done
+	jcs @done
 
 @l0:	cmpaddr @addr, addr_hi, @stop, stop_hi
 	jcs @ok
@@ -2006,7 +2005,7 @@ range:
 	jcs @ok
 
 	lda mon::int
-	bne :-				; SIGINT, quit
+	jne @ok				; SIGINT, save continuation address
 	ldxy #@buff+4
 	stxy @line
 
@@ -2067,6 +2066,7 @@ range:
 
 	ldxy #@buff
 	jsr mon::puts
+	bcs @done
 
 	cmpaddr @addr, addr_hi, @stop, stop_hi ; @l1 already advanced past row
 	bcs :+

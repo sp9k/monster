@@ -225,6 +225,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; IN:
 ;   - .XY: the address of the line to print
 ; OUT:
+;   - .A: error code on failure
 ;   - .C: set on error (failed to write to output file)
 .export __monitor_puts
 .proc __monitor_puts
@@ -299,7 +300,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	sec
 	sbc winoff	; screen row = buffer row - winoff
 	ldxy @msg
-	JUMPMAIN text::print
+	CALLMAIN text::print
+	RETURN_OK
 
 ;-------------------------------------------------------------------------------
 @file:	; Write the line to the output file.
@@ -313,6 +315,10 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	beq @newline
 	sty @tmp
 	jsr krn::chrout
+	jsr krn::readst
+	cmp #$00
+	bne @fileerr
+
 	ldy @tmp
 	iny
 	cpy #LINESIZE
@@ -321,11 +327,14 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 @newline:
 	lda #$0d
 	jsr krn::chrout
+	jsr krn::readst
+	cmp #$00
+	bne @fileerr
+
 	RETURN_OK
 
 @fileerr:
-	sec
-	rts
+	RETURN_ERR ERR_IO_ERROR
 .endproc
 
 ;*******************************************************************************
@@ -969,6 +978,8 @@ rowshi:
 
 	ldy @quote		; are we reading a quote?
 	bne @quoted		; if so, continue to handle that
+	cmp #';'		; ignore redirection in comments
+	beq @noredir
 	cmp #'"'		; double quote?
 	beq @string		; if so, start processing quoted string
 	cmp #$27		; single quote?
