@@ -414,6 +414,9 @@ standalone executable you can use when you are done working on your program.
 **Behavior:** Saves the active buffer to a file with the given name.  If no name is given,
 the active buffer's name is used.
 
+Saving under a new name updates the buffer name only after the write succeeds.
+If the save fails, the original name and modified state are preserved.
+
 ```{warning}
 The `@` suffix deletes the existing file before writing the replacement. If
 the subsequent save fails, the original file has already been deleted.
@@ -429,11 +432,17 @@ the subsequent save fails, the original file has already been deleted.
 
 **Behavior:** Saves all buffers that have been modified since they were last saved.
 As with the _Save_ command, adding `@` to the command (`S@`) will overwrite
-existing files if they exist.
+existing named files if they exist.
+
+If an unnamed buffer is modified, the editor will display the buffer in question and
+prompt you to save it (or skip it).
+
+Press **Y** or **y** to save, **N** or **n** to skip and continue to the next
+buffer, or **RUN/STOP** to cancel the remainder of the operation.
 
 ```{warning}
-`:S@` applies the delete-then-save operation to every modified buffer. A save
-failure can leave an original file deleted without a completed replacement.
+`:S@` applies the delete-then-save operation to every modified named buffer.
+A save failure can leave an original file deleted without a completed replacement.
 ```
 
 ```{example}

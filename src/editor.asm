@@ -1132,55 +1132,315 @@ CUR_BANK .set FINAL_BANK_EDIT
 .endproc
 ;*******************************************************************************
 ; SAVE ALL
-; Saves named dirty buffers and restores the original buffer and position
+; Saves dirty buffers, asking for names for unnamed sources
 ; OUT:
-;  - .C: set if a save failed
+;  - .C: set on cancellation or save failure
 .proc saveall
-@cnt=zp::editortmp
-	lda #$00
-	sta @cnt
-	cmp src::numbuffers
-	beq @retok		; if there are 0 buffers, we're done
+.ifdef vic20
+	JUMP FINAL_BANK_LINKER_AUX, saveall_banked
+.else
+	jmp saveall_banked
+.endif
+.endproc
 
-	jsr src::pushp		; save current source pos
+.PUSHSEG
+.ifdef vic20
+BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
+CUR_BANK .set FINAL_BANK_LINKER_AUX
+.else
+BANKED_SEG "EDITMAIN", FINAL_BANK_EDIT
+.endif
+
+;*******************************************************************************
+; SAVE ALL BANKED
+; Visits dirty sources and restores the original view after completion
+; OUT:
+;  - .C: set on cancellation or save failure
+.proc saveall_banked
+	lda src::numbuffers
+	bne :+
+	RETURN_OK
+
+:	CALLMAIN src::pushp
+	bcs @ret
+
+	CALLMAIN src::pushp
+	php
+	CALLMAIN src::popp
+	plp
 	bcs @ret
 	lda src::activebuff
-	pha			; save active buffer
-
-@l0:	; check if this buffer needs to be saved (is "dirty")
-	lda @cnt
-	jsr src::getflags
+	pha
+	lda #$00
+@loop:	pha			; keep iteration state across editor calls
+	CALLMAIN src::getflags
 	and #FLAG_DIRTY
 	beq @next
-
-	; save the "dirty" buffer to a file of its name
-	lda @cnt
-	jsr src::setbuff
-	jsr src::current_filename
-	bcs @next		; buffer has no name, don't save
-	lda @cnt
-	pha			; save routines use the editor scratch space
-	jsr command_save	; save the buffer's changes
 	pla
-	sta @cnt
-	bcs @done		; stop on the first failed save
+	pha
+	CALLMAIN src::setbuff
+	CALLMAIN src::current_filename
+	bcs @unnamed
+	CALL FINAL_BANK_EDIT, command_save
+	bcc @next
+	pla
+	;sec
+	bcs @restore
 
-@next:	inc @cnt		; next buffer
-	lda @cnt
-	cmp src::numbuffers	; have we checked all buffers?
-	bcc @l0			; repeate til we have
+@unnamed:
+	CALL FINAL_BANK_EDIT, clamp_cursor
+	CALL FINAL_BANK_EDIT, refresh_buffers
+	jsr saveall_unnamed
+	bcc @next
 
+	; leave the cancelled or failed unnamed source visible
+	pla
+	pla
+	CALLMAIN src::popp
+	CALL FINAL_BANK_EDIT, refresh_buffers
+	sec
+	rts
+
+@next:	pla
 	clc
-@done:	pla			; restore original buffer
-	php			; save error flag
-	jsr src::forceset
-	jsr src::popgoto	; restore source pos
-	CALLMAIN gui::refresh	; draw BUFFERS from the buffer we started on
-	plp			; restore error flag
+	adc #$01
+	cmp src::numbuffers
+	bcc @loop			; repeat for all buffers
+	clc				; done (ok)
+@restore:
+	pla
+	php
+	CALLMAIN src::forceset
+	CALLMAIN src::popgoto
+	CALL FINAL_BANK_EDIT, refresh_buffers
+	plp
 @ret:	rts
-
-@retok: RETURN_OK
 .endproc
+
+;*******************************************************************************
+; SAVE ALL PROMPT
+; Copies the prompt for the given ID into shared input memory (for SAVE ALL)
+; IN:
+;  - .X: offset into the prompt table
+; OUT:
+;  - .XY: address of the copied prompt
+.proc saveall_prompt
+	ldy #$00
+@copy:	lda prompts,x
+	sta $0100,y
+	inx
+	iny
+	cmp #$00
+	bne @copy
+	ldxy #$0100
+	rts
+
+;-------------------------------------------------------------------------------
+prompts:
+choice = * - prompts
+	.byte "[0] save (y/n)",0
+name = * - prompts
+	.byte "name",0
+exists = * - prompts
+	.byte "file exists",0
+.endproc
+
+;*******************************************************************************
+; SAVE ALL UNNAMED
+; Offers save, skip, or cancel for the visible unnamed source
+; OUT:
+;  - .C: set on cancellation or save failure
+.proc saveall_unnamed
+@choice:
+	ldx #saveall_prompt::choice
+	jsr saveall_prompt
+	lda src::activebuff
+	clc
+	adc #'1'		; get buffer to save's ID
+	sta $0101		; write it to the prompt
+
+	; draw before waiting; text::info only queues a status message
+	lda #STATUS_ROW
+	CALLMAIN text::print
+	CALLMAIN key::flush
+
+@key:	CALLMAIN key::waitch
+	cmp #K_QUIT
+	bne :+
+	;sec
+	rts
+
+:	and #$df
+	cmp #$4e		; 'n'
+	beq @skip
+	cmp #$59		; 'y'
+	bne @key
+
+	ldx #saveall_prompt::name
+	jsr saveall_prompt
+	CALL FINAL_BANK_EDIT, readinput
+	bcs @cancel
+	CALLMAIN src::check_name
+	bcs @invalid
+	ldy #$00
+	lda (zp::str0),y
+	beq @empty
+
+	; require a literal name, without DOS options or overwrite syntax
+@char:	lda (zp::str0),y
+	beq @valid
+	cmp #'@'
+	beq @syntax
+	cmp #':'
+	beq @syntax
+	cmp #','
+	beq @syntax
+	cmp #'*'
+	beq @syntax
+	cmp #'?'
+	beq @syntax
+	iny
+	bne @char
+
+@valid: ldxy zp::str0
+	CALLMAIN src::buffer_by_name
+	bcc @duplicate
+	ldxy zp::str0
+	CALLMAIN src::name
+	CALLMAIN src::current_filename
+	CALLMAIN file::exists
+	bcc @exists
+	cmp #ERR_FILE_NOT_FOUND
+	bne @driveerr
+
+	CALLMAIN src::current_filename
+	CALL FINAL_BANK_EDIT, save_new_source
+	bcs @failed
+	CALLMAIN src::current_filename
+	CALLMAIN dbgi::setfile
+@skip:	RETURN_OK
+@cancel:
+	sec
+	rts
+
+@empty:	lda #ERR_NO_FILENAME
+	skw
+@syntax:
+	lda #ERR_SYNTAX_ERROR
+	skw
+@duplicate:
+	lda #ERR_BUFFER_NAME_EXISTS
+@invalid:
+	CALL FINAL_BANK_EDIT, report_errcode
+	jmp @choice
+
+@exists:
+	jsr saveall_clear_name
+	ldx #saveall_prompt::exists
+	jsr saveall_prompt
+	CALL FINAL_BANK_EDIT, report_error
+	jmp @choice
+@driveerr:
+	CALL FINAL_BANK_EDIT, report_drive_error
+@failed:
+	jsr saveall_clear_name
+	sec
+	rts
+.endproc
+
+;*******************************************************************************
+; SAVE ALL CLEAR NAME
+; Restores an unnamed source after a rejected or failed save
+.proc saveall_clear_name
+	lda #$00
+	sta $0100
+	ldxy #$0100
+	JUMP FINAL_BANK_MAIN, src::name
+.endproc
+.POPSEG
+SET_CUR_BANK FINAL_BANK_EDIT
+.ifdef vic20
+CUR_BANK .set FINAL_BANK_EDIT
+.endif
+
+;*******************************************************************************
+; SAVE NEW SOURCE
+; Writes the active source without renaming or scratching an existing file
+; IN:
+;  - .XY: validated filename in the source name slot
+; OUT:
+;  - .C: set on save failure
+.proc save_new_source
+@file=r8
+	stxy @file
+	ldxy #strings::saving
+	jsr blank
+	ldxy @file
+	jsr save_source
+	jmp ::command_save::write_result
+.endproc
+
+.PUSHSEG
+.ifdef vic20
+.CODE
+.else
+.segment "EDITMAIN"
+.endif
+;*******************************************************************************
+; SAVE SOURCE
+; Writes the active source and checks the final drive status
+; IN:
+;  - .XY: the filename to write
+; OUT:
+;  - .C: set on failure
+;  - .A: error code on failure
+;  - r8: the original filename pointer
+.proc save_source
+@file=r8
+	stxy @file
+	tya
+	pha
+	txa
+	pha
+
+	jsr src::pushp
+	bcs @ret
+	ldxy @file
+	jsr file::open_w
+	bcs @openerr
+	sta @file
+	jsr src::rewind
+	lda @file
+	jsr file::savesrc
+
+	php
+	pha
+	jsr src::popgoto
+	lda @file
+	jsr file::close
+	jsr krn::clrchn
+	pla
+	plp
+	bcs @ret
+	jsr file::geterr
+
+@ret:	tay
+	pla
+	sta @file
+	pla
+	sta @file+1
+	tya
+	rts
+
+@openerr:
+	php
+	pha
+	jsr src::popgoto
+	pla
+	plp
+	jmp @ret
+.endproc
+.POPSEG
 
 ;*******************************************************************************
 ; GETS
@@ -3694,14 +3954,22 @@ buffer8: lda #$07
 	jsr src::check_name
 	bcs @err
 
-	; check if the name is already taken in the active debug info mapping
 	stxy @file
-	CALLMAIN dbgi::getfileid			; .A = id of the file
+	jsr src::buffer_by_name
+	bcs @check_debug
+	cmp src::activebuff
+	bne @duplicate
+	RETURN_OK		; saving to the current name needs no rename
+
+@check_debug:
+	ldxy @file
+	CALLMAIN dbgi::getfileid
 	bcs @ok
-	RETURN_ERR ERR_BUFFER_NAME_EXISTS	; the chosen name is taken
+@duplicate:
+	RETURN_ERR ERR_BUFFER_NAME_EXISTS
 
 @ok:	; now get the ID of the buffer we are renaming
-	jsr src::filename	; check if there is already a name
+	jsr src::current_filename ; check if there is already a name
 	bcs @new		; no existing ID, continue with generated one
 
 	; update the active debug-info mapping to support renaming files
@@ -3715,6 +3983,7 @@ buffer8: lda #$07
 
 @new:	ldxy @file		; restore NEW file name
 	CALLMAIN dbgi::setfile	; create a debug info mapping for the new name
+	bcs @err
 
 @setname:
 	ldxy @file		; restore NEW file name
@@ -4077,7 +4346,7 @@ SET_CUR_BANK FINAL_BANK_EDIT
 
 @done:	lda @file
 	jsr file::close
-	jsr file::geterr	; check for drive-reported errors (e.g. disk full)
+	jsr file::geterr	; check drive status, including disk full
 	bcc :+
 	jmp @err
 :	jmp unblank			; <- command_saveprg
@@ -4172,7 +4441,7 @@ flat:
 	jsr file::close
 	plp
 	bcs @err
-	jsr file::geterr	; check for drive-reported errors (e.g. disk full)
+	jsr file::geterr	; check drive status, including disk full
 	bcc @done
 @err:	jsr unblank
 	jmp report_drive_error
@@ -4221,32 +4490,16 @@ flat:
 	jsr file::scratch	; (try to) delete the existing file
 	; ignore any error here; the file may simply not exist yet
 
-	; open the file, write the source to it, and close the file
+	; commit the new name only after the disk write succeeds
 @open:	ldxy @file
-	jsr rename_buffer	; first, rename the buffer to our filename
+	jsr save_source
+	bcs @err
 	ldxy @file
-	jsr file::open_w	; OPEN file for writing
+	jsr rename_buffer
+	bcs @nameerr
+
+@write_result:
 	bcs @err
-	sta @file
-
-	jsr src::pushp		; save current source pos in source buffer
-	jsr src::rewind		; go back to the start of source buffer
-
-	lda @file
-	jsr file::savesrc	; SAVE the buffer
-	php			; save the save status
-	pha			; and the error code
-	jsr src::popgoto	; restore source pos in buffer
-
-	lda @file
-	jsr file::close		; CLOSE file
-	jsr krn::clrchn
-	pla			; restore the error code
-	plp			; restore the save status
-	bcs @err		; on failure report and keep the buffer dirty
-	jsr file::geterr	; check for drive-reported errors (e.g. disk full)
-	bcs @err
-
 @ok:	lda #$00
 	jsr src::setflags	; clear flags on the source buffer
 	jsr unblank
@@ -4268,6 +4521,9 @@ flat:
 	jsr key::getch
 	sec
 	rts
+
+; shared completion for saving a newly named source
+write_result = @write_result
 .endproc
 
 ;*******************************************************************************
