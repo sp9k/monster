@@ -15,6 +15,7 @@
 .include "errlog.inc"
 .include "errors.inc"
 .include "irq.inc"
+.include "jumplist.inc"
 .include "macros.inc"
 .include "memory.inc"
 .include "ram.inc"
@@ -142,6 +143,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Initializes the source state such that no buffers exist
 .export __src_init
 .proc __src_init
+	jsr jumps::reset
 	lda #$00
 	sta numsrcs
 	sta sp
@@ -757,6 +759,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Initializes the LOG buffer.  This is a reserved buffer for use as a log
 .export __src_new_log
 .proc __src_new_log
+	jsr jumps::clear_log
 	; save current source buffer state
 	lda activesrc
 	pha
@@ -795,7 +798,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 
 	; go back to the buffer we started on
 	pla
-	jmp __src_set
+	jmp __src_force_set
 .PUSHSEG
 .RODATA
 @filename: .byte "log",0
@@ -1320,7 +1323,6 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	cmp #$0d
 	bne :+
 	decw line
-	jsr on_line_deleted
 
 :	lda cursorzp
 	bne @local
@@ -1337,7 +1339,12 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	bpl :+
 	jsr sync_x
 :	pla
-	clc
+	cmp #$0d
+	bne :+
+	pha
+	jsr on_line_deleted	; joined line and byte column are now synchronized
+	pla
+:	clc
 	rts
 @skip:	sec
 	rts

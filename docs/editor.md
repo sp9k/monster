@@ -16,6 +16,9 @@ in size. These are accessed via a key chord comprised of {c64-key}`Ctrl` and the
 key for the corresponding buffer.  You can also navigate to the _previous_
 buffer with {c64-keys}`Ctrl + H` and the _next_ buffer with {c64-keys}`Ctrl + L`.
 
+If a visual selection is active while switching buffers or when creating/closing one, the selection
+is stopped.
+
 ### Command shortcuts
 
 Below are the basic commands along with their associated key combinations. These
@@ -579,7 +582,7 @@ line endings ($0a) will be automatically converted when the file is loaded.
 
 ### Jump lists
 When the user "jumps" to a different position in the source (`gg`, `G`, `goto line`,
-`find`, `[`, and `]`) the editor saves the old position.  To recall the positions
+`find`, `[`, and `]`, or buffer navigation commands) the editor saves the old position.  To recall the positions
 that were "jumped" from are two commands: _jump-forward_ ({c64-keys}`C= + I`) and _jump-backward_ ({c64-keys}`C= + O`).
 
 ### Syntax checking

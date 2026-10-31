@@ -7,6 +7,7 @@
 .import __edit_debugging
 .import __edit_gets
 .import __edit_gotoline
+.import __edit_goto_buffer
 .import __edit_handle_key
 .import __edit_highlight_en
 .import __edit_highlight_line
@@ -42,6 +43,7 @@
 	debugging       = __edit_debugging
 	gets            = __edit_gets
 	gotoline        = __edit_gotoline
+	gotobuffer      = __edit_goto_buffer
 	handlekey       = __edit_handle_key
 	height          = __edit_height
 	highlight_en    = __edit_highlight_en

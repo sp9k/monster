@@ -40,6 +40,7 @@
 .include "linker.inc"
 .include "limits.inc"
 .include "log.inc"
+.include "jumplist.inc"
 .include "macro.inc"
 .include "macros.inc"
 .include "memcfg.inc"
@@ -90,8 +91,6 @@ MODE_VISUAL_LINE = 4
 
 START_MODE = MODE_COMMAND
 
-MAX_JUMPS = 8
-
 VISUAL      = 1
 VISUAL_LINE = 2
 
@@ -129,13 +128,15 @@ __edit_assembly_quiet: .byte 0	; suppress assembly status (used by monitor)
 
 readonly:  .byte 0	; if !0 no edits are allowed to be made via the editor
 
-; jump list lines and current index
-jumplist_lo: .res MAX_JUMPS
-jumplist_hi: .res MAX_JUMPS
-jumpptr:     .byte 0
-
+.ifdef vic20
+.PUSHSEG
+.segment "SHAREBSS2"
+.endif
 visual_start_line:	.word 0	; the line # a selection began at
-visual_start_pos:       .word 0 ; source cursor for visual seleciton
+visual_start_pos:       .word 0 ; source cursor for visual selection
+.ifdef vic20
+.POPSEG
+.endif
 visual_start_x:		.byte 0	; the x-position a selection began at
 selection_type:    	.byte 0 ; the type of selection (VISUAL_LINE or VISUAL)
 
@@ -189,6 +190,7 @@ getsvec: .word 0		; key handler for gets
 .export __edit_set_breakpoint
 .export __edit_load
 .export __edit_gotoline
+.export __edit_goto_buffer = goto_buffer
 .export __edit_src2screen
 .export __edit_sethighlight
 .export __edit_hl_redraw
@@ -1188,7 +1190,7 @@ BANKED_SEG "EDITMAIN", FINAL_BANK_EDIT
 	bcs @restore
 
 @unnamed:
-	CALL FINAL_BANK_EDIT, clamp_cursor
+	CALL FINAL_BANK_EDIT, buffer_selected
 	CALL FINAL_BANK_EDIT, refresh_buffers
 	jsr saveall_unnamed
 	bcc @next
@@ -1995,7 +1997,7 @@ cancel = enter_command
 
 @move:	jsr src::popgoto
 	ldxy @target
-	jmp edit_gotoline
+	jmp jump_line
 .endproc
 
 ;*******************************************************************************
@@ -2019,7 +2021,7 @@ cancel = enter_command
 
 @move:	jsr src::popgoto
 	ldxy @target
-	jmp edit_gotoline
+	jmp jump_line
 .endproc
 
 ;*******************************************************************************
@@ -2890,9 +2892,8 @@ cancel = enter_command
 	cmp #$67		; get second 'g' to confirm movement
 	bne @ret
 
-@top:	jsr add_jump_point
-	ldxy #1
-	jmp edit_gotoline
+@top:	ldxy #1
+	jmp jump_line
 
 ;-------------------------------------------------------------------------------
 @gotodef:
@@ -2940,10 +2941,11 @@ cancel = enter_command
 
 @err:	jmp beep::short
 
-@ok:	jsr add_jump_point
+@ok:	jsr jumps::begin
 	ldxy @label
 	jsr dbg::gotolabel	; goto the stored definition location
 	bcs @err
+	jmp jumps::commit
 :
 @ret:	rts			; return ok
 .endproc
@@ -3101,10 +3103,11 @@ cancel = enter_command
 	lda #$00
 	sta zp::curx
 	sta zp::cury
-	jsr line_navigated
-	jmp refresh
+	jmp @refresh
 
 @set:	jsr src::forceset
+@refresh:
+	jsr buffer_selected
 	jsr line_navigated
 	jmp refresh
 .PUSHSEG
@@ -3166,6 +3169,7 @@ cancel = enter_command
 	.byte K_NEW_BUFF	; new buffer
 	.byte K_SET_BREAKPOINT	; set breakpoint
 	.byte K_JUMPBACK	; jump back
+	.byte K_JUMPFORWARD	; jump forward
 
 	.byte K_GOTO_BUFF1	; go-to buffer 1
 	.byte K_GOTO_BUFF2	; go-to buffer 2
@@ -3213,8 +3217,8 @@ cancel = enter_command
 	view::edit, brkpt::edit, watch::edit, monitor_win, \
 	guienter, \
 	refresh, \
-	view_symbols, view_macros, show_log, command_link, command_build, \
-	close_buffer, new_buffer, set_breakpoint, jumpback, \
+	view_symbols, view_macros, jump_log, command_link, command_build, \
+	close_buffer, new_buffer, set_breakpoint, jumpback, jumpforward, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
 	next_buffer, prev_buffer, udgedit, leave_insert, go_basic, \
 	mem_config, \
@@ -3469,6 +3473,23 @@ cancel = enter_command
 .endproc
 
 ;*******************************************************************************
+; BUFFER SELECTED
+; Ends any visual selection and fits the cursor to the editor window
+.proc buffer_selected
+	jsr is_visual
+	bne @done
+
+	lda #MODE_COMMAND
+	sta mode
+	lda #CUR_NORMAL
+	sta cur::mode
+	lda #'c'
+	sta text::statusmode
+
+@done:	; fall through to clamp_cursor
+.endproc
+
+;*******************************************************************************
 ; CLAMP CURSOR
 ; Moves the cursor onto a row that exists in the editor based on its
 ; current height
@@ -3492,12 +3513,14 @@ cancel = enter_command
 	bne :+
 
 	; if we're on the special LOG buffer, toggle it off
-	jmp show_log
+	jmp jump_log
 
 :	jsr buffer_fileid	; get debug file ID for the buffer
 	bcs @close		; unnamed buffer; it can't have breakpoints
 	jsr brkpt::delinbuff
-@close:	lda src::activebuff
+
+@close:	jsr buffer_selected
+	lda src::activebuff
 	jsr src::close
 	bcs :+
 	jsr clamp_cursor	; the buffer we moved to may be off-screen
@@ -3512,6 +3535,7 @@ cancel = enter_command
 ; CLEAR
 ; Moves back to the origin locatin (0,0) and refreshes the screen (clears it)
 .proc home_refresh
+	jsr buffer_selected
 	lda #$00
 	sta zp::curx
 	sta zp::cury
@@ -3712,12 +3736,14 @@ edit_set_breakpoint:
 ;   -. X: the buffer to select
 .proc change_buff
 	txa
+	jmp jump_buffer
 ::goto_buffer:
 	jsr src::setbuff
 	bcs @done
-	jsr clamp_cursor	; the buffer may have been left off-screen
+	jsr buffer_selected	; the buffer may have been left off-screen
 	jsr line_navigated
-	jmp refresh
+	jsr refresh
+	clc
 @done:	rts
 .endproc
 
@@ -3821,7 +3847,7 @@ buffer6: lda #$05
 buffer7: lda #$06
 	 skw
 buffer8: lda #$07
-	jmp goto_buffer
+	jmp jump_buffer
 
 ;*******************************************************************************
 ; SHOW_BUFFERS
@@ -3906,7 +3932,7 @@ buffer8: lda #$07
 	sbc #'1'
 @gotobuff:
 	; this handler runs in the MAIN context (called by the window manager)
-	CALL FINAL_BANK_EDIT, goto_buffer
+	CALL FINAL_BANK_EDIT, jump_buffer
 
 	; update saved cursor to new position in opened buffer
 	; move up as needed
@@ -3942,6 +3968,41 @@ buffer8: lda #$07
 .endproc
 
 ;*******************************************************************************
+; CHECK BUFFER NAME
+; Validates a proposed name without changing source or debug metadata
+; IN:
+;  - .XY: the name to assign to the buffer
+; OUT:
+;  - .C:  set on error
+;  - .A:  error code (if .C is set), 0 for no new name, 1 for new name
+;  - .XY: the proposed name on success
+;  - .Z:  set if the name already belongs to the active buffer
+.proc check_buffer_name
+@file=zp::editortmp
+	jsr src::check_name
+	bcs @ret
+	stxy @file
+	jsr src::buffer_by_name
+	bcs @debug
+	cmp src::activebuff
+	bne @duplicate
+
+	ldxy @file
+	lda #$00		; 0 (buffer not renamed)
+	RETURN_OK
+
+@debug:	ldxy @file
+	CALLMAIN dbgi::getfileid
+	bcc @duplicate
+	ldxy @file
+	lda #$01		; !0 (buffer renamed)
+	clc
+@ret:	rts
+@duplicate:
+	RETURN_ERR ERR_BUFFER_NAME_EXISTS
+.endproc
+
+;*******************************************************************************
 ; RENAME BUFFER
 ; Renames the current source buffer to the given name. Does NOT save the
 ; file, only the buffer.
@@ -3951,22 +4012,9 @@ buffer8: lda #$07
 ;  - .C: set on error (.A: the error code)
 .proc rename_buffer
 @file=zp::editortmp
-	jsr src::check_name
+	jsr check_buffer_name
 	bcs @err
-
-	stxy @file
-	jsr src::buffer_by_name
-	bcs @check_debug
-	cmp src::activebuff
-	bne @duplicate
-	RETURN_OK		; saving to the current name needs no rename
-
-@check_debug:
-	ldxy @file
-	CALLMAIN dbgi::getfileid
-	bcs @ok
-@duplicate:
-	RETURN_ERR ERR_BUFFER_NAME_EXISTS
+	beq @err		; new name same as old -> done
 
 @ok:	; now get the ID of the buffer we are renaming
 	jsr src::current_filename ; check if there is already a name
@@ -4481,7 +4529,7 @@ flat:
 :	stxy @file
 @rename:
 	ldxy @file
-	jsr src::check_name
+	jsr check_buffer_name
 	bcs @nameerr
 	lda overwrite
 	beq @open		; if overwrite flag isn't set, continue
@@ -4498,6 +4546,9 @@ flat:
 	jsr rename_buffer
 	bcs @nameerr
 
+;-------------------------------------------------------------------------------
+; WRITE RESULT
+; entrypoint for saving new buffer
 @write_result:
 	bcs @err
 @ok:	lda #$00
@@ -4522,7 +4573,6 @@ flat:
 	sec
 	rts
 
-; shared completion for saving a newly named source
 write_result = @write_result
 .endproc
 
@@ -4595,6 +4645,10 @@ write_result = @write_result
 	ldxy @file
 	jsr file::open_r
 	bcs @err		; failed to load file
+	tay
+	lda src::activebuff
+	pha			; original buffer, including LOG
+	tya
 	pha			; save file handle
 	jsr src::new
 	pla			; get the file handle
@@ -4606,8 +4660,10 @@ write_result = @write_result
 	jsr file::close		; close the file
 	jsr src::rewind		; loading leaves the cursor in the last segment
 	plp			; restore load status
-	bcs @err
+	bcs @rollback
+	pla			; discard original buffer ID
 
+	jsr buffer_selected
 	jsr unblank
 	ldxy @file
 	jsr src::name		; name the buffer
@@ -4626,12 +4682,19 @@ write_result = @write_result
 	jsr cancel
 @ok:	RETURN_OK
 
+@rollback:
+	jsr src::close
+	pla
+	jsr src::forceset	; restore original source/cursor pos
 @err:	jsr unblank
 	jsr report_drive_error
 	sec
 	rts
 
 @allocerr:
+	tax
+	pla			; clean stack
+	txa
 	jsr file::close		; release the handle without loading any text
 	jsr unblank
 	lda #ERR_BUFFER_FULL
@@ -5831,13 +5894,9 @@ clear_message = text::clrinfo
 ; IN:
 ;   - .XY: the string containing the line number to navigate to
 .proc command_gotoline
-@line=r2
-	jsr atoi		; convert (YX) to line #
+	jsr atoi
 	bcs @done
-	stxy @line
-	jsr add_jump_point	; save the current position as a jump point
-	ldxy @line
-	jmp edit_gotoline	; go to the target line
+	jmp jump_line
 @done:	rts
 .endproc
 
@@ -6220,7 +6279,7 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 
 	; move to the line containing the search word
 @move:	jsr src::popgoto	; restore old source position
-	jsr add_jump_point	; add a jump point
+	jsr jumps::begin	; add a jump point
 	jsr unblank
 	ldxy @target
 	jsr edit_gotoline	; go to the new line
@@ -6243,16 +6302,15 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 :	jsr src::next
 	dec @cnt
 	bne :-
-@done:	RETURN_OK
+@done:	jmp jumps::commit
 .endproc
 
 ;*******************************************************************************
 ; GOTO END
 ; Goes to the the last line in the buffer
 .proc goto_end
-	jsr add_jump_point
 	ldxy #$ffff
-	bne edit_gotoline	; branch always
+	jmp jump_line
 .endproc
 
 ;*******************************************************************************
@@ -6878,53 +6936,116 @@ report_error = alert::show
 :	rts
 .endproc
 
+.PUSHSEG
+.ifdef c64
+.segment "EDITMAIN"
+.endif
 ;*******************************************************************************
-; ADD JUMP POINT
-; Adds a jump point at the current source position
-.proc add_jump_point
-@end=r0
-	ldx jumpptr
-	cpx #MAX_JUMPS
-	bcc @cont
-
-	; shift all existing jumps down
-	ldx #$00
-:	lda jumplist_hi+1,x
-	sta jumplist_hi,x
-	lda jumplist_lo+1,x
-	sta jumplist_lo,x
-	inx
-	cpx #MAX_JUMPS
-	bcc :-
-
-	dex			; the last slot receives the new jump
-	stx jumpptr
-
-; add the new jump to the end of the jumplist
-@cont:	lda src::line
-	sta jumplist_lo,x
-	lda src::line+1
-	sta jumplist_hi,x
-
-	inc jumpptr
-:	rts		; <- jumpback
+; JUMP BUFFER
+; Records a successful buffer selection in navigation history
+; IN:
+;  - .A: buffer to select
+; OUT:
+;  - .C: set if the buffer is unavailable
+.proc jump_buffer
+	pha
+	jsr jumps::begin
+	pla
+	jsr goto_buffer
+	bcs @done
+	jmp jumps::commit
+@done:	rts
 .endproc
 
 ;*******************************************************************************
-; JUMPBACK
-; Jumps back to the last source position the user has jumped from
+; JUMP LOG
+; Records navigation into or out of the log buffer
+.proc jump_log
+	jsr jumps::begin
+	jsr show_log
+	jmp jumps::commit
+.endproc
+
+;*******************************************************************************
+; JUMP LINE
+; Records a line navigation only when it changes the current position
+; IN:
+;  - .XY: destination line
+.proc jump_line
+@line=r2
+	stxy @line
+	jsr jumps::begin
+	ldxy @line
+	jsr edit_gotoline
+	jmp jumps::commit
+.endproc
+
+;*******************************************************************************
+; JUMP FORWARD
+; Returns to the next position in navigation history
+.proc jumpforward
+	jsr jumps::forward
+	bcc jump_to
+	rts
+.endproc
+
+;*******************************************************************************
+; JUMP BACK
+; Returns to the previous position in navigation history
 .export jumpback
 .proc jumpback
-	ldx jumpptr
-	beq :-		; -> rts (jumplist is empty)
-	dec jumpptr
-
-	; use -1 offset because we loaded jumpptr before DEC'ing
-	ldy jumplist_hi-1,x
-	lda jumplist_lo-1,x
-	tax
-	jmp edit_gotoline
+	jsr jumps::back
+	bcc jump_to
+	rts
 .endproc
+
+;*******************************************************************************
+; JUMP TO
+; Activates a history destination and restores its line and byte column
+; IN:
+;  - .A:  destination buffer
+;  - .XY: destination line
+;  - r0:  destination column (clamped to the current line length)
+.proc jump_to
+@column=r0
+@buffer=r3
+@remaining=zp::editortmp
+	sta @buffer
+	lda @column
+	pha
+	txa
+	pha
+	tya
+	pha
+
+	lda @buffer
+	cmp #LOG_BUFFER
+	bne @set
+	cmp src::activebuff
+	beq @set
+	jsr show_log
+	jmp @position
+@set:	jsr src::forceset
+	jsr buffer_selected
+	jsr refresh
+
+@position:
+	pla
+	tay
+	pla
+	tax
+	jsr edit_gotoline
+	jsr src::home
+	pla
+	sta @remaining
+	beq @sync
+@right:	jsr src::right
+	bcs @sync
+	dec @remaining
+	bne @right
+@sync:	jmp sync_cur
+.endproc
+.POPSEG
 
 ;*******************************************************************************
 ; GOTO INDEX 0

@@ -30,6 +30,9 @@
 .include "text.inc"
 .include "zeropage.inc"
 
+; jump history shares this annotation bank
+.import __jump_close, __jump_shift
+
 .ifdef vic20
 CUR_BANK .set FINAL_BANK_MAIN
 .endif
@@ -666,15 +669,7 @@ getline:
 	lda errfileids,x
 	bpl @file
 	and #$7f
-	CALLMAIN src::setbuff
-	lda zp::cury
-	cmp edit::height
-	bcc :+
-	lda edit::height
-	sta zp::cury
-:	CALLMAIN edit::refresh
-	clc
-	rts
+	JUMPMAIN edit::gotobuffer
 @file:	JUMPMAIN dbg::loadfile
 .endproc
 
@@ -1240,6 +1235,7 @@ getline:
 .proc edit_lines
 @offset=r2
 	sta @offset
+	jsr __jump_shift
 	jsr edit_annotations
 	jmp shift_dismissed
 .endproc
@@ -1455,6 +1451,7 @@ getline:
 ;  - src::activebuff: buffer being closed (before buffer IDs compact)
 .proc close_buffer
 @ownerid=r0
+	jsr __jump_close
 	lda #NAV_NONE
 	sta __errlog_navpending
 	sta __errlog_editpending

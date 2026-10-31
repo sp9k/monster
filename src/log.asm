@@ -84,7 +84,7 @@ __log_close  = logclose
 	jsr src::insert
 
 	pla
-	jmp src::setbuff	; return to buffer we started on
+	jmp src::forceset	; return to buffer we started on
 @done:	rts
 .endproc
 
@@ -114,7 +114,7 @@ __log_close  = logclose
 	jsr src::insert
 
 	pla
-	jmp src::setbuff	; return to buffer we started on
+	jmp src::forceset	; return to buffer we started on
 .endproc
 
 ;*******************************************************************************
@@ -131,6 +131,6 @@ __log_close  = logclose
 	jsr src::rewind
 
 	pla
-	jmp src::setbuff
+	jmp src::forceset
 @done:	rts
 .endproc
