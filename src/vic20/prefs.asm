@@ -95,8 +95,8 @@ NUM_TABLES   = 9
 ;   - .X: the id of the palette to switch to
 .proc set_pal
 @pal=r0
-	jsr irq::off
 	stx pal_num
+	jsr scr::blank
 
 	ldxy #palettes
 	stxy @pal
@@ -121,7 +121,9 @@ NUM_TABLES   = 9
 	sta $900f
 
 	jsr draw::refresh_colors
-	jmp irq::on
+	; clrcolor corrupted borrwoed cell, blank again to reinit
+	jsr scr::blank
+	jmp scr::unblank
 .endproc
 
 ;*******************************************************************************
