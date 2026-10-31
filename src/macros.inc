@@ -1,6 +1,56 @@
 .include "zeropage.inc"
 
 ;*******************************************************************************
+; BANK TABLE
+; Declares a table of MAIN banked procedure entrypoints paired with jumps to a
+; destination bank. Entries must be contiguous in both segments. Callers call
+; entires in this table with JSR/JMP (or CALLMAIN from another bank).
+; IN:
+;  - name:         table scope
+;  - bank_id:      destination logical bank
+;  - segment_name: destination code segment
+.macro BANK_TABLE name, bank_id, segment_name
+.scope name
+bank = ::bank_id
+.ifdef vic20
+.import __ram_table_call
+gate:
+	jsr __ram_table_call
+	.byte bank_id
+	.word .loword(entries+$02-targets)
+entries:
+.pushseg
+.segment segment_name
+targets:
+.popseg
+.endif
+.endscope
+.endmacro
+
+;*******************************************************************************
+; BANK ENTRY (Vic-20)
+; Emits the 3-byte stub in the MAIN bank and its matching destination-bank jump.
+; IN:
+;  - table:        scope declared by BANK_TABLE
+;  - segment_name: destination code segment
+;  - target:       procedure in that segment's bank
+.macro BANK_ENTRY table, segment_name, target
+.ifdef vic20
+.local entry, offset
+entry:
+	jsr table::gate
+offset = entry-::table::entries
+.pushseg
+.segment segment_name
+.assert *-table::targets = offset, lderror, "bank table layout"
+	jmp target
+.popseg
+.else
+	JUMP table::bank, target
+.endif
+.endmacro
+
+;*******************************************************************************
 ; BANKED CODE
 ; Selects the given code segment on builds where the module runs from its own
 ; cartridge ROM bank (c64 cart) and the main CODE segment otherwise.

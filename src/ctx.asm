@@ -108,15 +108,19 @@ __ctx_numparams = numparams
 
 ;*******************************************************************************
 ; Banked memory mappings
-__ctx_push:         JUMP FINAL_BANK_CTX, push
-__ctx_rewind:       JUMP FINAL_BANK_CTX, rewind
-__ctx_pop:          JUMP FINAL_BANK_CTX, pop
-__ctx_getrecord:    JUMP FINAL_BANK_CTX, getrecord
-__ctx_getparams:    JUMP FINAL_BANK_CTX, getparams
-__ctx_write_parent: JUMP FINAL_BANK_CTX, write_parent
-__ctx_write:	    JUMP FINAL_BANK_CTX, write
-__ctx_end:	    JUMP FINAL_BANK_CTX, end
-__ctx_addparam:     JUMP FINAL_BANK_CTX, addparam
+.macro CTXJUMP proc
+	BANK_ENTRY ctx_table, "CTX", proc
+.endmacro
+BANK_TABLE ctx_table, FINAL_BANK_CTX, "CTX"
+__ctx_push:         CTXJUMP push
+__ctx_rewind:       CTXJUMP rewind
+__ctx_pop:          CTXJUMP pop
+__ctx_getrecord:    CTXJUMP getrecord
+__ctx_getparams:    CTXJUMP getparams
+__ctx_write_parent: CTXJUMP write_parent
+__ctx_write:        CTXJUMP write
+__ctx_end:          CTXJUMP end
+__ctx_addparam:     CTXJUMP addparam
 
 BANKED_SEG "CTX", FINAL_BANK_CTX
 

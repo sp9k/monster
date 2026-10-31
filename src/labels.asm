@@ -158,10 +158,11 @@ SEG_FLOAT_PACKED = $7d
 ;*******************************************************************************
 ; Label JUMP table
 .macro LBLJUMP proc
-	JUMP FINAL_BANK_SYMBOLS, proc
+	BANK_ENTRY label_table, "LABELS", proc
 .endmacro
 
 .RODATA
+BANK_TABLE label_table, FINAL_BANK_SYMBOLS, "LABELS"
 
 __label_clr:               LBLJUMP clr
 __label_add:               LBLJUMP add

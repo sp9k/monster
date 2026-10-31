@@ -36,14 +36,18 @@ redrawing:  .byte 0	; preserve selection masks during a redraw
 .export __view_init, __view_draw, __view_follow, __view_pan
 .export __view_clear, __view_scroll_up, __view_scroll_down
 .export __view_reverse, __view_physical_x
-__view_init: JUMP FINAL_BANK_VSCREEN, init
+.macro VIEWJUMP proc
+	BANK_ENTRY viewport_table, "VSCREEN", proc
+.endmacro
+BANK_TABLE viewport_table, FINAL_BANK_VSCREEN, "VSCREEN"
+__view_init: VIEWJUMP init
 
 ;*******************************************************************************
 ; DRAW
 ; Expands and displays the source row in linebuffer.
 ; IN:
 ;  - .A: the screen row to draw
-__view_draw: JUMP FINAL_BANK_VSCREEN, draw_row
+__view_draw: VIEWJUMP draw_row
 
 ;*******************************************************************************
 ; NAVIGATE
@@ -53,7 +57,7 @@ __view_draw: JUMP FINAL_BANK_VSCREEN, draw_row
 .ifdef ultimem
 .export __view_navigate
 .proc __view_navigate
-	JUMP FINAL_BANK_VSCREEN, navigate
+	VIEWJUMP navigate
 .endproc
 .else
 .export __view_navigate
@@ -61,20 +65,20 @@ __view_navigate = edit::redrawline
 .endif
 
 .export __view_command
-__view_command:     JUMP FINAL_BANK_VSCREEN, command
-__view_pan:         JUMP FINAL_BANK_VSCREEN, pan
-__view_clear:       JUMP FINAL_BANK_VSCREEN, clear
-__view_scroll_up:   JUMP FINAL_BANK_VSCREEN, scroll_up
-__view_scroll_down: JUMP FINAL_BANK_VSCREEN, scroll_down
-__view_reverse:     JUMP FINAL_BANK_VSCREEN, reverse
+__view_command:     VIEWJUMP command
+__view_pan:         VIEWJUMP pan
+__view_clear:       VIEWJUMP clear
+__view_scroll_up:   VIEWJUMP scroll_up
+__view_scroll_down: VIEWJUMP scroll_down
+__view_reverse:     VIEWJUMP reverse
 .export __view_toggle_cursor
-__view_toggle_cursor: JUMP FINAL_BANK_VSCREEN, toggle_cursor
+__view_toggle_cursor: VIEWJUMP toggle_cursor
 
 .export __view_join
-__view_join: JUMP FINAL_BANK_VSCREEN, join
+__view_join: VIEWJUMP join
 
 .export __view_invalidate
-__view_invalidate: JUMP FINAL_BANK_VSCREEN, invalidate
+__view_invalidate: VIEWJUMP invalidate
 
 ;*******************************************************************************
 ; PHYSICAL X

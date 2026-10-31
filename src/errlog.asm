@@ -269,39 +269,45 @@ CUR_BANK .set FINAL_BANK_MAIN
 .export __errlog_get_current
 .export __errlog_set_live
 
+.macro ERRLOGJUMP proc
+	BANK_ENTRY errlog_table, "ERRLOG_CODE", proc
+.endmacro
+
 .ifdef ultimem
 ERRLOG_BANK = FINAL_BANK_ERRLOG
-__errlog_shift_errorsd: JUMP ERRLOG_BANK, shift_errorsd
-__errlog_shift_errorsu: JUMP ERRLOG_BANK, shift_errorsu
-__errlog_getbyline:     JUMP ERRLOG_BANK, getbyline
+BANK_TABLE errlog_table, ERRLOG_BANK, "ERRLOG_CODE"
+__errlog_shift_errorsd: ERRLOGJUMP shift_errorsd
+__errlog_shift_errorsu: ERRLOGJUMP shift_errorsu
+__errlog_getbyline:     ERRLOGJUMP getbyline
 .else
 ERRLOG_BANK = FINAL_BANK_DBGUI
+BANK_TABLE errlog_table, ERRLOG_BANK, "DBGUI"
 .endif
 
 .if .defined(ultimem) .or (.defined(CART) .and .defined(c64))
-__errlog_activate:      JUMP ERRLOG_BANK, activate
-__errlog_clear:         JUMP ERRLOG_BANK, clear
-__errlog_reset:         JUMP ERRLOG_BANK, reset
-__errlog_log:           JUMP ERRLOG_BANK, logerr
-__errlog_next:          JUMP ERRLOG_BANK, next
-__errlog_set_live:       JUMP ERRLOG_BANK, set_live
-__errlog_get_current:    JUMP ERRLOG_BANK, get_current
-__errlog_inserted:      JUMP ERRLOG_BANK, inserted
-__errlog_newline:       JUMP ERRLOG_BANK, newline
-__errlog_cancel_newline: JUMP ERRLOG_BANK, cancel_newline
-__errlog_insertion_mode: JUMP ERRLOG_BANK, insertion_mode
-__errlog_deleted:       JUMP ERRLOG_BANK, deleted
-__errlog_delete_linebreak: JUMP ERRLOG_BANK, delete_linebreak
-__errlog_dismiss:       JUMP ERRLOG_BANK, dismiss_current
-__errlog_undismiss:     JUMP ERRLOG_BANK, undismiss_current
-__errlog_close_buffer:  JUMP ERRLOG_BANK, close_buffer
-__errlog_refresh:       JUMP ERRLOG_BANK, refresh
-__errlog_check_line:    JUMP ERRLOG_BANK, check_line
-__errlog_show:          JUMP ERRLOG_BANK, show
-__errlog_before_key:    JUMP ERRLOG_BANK, before_key
-__errlog_after_key:     JUMP ERRLOG_BANK, after_key
-keyhandler_vec:         JUMP ERRLOG_BANK, keyhandler
-getline_vec:            JUMP ERRLOG_BANK, getline
+__errlog_activate:      ERRLOGJUMP activate
+__errlog_clear:         ERRLOGJUMP clear
+__errlog_reset:         ERRLOGJUMP reset
+__errlog_log:           ERRLOGJUMP logerr
+__errlog_next:          ERRLOGJUMP next
+__errlog_set_live:       ERRLOGJUMP set_live
+__errlog_get_current:    ERRLOGJUMP get_current
+__errlog_inserted:      ERRLOGJUMP inserted
+__errlog_newline:       ERRLOGJUMP newline
+__errlog_cancel_newline: ERRLOGJUMP cancel_newline
+__errlog_insertion_mode: ERRLOGJUMP insertion_mode
+__errlog_deleted:       ERRLOGJUMP deleted
+__errlog_delete_linebreak: ERRLOGJUMP delete_linebreak
+__errlog_dismiss:       ERRLOGJUMP dismiss_current
+__errlog_undismiss:     ERRLOGJUMP undismiss_current
+__errlog_close_buffer:  ERRLOGJUMP close_buffer
+__errlog_refresh:       ERRLOGJUMP refresh
+__errlog_check_line:    ERRLOGJUMP check_line
+__errlog_show:          ERRLOGJUMP show
+__errlog_before_key:    ERRLOGJUMP before_key
+__errlog_after_key:     ERRLOGJUMP after_key
+keyhandler_vec:         ERRLOGJUMP keyhandler
+getline_vec:            ERRLOGJUMP getline
 .else
 __errlog_activate       = activate
 __errlog_clear          = clear

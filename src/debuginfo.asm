@@ -128,18 +128,22 @@ debuginfo_end:
 .RODATA
 .endif
 
-__debug_addr2line:        JUMP FINAL_BANK_DEBUG, addr2line
-__debug_line2addr:        JUMP FINAL_BANK_DEBUG, line2addr
-__debug_end_block:        JUMP FINAL_BANK_DEBUG, end_block
-__debuginfo_init:         JUMP FINAL_BANK_DEBUG, init
-__debuginfo_initonce:     JUMP FINAL_BANK_DEBUG, initonce
-__debug_get_filename:     JUMP FINAL_BANK_DEBUG, get_filename
-__debug_new_block:        JUMP FINAL_BANK_DEBUG, new_block
-__debug_rename_file:      JUMP FINAL_BANK_DEBUG, rename_file
-__debug_set_file:         JUMP FINAL_BANK_DEBUG, set_file
-__debug_store_line:       JUMP FINAL_BANK_DEBUG, store_line
-__debuginfo_get_fileid:   JUMP FINAL_BANK_DEBUG, get_fileid
-__debuginfo_set_seg_id:   JUMP FINAL_BANK_DEBUG, set_seg_id
+.macro DEBUGJUMP proc
+	BANK_ENTRY debuginfo_table, "DEBUGINFO_CODE", proc
+.endmacro
+BANK_TABLE debuginfo_table, FINAL_BANK_DEBUG, "DEBUGINFO_CODE"
+__debug_addr2line:        DEBUGJUMP addr2line
+__debug_line2addr:        DEBUGJUMP line2addr
+__debug_end_block:        DEBUGJUMP end_block
+__debuginfo_init:         DEBUGJUMP init
+__debuginfo_initonce:     DEBUGJUMP initonce
+__debug_get_filename:     DEBUGJUMP get_filename
+__debug_new_block:        DEBUGJUMP new_block
+__debug_rename_file:      DEBUGJUMP rename_file
+__debug_set_file:         DEBUGJUMP set_file
+__debug_store_line:       DEBUGJUMP store_line
+__debuginfo_get_fileid:   DEBUGJUMP get_fileid
+__debuginfo_set_seg_id:   DEBUGJUMP set_seg_id
 
 __debug_prepare_files = prepare_files
 __debug_dump_files    = dump_files

@@ -44,12 +44,13 @@ __buff_num_lines_copied:	.byte 0
 
 ;*******************************************************************************
 .macro COPYBUFFJUMP proc
-	JUMP FINAL_BANK_BUFF, proc
+	BANK_ENTRY copybuff_table, "COPYBUFF", proc
 .endmacro
 
 .CODE
 ;*******************************************************************************
 ; Copy Buff JUMP table
+BANK_TABLE copybuff_table, FINAL_BANK_BUFF, "COPYBUFF"
 __buff_putch:        COPYBUFFJUMP putch
 __buff_getch:        COPYBUFFJUMP getch
 __buff_getline:      COPYBUFFJUMP getline

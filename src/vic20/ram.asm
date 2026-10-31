@@ -69,3 +69,61 @@ bank = zp::banktmp
 	plp
 	rts
 .endproc
+
+.CODE
+
+;*******************************************************************************
+; TABLE CALL
+; Dispatches to the target bank's jump table. The destination address is based
+; on the RETURN address of the table call because the calls are arranged
+; linearly
+;   - proc1
+;   - proc2
+;   - proc3
+; IN:
+;  - $100[SP+1]: bank byte and entry-to-target adjustment
+;  - $100[SP+3]: identifies the destination jump table slot
+; OUT:
+;  - .A: target result
+;  - .X: target result
+;  - .Y: target result
+;  - .P: target flags
+.export __ram_table_call
+.proc __ram_table_call
+@a = zp::banktmp+1
+@x = zp::banktmp+2
+@y = zp::inline+1
+@desc = zp::inline+2
+	sta @a
+	stx @x
+	sty @y
+
+	; consume the gate return address to locate its descriptor
+	pla
+	sta @desc
+	pla
+	sta @desc+1
+	jsr exp::push_bank
+
+	; read the destination's bank byte
+	ldy #$01		; offset to bank byte
+	lda (@desc),y
+	sta bank		; set bank byte
+
+	; translate the stub's return address into its destination JMP address
+	; (return_address - adjustment)
+	; the adjustment is (entries+$02 - targets) where entries is the MAIN
+	; bank's table and targets is the target bank's
+	iny			; offset to adjustment
+	pla
+	sec
+	sbc (@desc),y
+	sta zp::bankjmpvec
+	iny
+	pla
+	sbc (@desc),y
+	sta zp::bankjmpvec+1
+
+	ldy @y
+	jmp exec		; enter the banked procedure
+.endproc
