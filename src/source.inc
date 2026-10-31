@@ -11,6 +11,7 @@
 .import __src_before_end
 .import __src_before_newl
 .import __src_buffer_by_name
+.import __src_check_name
 .import __src_close
 .import __src_current_filename
 .import __src_currline
@@ -80,6 +81,7 @@ GAPSIZE = $100	; size of gap in gap buffer
 	before_end       = __src_before_end
 	before_newl      = __src_before_newl
 	buffer_by_name   = __src_buffer_by_name
+	check_name       = __src_check_name
 	close            = __src_close
 	current_filename = __src_current_filename
 	currline         = __src_currline

@@ -40,6 +40,10 @@
 
 .include "ram.inc"
 
+.ifdef c64
+.include "c64/nmi.inc"
+.endif
+
 .import is_whitespace	; from monitorcmd.asm
 
 ;*******************************************************************************
@@ -587,13 +591,28 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	; close the output file (if not screen)
 	lda __monitor_outfile
-	beq :+
+	beq @result
 	CALLMAIN file::close
+	CALLMAIN file::geterr
+	bcc @closed
+
+	; preserve the command error when closing also failed
+	tax
+	pla
+	plp
+	bcs :+
+	txa
+	sec
+:	php
+	pha
+
+@closed:
 	jsr unblank
 	lda #$00
 	sta __monitor_outfile	; back to the screen (the handle is closed now)
 
-:	pla
+@result:
+	pla
 	plp			; restore error bit (.C)
 	bcc @ok			; if it succeeded, continue
 	CALLMAIN err::get
@@ -1092,26 +1111,33 @@ rowshi:
 ; installs the RESTORE handler used by the monitor on the current platform
 .export __monitor_install_nmi
 .proc __monitor_install_nmi
-.ifdef vic20
 	ldxy #monitor_nmi
 	stxy $0318
+.ifdef vic20
 	lda #$82
 	sta $911e		; enable NMIs from RESTORE key
 	rts
 .else
-	JUMPMAIN run::install_restore
+	stxy $fffa
+	JUMPMAIN nmi::enable
 .endif
 .endproc
 
-.ifdef vic20
 .PUSHSEG
+.ifdef vic20
 .segment "INTS"
+.else
+.segment "IRQ"
+.endif
 ;*******************************************************************************
 ; MONITOR NMI
 ; The monitor's NMI handler. Sets the INT signal so to gracefully halt long
 ; running commands.
-monitor_nmi:
+; OUT:
+;   - __monitor_int: set to interrupt the active monitor command
+.proc monitor_nmi
 	pha
+.ifdef vic20
 	lda $9111		; ack CA1 (RESTORE) so future NMIs can fire
 	lda exp::bank
 	pha			; save current bank
@@ -1121,7 +1147,11 @@ monitor_nmi:
 	sta __monitor_int	; set INT flag
 	pla
 	SELECT_BANK_A		; restore bank
+.else
+	lda #$01
+	sta __monitor_int
+.endif
 	pla
 	rti
+.endproc
 .POPSEG
-.endif

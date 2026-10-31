@@ -243,7 +243,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ;   - .X: buffer to set
 .proc set_no_save
 	stx activesrc
-	lda activesrc
+	txa
 	jsr mul_state_size
 	tay
 
@@ -308,7 +308,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	sta next_of,y
 	tya
 	sta next_of,x
-	clc
+	;clc
 @done:	rts
 .endproc
 
@@ -814,17 +814,15 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	beq @cont
 	cpx #MAX_SOURCES	; all 8 user buffers in use?
 	bcc @saveold
-	rts			; err, too many sources
+@full:	rts			; err, too many sources or pool exhausted
 
 @saveold:
-	lda activesrc
 	jsr __src_save	; save current source data
 
 @cont:	; find a free bank for the new buffer
 	jsr alloc_bank
-	bcc :+
-	rts			; pool exhausted
-:	sta bank
+	bcs @full
+	sta bank
 
 	lda numsrcs
 	sta activesrc
@@ -842,11 +840,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	tay				; save buffer id
 
 	; set name to 0 (unnamed)
-	asl
-	asl
-	asl
-	asl
-	tax
+	jsr times_16
 	lda #$00
 	sta names,x
 
@@ -884,37 +878,36 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .export __src_buffer_by_name
 .proc __src_buffer_by_name
 @name=zp::str0
-@other=zp::str2
-@names=r0
 @cnt=r2
-@len=r3
-	jsr str::len	; sets @name (str0) to .XY
-	sta @len
+	stxy @name
+	ldx #$00
+	stx @cnt
 
-	ldxy #names
-	stxy @names
-	lda #$ff
-	sta @cnt
-
-@l0:	inc @cnt
-	lda @cnt
+@l0:	lda @cnt
 	cmp numsrcs
 	bcs @notfound
-	ldxy @names
-	stxy @other
-	lda @len
-	jsr str::compare
-	php
-	lda @names
-	clc
-	adc #MAX_BUFFER_NAME_LEN
-	sta @names
-	bcc :+
-	inc @names+1
-:	plp
-	bne @l0
+	ldy #$00
 
+@char:	lda (@name),y
+	cmp names,x
+	bne @next
+	cmp #$00
+	beq @found
+	inx
+	iny
+	cpy #MAX_BUFFER_NAME_LEN
+	bcc @char
+
+@next:	inc @cnt
 	lda @cnt
+	asl
+	asl
+	asl
+	asl
+	tax
+	jmp @l0
+
+@found:	lda @cnt
 	clc		; flag as FOUND
 @notfound:
 	rts
@@ -949,11 +942,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 .export __src_get_filename
 .proc __src_get_filename
 @out=r0
-	asl			; * 16
-	asl
-	asl
-	asl
-	tax
+	jsr times_16
 	lda __src_names,x
 	bne @named
 
@@ -1079,7 +1068,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	dec @cnt
 	bne @l0
 
-	; copy cursor data and banks down
+	; copy cursor data, banks and flags down
 	ldx activesrc
 @l1:	lda banks+1,x
 	sta banks,x
@@ -1087,6 +1076,8 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	sta buffs_curx,x
 	lda buffs_cury+1,x
 	sta buffs_cury,x
+	lda flags+1,x
+	sta flags,x
 	inx
 	cpx numsrcs
 	bcc @l1
@@ -1114,10 +1105,34 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	dec activesrc
 	dex
 
-:	lda banks,x
-	jsr set_no_save
+:	jmp set_no_save
+.endproc
 
-@ok:	RETURN_OK
+;*******************************************************************************
+; CHECK NAME
+; Checks that a source filename is valid (not too long)
+; IN:
+;  - .XY: the zero-terminated filename
+; OUT:
+;  - .A:  error code on failure
+;  - .C:  set if the filename is too long
+; PRESERVES:
+;  - .XY
+.export __src_check_name
+.proc __src_check_name
+@name=zp::str0
+	stxy @name
+	ldy #$00
+	clc
+@l0:	lda (@name),y
+	beq @ok
+	iny
+	cpy #MAX_BUFFER_NAME_LEN
+	bne @l0
+	lda #ERR_FILENAME_TOO_LONG
+
+@ok:	ldxy @name
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1125,9 +1140,14 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Sets the name for the active buffer
 ; IN:
 ;  - .XY: the 0-terminated name to set for the active buffer
+; OUT:
+;  - .A: error code on failure
+;  - .C: set if the filename is too long
 .export __src_name
 .proc __src_name
 @name=r0
+	jsr __src_check_name
+	bcs @done
 	stxy @name
 	jsr active_times_16	; .X=activesrc * 16
 
@@ -1137,7 +1157,6 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	beq @done
 	inx
 	iny
-	cpy #MAX_BUFFER_NAME_LEN
 	bne @l0
 @done:	rts
 .endproc
@@ -1159,14 +1178,15 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 :	tya
 	pha
 	jsr __src_pos
-	stxy srctmp
+	pha
+	txa
 	ldx sp
 	inc sp
-	sta stk_hi,x
-	lda srctmp
 	sta stk_lo,x
-	lda srctmp+1
+	tya
 	sta stk_mid,x
+	pla
+	sta stk_hi,x
 	lda line
 	sta stk_llo,x
 	lda line+1
@@ -1184,12 +1204,12 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ;   - .C: set on error (the stack is empty)
 .export __src_popp
 .proc __src_popp
-	lda sp
+	ldx sp
 	bne :+
 	RETURN_ERR ERR_STACK_UNDERFLOW
 
-:	dec sp
-	ldx sp
+:	dex
+	stx sp
 	ldy stk_mid,x
 	lda stk_lo,x
 	tax
@@ -1340,8 +1360,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	;jsr dbgi::delete_line
 
 	; shift breakpoints and errors
-	jsr errlog::deleted
-	rts
+	jmp errlog::deleted
 .endproc
 
 ;*******************************************************************************
@@ -2014,6 +2033,18 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ;   - .X: activesrc * 16
 .proc active_times_16
 	lda activesrc
+	; fall through to times_16
+.endproc
+
+;*******************************************************************************
+; TIMES 16
+; Multiplies a buffer ID by the filename slot size
+; IN:
+;  - .A: buffer ID
+; OUT:
+;  - .A: buffer ID * 16
+;  - .X: buffer ID * 16
+.proc times_16
 	asl
 	asl
 	asl

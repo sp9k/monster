@@ -3161,25 +3161,9 @@ cancel = enter_command
 ; OUT:
 ;  - .C: set if a buffer could not be made
 .proc new_buffer
-	ldx zp::curx
-	ldy zp::cury
 	jsr src::new
-	bcc @ok
+	bcc home_refresh
 	jmp beep::short		; too many open buffers
-
-@ok:
-.if .defined(CART) .and .defined(c64)
-	; src::name dereferences the name in this (banked) context; strings::null
-	; is in MIDRAM, so use an in-bank empty string
-	ldxy #@null
-.else
-	ldxy #strings::null
-.endif
-	jsr src::name		; rename buffer to empty name
-	jmp home_refresh
-.if .defined(CART) .and .defined(c64)
-@null:	.byte 0
-.endif
 .endproc
 
 ;*******************************************************************************
@@ -3453,6 +3437,7 @@ edit_set_breakpoint:
 ;   -. X: the buffer to select
 .proc change_buff
 	txa
+::goto_buffer:
 	jsr src::setbuff
 	bcs @done
 	jsr clamp_cursor	; the buffer may have been left off-screen
@@ -3561,13 +3546,7 @@ buffer6: lda #$05
 buffer7: lda #$06
 	 skw
 buffer8: lda #$07
-goto_buffer:
-	jsr src::setbuff
-	bcs @done		; if we can't set the buffer, exit
-	jsr clamp_cursor	; the buffer may have been left off-screen
-	jsr line_navigated
-	jmp refresh
-@done:	rts
+	jmp goto_buffer
 
 ;*******************************************************************************
 ; SHOW_BUFFERS
@@ -3697,6 +3676,9 @@ goto_buffer:
 ;  - .C: set on error (.A: the error code)
 .proc rename_buffer
 @file=zp::editortmp
+	jsr src::check_name
+	bcs @err
+
 	; check if the name is already taken in the active debug info mapping
 	stxy @file
 	CALLMAIN dbgi::getfileid			; .A = id of the file
@@ -4212,6 +4194,9 @@ flat:
 
 :	stxy @file
 @rename:
+	ldxy @file
+	jsr src::check_name
+	bcs @nameerr
 	lda overwrite
 	beq @open		; if overwrite flag isn't set, continue
 @scratch:
@@ -4251,6 +4236,12 @@ flat:
 	CALLMAIN gui::refresh	; the buffer is no longer DIRTY; update BUFFERS
 	ldxy #strings::saved	; confirm that the file was written
 	jmp text::info
+
+@nameerr:
+	pha
+	jsr unblank
+	pla
+	jmp report_buffer_error
 
 @err:	pha
 	jsr unblank
@@ -4292,14 +4283,11 @@ flat:
 .proc edit_load
 @file=r9
 	stxy @file
+	jsr src::check_name
+	bcc :+
+	jmp report_buffer_error
 
 	; check if the file is already open in one of our buffers
-	lda src::numbuffers
-	cmp #MAX_SOURCES	; all 8 user buffers (LOG is stored separately)
-	bcc :+
-	lda #ERR_TOO_MANY_BUFFERS
-	jmp report_typein_error
-
 :	jsr src::buffer_by_name
 	bcs @notfound
 
@@ -4308,16 +4296,19 @@ flat:
 	cmp src::activebuff
 	beq @ok			; buffer already active; quit
 
-	jsr src::setbuff	; switch to the new buffer
-	jsr clamp_cursor	; the buffer may have been left off-screen
-
-	jsr refresh
+	jsr goto_buffer		; restore cursor and redraw the selected buffer
 	RETURN_OK
 
 @notfound:
 ; buffer doesn't exist in any RAM bank, load from disk
+	lda src::numbuffers
+	cmp #MAX_SOURCES	; LOG is stored separately
+	bcc :+
+	lda #ERR_TOO_MANY_BUFFERS
+	jmp report_buffer_error
+
 	; display loading...
-	ldxy #strings::loading
+:	ldxy #strings::loading
 	jsr blank
 
 	ldxy @file
@@ -4331,6 +4322,7 @@ flat:
 	pha			; save file handle
 	jsr src::new
 	pla			; get the file handle
+	bcs @allocerr
 	pha
 	jsr file::loadsrc	; load to SOURCE buff
 	pla			; restore file handle
@@ -4360,6 +4352,28 @@ flat:
 
 @err:	jsr unblank
 	jsr report_drive_error
+	sec
+	rts
+
+@allocerr:
+	jsr file::close		; release the handle without loading any text
+	jsr unblank
+	lda #ERR_BUFFER_FULL
+	; fall through to report_buffer_error
+.endproc
+
+;*******************************************************************************
+; REPORT BUFFER ERROR
+; Displays a buffer operation error and returns it to the caller
+; IN:
+;  - .A: error code
+; OUT:
+;  - .A: error code
+;  - .C: set
+.proc report_buffer_error
+	pha
+	jsr report_typein_error
+	pla
 	sec
 	rts
 .endproc

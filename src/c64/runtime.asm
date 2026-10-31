@@ -38,9 +38,7 @@ nop_handler:
 .export __run_install_restore
 .proc __run_install_restore
 	ldxy #key::restore_nmi
-	stxy $0318
-	stxy $fffa
-	jmp nmi::enable
+	jmp install_nmi_vector
 .endproc
 
 ;*******************************************************************************
@@ -50,10 +48,19 @@ nop_handler:
 .export __run_install_sigint
 .proc __run_install_sigint
 	ldxy #nmi_sigint
-	stxy $0318		; vector used when the KERNAL is banked in
-	stxy $fffa		; vector used when all RAM is banked in
 	lda #$00
 	sta edit::sigint	; reset INT flag
+	; fall through to install_nmi_vector
+.endproc
+
+;*******************************************************************************
+; INSTALL NMI VECTOR
+; Installs and enables an NMI handler for both memory configurations
+; IN:
+;   - .XY: handler address
+.proc install_nmi_vector
+	stxy $0318		; vector used when the KERNAL is banked in
+	stxy $fffa		; vector used when all RAM is banked in
 	jmp nmi::enable		; allow RESTORE key NMIs
 .endproc
 

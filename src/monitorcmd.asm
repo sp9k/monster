@@ -281,6 +281,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; LIST WATCHES
 ; w
 ; Lists all active watches
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc list_watches
 @cnt=zp::tmp13
 @num=zp::tmp14
@@ -294,11 +297,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 @loop:	lda @cnt
 	jsr @print
+	bcs @ret
 	inc @cnt
 	lda @cnt
 	cmp @num
 	bcc @loop
 @done:	RETURN_OK
+@ret:	rts
 
 @print:	CALLMAIN ui::render_watch
 	jmp mon::puts
@@ -327,6 +332,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; LIST BREAKPOINTS
 ; b
 ; List all breakpoints
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc list_breakpoints
 @cnt=zp::debuggertmp
 @num=zp::debuggertmp+1
@@ -339,11 +347,13 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 @loop:	lda @cnt
 	jsr @print
+	bcs @ret
 	inc @cnt
 	lda @cnt
 	cmp @num
 	bcc @loop
 @done:	RETURN_OK
+@ret:	rts
 
 @print:	CALLMAIN ui::render_breakpoint
 	jmp mon::puts
@@ -723,6 +733,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; Example:
 ;  `c $100 $200 $5`
 ; Will show the differences between the 5 bytes in [$100, $105) and [$200, $205)
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc compare
 @block0 = zp::debuggertmp
 @block1 = zp::debuggertmp+2
@@ -775,6 +788,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 	; display the address that had a mismatch
 	jsr @display_item
+	bcs @done
 
 @next:	incaddr @block0, addr_hi
 	incaddr @block1, target_hi
@@ -950,6 +964,9 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ; past $FFFF.
 ; Example:
 ;  `h $1000 1 2 3`
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc hunt
 @start   = zp::debuggertmp
 @i       = zp::debuggertmp+2
@@ -1027,9 +1044,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 :	lda memory_mode
 	beq @word
 	lda access_hi
-	jsr print_long
-	jmp @done
-@word:	jsr print_word	; print the address where we found the value
+	jmp print_long
+@word:	jmp print_word	; print the address where we found the value
 
 @done:	RETURN_OK
 .endproc
@@ -1037,21 +1053,27 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 ;*******************************************************************************
 ; REGISTERS
 ; Displays the current contents of the registers.
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .export __dbgcmd_regs
 .proc __dbgcmd_regs
 	ldxy #strings::debug_registers
 	RENDER_STR
 	jsr mon::puts
+	bcs @ret
 
 	CALLMAIN ui::regs_contents
 
 	RENDER_STR
 	jsr mon::puts
+	bcs @ret
 
 .ifdef hard8x8
 	ldxy #strings::debug_registers2
 	RENDER_STR
 	jsr mon::puts
+	bcs @ret
 
 	CALLMAIN ui::regs_contents
 	txa
@@ -1061,6 +1083,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	bcc :+
 	iny
 :	jsr mon::puts
+	bcs @ret
 .endif
 
 	ldxy sim::pc
@@ -1070,11 +1093,15 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	lda #$00
 	sta __dbgcmd_default_addr+2
 :	RETURN_OK
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
 ; DISASM
 ; Disassembles from the given expression
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc disasm
 	lda memory_mode
 	beq :+
@@ -1108,7 +1135,8 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 	jmp @next
 
 @ok:	jsr @drawline
-@next:	cmpaddr @addr, addr_hi, @stopaddr, stop_hi
+@next:	bcs @ret
+	cmpaddr @addr, addr_hi, @stopaddr, stop_hi
 	bcc @l0
 
 @done:	lda addr_hi
@@ -1294,6 +1322,7 @@ BANKED_SEG "CONSOLE", FINAL_BANK_MONITOR
 
 :	ldxy #mem::linebuffer
 	jsr __monitor_puts
+	bcs @done
 	ldxy #mem::linebuffer+3
 	stxy zp::line
 	jsr eval
@@ -1747,22 +1776,31 @@ range:
 ;*******************************************************************************
 ; STEP
 ; Steps to the next instruction
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc step
 	CALLMAIN dbg::step
 	jsr mon::update_pc_view		; follow the PC in the source view
 	; print the registers
 	jsr __dbgcmd_regs
+	bcs @done
 	jmp put_instruction
+@done:	rts
 .endproc
 
 ;*******************************************************************************
 ; STEP_OVER
 ; Steps over the next instruction.  Subroutines (JSR) are treated as one
 ; instruction
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc step_over
 	CALLMAIN dbg::step_over
 	jsr mon::update_pc_view		; follow the PC in the source view
 	jsr __dbgcmd_regs
+	bcs @done
 	jmp put_instruction
 @done:	rts
 .endproc
@@ -1770,9 +1808,13 @@ range:
 ;*******************************************************************************
 ; TRACE
 ; Starts TRACE'ing the program.
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc trace
 	CALLMAIN dbg::trace
 	jsr __dbgcmd_regs
+	bcs @done
 	jmp put_instruction
 @done:	rts
 .endproc
@@ -1793,6 +1835,9 @@ range:
 ; stack's start location
 ; .e.g.
 ;  `>BT 8`
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc backtrace
 @sp=zp::debuggertmp
 @offset=zp::debuggertmp+2
@@ -1826,6 +1871,7 @@ range:
 @l0:	lda mon::int
 	bne @done		; SIGINT, quit
 	jsr @draw_item		; draw the stack contents for this offset
+	bcs @done
 	inc @sp			; move to next procedure in the stack
 	beq @ok
 	inc @sp
@@ -1917,11 +1963,16 @@ range:
 ;*******************************************************************************
 ; STEP OUT
 ; Continues execution til the current subroutine returns with an RTS
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc step_out
 	CALLMAIN dbg::step_out
 	jsr mon::update_pc_view		; follow the PC in the source view
 	jsr __dbgcmd_regs
+	bcs @done
 	jmp put_instruction
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -1965,6 +2016,8 @@ range:
 	; close the file
 @close:	pla
 	CALLMAIN file::close
+	CALLMAIN file::geterr
+	bcs @err
 	jsr @err				; restore IRQ
 	RETURN_OK
 
@@ -2270,6 +2323,9 @@ inline_proc hextostr, util::hextostr
 ;*******************************************************************************
 ; PUT INSTRUCTION
 ; Prints the instruction at the .PC
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc put_instruction
 	; disassemble the instruction that we're at now
 	ldx sim::pc
@@ -2284,16 +2340,17 @@ inline_proc hextostr, util::hextostr
 	; print the disassembled instruction of ??? if we couldn't disassemble
 	bcc :+
 	ldxy #strings::question_marks
-	jsr mon::puts_main
-	RETURN_OK
+	jmp mon::puts_main
 :	ldxy #$100
-	jsr mon::puts
-	RETURN_OK
+	jmp mon::puts
 .endproc
 
 ;*******************************************************************************
 ; SHOW FILES
 ; Shows all files loaded in the debug info
+; OUT:
+;   - .A: error code on failure
+;   - .C: set on error
 .proc show_files
 @cnt=zp::debuggertmp
 	lda #$00
@@ -2302,13 +2359,15 @@ inline_proc hextostr, util::hextostr
 	beq @done
 :	lda @cnt
 	CALL FINAL_BANK_MAIN, dbgi::get_filename
-	bcs @done
+	bcs @ret
 	jsr mon::puts
+	bcs @ret
 	inc @cnt
 	lda @cnt
 	cmp dbgi::numfiles
 	bne :-
 @done:	RETURN_OK
+@ret:	rts
 .endproc
 
 ;*******************************************************************************
@@ -2535,8 +2594,7 @@ MAX_RESULT_BYTES = $02
 	cmp #$00
 	bne :-
 	ldxy #mem::spare
-	jsr mon::puts
-	RETURN_OK
+	jmp mon::puts
 
 ;-------------------------------------------------------------------------------
 @names:
@@ -2733,7 +2791,10 @@ MAX_RESULT_BYTES = $02
 	jsr krn::chkout
 	bcs @err
 @l0:	jsr krn::readst
+	cmp #$00
 	bne @err
+	lda mon::int
+	bne @done		; cancellation closes the partial output file
 	cmpaddr @addr, addr_hi, @stop, stop_hi
 	bcs @done
 
