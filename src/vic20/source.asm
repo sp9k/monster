@@ -104,7 +104,6 @@ seglen: .word 0
 
 :	pha		; save char to insert
 
-	jsr __src_mark_dirty
 	ldxy cursorzp
 	cmpw poststartzp	; is gap closed?
 	bne @ins	; no, insert as usual
@@ -117,7 +116,8 @@ seglen: .word 0
 	lda #ERR_BUFFER_FULL
 	rts
 
-@ins:	pla
+@ins:	jsr __src_mark_dirty	; the gap has room for the character
+	pla
 	ldy cursorzp+1
 	bmi @done	; out of range
 

@@ -1126,10 +1126,15 @@ CUR_BANK .set FINAL_BANK_EDIT
 ;*******************************************************************************
 ; COMMAND SAVE ALL
 ; Save all open buffers that have been modified since they were last saved.
-; OUT
+; OUT:
 ;   - .C: set on error
 .proc command_saveall
 .endproc
+;*******************************************************************************
+; SAVE ALL
+; Saves named dirty buffers and restores the original buffer and position
+; OUT:
+;  - .C: set if a save failed
 .proc saveall
 @cnt=zp::editortmp
 	lda #$00
@@ -1138,6 +1143,7 @@ CUR_BANK .set FINAL_BANK_EDIT
 	beq @retok		; if there are 0 buffers, we're done
 
 	jsr src::pushp		; save current source pos
+	bcs @ret
 	lda src::activebuff
 	pha			; save active buffer
 
@@ -1152,17 +1158,26 @@ CUR_BANK .set FINAL_BANK_EDIT
 	jsr src::setbuff
 	jsr src::current_filename
 	bcs @next		; buffer has no name, don't save
+	lda @cnt
+	pha			; save routines use the editor scratch space
 	jsr command_save	; save the buffer's changes
+	pla
+	sta @cnt
+	bcs @done		; stop on the first failed save
 
 @next:	inc @cnt		; next buffer
 	lda @cnt
 	cmp src::numbuffers	; have we checked all buffers?
 	bcc @l0			; repeate til we have
 
+	clc
 @done:	pla			; restore original buffer
-	jsr src::setbuff	; restore buffer
+	php			; save error flag
+	jsr src::forceset
 	jsr src::popgoto	; restore source pos
 	CALLMAIN gui::refresh	; draw BUFFERS from the buffer we started on
+	plp			; restore error flag
+@ret:	rts
 
 @retok: RETURN_OK
 .endproc
@@ -4173,6 +4188,8 @@ flat:
 ; If no filename is given, then the buffer name is used as the filename
 ; IN:
 ;   - .XY: the filename of the file to save
+; OUT:
+;  - .C: set if the save failed
 .proc command_save
 @file=r8
 	stxy @file
@@ -4180,8 +4197,8 @@ flat:
 	ldxy #strings::saving
 	jsr blank
 
-	ldxy @file
-	jsr str::len		; get the length of the file to save
+	ldy #$00
+	lda (@file),y		; check whether a filename was supplied
 	bne @rename		; >0: filename was given
 
 	; get active filename (r0 = name)
@@ -4190,7 +4207,7 @@ flat:
 
 	; err no filename
 	lda #ERR_NO_FILENAME
-	jmp report_typein_error
+	jmp @nameerr
 
 :	stxy @file
 @rename:
@@ -4235,7 +4252,8 @@ flat:
 	jsr unblank
 	CALLMAIN gui::refresh	; the buffer is no longer DIRTY; update BUFFERS
 	ldxy #strings::saved	; confirm that the file was written
-	jmp text::info
+	jsr text::info
+	RETURN_OK
 
 @nameerr:
 	pha
@@ -4247,7 +4265,9 @@ flat:
 	jsr unblank
 	pla
 	jsr report_drive_error
-	jmp key::getch
+	jsr key::getch
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************

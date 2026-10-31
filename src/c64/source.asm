@@ -189,7 +189,6 @@ readbuf: .res READ_CHUNK
 	RETURN_OK	; not displayable; not inserted but still a success
 
 :	pha
-	jsr __src_mark_dirty
 	ldxy cursorzp
 	cmpw poststartzp	; is gap closed?
 	bne @ins		; no, insert as usual
@@ -202,7 +201,8 @@ readbuf: .res READ_CHUNK
 	lda #ERR_BUFFER_FULL
 	rts
 
-@ins:	pla
+@ins:	jsr __src_mark_dirty	; the gap has room for the character
+	pla
 	ldy cursorzp+1
 	bmi @done	; out of range
 

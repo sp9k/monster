@@ -900,11 +900,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 
 @next:	inc @cnt
 	lda @cnt
-	asl
-	asl
-	asl
-	asl
-	tax
+	jsr times_16
 	jmp @l0
 
 @found:	lda @cnt
@@ -988,6 +984,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	bne @done
 	dey
 	bne :-
+
 @done:	rts
 .endproc
 
@@ -1145,10 +1142,9 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ;  - .C: set if the filename is too long
 .export __src_name
 .proc __src_name
-@name=r0
+@name=zp::str0
 	jsr __src_check_name
 	bcs @done
-	stxy @name
 	jsr active_times_16	; .X=activesrc * 16
 
 	ldy #$00
@@ -2031,6 +2027,8 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; OUT:
 ;   - .A: activesrc * 16
 ;   - .X: activesrc * 16
+.pushseg
+.RODATA
 .proc active_times_16
 	lda activesrc
 	; fall through to times_16
@@ -2052,3 +2050,4 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	tax
 	rts
 .endproc
+.popseg
