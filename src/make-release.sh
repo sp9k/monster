@@ -13,20 +13,18 @@ cp monster.bin ../bin/vic20/monster-ntsc.bin
 make clean;TARGET=vic20 make cart REGION=PAL
 cp monster.bin ../bin/vic20/monster-pal.bin
 
-# make the NTSC disk image
-make clean;TARGET=vic20 make disk REGION=NSTC
-c1541 -format monster,1 d81 monster.d81 -attach monster.d81 -write boot.prg -write masm.prg
-cp monster.d81 ../bin/vic20/monster-ntsc.d81
+# NTSC cart binary with JiffyDOS fastloader
+make clean;TARGET=vic20 make cart REGION=NTSC JIFFYDOS=1
+cp monster.bin ../bin/vic20/monster-ntsc-fastload.bin
 
-# make the PAL disk image
-make clean; TARGET=vic20 make disk REGION=PAL
-c1541 -format monster,1 d81 monster.d81 -attach monster.d81 -write boot.prg -write masm.prg
-cp monster.d81 ../bin/vic20/monster-pal.d81
+# make the PAL cart binary with JiffyDOS fastloader
+make clean;TARGET=vic20 make cart REGION=PAL JIFFYDOS=1
+cp monster.bin ../bin/vic20/monster-pal-fastload.bin
 
 ###############################################################################
 # C-64
 ###############################################################################
 # make the universal disk image
-make clean; TARGET=c64 make disk REGION=NSTC
+make clean; TARGET=c64 make disk REGION=NTSC
 c1541 -format monster,1 d81 monster.d81 -attach monster.d81 -write boot.prg -write masm.prg
 cp monster.d81 ../bin/c64/monster.d81

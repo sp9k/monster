@@ -20,17 +20,19 @@
 .ifdef PAL
 LINES           = 312
 CYCLES_PER_LINE = 71
-IRQ_START_LINE  = $1c
+.ifdef soft4x8
+IRQ_START_LINE  = $1b
+.else
+IRQ_START_LINE  = $1d
+.endif
 .else ;NTSC
 LINES           = 261
 CYCLES_PER_LINE = 65
-
 .ifdef soft4x8
-IRQ_START_LINE = $0e
+IRQ_START_LINE  = $0e
 .else
-IRQ_START_LINE = $10
+IRQ_START_LINE  = $10
 .endif
-
 .endif
 
 ; timer value for stable raster interrupt
@@ -662,7 +664,12 @@ ctrltab:
 	iny
 	cpy $9004
 	bne @i4
-@i4:	ldx #$06	; position
+@i4:
+.ifdef PAL
+	ldx #$03
+.else
+	ldx #$06
+.endif
 @i5:	dex
 	bne @i5
 
