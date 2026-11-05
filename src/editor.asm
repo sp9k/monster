@@ -5778,8 +5778,15 @@ clear_message = text::clrinfo
 
 @prevline:
 	jsr src::prev		; move BEFORE the newline
+	bcs @done
 	jsr make_joined_line
-	bcs @done		; failed to join -> quit
+	bcc @join
+
+	; join failed; restore original line and source cursor
+	jsr src::next
+	jsr refresh_line
+	sec
+	rts
 
 @join:	jsr bumpup
 	jsr print_current_line	; redraw the join and its errors
@@ -6024,9 +6031,18 @@ FIND_NEXTLINE = $80	; search forward on the line AFTER the current one
 	bcc :+
 	rts			; no input; abort
 
-:	; copy (.XY) to the find buffer
+:	; make sure input is < max search length
 	stxy @str
 	ldy #$00
+@validate:
+	lda (@str),y
+	beq @copy
+	iny
+	cpy #MAX_SEARCH_LEN+1
+	bcc @validate
+	jmp beep::short		; input too long
+
+@copy:	ldy #$00
 :	lda (@str),y
 	sta mem::findbuff,y
 	beq @cont
