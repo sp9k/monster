@@ -8,6 +8,7 @@
 
 .include "asm.inc"
 .include "beep.inc"
+.include "breakpoints.inc"
 .include "debug.inc"
 .include "debuginfo.inc"
 .include "draw.inc"
@@ -1063,12 +1064,17 @@ getline:
 ; RETURN preserves the original line when it only opens a blank line above
 ; or below it. Splitting actual text still invalidates the split line.
 ; IN:
+;  - .A: !0 to allow a split whose prefix fails syntax checking
 ;  - mem::linebuffer and the editor cursor: current line and insertion point
 ; OUT:
 ;  - .C: set if the newline could not be inserted
 ;  - .A: error code when .C is set
 .proc newline
-	ldxy zp::srccur
+	jsr check_split
+	bcc :+
+	rts
+
+:	ldxy zp::srccur
 	cmpw zp::srccur2
 	bne @clear
 
@@ -1133,6 +1139,57 @@ getline:
 	CALLMAIN scr::clrline		; physically clear it to
 @done:	clc
 @ret:	rts
+.endproc
+
+;*******************************************************************************
+; CHECK SPLIT
+; Checks a tentative prefix before splitting a line that has a breakpoint.
+; Rejected splits leave the source and its breakpoints intact.
+; IN:
+;  - .A:             !0 to skip validation for a forced newline
+;  - mem::linebuffer: current source line
+;  - cursor:          position of the proposed split
+; OUT:
+;  - .C: set if the prefix is invalid
+;  - .A: error code when .C is set
+.proc check_split
+@result=r0
+	tax			; .A == 0?
+	bne @ok			; if not, don't validate
+
+	ldx dbg::numbreakpoints
+	beq @ok
+	ldx fmt::enable
+	beq @ok			; validation is disabled
+	CALLMAIN edit::currentfile
+	bcs @ok
+	CALLMAIN brkpt::getbyline
+	bcs @ok			; no breakpoint to lose if validation fails
+	CALLMAIN text::char_index
+	cmp #$00
+	beq @ok			; if end of line, use normal validation
+	cpy #$00
+	beq @ok			; opening above has no prefix to validate
+
+	pha			; save the character at the split
+	tya
+	pha
+	lda #$00
+	sta mem::linebuffer,y	; temporarily terminate line at split
+	jsr check_line
+	sta @result
+	pla			; restore .Y
+	tay
+	pla			; restore character at split location
+	sta mem::linebuffer,y
+	lda @result
+	bcc @done
+
+	; keep the prefix error instead of rechecking the unchanged full line
+	ldx #NAV_NONE
+	stx __errlog_navpending
+@done:	rts
+@ok:	RETURN_OK
 .endproc
 
 ;*******************************************************************************

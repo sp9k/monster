@@ -3637,7 +3637,14 @@ start:	lda zp::cury
 	jmp hl_redraw
 
 @done:	pla
-	rts
+.ifdef hard8x8
+	cmp highlight_row
+	bne :+
+	jmp hl_erase		; clear gutter column that was drawn
+:	rts
+.else
+	jmp hl_rowgone		; the text redraw already erased the underline
+.endif
 .endproc
 
 ;*******************************************************************************
@@ -3677,8 +3684,7 @@ edit_set_breakpoint:
 	jsr edit_current_file	; get the debug file ID and line #
 	jsr dbg::brksetaddr
 
-@done:	lda zp::cury
-	jsr draw_src_line	; redraw current line
+@done:	jsr print_current_line	; redraw annotations with the text
 	JUMPMAIN gui::refresh
 .endproc
 
@@ -3731,7 +3737,10 @@ edit_set_breakpoint:
 @save=zp::editortmp+1
 @result=r7
 @udg=r8			; written to by udg::edit
-	pushcur
+	lda readonly
+	beq :+
+	rts
+:	pushcur
 	jsr scr::save
 	inc text::statusfmt
 
@@ -4763,7 +4772,8 @@ write_result = @write_result
 	bne :+
 	jmp begin_next_line	; if READONLY, just go down a line
 
-:	jsr errlog::newline	; create a newline and sync errors/breakpoints
+:	lda forcenewl
+	jsr errlog::newline	; create a newline and sync errors/breakpoints
 	bcc :+
 	jmp edit_failed
 
@@ -5822,7 +5832,7 @@ clear_message = text::clrinfo
 	jsr src::home
 	jsr editor_getline
 	lda height
-	jsr draw_src_line	; draw the new line that was scrolled up
+	jsr print_line		; restore annotations on the revealed line
 	jmp @done
 
 @clr:	; there is no line to scroll in; the bottom row still holds the stale
@@ -7237,19 +7247,31 @@ report_error = alert::show
 ; its row was scrolled out of the range.
 ; IN:
 ;  - .A: the row the mark moved to (its row -/+ the number of rows scrolled)
+;  - r1: first row in the scroll range
+;  - r2: last row in the scroll range
+;  - r3: number of rows scrolled
 .proc hl_scrolled
 @start=r1
 @stop=r2
+@num=r3
 	; HL_NONE ($ff) is > every row, so undisplayed mark fails this check
 	ldx highlight_row
 	cpx @start
 	bcc @done		; above the scrolled rows: it didn't move
 
 	cpx @stop
-	beq :+
+	beq @inside
 	bcs @done		; below the scrolled rows: it didn't move
 
-:	cmp @start
+@inside:
+	pha
+	lda @stop
+	sec
+	sbc @start
+	cmp @num
+	pla
+	bcc @off
+	cmp @start
 	bcc @off		; scrolled off the top of the range
 	cmp @stop
 	beq @set

@@ -23,7 +23,7 @@ COLOR_SELECT  = 6
 .export __draw_hiline
 .proc __draw_hiline
 	lda #COLOR_RVS
-	jmp __draw_hline
+	bne __draw_hline	; branch always
 .endproc
 
 ;*******************************************************************************
@@ -145,39 +145,32 @@ COLOR_SELECT  = 6
 
 	; get start row + scroll amount
 	txa
+	tay			; destination row
 	clc
 	adc @n
 	bcs @vacated
-	tay
-	cpy @last
-	bcc @l0
-	beq @l0
+	tax			; source row
+	bpl @l0			; low sources cannot wrap within a screenful
 
 @vacated:
-	; clamp an oversized source so incrementing it cannot wrap into row 0.
-	ldy @last
-	iny
+	; clamp high sources so incrementing them cannot wrap into row zero
+	ldx @last
+	inx
 
-	; copy row (.Y) to row (.X) for every row in [start, last].  rows whose
+	; copy row (.X) to row (.Y) for every row in [start, last].  rows whose
 	; source lies past the last row are cleared instead: they are NOT part
 	; of the scroll region (they belong to the status/debugger rows below)
-@l0:	cpy @last
+@l0:	cpx @last
 	beq @cp
 	bcs @clr		; source row is out of range -> clear it
-@cp:	lda mem::rowcolors,y	; start+.A+.X
-	sta mem::rowcolors,x	; start+.X
-	lda mem::rowcolors_idx,y
-	sta mem::rowcolors_idx,x
+@cp:	jsr copy_row_state
 	jmp @next
 
-@clr:	lda prefs::normal_color
-	sta mem::rowcolors,x
-	lda #COLOR_NORMAL
-	sta mem::rowcolors_idx,x
+@clr:	jsr clear_row_state
 
 @next:	inx
 	iny
-	cpx @last
+	cpy @last
 	beq @l0
 	bcc @l0
 @done:	rts
@@ -224,10 +217,7 @@ COLOR_SELECT  = 6
 	cpx @start
 	bcc @clear
 @copy:
-	lda mem::rowcolors,x
-	sta mem::rowcolors,y
-	lda mem::rowcolors_idx,x
-	sta mem::rowcolors_idx,y
+	jsr copy_row_state
 	dey
 	cpx @start
 	beq @clear
@@ -236,15 +226,47 @@ COLOR_SELECT  = 6
 
 	; clear the vacated rows
 @clear:
-	lda prefs::normal_color
-	sta mem::rowcolors,y
-	lda #COLOR_NORMAL
-	sta mem::rowcolors_idx,y
+	jsr clear_row_state
 	cpy @start
 	beq @done
 	dey
 	jmp @clear
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; COPY ROW STATE
+; copies colors and breakpoint flags with their source row
+; IN:
+;  - .X: source row
+;  - .Y: destination row
+; OUT:
+;  - .XY: unchanged
+.proc copy_row_state
+	lda mem::rowcolors,x
+	sta mem::rowcolors,y
+	lda mem::rowcolors_idx,x
+	sta mem::rowcolors_idx,y
+	lda mem::breakpoint_rows,x
+	sta mem::breakpoint_rows,y
+	rts
+.endproc
+
+;*******************************************************************************
+; CLEAR ROW STATE
+; resets colors and breakpoint flags on a vacated row
+; IN:
+;  - .Y: destination row
+; OUT:
+;  - .XY: unchanged
+.proc clear_row_state
+	lda prefs::normal_color
+	sta mem::rowcolors,y
+	lda #COLOR_NORMAL
+	sta mem::rowcolors_idx,y
+	lsr			; COLOR_NORMAL ($01) -> no breakpoint
+	sta mem::breakpoint_rows,y
+	rts
 .endproc
 
 ;*******************************************************************************

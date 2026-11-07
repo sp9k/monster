@@ -768,6 +768,22 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	lda @count
 	sta scroll_count
 	sta scroll_total
+
+	; if range is reversed, skip
+	lda @last
+	sec
+	sbc @first
+	bcc @empty
+
+	;sec
+	adc #$00		; +1 (inclusive range length)
+	cmp scroll_count
+	bcs @done
+	sta scroll_count	; limit scroll count to (last-first+1)
+@done:	rts
+
+@empty: lda #$00
+	sta scroll_count
 	rts
 .endproc
 
