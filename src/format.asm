@@ -188,8 +188,10 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 .proc indent
 	lda #$09
 	CALLMAIN src::insert		; insert a TAB at start of line
+	bcc :+
+	jmp refresh			; leave source cursor unchanged on error
 
-	lda position
+:	lda position
 	cmp offset
 	bcc @shift
 	bne @refresh

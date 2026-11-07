@@ -47,6 +47,7 @@
 .import __src_popgoto
 .import __src_pos
 .import __src_prev
+.import __src_open_gap
 .import __src_pushp
 .import __src_replace
 .import __src_right
@@ -119,6 +120,7 @@ GAPSIZE = $100	; size of gap in gap buffer
 	pos              = __src_pos
 	pushp            = __src_pushp
 	prev             = __src_prev
+	open_gap         = __src_open_gap
 	rewind           = __src_rewind
 	readline         = __src_readline
 	readline_cont    = __src_readline_cont

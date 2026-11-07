@@ -1576,6 +1576,10 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Inserts the given string into the source at the current cursor position.
 ; IN:
 ;  - .XY: the string to insert
+; OUT:
+;  - .C: set if insertion stopped before the end of the string
+;  - .Y: number of characters inserted
+;  - .A: error code when .C is set
 .export __src_insertline
 .proc __src_insertline
 @str=zp::tmp12
@@ -1588,9 +1592,12 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	lda (@str),y
 	beq @done
 	jsr __src_insert
+	bcs @ret
 	inc @offset
 	bne @l0
-@done:	rts
+@done:	clc
+@ret:	ldy @offset
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -1600,7 +1607,8 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; IN:
 ;  - .A: the character to replace the existing one with
 ; OUT:
-;  - .C: set if there is nothing to replace
+;  - .C: set if the character could not be inserted
+;  - .A: error code when .C is set
 .export __src_replace
 .proc __src_replace
 	pha
@@ -1610,9 +1618,7 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	beq :+
 	jsr __src_delete
 :	pla
-	jsr __src_insert
-	clc
-	rts
+	jmp __src_insert
 .endproc
 
 ;*******************************************************************************

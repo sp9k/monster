@@ -1064,7 +1064,19 @@ getline:
 ; or below it. Splitting actual text still invalidates the split line.
 ; IN:
 ;  - mem::linebuffer and the editor cursor: current line and insertion point
+; OUT:
+;  - .C: set if the newline could not be inserted
+;  - .A: error code when .C is set
 .proc newline
+	ldxy zp::srccur
+	cmpw zp::srccur2
+	bne @clear
+
+	; out of room; preemptively open gap to make sure insert succeeds
+	CALLMAIN src::open_gap
+	bcc @clear
+	rts
+
 @clear: jsr get_current
 	bcs @classify		; if no error on line, continue
 	jsr remove		; remove error for the line
@@ -1096,10 +1108,15 @@ getline:
 	sta insertmode
 	lda #$0d
 	CALLMAIN src::insert	; insert the newline character
+	php
+	pha
 
 	; reset the insertmode for the newline
 	lda #SPLIT_LINE
 	sta insertmode
+	pla
+	plp
+	bcs @ret
 
 	; did we insert at start of line?
 	lda newlinemode
@@ -1114,7 +1131,8 @@ getline:
 	CALLMAIN draw::resetline
 	lda zp::cury
 	CALLMAIN scr::clrline		; physically clear it to
-@done:	rts
+@done:	clc
+@ret:	rts
 .endproc
 
 ;*******************************************************************************

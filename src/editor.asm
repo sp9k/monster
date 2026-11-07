@@ -2053,6 +2053,8 @@ cancel = enter_command
 ; INSERT NEWLINE
 ; IN:
 ;  - .A: flag whether this splits a line or opens a blank line above/below it
+; OUT:
+;  - .C: set if insertion failed
 .proc insert_newline
 	pha
 	jsr is_readonly
@@ -2065,10 +2067,18 @@ cancel = enter_command
 	jsr errlog::insertion_mode
 	lda #$0d
 	jsr src::insert
-
+	php
+	pha
 	lda #errlog::SPLIT_LINE
 	jsr errlog::insertion_mode
-	jmp scroll_line
+	pla
+	plp
+	bcc @scroll
+	jmp edit_failed
+
+@scroll:
+	jsr scroll_line
+	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -2254,61 +2264,69 @@ cancel = enter_command
 ; PASTE BELOW
 ; Pastes the contents of the copy buffer to the line below the cursor
 .proc paste_below
-	jsr exit_visual
+	jsr buff::len
+	txa
+	bne :+
+	tya
+	bne :+
+	RETURN_OK
+
+:	jsr exit_visual
 
 	lda selection_type
 	cmp #MODE_VISUAL
 	beq @vis
 
 @line:	jsr open_line_below_noindent
-	jsr paste_buff
-
-	jsr buff::lines_copied
-	bcs :+
-	jmp redraw_to_end_of_line
-
-	; paste_buff will assume cursor should be moved to the end of the line
-	; where the paste ended, but VISUAL LINE pastes leave the source cursor
-	; at the start of the line- fix the cursor to match
-:	jsr gotoindex0
-@ret:	rts
+	bcs @failed
+	jmp paste_buff
 
 @vis:	; visual, move to next character and paste there
 	jsr append_char
 	jmp paste_buff
+
+@failed:
+	jsr enter_command
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************
 ; PASTE ABOVE
 ; Pastes the contents of the copy buffer to the line above the cursor
 .proc paste_above
-	jsr exit_visual
+	jsr buff::len
+	txa
+	bne :+
+	tya
+	bne :+
+	RETURN_OK
+
+:	jsr exit_visual
 
 	lda selection_type
 	cmp #MODE_VISUAL
 	beq @vis
 
 @line:	jsr open_line_above_noindent
-	jsr paste_buff
-
-	jsr buff::lines_copied
-	bcs :+
-	jmp @leftsync	; call src::left and re-sync physical cursor
-
-	; paste_buff will assume cursor should be moved to the end of the line
-	; where the paste ended, but VISUAL LINE pastes leave the source cursor
-	; at the start of the line- fix the cursor to match
-:	jsr gotoindex0
+	bcs @failed
+	jmp paste_buff
 @ret:	rts
 
 @vis:	; visual mode, just paste
 	jsr enter_insert
 	jsr paste_buff
+	bcs @ret
 	jsr buff::lines_copied
 	bcs @ret
 @leftsync:
 	jsr src::left
 	jmp sync_cur		; re-sync physical cursor after src::left
+
+@failed:
+	jsr enter_command
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -2426,167 +2444,95 @@ cancel = enter_command
 ; OUT:
 ;   - .C: set if the paste could not be completed (e.g. no room)
 .proc paste_buff
-@row=rd
-@splitindex=re
-@linelen=rf
-@posttext=$148
-@mode=zp::tmp10
 	jsr validate_paste
 	bcc @paste
 
-	; invalid paste, beep and return
 	jsr beep::short
 	jsr enter_command
 	sec
 	rts
 
-; paste between [linebuffer, char_index(curx)] with the first line from buffer
-@paste:	jsr buff::push		; save the current buffer pointer
-	lda zp::cury
-	sta @row
-	jsr text::char_index
-	sty @splitindex
-
-	jsr buff::lines_copied
-	cmp #$00
-	beq @scrolldone
-
-	tay			; .Y = number of rolls to scroll
-
-	; multi-line pastes don't move the cursor / source position
+@paste:	jsr buff::push
 	jsr src::pushp
 
-	; scroll down by the number of lines we're pasting (.Y)
-	ldx height
-	lda @row
-	jsr scrolldownn
-
-@scrolldone:
-	ldx @splitindex	; get index of text to save
-	ldy #$00
-
-	; save the part of the line that we're inserting BEFORE
-:	lda mem::linebuffer,x
-	sta @posttext,y
-	beq @copydone
-	inx
-	iny
-	bne :-
-
-@copydone:
-	; read the first buffer line into the proper textbuffer location
-	jsr text::savebuff
-	lda @splitindex
-	clc
-	adc #<mem::linebuffer
-	tax
-	lda #>mem::linebuffer
-	adc #$00
-	tay
+	; insert pasted lines
+@line:	ldxy #mem::linebuffer
 	jsr buff::getline
-	bcs @done		; buffer is empty
+	bcs @complete
+	jsr paste_insertline
+	bcs @failed
+	jmp @line
 
-@ok:	pha			; save newline flag
-	ldxy r9
-	jsr src::insertline	; insert the first line from the paste buffer
-	pla
-	cmp #$0d		; did line end with a newline?
-	bne @lastline		; if not, this is a < 1 line paste
-	jsr src::insert
-
-	; redraw the line and move to the next one
-	lda @row
-	jsr draw_completed_paste_line
-	inc @row
-
-@middlerows:
-	; for full rows ($0d terminated), just get a line and draw it
-@l1:	ldxy #mem::linebuffer
-	jsr buff::getline
-	bcs @lastline		; if empty, continue
-
-	sty @linelen
-	pha			; save last char read
-	ldxy r9			; (getline leaves result in r0)
-	jsr src::insertline	; insert the line read
-	pla			; restore last char read
-	cmp #$0d		; was this line a newline?
-	bne @lastline		; if not continue to merge it with last line
-
-	jsr src::insert			; insert the newline
-	lda @row
-	jsr draw_completed_paste_line
-	inc @row			; move to the next row
-	bne @l1				; and continue
-
-@lastline:
-	; copy the text after the cursor upon insertion to the line buffer again
-	jsr text::linelen
-	ldy #$00
-:	lda @posttext,y
-	sta mem::linebuffer,x
-	beq @lastdone
-	inx
-	iny
-	bne :-
-
-@lastdone:
-	lda @row
-	jsr draw_line_if_visible
-
+@complete:
 	lda selection_type
 	cmp #MODE_VISUAL_LINE
-	beq @finish_multi
-
+	beq @origin
 	jsr buff::lines_copied
-	bcs @finish_multi
+	bcs @origin
 
-	; fix source pos - cursor will be on char after paste (if there is one)
+	jsr src::popp
 	jsr src_right
-	jmp @done
+	jmp @redraw
 
-@finish_multi:
-	; if we pasted multiple lines, restore source position and don't move
-	; cursor
+;-------------------------------------------------------------------------------
+@origin:
 	jsr src::popgoto
-	jsr refresh_line
-
-@done:	; restore the buffer pointer
+@redraw:
 	jsr buff::pop
-	jmp enter_command
+	jsr refresh_line
+	jsr enter_command
+	jsr refresh_below
+	RETURN_OK
+
+;-------------------------------------------------------------------------------
+@failed:
+	jsr @origin
+	lda #ERR_BUFFER_FULL
+	jmp edit_failed
 .endproc
 
 ;*******************************************************************************
-; DRAW COMPLETED PASTE LINE
-; The source cursor has crossed the inserted CR, but linebuffer still holds
-; the completed paste row. Match its source position before drawing markers.
+; PASTE INSERTLINE
+; Inserts a clipboard line and its optional newline. Removes the incomplete
+; line if the source buffer fills up.
 ; IN:
-;  - .A: the screen row to draw
-;  - mem::linebuffer: the completed paste line
-;  - source position: immediately after the inserted newline
+;  - r9: address of the line
+;  - .A: $0d if the line ends with a newline, otherwise zero
 ; OUT:
-;  - source position: restored to immediately after the newline
-.proc draw_completed_paste_line
+;  - .C: set if the source buffer is full
+.proc paste_insertline
 	pha
-	jsr src::prev
+	ldxy r9
+	jsr src::insertline
+	bcc @newline
 	pla
-	jsr draw_line_if_visible
-	jmp src::next
-.endproc
+	jmp @undo
 
-;*******************************************************************************
-; DRAW_LINE_IF_VISIBLE
-; If the given row is within the current screen range, (0, height], draws the
-; linebuffer.  If not, does nothing.
-; IN:
-;  - .A:	      the row of the line
-;  - mem::linebuffer: the line to draw
-.proc draw_line_if_visible
-	cmp height
-	beq :+
-	bcs @done
-:	jmp print_line
-@done:	rts
+@newline:
+	pla
+	cmp #$0d
+	bne @ok
+	tya
+	pha
+	lda #$0d
+	jsr src::insert
+	pla
+	tay
+	bcs @undo
+@ok:	RETURN_OK
+
+@undo:	tya
+	beq @failed
+	pha
+	jsr src::backspace
+	pla
+	tay
+	dey
+	jmp @undo
+
+@failed:
+	sec
+	rts
 .endproc
 
 ;*******************************************************************************
@@ -3013,7 +2959,11 @@ cancel = enter_command
 
 	lda #errlog::BLANK_ABOVE
 	jsr insert_newline
-	jsr print_current_line	; restore mapped errors on the line moved down
+	bcc :+
+	pla			; discard the indentation hint on failure
+	rts
+
+:	jsr print_current_line	; restore mapped errors on the line
 	jsr ccup		; go up
 
 	pla			; did line start with TAB?
@@ -3023,8 +2973,8 @@ cancel = enter_command
 	; indent if auto-indent is enabled
 	ldx autoindent
 	beq @done
-	jmp insert
-@done:	rts
+	jsr insert
+@done:	RETURN_OK
 .endproc
 
 ;*******************************************************************************
@@ -3576,8 +3526,10 @@ cancel = enter_command
 ; Redraws the screen
 edit_refresh:
 .proc refresh
-	lda zp::cury
+	clc
+start:	lda zp::cury
 	pha			; save cursor Y-coord
+	php			; preserve the redraw range
 
 	jsr src::pushp
 
@@ -3585,12 +3537,19 @@ edit_refresh:
 	jsr editor_getline		; get the contents of current line
 	jsr text::savebuff	; save the line buffer
 
-	jsr hl_erase		; the redraw below takes the highlight mark with it
+	plp
+	bcs @highlight		; if partial refresh -> start at the current row
 
 	ldx zp::cury		; get # of rows to go up in source
 	ldy #$00
 	sty zp::cury		; go to top row
 	jsr src::upn		; move source to top line on screen
+
+@highlight:
+	lda highlight_row
+	cmp zp::cury
+	bcc @l0
+	jsr hl_erase
 
 	; redraw the visible lines
 @l0:	jsr src::readline	; read line into text buffer
@@ -3630,6 +3589,16 @@ edit_refresh:
 	lda #CUR_OFF
 	sta cur::status
 	jmp text::restorebuff	; restore current line data
+.endproc
+
+;*******************************************************************************
+; REFRESH BELOW
+; Redraws the current source row and all rows below it.
+; IN:
+;  - zp::cury: first row to redraw
+.proc refresh_below
+	sec
+	bcs ::refresh::start
 .endproc
 
 ;*******************************************************************************
@@ -4794,10 +4763,12 @@ write_result = @write_result
 	jmp begin_next_line	; if READONLY, just go down a line
 
 :	jsr errlog::newline	; create a newline and sync errors/breakpoints
+	bcc :+
+	jmp edit_failed
 
 	; save the character at the location we're terminating in case we need
 	; to undo this operation
-	jsr text::char_index
+:	jsr text::char_index
 	lda mem::linebuffer,y
 	pha
 	tya
@@ -4902,6 +4873,8 @@ write_result = @write_result
 @putch: jsr text::putch
 	bcs @indentdone
 	jsr src::insert
+	bcc @indentdone
+	jsr edit_failed
 
 @indentdone:
 	jsr print_current_line
@@ -5062,24 +5035,48 @@ clear_message = text::clrinfo
 @space:	lda #' '
 
 @write:
-	ldx text::insertmode
-	bne @put
-@replace:
-	jsr src::replace
-	bcs @done		; nothing to replace
-	jsr text::putch
-	jmp @done
-
-@put:	pha
+	; validate the rendered edit before actually changing source
+	pha
 	jsr text::putch
 	pla
 	bcs @done
+	ldx text::insertmode
+	beq @replace
 	jsr src::insert
+	jmp @result
+@replace:
+	jsr src::replace
+@result:
+	bcc @done
+	jsr edit_failed
 
 @done:	pla			; restore .X
 	tax
 	rts
 .endproc
+
+;*******************************************************************************
+; EDIT FAILED
+; Restores the current line and reports an edit error.
+; IN:
+;  - .A: the error code
+; OUT:
+;  - .C: set
+.pushseg
+.ifdef c64
+.segment "EDITMAIN"
+.endif
+.proc edit_failed
+	pha
+	jsr refresh_line
+	jsr sync_cur
+	jsr print_current_line
+	pla
+	jsr report_typein_error
+	sec
+	rts
+.endproc
+.popseg
 
 ;*******************************************************************************
 ; CCUP
