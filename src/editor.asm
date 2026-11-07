@@ -2189,7 +2189,7 @@ cancel = enter_command
 ; DELETE CHAR
 ; Deletes the character under the cursor
 .proc delete_char
-	jsr buff::clear
+	jsr clear_char_copy
 	jsr delch
 	bcc @ok
 	rts
@@ -2201,7 +2201,7 @@ cancel = enter_command
 ; DELETE TO END
 ; Deletes everything from the character under the cursor to the end of the line
 .proc delete_to_end
-	jsr buff::clear
+	jsr clear_char_copy
 @l0:	jsr delch
 	bcc @l0
 	jsr src::after_cursor
@@ -2219,7 +2219,7 @@ cancel = enter_command
 ; 3. A non-alphanumeric character: deletes til the first alphanumeric char (or
 ;    whitespace)
 .proc delete_word
-	jsr buff::clear
+	jsr clear_char_copy
 
 	; if we're on an alphanum char, end on the first non-alphanum char
 	; if we're NOT on an alphanum char, end on the first alphanum char
@@ -2261,9 +2261,21 @@ cancel = enter_command
 .endproc
 
 ;*******************************************************************************
+; CLEAR CHAR COPY
+; Clears the clipboard and selects VISUAL (character) paste mode.
+.proc clear_char_copy
+	lda #MODE_VISUAL
+	sta selection_type
+	jmp buff::clear
+.endproc
+
+;*******************************************************************************
 ; PASTE BELOW
 ; Pastes the contents of the copy buffer to the line below the cursor
 .proc paste_below
+	lda selection_type
+	cmp #MODE_VISUAL_LINE
+	beq :+
 	jsr buff::len
 	txa
 	bne :+
@@ -2295,6 +2307,9 @@ cancel = enter_command
 ; PASTE ABOVE
 ; Pastes the contents of the copy buffer to the line above the cursor
 .proc paste_above
+	lda selection_type
+	cmp #MODE_VISUAL_LINE
+	beq :+
 	jsr buff::len
 	txa
 	bne :+
@@ -2647,22 +2662,15 @@ cancel = enter_command
 	ldxy visual_start_line
 	jsr edit_gotoline
 
-	; LINE selections begin at column 0: skip correction if we're doing
-	; a line selection
-	lda mode
+	; restore the source column where selection began
+	ldxy visual_start_pos
+	jsr src::goto
+
+@done:	lda mode
 	cmp #MODE_VISUAL_LINE
-	beq @done
-
-	; move right until we're back at the start of the selection
-	jmp :+			; enter loop at conditional check
-@fix_x: jsr src_right		; move cursor right one character
-	bcs @done		; if we couldn't move right anymore, we're done
-:	jsr sync_cur		; re-sync physical cursor after src::right
-	lda zp::curx		; get updated cursor column
-	cmp visual_start_x	; are we at column the selection began at yet?
-	bcc @fix_x		; if not, repeat til we are
-
-@done:	jmp enter_command	; done YANKing, return to COMMAND mode
+	bne :+
+	jsr src::home		; VISUAL LINE, move to column 0
+:	jmp enter_command	; done YANKing, return to COMMAND mode
 .endproc
 
 ;*******************************************************************************
@@ -2688,15 +2696,22 @@ cancel = enter_command
 	ldxy visual_start_pos	; get the source position we started at
 	stxy @end
 
-	ldxy @end
 	lda mode
 	cmp #MODE_VISUAL_LINE
-	beq :+			; if in VISUAL LINE mode, allow start == stop
+	beq @compare
 
 	cmpw @cur
-	beq @done	; nothing copied
+	bne @compare
 
-:	txa		; positions wrap at 64K: compare signed
+	; equal endpoints select one character, unless the cursor is at EOF
+	jsr src::end
+	bne @compare
+	sec
+	rts
+
+@compare:
+	ldxy @end
+	txa		; positions wrap at 64K: compare signed
 	cmp @cur
 	tya
 	sbc @cur+1
@@ -3318,7 +3333,6 @@ cancel = enter_command
 ;-------------------------------------------------------------------------------
 ; VISUAL mode; delete the selection
 @delvis:
-@cnt=zp::editortmp+3
 	jsr yank			; yank the selection
 	bcs @notfound			; quit if error occurred or no selection
 
@@ -3329,23 +3343,10 @@ cancel = enter_command
 	inx
 	bne :+
 	iny
-:	stxy @cnt
-	lda @cnt
-	ora @cnt+1		; is the count zero?
-	beq @deldone		; if so, there is nothing to delete
-
-@delsel:
-	jsr src::end		; is there anything after the cursor to delete?
-	beq @deldone		; if not, stop (DELETE here would BACKSPACE)
-	jsr src::delete
-	dec @cnt
-	lda @cnt
-	cmp #$ff
-	bne :+
-	dec @cnt+1
-:	ora @cnt+1		; are LSB and MSB of @cnt 0?
-	bne @delsel
-@deldone:
+:	lda #$00
+	rol			; save the linewise flag
+	jsr viewport::delete_range
+	bcs @notfound
 	jsr refresh_line	; reload linebuffer with the line we landed on
 	jsr sync_cur		; resync physical cursor with the source cursor
 	jmp refresh		; done, refresh to clear deleted text
@@ -3366,7 +3367,7 @@ cancel = enter_command
 	lda @subcmdshi,x
 	sta zp::jmpvec+1
 
-	jsr buff::clear		; clear the copy buffer
+	jsr clear_char_copy	; clear the copy buffer
 	jmp (zp::jmpvec)	; execute the delete command
 
 .PUSHSEG
@@ -5344,8 +5345,6 @@ clear_message = text::clrinfo
 	jsr sync_cur
 	pla			; restore deleted char
 	jsr buff::putch
-	lda #MODE_VISUAL
-	sta selection_type
 	RETURN_OK
 .endproc
 

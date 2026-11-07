@@ -4,6 +4,7 @@ VIEWPORT_INC = 1
 .import __view_chars
 .import __view_clear
 .import __view_command
+.import __view_delete_range
 .import __view_draw
 .import __view_navigate
 .import __view_follow
@@ -24,6 +25,7 @@ VIEWPORT_INC = 1
 	chars       = __view_chars
 	clear       = __view_clear
 	command     = __view_command
+	delete_range = __view_delete_range
 	draw        = __view_draw
 	navigate    = __view_navigate
 	follow      = __view_follow

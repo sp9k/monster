@@ -94,24 +94,25 @@ BANKED_SEG "COPYBUFF", FINAL_BANK_BUFF
 ; IN:
 ;  - .A: the character to put into the buffer
 ; OUT:
-;  - .A: the same as was passed in
-;  - .C: set if the buffer is full (couldn't add char)
+;  - .A: ERR_COPY_TOO_BIG on newline overflow
+;  - .C: set if the buffer or newline count is full (couldn't add char)
 .proc putch
 @buff=r0
 	ldxy buffptr
 	stxy @buff
 	cmpw #copybuff+MAX_COPY_SIZE	; buffer is full
 	bcs @done
-	ldy #$00
-	STOREB_Y @buff
-
 	cmp #$0d
-	bne :+
-	inc __buff_num_lines_copied
+	bne @store
+	ldy __buff_num_lines_copied
+	cpy #$ff
 	bne :+
 	RETURN_ERR ERR_COPY_TOO_BIG	; > 255 lines, error
 
-:	incw buffptr
+:	inc __buff_num_lines_copied
+@store:	ldy #$00
+	STOREB_Y @buff
+	incw buffptr
 	clc
 @done:	rts
 .endproc
@@ -315,6 +316,8 @@ BANKED_SEG "COPYBUFF", FINAL_BANK_BUFF
 @left=r0
 @right=r2
 	ldxy buffptr
+	cmpw #copybuff
+	beq @done
 	stxy @right
 	decw @right
 	ldxy #copybuff

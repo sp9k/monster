@@ -77,6 +77,19 @@ __view_toggle_cursor: VIEWJUMP toggle_cursor
 .export __view_join
 __view_join: VIEWJUMP join
 
+;*******************************************************************************
+; DELETE RANGE
+; Removes a source range if the resulting line fits the editor width.
+; IN:
+;  - .XY: selected text length (+1 for a linewise selection)
+;  - .A:  !0 for LINE selection, 0 for normal (character) selection
+; OUT:
+;  - .C: set if the resulting line is too wide
+.export __view_delete_range
+.proc __view_delete_range
+	VIEWJUMP delete_range
+.endproc
+
 .export __view_invalidate
 __view_invalidate: VIEWJUMP invalidate
 
@@ -230,13 +243,37 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	CALLMAIN src::getwide
 	pla
 	tax
+	jsr append_joined
+	bcs @abort
+	CALLMAIN src::popp
+	CALLMAIN src::backspace
+	CALLMAIN edit::refreshline
+	CALLMAIN edit::sync_cur
+	clc
+	rts
 
+@abort:
+	CALLMAIN src::popgoto
+	CALLMAIN edit::refreshline
+	sec
+	rts
+.endproc
+
+;*******************************************************************************
+; APPEND JOINED
+; Appends linebuffer to the prefix in joined and checks the expanded width.
+; IN:
+;  - .X:              prefix length in bytes
+;  - mem::linebuffer: suffix to append
+; OUT:
+;  - .C: set if the combined line is too wide
+.proc append_joined
 	ldy #$00
 @append:
 	lda mem::linebuffer,y
 	beq @terminate
 	cpx #MAX_LINE_LEN
-	bcs @abort
+	bcs @done
 	sta joined,x
 	inx
 	iny
@@ -251,18 +288,112 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	iny
 	bne :-
 :	CALLMAIN text::rendered_line_len
-	bcs @abort
-	CALLMAIN src::popp
-	CALLMAIN src::backspace
-	CALLMAIN edit::refreshline
-	CALLMAIN edit::sync_cur
-	clc
-	rts
+@done:	rts
+.endproc
 
-@abort:
+;*******************************************************************************
+; DELETE RANGE
+; Checks and removes a selected range, including a final line's separator.
+; IN:
+;  - .XY: selected text length, plus one for a linewise selection
+;  - .A: nonzero for a linewise selection, zero for a characterwise selection
+; OUT:
+;  - .C: set if the resulting line is too wide
+.proc delete_range
+@linewise=zp::editortmp
+@remaining=zp::editortmp+1
+	sta @linewise
+	stxy @remaining
+
+	tax
+	beq @check		; if normal VISUAL selection -> continue
+
+	; in LINE mode
+	decw @remaining
+	jmp @loop		; deleting whole line, skip check
+
+@check:
+	jsr validate_delete
+	bcs @ret
+
+@loop:	lda @remaining
+	ora @remaining+1
+	beq @finish
+	CALLMAIN src::end
+	beq @finish
+	CALLMAIN src::delete
+	decw @remaining
+	jmp @loop
+
+@finish:
+	lda @linewise
+	beq @done
+	CALLMAIN src::end
+	beq @eof
+
+	; remove the trailing separator and preserve the following line
+	lda #errlog::DELETE_ABOVE
+	CALLMAIN errlog::delete_linebreak
+	jmp @done
+
+@eof:	; remove the preceding separator when the final selected line is empty
+	lda #errlog::DELETE_BELOW
+	CALLMAIN errlog::delete_linebreak
+	lda zp::cury
+	beq :+
+	dec zp::cury
+:	CALLMAIN src::home
+
+@done:	clc
+@ret:	rts
+.endproc
+
+;*******************************************************************************
+; VALIDATE DELETE
+; Checks the line formed by removing a range from the source cursor.
+; IN:
+;  - .XY: the number of source characters to remove
+; OUT:
+;  - .C: set if the resulting line exceeds the editor width
+.proc validate_delete
+@count=zp::editortmp+3
+@prefixlen=zp::editortmp+5
+	stxy @count
+	CALLMAIN src::pushp
+	CALLMAIN edit::refreshline
+	lda zp::srcx
+	sta @prefixlen
+	cmp #MAX_LINE_LEN+1
+	bcs @restore
+	tay
+	beq @skip
+
+@prefix:
+	dey
+	lda mem::linebuffer,y
+	sta joined,y
+	tya
+	bne @prefix
+
+@skip:	lda @count
+	ora @count+1
+	beq @suffix
+	CALLMAIN src::end
+	beq @suffix
+	CALLMAIN src::next
+	decw @count
+	jmp @skip
+
+@suffix:
+	CALLMAIN src::getwide
+	ldx @prefixlen
+	jsr append_joined
+
+@restore:
+	php
 	CALLMAIN src::popgoto
 	CALLMAIN edit::refreshline
-	sec
+	plp
 	rts
 .endproc
 
