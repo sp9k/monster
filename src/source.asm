@@ -7,6 +7,7 @@
 ;*******************************************************************************
 
 .include "config.inc"
+.include "undo.inc"
 .include "cursor.inc"
 .include "debug.inc"
 .include "debuginfo.inc"
@@ -143,6 +144,9 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; Initializes the source state such that no buffers exist
 .export __src_init
 .proc __src_init
+.ifdef ultimem
+	jsr undo::init
+.endif
 	jsr jumps::reset
 	lda #$00
 	sta numsrcs
@@ -176,6 +180,9 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ; another source
 .export __src_save
 .proc __src_save
+.ifdef ultimem
+	jsr undo::commit
+.endif
 	; save the cursor position in the current buffer
 	ldx activesrc
 
@@ -1012,6 +1019,9 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 ;  - .A: the flags to set on the active source buffer
 .export __src_setflags
 .proc __src_setflags
+.ifdef ultimem
+	jsr undo::saved
+.endif
 	ldy activesrc
 	sta flags,y
 	rts
@@ -1031,7 +1041,11 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	clc
 	rts		; no buffer to close
 
-:	jsr errlog::close_buffer
+:
+.ifdef ultimem
+	jsr undo::close
+.endif
+	jsr errlog::close_buffer
 	lda bank
 	jsr free_chain
 	lda numsrcs
@@ -1319,6 +1333,9 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	beq @skip
 	jsr __src_mark_dirty
 	jsr __src_atcursor
+.ifdef ultimem
+	jsr undo::backspace
+.endif
 	pha
 	cmp #$0d
 	bne :+
@@ -1382,6 +1399,11 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	jmp __src_backspace	; at end of buffer, BACKSPACE instead of DELETE
 
 @cont:	jsr __src_before_newl	; .A = char that will be deleted
+.ifdef ultimem
+	php
+	jsr undo::delete
+	plp
+.endif
 	bne :+
 	jsr on_line_deleted
 	lda #$0d		; deleted char was a newline
@@ -1856,6 +1878,20 @@ flags:      .res NUM_BUFFERS	; flags for each source buffer
 	jmp sync_x
 @ret:	rts
 .endproc
+
+;*******************************************************************************
+; RESTORE POSITION
+; Restores a known byte offset and line number without walking source bytes
+; IN:
+;  - zp::srctmp: 24-bit source offset
+;  - src::line: line number at that offset in the unchanged source
+.ifdef ultimem
+.export __src_restore_position
+.proc __src_restore_position
+	jsr jump
+	jmp sync_x
+.endproc
+.endif
 
 ;*******************************************************************************
 ; GOTO

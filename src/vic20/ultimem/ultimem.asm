@@ -169,14 +169,31 @@ __ultimem_bank: .byte 0
 ;*******************************************************************************
 ; VIRTUAL BANK CONFIG MAP
 ; VIEWERS keeps MAIN in BLK1-3 and replaces only BLK5 with ROM block 31.
-blk1: .byte $01, $02, $05, $05, $08, $0b, $0e, $11, $40, $40, $14, $17, $1b, $10, $1e, $14, $18, $3d, $5f, $0b, $01
-blk2: .byte $02, $03, $06, $06, $09, $0c, $0f, $12, $40, $40, $15, $18, $1c, $11, $1f, $15, $19, $3e, $00, $0c, $02
-blk3: .byte $03, $04, $07, $07, $0a, $0d, $10, $13, $40, $40, $16, $19, $1d, $12, $20, $16, $1a, $3f, $03, $0d, $03
-blk5: .byte $04, $05, $06, $06, $07, $08, $09, $0a, $0b, $0b, $0c, $0d, $0e, $13, $21, $17, $1b, $1c, $1d, $1e, $1f
-cfg:  .byte $55, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $7f, $55, $ff, $55, $55, $7f, $57, $7f, $55
+blk1: .byte $01, $02, $05, $05, $08, $0b, $0e, $11
+      .byte $40, $40, $14, $17, $1b, $10, $1e, $14
+      .byte $18, $3d, $5f, $0b, $01, $3d
+blk2: .byte $02, $03, $06, $06, $09, $0c, $0f, $12
+      .byte $40, $40, $15, $18, $1c, $11, $1f, $15
+      .byte $19, $3e, $00, $0c, $02, $3e
+blk3: .byte $03, $04, $07, $07, $0a, $0d, $10, $13
+      .byte $40, $40, $16, $19, $1d, $12, $20, $16
+      .byte $1a, $3f, $03, $0d, $03, $3f
+blk5: .byte $04, $05, $06, $06, $07, $08, $09, $0a
+      .byte $0b, $0b, $0c, $0d, $0e, $13, $21, $17
+      .byte $1b, $1c, $1d, $1e, $1f, $21
+blk5_end:
+
+; keep the configuration bytes in RAM123 to leave room in RAMIO
+.pushseg
+.segment "BANKCODE2"
+cfg:  .byte $55, $7f, $7f, $7f, $7f, $7f, $7f, $7f
+      .byte $7f, $7f, $7f, $7f, $7f, $55, $ff, $55
+      .byte $55, $7f, $57, $7f, $55, $7f
 
 .assert blk2-blk1 = NUM_BANKS, error, "BLK1 configuration count"
 .assert blk3-blk2 = NUM_BANKS, error, "BLK2 configuration count"
 .assert blk5-blk3 = NUM_BANKS, error, "BLK3 configuration count"
-.assert cfg-blk5 = NUM_BANKS, error, "BLK5 configuration count"
+.assert blk5_end-blk5 = NUM_BANKS, error, "BLK5 configuration count"
 .assert *-cfg = NUM_BANKS, error, "Bank configuration count"
+
+.popseg

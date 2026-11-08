@@ -5,6 +5,7 @@
 ;*******************************************************************************
 
 .include "image.inc"
+.include "undo.inc"
 .include "errors.inc"
 .include "macros.inc"
 .include "ram.inc"
@@ -47,6 +48,9 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 ;   - .C: clear.
 .export __image_init
 .proc __image_init
+.ifdef ultimem
+	CALLMAIN undo::release
+.endif
 	sta fill_byte
 	lda #$00
 	ldx #IMAGE_PAGES-1
@@ -162,6 +166,13 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 	jsr select_page
 	lda ready,y
 	bne @write
+.ifdef ultimem
+	cpy #UNDO_IMAGE_PAGE
+	bcc :+
+	tya
+	CALLMAIN undo::claim
+:
+.endif
 	lda fill_byte
 	jsr __image_backend_fill
 	ldy __image_page

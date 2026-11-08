@@ -37,7 +37,8 @@ FINAL_BANK_ERRLOG          = $12
 FINAL_BANK_FLASH           = $13
 FINAL_BANK_LINKER_AUX      = $14
 FINAL_BANK_VIEWERS         = $15
-NUM_BANKS                  = $15
+FINAL_BANK_UNDO            = $16
+NUM_BANKS                  = $16
 
 ;*******************************************************************************
 ; Physical RAM layout (decimal bank numbers, 8 KiB each):
@@ -85,6 +86,11 @@ FLASH_CHECK_RAM_BANK = 95 ; scratch RAM for disk validation & directory browsing
 IMAGE_BANK       = 96
 IMAGE_PAGES      = 32
 IMAGE_CAPACITY   = IMAGE_PAGES * $2000
+
+; undo borrows the final four image banks until an image write claims them
+UNDO_RAM_BANK    = 124
+UNDO_RAM_BANKS   = 4
+UNDO_IMAGE_PAGE  = UNDO_RAM_BANK-IMAGE_BANK
 .assert IMAGE_BANK + IMAGE_PAGES <= 128,   error, "image exceeds UltiMem RAM"
 
 ;*******************************************************************************

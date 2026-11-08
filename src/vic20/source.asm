@@ -1,5 +1,6 @@
 .include "expansion.inc"
 .include "../config.inc"
+.include "../undo.inc"
 .include "../debug.inc"
 .include "../debuginfo.inc"
 .include "../edit.inc"
@@ -119,8 +120,9 @@ seglen: .word 0
 @ins:	jsr __src_mark_dirty	; the gap has room for the character
 	pla
 	ldy cursorzp+1
-	bmi @done	; out of range
+	bmi @done		; out of range
 
+	jsr undo::insert
 	jsr insert
 	cmp #$0d
 	bne @insdone

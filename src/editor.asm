@@ -12,6 +12,7 @@
 .include "breakpoints.inc"
 .include "codes.inc"
 .include "config.inc"
+.include "undo.inc"
 .include "viewport.inc"
 .include "copybuff.inc"
 .include "ctx.inc"
@@ -1790,6 +1791,12 @@ cancel = enter_command
 ;*******************************************************************************
 ; ENTER_COMMAND
 ; Enters COMMAND mode
+.ifdef ultimem
+.export __edit_enter_command = enter_command
+.export __edit_visual_line   = visual_start_line
+.export __edit_visual_pos    = visual_start_pos
+.export __edit_visual_x      = visual_start_x
+.endif
 .proc enter_command
 	lda mode
 	cmp #MODE_COMMAND
@@ -4252,6 +4259,9 @@ BANKED_SEG "LINKER_AUX", FINAL_BANK_LINKER_AUX
 @addr=zp::editortmp+1
 	lda #IMAGE_MODE_NONE
 	sta image::mode
+.ifdef ultimem
+	CALLMAIN undo::release
+.endif
 	sta asm::has_output
 
 	; read the start address of the program
@@ -7536,7 +7546,11 @@ rw_commands:
 	.byte $79		; y (yank)
 	.byte $73		; s (substitute char)
 	.byte $53		; S (substitute line)
-; commands below this work will work while in "readonly" mode (debugger)
+.ifdef ultimem
+	.byte K_UNDO		; u (undo)
+	.byte K_REDO		; CTRL + r (redo)
+.endif
+; commands below this work while in "readonly" mode (debugger)
 num_rw_commands=*-rw_commands
 
 ;-------------------------------------------------------------------------------
@@ -7572,12 +7586,18 @@ numcommands=*-commands
 ;-------------------------------------------------------------------------------
 ; command tables for COMMAND mode key commands
 .linecont +
+.ifdef ultimem
+.define undo_commands undo::undo, undo::redo,
+.else
+.define undo_commands
+.endif
 .define cmd_vecs \
 	insert_start, enter_insert, replace_char, replace, \
 	append_to_line, append_char, change_line, delete, delete_to_end, \
 	paste_below, paste_above, delete_char, \
 	open_line_above, open_line_below, join_line, comment_out, \
 	enter_visual, enter_visual_line, command_yank, sub_char, sub_line, \
+	undo_commands \
 	dirview, ccleft, ccright, ccup, ccdown, endofword, \
 	beginword, word_advance, home_col, last_line, \
 	home_line, ccdel, ccright, goto_end, goto_start, find_next, find_prev, \

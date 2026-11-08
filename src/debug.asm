@@ -169,6 +169,7 @@ __debug_numbreakpoints: .byte 0
 ; NUM_BREAKPOINT_TABLES must be set to the number of them
 ; We iteratively modify the values within these tables
 NUM_BREAKPOINT_TABLES=7
+.export __debug_breakpoint_data = breakpoint_data
 breakpoint_data:
 __debug_breakpointslo:
 breakpointslo:              .res MAX_BREAKPOINTS	; LSB's of the break points
@@ -182,6 +183,7 @@ __debug_breakpoint_fileids: .res MAX_BREAKPOINTS	; breakpoint file ID's
 __debug_breakpoint_flags:
 breakpoint_flags: .res MAX_BREAKPOINTS ; active state of breakpoints
 breaksave:        .res MAX_BREAKPOINTS ; backup of instructions under the BRKs
+.export __debug_breakpoint_bytes = *-breakpoint_data
 
 .CODE
 ;*******************************************************************************

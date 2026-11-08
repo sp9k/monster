@@ -56,6 +56,7 @@
 .include "asmflags.inc"
 .include "codes.inc"
 .include "config.inc"
+.include "undo.inc"
 .include "ctx.inc"
 .include "debuginfo.inc"
 .include "edit.inc"
@@ -788,6 +789,9 @@ BANKED_CODE "ASMBANK"
 	lda #IMAGE_MODE_NONE
 	sta zp::verify
 	sta image::mode
+.ifdef ultimem
+	jsr undo::release
+.endif
 
 	sta ifstacksp		; reset the .IF stack (may leak from prior pass)
 	sta __asm_control_flags

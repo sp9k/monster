@@ -550,7 +550,20 @@ The following keys are handled in command mode.
 | {c64-keys}`Ctrl + :`                       | `PREV BANNER`| moves to the previous comment banner - `;;;;;;;...`                                     |
 | {c64-keys}`Ctrl + ;`                       | `NEXT BANNER`| moves to the next comment banner - `;;;;;;;...`                                         |
 
+### Undo and redo
+
+Press {c64-key}`U` in command mode to undo and {c64-keys}`Ctrl + R` to redo.
+This will undo/redo all changes made during one edit session (INSERT or REPLACE mode).
+Edits made while in COMMAND mode (paste, join-line, etc.) are individually handled
+in the undo stack.  All buffers have their own undo stacks.
+
+Note that if you are linking a _very_ large program, the memory area used for the
+undo stacks is borrowed to produce the output image. Undo and redo commands will
+be disabled while in this state.
+
+
 ### Insert mode
+
 Entering insert mode allows the user to enter text at the cursor location.  Keystrokes are
 interpreted as their corresponding ASCII character value in this mode, so there are no special
 commands accessed via them.

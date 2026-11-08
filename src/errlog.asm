@@ -20,6 +20,7 @@
 .include "guis.inc"
 .include "key.inc"
 .include "keycodes.inc"
+.include "limits.inc"
 .include "log.inc"
 .include "macros.inc"
 .include "memory.inc"
@@ -33,6 +34,12 @@
 
 ; jump history shares this annotation bank
 .import __jump_close, __jump_shift
+.ifdef ultimem
+.import __undo_key_begin, __undo_key_commit, __undo_discard
+.import __undo_line_changed
+.import __ERRLOG_BSS_RUN__, __ERRLOG_BSS_SIZE__
+.import __debug_breakpoint_data, __debug_breakpoint_bytes
+.endif
 
 .ifdef vic20
 CUR_BANK .set FINAL_BANK_MAIN
@@ -41,8 +48,8 @@ CUR_BANK .set FINAL_BANK_MAIN
 ;*******************************************************************************
 ; CONSTANTS
 ASM_MAX_ERRORS = 8
-MAX_ERRORS     = 16
-MAX_DISMISSED  = 64
+MAX_ERRORS     = ERRLOG_MAX_ERRORS
+MAX_DISMISSED  = ERRLOG_MAX_DISMISSED
 LIVE_BUFFER    = $80
 MAX_HEIGHT     = 4
 
@@ -87,6 +94,36 @@ __errlog_editpending: .byte 0
 .ifdef ultimem
 .segment "ERRLOG_BSS"
 .endif
+.ifdef ultimem
+generation: .word 0
+dismiss_generation: .word 0
+.pushseg
+.segment "UNDO_VARS"
+meta_errors:       .byte 0
+meta_breakpoints:  .byte 0
+meta_dismissals:   .byte 0
+meta_same:         .byte 0
+meta_dismiss_same: .byte 0
+meta_length:       .byte 0
+meta_index:        .byte 0
+meta_entry:        .res 5
+annotation_backup: .res $200
+shared_backup:     .res 4
+breakpoint_backup: .res UNDO_BREAKPOINT_BYTES
+breakpoint_count:  .byte 0
+
+.export __errlog_recheck_full
+__errlog_recheck_full: .byte 0
+
+.assert __ERRLOG_BSS_SIZE__ > $100, lderror, "annotation backup tail"
+.assert __ERRLOG_BSS_SIZE__ < $200, lderror, "annotation backup size"
+.assert MAX_BREAKPOINTS = UNDO_MAX_BREAKPOINTS, error, "breakpoint capacity"
+.assert __debug_breakpoint_bytes = UNDO_BREAKPOINT_BYTES, lderror
+.assert __errlog_editpending-numerrs = 3, error, "shared backup layout"
+
+.popseg
+.endif
+
 errcodes:   .res MAX_ERRORS
 errlineslo: .res MAX_ERRORS
 errlineshi: .res MAX_ERRORS
@@ -100,6 +137,8 @@ navkey:              .byte 0 ; the key before_key is deciding about
 navdest:             .byte 0 ; buffer after_key must return the editor to
 livechanged:         .byte 0
 newlinemode:         .byte 0 ; last RETURN insertion, for validation rollback
+.export __errlog_insertmode = insertmode
+.export __errlog_deletemode = deletemode
 insertmode:          .byte 0 ; scoped to the editor's blank-line insertion
 deletemode:          .byte 0 ; scoped to the editor's whole-line deletion
 
@@ -442,6 +481,14 @@ getline:
 ; RESET
 ; Removes all errors and dismissals, and cancels pending validation.
 .proc reset
+.ifdef ultimem
+	incw dismiss_generation
+	lda dismiss_generation
+	ora dismiss_generation+1
+	bne :+
+	CALLMAIN __undo_discard
+:
+.endif
 	lda #0
 	sta numdismissed
 	; fall through to clear
@@ -451,6 +498,14 @@ getline:
 ; CLEAR
 ; Removes all errors and cancels pending validation. Dismissals are preserved.
 .proc clear
+.ifdef ultimem
+	incw generation
+	lda generation
+	ora generation+1
+	bne :+
+	CALLMAIN __undo_discard
+:
+.endif
 	lda #NAV_NONE
 	sta numerrs
 	sta __errlog_asmerrors
@@ -722,6 +777,477 @@ getline:
 	lda #1			; no match, including the invalid $ff owner
 @done:	rts
 .endproc
+
+.ifdef ultimem
+;*******************************************************************************
+; META PUT
+; Writes one packed annotation byte
+; IN:
+;  - .A:    byte to write
+;  - r6-r7: destination
+; OUT:
+;  - r6-r7: next destination
+.proc meta_put
+@ptr=r6
+	ldy #$00
+	sta (@ptr),y
+	incw @ptr
+	rts
+.endproc
+
+;*******************************************************************************
+; META GET
+; Reads one packed annotation byte
+; IN:
+;  - r6-r7: source
+; OUT:
+;  - .A: byte read
+;  - r6-r7: next source
+.proc meta_get
+@ptr=r6
+	ldy #$00
+	lda (@ptr),y
+	incw @ptr
+	rts
+.endproc
+
+;*******************************************************************************
+; META ENTRY
+; Reads one packed annotation entry
+; IN:
+;  - .A:    entry length
+;  - r6-r7: source
+; OUT:
+;  - meta_entry: packed entry
+;  - r6-r7:      next source
+.proc meta_read_entry
+	sta meta_length
+	ldx #$00
+@loop:	jsr meta_get
+	sta meta_entry,x
+	inx
+	cpx meta_length
+	bne @loop
+	rts
+.endproc
+
+;*******************************************************************************
+; UNDO SNAPSHOT
+; Packs the active buffer's generation, errors, breakpoints and dismissals
+; IN:
+;  - .XY: destination in shared annotation RAM
+; OUT:
+;  - .XY: snapshot byte count
+.export __errlog_undo_snapshot
+.proc __errlog_undo_snapshot
+@file=r5
+@ptr=r6
+@start=r8
+	stxy @ptr
+	stxy @start
+	jsr current_owners
+	lda generation
+	jsr meta_put
+	lda generation+1
+	jsr meta_put
+	lda dismiss_generation
+	jsr meta_put
+	lda dismiss_generation+1
+	jsr meta_put
+	lda #$00
+	sta meta_errors
+	sta meta_breakpoints
+	sta meta_dismissals
+	jsr meta_put
+	jsr meta_put
+	jsr meta_put
+
+	ldx #$00
+@errors:
+	cpx numerrs
+	bcs @breakpoints
+	jsr matches_owner
+	bne @next_error
+	lda errlineslo,x
+	jsr meta_put
+	lda errlineshi,x
+	jsr meta_put
+	lda errcodes,x
+	jsr meta_put
+	lda errfileids,x
+	and #LIVE_BUFFER
+	jsr meta_put
+	inc meta_errors
+
+@next_error:
+	inx
+	bne @errors
+@breakpoints:
+	ldx dbg::numbreakpoints
+	beq @dismissals
+	lda @file
+	cmp #$ff
+	beq @dismissals
+	ldx #$00
+@break:	lda @file
+	cmp dbg::breakpoint_fileids,x
+	bne @next_break
+	lda dbg::breakpoint_lineslo,x
+	jsr meta_put
+	lda dbg::breakpoint_lineshi,x
+	jsr meta_put
+	lda dbg::breakpoint_flags,x
+	jsr meta_put
+	lda dbg::breakpointslo,x
+	jsr meta_put
+	lda dbg::breakpointshi,x
+	jsr meta_put
+	inc meta_breakpoints
+
+@next_break:
+	inx
+	cpx dbg::numbreakpoints
+	bcc @break
+@dismissals:
+	ldx #$00
+@dismiss:
+	cpx numdismissed
+	bcs @done
+	jsr matches_dismissed
+	bne @next_dismiss
+	lda dismisslo,x
+	jsr meta_put
+	lda dismisshi,x
+	jsr meta_put
+	lda dismissowners,x
+	and #LIVE_BUFFER
+	jsr meta_put
+	inc meta_dismissals
+
+@next_dismiss:
+	inx
+	bne @dismiss
+
+@done:	ldy #$04
+	lda meta_errors
+	sta (@start),y
+	iny
+	lda meta_breakpoints
+	sta (@start),y
+	iny
+	lda meta_dismissals
+	sta (@start),y
+	sec
+	lda @ptr
+	sbc @start
+	tax
+	lda @ptr+1
+	sbc @start+1
+	tay
+	rts
+.endproc
+
+;*******************************************************************************
+; META CHANGED
+; Tests whether a packed entry belongs to a changed line
+; IN:
+;  - meta_entry: packed entry beginning with a source line
+; OUT:
+;  - .Z: set if the line is unchanged
+.proc meta_changed
+	ldx meta_entry
+	ldy meta_entry+1
+	CALL FINAL_BANK_UNDO, __undo_line_changed
+	cmp #$00
+	rts
+.endproc
+
+;*******************************************************************************
+; CHANGED ENTRY
+; Tests a table entry without disturbing its index or metadata pointers
+.macro CHANGED_ENTRY low, high
+	stx meta_index
+	lda low,x
+	ldy high,x
+	tax
+	CALL FINAL_BANK_UNDO, __undo_line_changed
+	ldx meta_index
+	cmp #$00
+.endmacro
+
+;*******************************************************************************
+; UNDO RESTORE
+; Restores annotations, retaining assembly results from newer generations
+; IN:
+;  - .XY: packed snapshot in shared annotation RAM
+; OUT:
+;  - .C: set if an annotation table fills; caller must roll back replay
+;  - .A: zero for error capacity, one for breakpoint/dismissal capacity
+.export __errlog_undo_restore
+.proc __errlog_undo_restore
+@ptr=r6
+@live=r4
+@file=r5
+	stxy @ptr
+	jsr current_owners
+	lda #$01
+	sta meta_same
+	jsr meta_get
+	cmp generation
+	beq :+
+	lda #$00
+	sta meta_same
+:	jsr meta_get
+	cmp generation+1
+	beq :+
+	lda #$00
+	sta meta_same
+:	lda #$01
+	sta meta_dismiss_same
+	jsr meta_get
+	cmp dismiss_generation
+	beq :+
+	lda #$00
+	sta meta_dismiss_same
+:	jsr meta_get
+	cmp dismiss_generation+1
+	beq :+
+	lda #$00
+	sta meta_dismiss_same
+:	jsr meta_get
+	sta meta_errors
+	jsr meta_get
+	sta meta_breakpoints
+	jsr meta_get
+	sta meta_dismissals
+
+	ldx numerrs
+	beq @errors
+	dex
+@remove_error:
+	jsr matches_owner
+	bne @next_error
+	lda meta_same
+	bne @remove
+	lda errfileids,x
+	bpl @next_error
+@remove:
+	CHANGED_ENTRY errlineslo, errlineshi
+	beq @next_error
+	jsr remove
+@next_error:
+	dex
+	bpl @remove_error
+
+@errors:
+	lda meta_errors
+	beq @remove_breaks
+	dec meta_errors
+	lda #$04
+	jsr meta_read_entry
+	jsr meta_changed
+	beq @errors
+	lda meta_entry+3
+	bmi @live_error
+	lda meta_same
+	beq @errors
+	lda @file
+	cmp #$ff
+	beq @errors
+	bne @error_owner
+
+@live_error:
+	lda @live
+@error_owner:
+	ldx numerrs
+	cpx #MAX_ERRORS
+	bcs @error_full
+	sta errfileids,x
+	lda meta_entry
+	sta errlineslo,x
+	lda meta_entry+1
+	sta errlineshi,x
+	lda meta_entry+2
+	sta errcodes,x
+	inc numerrs
+	jmp @errors
+@error_full:
+	lda #$00
+	sec
+	rts
+
+@remove_breaks:
+	ldx dbg::numbreakpoints
+	beq @breakpoints
+	lda @file
+	cmp #$ff
+	beq @breakpoints
+	dex
+@remove_break:
+	lda @file
+	cmp dbg::breakpoint_fileids,x
+	bne :+
+	CHANGED_ENTRY dbg::breakpoint_lineslo, dbg::breakpoint_lineshi
+	beq :+
+	stx meta_index
+	CALLMAIN dbg::removebreakpointbyid
+	ldx meta_index
+:	dex
+	bpl @remove_break
+
+@breakpoints:
+	lda meta_breakpoints
+	beq @remove_dismissals
+	dec meta_breakpoints
+	lda #$05
+	jsr meta_read_entry
+	jsr meta_changed
+	beq @breakpoints
+	lda @file
+	cmp #$ff
+	beq @breakpoints
+	ldx dbg::numbreakpoints
+	cpx #MAX_BREAKPOINTS
+	bcc :+
+	jmp @annotation_full
+:
+	sta dbg::breakpoint_fileids,x
+	lda meta_entry
+	sta dbg::breakpoint_lineslo,x
+	lda meta_entry+1
+	sta dbg::breakpoint_lineshi,x
+	lda meta_entry+2
+	sta dbg::breakpoint_flags,x
+	lda meta_same
+	bne :+
+	sta meta_entry+3
+	sta meta_entry+4
+:	lda meta_entry+3
+	sta dbg::breakpointslo,x
+	lda meta_entry+4
+	sta dbg::breakpointshi,x
+	inc dbg::numbreakpoints
+	jmp @breakpoints
+
+@remove_dismissals:
+	ldx numdismissed
+	beq @dismissals
+	dex
+@remove_dismiss:
+	jsr matches_dismissed
+	bne :+
+	lda dismisslo,x
+	ora dismisshi,x
+	beq @drop_dismiss
+	lda meta_dismiss_same
+	beq :+
+	CHANGED_ENTRY dismisslo, dismisshi
+	beq :+
+
+@drop_dismiss:
+	jsr remove_dismissed
+:	dex
+	bpl @remove_dismiss
+@dismissals:
+	lda meta_dismissals
+	beq @done
+	dec meta_dismissals
+	lda #$03
+	jsr meta_read_entry
+	jsr meta_changed
+	beq @dismissals
+	lda meta_dismiss_same
+	beq @dismissals
+	lda meta_entry+2
+	bmi @live_dismiss
+	lda @file
+	cmp #$ff
+	beq @dismissals
+	bne @dismiss_owner
+
+@live_dismiss:
+	lda @live
+@dismiss_owner:
+	ldx numdismissed
+	cpx #MAX_DISMISSED
+	bcs @annotation_full
+	sta dismissowners,x
+	lda meta_entry
+	sta dismisslo,x
+	lda meta_entry+1
+	sta dismisshi,x
+	inc numdismissed
+	jmp @dismissals
+
+@done:	RETURN_OK
+@annotation_full:
+	lda #$01
+	sec
+	rts
+.endproc
+
+;*******************************************************************************
+; UNDO BACKUP
+; Saves annotation tables and navigation history before tentative replay
+.export __errlog_undo_backup
+.proc __errlog_undo_backup
+	ldx #$00
+@page:	lda __ERRLOG_BSS_RUN__,x
+	sta annotation_backup,x
+	inx
+	bne @page
+@tail:	lda __ERRLOG_BSS_RUN__+$100,x
+	sta annotation_backup+$100,x
+	inx
+	cpx #<__ERRLOG_BSS_SIZE__
+	bne @tail
+	ldx #$03
+@shared:
+	lda numerrs,x
+	sta shared_backup,x
+	dex
+	bpl @shared
+	ldx #UNDO_BREAKPOINT_BYTES-1
+@break:	lda __debug_breakpoint_data,x
+	sta breakpoint_backup,x
+	dex
+	bpl @break
+	lda dbg::numbreakpoints
+	sta breakpoint_count
+	rts
+.endproc
+
+;*******************************************************************************
+; UNDO ROLLBACK
+; Restores annotation tables and navigation history after rejected replay
+.export __errlog_undo_rollback
+.proc __errlog_undo_rollback
+	ldx #$00
+@page:	lda annotation_backup,x
+	sta __ERRLOG_BSS_RUN__,x
+	inx
+	bne @page
+@tail:	lda annotation_backup+$100,x
+	sta __ERRLOG_BSS_RUN__+$100,x
+	inx
+	cpx #<__ERRLOG_BSS_SIZE__
+	bne @tail
+	ldx #$03
+@shared:
+	lda shared_backup,x
+	sta numerrs,x
+	dex
+	bpl @shared
+	ldx #UNDO_BREAKPOINT_BYTES-1
+@break:	lda breakpoint_backup,x
+	sta __debug_breakpoint_data,x
+	dex
+	bpl @break
+	lda breakpoint_count
+	sta dbg::numbreakpoints
+	rts
+.endproc
+.endif
 
 ;*******************************************************************************
 ; GET CURRENT
@@ -1295,11 +1821,17 @@ getline:
 	ldxy src::line
 	stxy @line
 	lda @preserve
+	beq @shift
 	cmp #DELETE_ABOVE
-	bne :+
+	beq @above
+	incw @line
+	jsr clear_line_dismissals
 	decw @line
-:
-	lda #$ff
+	jmp @shift
+@above:
+	jsr clear_line_dismissals
+	decw @line
+@shift:	lda #$ff
 	sta @offset
 
 	jsr __jump_shift
@@ -1515,12 +2047,21 @@ getline:
 	sta @preserve
 	jsr edit_annotations
 
-@dismissals:
-	jsr find_dismissed
+	jmp clear_line_dismissals
+.endproc
+
+;*******************************************************************************
+; CLEAR LINE DISMISSALS
+; Removes dismissals for one line without changing its neighbors
+; IN:
+;  - r0-r1: source line
+;  - r4: live buffer owner
+;  - r5: alternate debug file owner
+.proc clear_line_dismissals
+@loop:	jsr find_dismissed
 	bcs @done
 	jsr remove_dismissed
-	jmp @dismissals
-
+	jmp @loop
 @done:	rts
 .endproc
 
@@ -1618,7 +2159,6 @@ getline:
 ;  - livechanged: nonzero if the live error changed
 .proc check_line
 @line=r0
-@buffer=r0
 	lda #$00
 	sta __errlog_editpending
 	lda fmt::enable
@@ -1635,7 +2175,23 @@ getline:
 	sta livechanged
 	RETURN_OK
 
-@check: ; tokenize and check for errors
+@check:
+	; fall through to the syntax-only validator
+.endproc
+
+;*******************************************************************************
+; CHECK SYNTAX
+; Updates the current line's live diagnostic without changing assembly errors
+; IN:
+;  - mem::linebuffer: source text to check
+;  - src::activebuff: buffer containing the line
+;  - src::line: source line being checked
+;  - zp::verify: nonzero for syntax-only validation
+; OUT:
+;  - .A: token type or error code
+;  - .C: set on syntax error
+.proc check_syntax
+@buffer=r0
 	ldxy #mem::linebuffer
 	lda #FINAL_BANK_MAIN
 	CALLMAIN asm::tokenize
@@ -1649,10 +2205,96 @@ getline:
 	ldxy src::line
 	pla
 	jsr set_live
+.ifdef ultimem
+	bcc :+
+	lda #$01
+	sta __errlog_recheck_full
+:
+.endif
 	pla
 	plp
 	rts
 .endproc
+
+.ifdef ultimem
+;*******************************************************************************
+; CLEAR LIVE CHANGED
+; Removes stale live errors on lines marked by undo/redo replay
+; IN:
+;  - .XY: first candidate line
+;  - r0-r1: last candidate line
+;  - src::activebuff: buffer to recheck
+;  - undo line bitmap: changed lines in the restored source
+.export __errlog_clear_live_changed
+.proc __errlog_clear_live_changed
+@last=r0
+@first=r2
+@owner=r4
+	stxy @first
+	lda src::activebuff
+	ora #LIVE_BUFFER
+	sta @owner
+	ldx numerrs
+	beq @done
+	dex
+@loop:	lda errfileids,x
+	cmp @owner
+	bne @next
+	; avoid a bitmap bank call for errors outside the edited bounds
+	lda errlineshi,x
+	cmp @first+1
+	bcc @next
+	bne @lastline
+	lda errlineslo,x
+	cmp @first
+	bcc @next
+@lastline:
+	lda errlineshi,x
+	cmp @last+1
+	bcc @changed
+	bne @next
+	lda @last
+	cmp errlineslo,x
+	bcc @next
+@changed:
+	CHANGED_ENTRY errlineslo, errlineshi
+	beq @next
+	jsr remove
+@next:	dex
+	bpl @loop
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; RECHECK LINE
+; Validates restored text without formatting and respects restored dismissals
+; IN:
+;  - mem::linebuffer: restored source line
+;  - src::activebuff: buffer containing the line
+;  - src::line: source line being checked
+; OUT:
+;  - zp::verify: preserved
+.export __errlog_recheck_line
+.proc __errlog_recheck_line
+@line=r0
+	jsr current_owners
+	ldxy src::line
+	stxy @line
+	jsr find_dismissed
+	bcc @done
+	lda zp::verify
+	pha
+	lda #$01
+	sta zp::verify
+	jsr check_syntax
+	pla
+	sta zp::verify
+@done:	lda #NAV_NONE
+	sta __errlog_editpending
+	sta __errlog_navpending
+	rts
+.endproc
+.endif
 
 ;*******************************************************************************
 ; BEFOREKEY
@@ -1671,6 +2313,9 @@ getline:
 .proc before_key
 	; save registers
 	php
+.ifdef ultimem
+	jsr __undo_key_begin
+.endif
 	pha
 	sta navkey		; keep the key for the checks below
 	txa
@@ -1731,7 +2376,23 @@ getline:
 ;  - mem::linebuffer: restored to the destination line's text
 ; CLOBBERS:
 ;  - r0-r5, navrow, navdest, livechanged
+.ifdef ultimem
 .proc after_key
+	jsr after_key_impl
+	jmp __undo_key_commit
+.endproc
+.else
+after_key = after_key_impl
+.endif
+
+;*******************************************************************************
+; AFTER KEY IMPL
+; Validates a departed source line using the saved navigation snapshot
+; IN:
+;  - navpending: pending validation state
+; OUT:
+;  - navpending: NAV_NONE
+.proc after_key_impl
 @delta=r0
 	ldx __errlog_navpending
 	bne :+
@@ -1797,7 +2458,10 @@ getline:
 	CALLMAIN src::pushp	; destination source position
 
 	lda navbuffer
+	cmp src::activebuff
+	beq :+
 	CALLMAIN src::setbuff
+:
 
 	ldxy navpos
 	CALLMAIN src::goto
@@ -1826,7 +2490,10 @@ getline:
 	ldxy navpos
 	CALLMAIN src::goto
 	lda navdest
+	cmp src::activebuff
+	beq :+
 	CALLMAIN src::forceset
+:
 	CALLMAIN src::popgoto
 	CALLMAIN text::restorebuff
 	plp				; restore the syntax result

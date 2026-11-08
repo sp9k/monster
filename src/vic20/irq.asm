@@ -322,7 +322,7 @@ savebank2: .byte 0
 ctrltab:
 	.byte K_GOTO_BUFF1,K_GOTO_BUFF3,K_GOTO_BUFF5,K_GOTO_BUFF7
 	.byte $ff,K_NEXT_PAL,$ff,$ff		; 9 + pound DEL
-	.byte $ff,$ff,$ff,$ff,$09,$ff,$ff,$ff	; larrow W R Y I(TAB) P * RETURN
+	.byte $ff,$ff,K_REDO,$ff,$09,$ff,$ff,$ff	; larrow W R Y I(TAB) P * RETURN
 	.byte $ff,$ff,$ff,$ff,K_WIN_DOWN,K_NEXT_BUFF ; CTRL A D G J L
 	.byte K_NEXT_BANNER,$ff			; ; CRSR-R
 	.byte $ff,$ff,$ff,$ff,$ff,$ff,$ff,$ff	; STOP SHIFT X V N , / CRSR-D

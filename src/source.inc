@@ -45,6 +45,9 @@
 .import __src_upn
 .import __src_popp
 .import __src_popgoto
+.ifdef ultimem
+.import __src_restore_position
+.endif
 .import __src_pos
 .import __src_prev
 .import __src_open_gap
@@ -72,6 +75,9 @@ FLAG_DIRTY = 1	; flag that source buffer has been changed since last save
 GAPSIZE = $100	; size of gap in gap buffer
 
 .scope src
+.ifdef ultimem
+	restore_position = __src_restore_position
+.endif
 	reserve_bank     = __src_reserve_bank
 	release_bank     = __src_release_bank
 	activebuff       = __src_activebuff

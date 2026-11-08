@@ -28,6 +28,8 @@ K_QUIT          = $03	; STOP
 K_DEL           = $14	; DELETE
 
 ; EDITOR KEYS
+K_UNDO           = $75	; u (command mode)
+K_REDO           = $12	; CTRL + r (command mode)
 K_GO_BASIC       = $85	; F1
 K_SID_VIEW       = $ec	; C= + f1 (C64)
 K_SID_TOGGLE     = $ed	; C= + f3 (C64)
