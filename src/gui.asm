@@ -739,13 +739,41 @@ __gui_refresh:
 .endproc
 
 ;*******************************************************************************
+; DO GLOBAL
+; Runs an editor command that works the same whether the editor or a window
+; has focus.
+; IN:
+;   - .A: the key to run
+; OUT:
+;   - .A: 0
+.proc doglobal
+	pha			; save the key
+	jsr swapcur
+	jsr savelb
+	pla
+
+	jsr edit::universalkey
+	jsr restorelb
+	jsr swapcur
+	jsr draw_all
+
+	lda #$00		; key was consumed
+	clc
+	rts
+.endproc
+
+;*******************************************************************************
 ; HANDLE KEY
-; Translates common window keys into window manager actions
+; Translates common window keys into window manager actions, and runs the
+; universal editor commands that still apply while a window has focus.
 ; IN:
 ;   - .A: key to handle
 ; OUT:
 ;   - .A: GUI_RET_x action if handled, else original key
 ;   - .C: set if handled
+;   - .A: 0 if the key was a universal command that was already handled
+;         in place; the caller should keep going, but must repaint anything it
+;         draws outside its window contents (e.g. the monitor's input line)
 .export __gui_handlekey
 .proc __gui_handlekey
 	ldx #@count-$01
@@ -753,6 +781,13 @@ __gui_refresh:
 	beq @found
 	dex
 	bpl @loop
+
+	; not a window key: check allowed universal commands
+	ldx #@gcount-$01
+@gloop:	cmp @globals,x
+	beq doglobal
+	dex
+	bpl @gloop
 	clc
 	rts
 
@@ -765,6 +800,21 @@ __gui_refresh:
 @actions:
 	.byte GUI_RET_QUIT, GUI_RET_QUIT, GUI_RET_CLOSEALL, GUI_RET_CLOSE
 	.byte GUI_RET_CYCLE, GUI_RET_CYCLE_DOWN
+
+;-------------------------------------------------------------------------------
+; Universal editor commands that are allowed within a focused window
+@globals:
+	.byte K_NEXT_DRIVE, K_PREV_DRIVE	; C= + +/- (select drive)
+	.byte K_NEXT_PAL, K_PREV_PAL		; CTRL + +/- (cycle palette)
+	.byte K_REFRESH				; C= + c (redraw the screen)
+	.byte K_VIS_WHITESPACE			; C= + v (visual whitespace)
+	.byte K_TOGGLE_FMT			; C= + f (auto-format)
+.if .defined(c64) .and .defined(CART)
+	.byte K_SID_VIEW			; C= + f1 (music browser)
+	.byte K_SID_TOGGLE			; C= + f3 (pause/resume)
+	.byte K_SID_RESTART			; C= + f5 (restart)
+.endif
+@gcount = *-@globals
 .endproc
 
 ;*******************************************************************************

@@ -154,8 +154,8 @@ __dir_get_by_type:
 .proc getbytype
 @end=r0
 @limit=r2
-@resultend=r5		; r5-r6 survive file::exists
-@file=r7		; live only after open_dir returns
+@resultend=r5
+@file=r7
 @ext=r8
 @resultptr=ra
 @cnt=rc

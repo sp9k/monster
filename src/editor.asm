@@ -3094,6 +3094,8 @@ cancel = enter_command
 ;  - .A: the key to handle
 ; OUT:
 ;  - .C: set if the key was handled or clear if the caller must handle it
+.export __edit_universal_key
+__edit_universal_key:
 .proc handle_universal_keys
 	ldx #@num_special_keys-1
 @l0:	cmp @specialkeys,x
@@ -5978,9 +5980,18 @@ clear_message = text::clrinfo
 .proc next_drive
 	lda zp::device
 	cmp #$0f
-	bcs :+
+	bcs drive_changed
 	inc zp::device
-:	rts
+
+	; fall through to drive_changed
+.endproc
+
+;*******************************************************************************
+; DRIVE CHANGED
+; Redraws the status row with the new drive number.
+.proc drive_changed
+	jsr ui::update_statusline
+	jmp draw_status_bar
 .endproc
 
 ;*******************************************************************************
@@ -5988,9 +5999,9 @@ clear_message = text::clrinfo
 .proc prev_drive
 	lda zp::device
 	cmp #$09
-	bcc :+
+	bcc drive_changed
 	dec zp::device
-:	rts
+	jmp drive_changed
 .endproc
 
 ;*******************************************************************************

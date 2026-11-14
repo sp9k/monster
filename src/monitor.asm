@@ -199,7 +199,10 @@ __monitor_window:
 	lda #K_QUIT		; force the input to end
 	rts
 
-:	cmp #K_SWAP_USERMEM_TUI
+:	cmp #$00		; did universal command run?
+	beq @redrawline		; if so, redraw and exit
+
+	cmp #K_SWAP_USERMEM_TUI
 	bne @done
 	jsr dbg::swapusermem
 
