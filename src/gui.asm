@@ -139,10 +139,15 @@ baserow: .byte STATUS_ROW-1
 __gui_active_type: .byte 0
 
 ; set while a window has focus (used to keep the editor's cursor saved)
+.export __gui_infocus
+__gui_infocus:
 infocus: .byte 0
 
 ; if !0 windows are not rendered
 hidden:  .byte 0
+
+; GUI_RET_SWITCH when a command run by doglobal raised a window, else 0
+switchreq: .byte 0
 
 .PUSHSEG
 .RODATA
@@ -740,12 +745,15 @@ __gui_refresh:
 
 ;*******************************************************************************
 ; DO GLOBAL
-; Runs an editor command that works the same whether the editor or a window
-; has focus.
+; Offers the key to the editor's universal command handler, which runs only its
+; window-safe commands while a window has focus (gui::infocus gates its table).
 ; IN:
-;   - .A: the key to run
+;   - .A: the key to offer
 ; OUT:
-;   - .A: 0
+;   - .C: set for GUI_RET_SWITCH
+;   - .A: if .C set, GUI_RET_SWITCH if command activated another window
+;   - .A: if .C clear, 0 if command ran
+;   - .A: if .C clear, !0 for any unhandled key
 .proc doglobal
 	pha			; save the key
 	jsr swapcur
@@ -753,12 +761,27 @@ __gui_refresh:
 	pla
 
 	jsr edit::universalkey
+	php			; save "command ran" flag
+	pha			; save key
 	jsr restorelb
 	jsr swapcur
-	jsr draw_all
+	pla			; restore key
+	plp			; restore "command ran" flag
+	bcc @done		; if no command for this key -> continue
 
+	; did the command we ran request a new window to be activated?
+	lda switchreq
+	bne @switch		; if so -> switch to it
+
+	jsr draw_all
 	lda #$00		; key was consumed
 	clc
+@done:	rts
+
+@switch:
+	ldx #$00
+	stx switchreq
+	sec			; flag that we activated a new window
 	rts
 .endproc
 
@@ -781,15 +804,7 @@ __gui_refresh:
 	beq @found
 	dex
 	bpl @loop
-
-	; not a window key: check allowed universal commands
-	ldx #@gcount-$01
-@gloop:	cmp @globals,x
-	beq doglobal
-	dex
-	bpl @gloop
-	clc
-	rts
+	jmp doglobal		; not a window key: offer it to the editor
 
 @found:	lda @actions,x
 	rts
@@ -800,21 +815,6 @@ __gui_refresh:
 @actions:
 	.byte GUI_RET_QUIT, GUI_RET_QUIT, GUI_RET_CLOSEALL, GUI_RET_CLOSE
 	.byte GUI_RET_CYCLE, GUI_RET_CYCLE_DOWN
-
-;-------------------------------------------------------------------------------
-; Universal editor commands that are allowed within a focused window
-@globals:
-	.byte K_NEXT_DRIVE, K_PREV_DRIVE	; C= + +/- (select drive)
-	.byte K_NEXT_PAL, K_PREV_PAL		; CTRL + +/- (cycle palette)
-	.byte K_REFRESH				; C= + c (redraw the screen)
-	.byte K_VIS_WHITESPACE			; C= + v (visual whitespace)
-	.byte K_TOGGLE_FMT			; C= + f (auto-format)
-.if .defined(c64) .and .defined(CART)
-	.byte K_SID_VIEW			; C= + f1 (music browser)
-	.byte K_SID_TOGGLE			; C= + f3 (pause/resume)
-	.byte K_SID_RESTART			; C= + f5 (restart)
-.endif
-@gcount = *-@globals
 .endproc
 
 ;*******************************************************************************
@@ -937,6 +937,15 @@ __gui_refresh:
 	lda depth
 	bne :+
 	jmp beep::short	; no windows are open
+
+:	lda infocus
+	beq :+
+
+	; another GUI window is already open, flag that we want to open
+	; the new window and let the editor handle doing so
+	lda #GUI_RET_SWITCH
+	sta switchreq
+	rts
 
 :	lda zp::curx
 	sta __gui_cursave_x

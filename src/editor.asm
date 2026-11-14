@@ -3107,7 +3107,14 @@ __edit_universal_key:
 	RETURN_OK	; not a universal key code; return to be handled
 
 @special:
-	lda @specialvecslo,x
+	; check if the command is valid within a GUI window and if a GUI window
+	; is open
+	cpx #@num_editor_only_keys
+	bcs @run			; key is valid in GUI -> always run
+	ldy gui::infocus
+	bne @normal			; if in a GUI, this key is not supported
+
+@run:	lda @specialvecslo,x
 	sta zp::jmpvec
 	lda @specialvecshi,x
 	sta zp::jmpvec+1
@@ -3126,13 +3133,7 @@ __edit_universal_key:
 	.byte K_HOME		; HOME
 	.byte K_ASM_DEBUG	; assemble
 	.byte K_DEBUG		; debug
-	.byte K_SHOW_BUFFERS	; show buffers
-	.byte K_MEMVIEW		; mem viewer/editor (same as while debugging)
-	.byte K_BRKVIEW		; breakpoint viewer/editor (same as while debugging)
-	.byte K_WATCHVIEW	; watch viewer/editor (same as while debugging)
-	.byte K_MONITOR_WIN	; enter console in a window
 	.byte K_SWAP_WINS	; C= + w (focus windows)
-	.byte K_REFRESH		; refresh
 	.byte K_LIST_SYMBOLS	; list symbols
 	.byte K_VIEW_MACROS	; open macro viewer
 	.byte K_VIEW_LOG	; open LOG
@@ -3160,15 +3161,9 @@ __edit_universal_key:
 	.byte K_GO_BASIC	; F1 (enter BASIC)
 	.byte K_MEM_CONFIG	; F2 (edit memory configuration)
 
-	.byte K_NEXT_PAL
-	.byte K_PREV_PAL
-	.byte K_TOGGLE_FMT
-	.byte K_VIS_WHITESPACE  ; C=-v toggle visual tabs
 	.byte K_DISMISS_ERR
 	.byte K_FORCE_NEWLINE
 	.byte K_CHECK_LINE
-	.byte K_NEXT_DRIVE	; C= + + (next drive)
-	.byte K_PREV_DRIVE	; C= + - (previous drive)
 	.byte K_WIN_GROW	; C= + k (grow the active window)
 	.byte K_WIN_SHRINK	; C= + j (shrink the active window)
 	.byte K_WIN_MAXIMIZE	; C= + z (maximize/restore the active window)
@@ -3177,7 +3172,27 @@ __edit_universal_key:
 	.byte K_RESTORE	; RESTORE (close all windows)
 	.byte K_NEXT_BANNER	; CTRL + ; (next comment banner)
 	.byte K_PREV_BANNER	; CTRL + : (previous comment banner)
+
+;-------------------------------------------------------------------------------
+; commands below this point also work while a GUI window has focus
+@num_editor_only_keys=*-@specialkeys
+
+	.byte K_REFRESH		; refresh
+	.byte K_NEXT_PAL
+	.byte K_PREV_PAL
+	.byte K_TOGGLE_FMT
+	.byte K_VIS_WHITESPACE  ; C=-v toggle visual tabs
+	.byte K_NEXT_DRIVE	; C= + + (next drive)
+	.byte K_PREV_DRIVE	; C= + - (previous drive)
+
+; these commands open a GUI window
+	.byte K_SHOW_BUFFERS	; show buffers
+	.byte K_MEMVIEW		; mem viewer/editor (same as while debugging)
+	.byte K_BRKVIEW		; breakpoint viewer/editor (same as while debugging)
+	.byte K_WATCHVIEW	; watch viewer/editor (same as while debugging)
+	.byte K_MONITOR_WIN	; enter console in a window
 .if .defined(c64) .and .defined(CART)
+; music keys (c64 only)
 	.byte K_SID_VIEW	; C= + F1 (music browser)
 	.byte K_SID_TOGGLE	; C= + F3 (pause/resume music)
 	.byte K_SID_RESTART	; C= + F5 (restart music)
@@ -3186,19 +3201,19 @@ __edit_universal_key:
 .linecont +
 .define specialvecs ccleft, ccright, ccup, ccdown, \
 	home, \
-	command_asmdbg, command_debug, show_buffers, \
-	view::edit, brkpt::edit, watch::edit, monitor_win, \
+	command_asmdbg, command_debug, \
 	guienter, \
-	refresh, \
 	view_symbols, view_macros, jump_log, command_link, command_build, \
 	close_buffer, new_buffer, set_breakpoint, jumpback, jumpforward, \
 	buffer1, buffer2, buffer3, buffer4, buffer5, buffer6, buffer7, buffer8,\
 	next_buffer, prev_buffer, udgedit, leave_insert, go_basic, \
 	mem_config, \
-	next_palette, prev_palette, toggle_autoformat, \
-	toggle_vis_ws, dismiss_error, force_newline, check_current_line, \
-	next_drive, prev_drive, guigrow, guishrink, maximize_win, next_err, \
-	guitogglehide, guidismissall, next_banner, prev_banner
+	dismiss_error, force_newline, check_current_line, \
+	guigrow, guishrink, maximize_win, next_err, \
+	guitogglehide, guidismissall, next_banner, prev_banner, \
+	refresh, next_palette, prev_palette, toggle_autoformat, \
+	toggle_vis_ws, next_drive, prev_drive, \
+	show_buffers, view::edit, brkpt::edit, watch::edit, monitor_win
 .linecont -
 
 @specialvecslo: .lobytes specialvecs
@@ -5570,12 +5585,15 @@ clear_message = text::clrinfo
 ; Handles the down cursor key
 ; OUT:
 ;  - .C: clear if the cursor was moved DOWN or screen scrolled
+.pushseg
+.CODE
 .proc ccdown
 	jsr move_down
 	bcs :+
 	jmp line_navigated
 :	rts
 .endproc
+.popseg
 
 ;*******************************************************************************
 ; MOVE DOWN

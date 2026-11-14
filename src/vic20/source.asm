@@ -25,6 +25,8 @@
 
 .macpack longbranch
 
+CUR_BANK .set FINAL_BANK_MAIN
+
 buffstate   = zp::srccur
 cursorzp    = zp::srccur
 poststartzp = zp::srccur2
