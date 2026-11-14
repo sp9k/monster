@@ -302,12 +302,7 @@ __screen_draw_gutter_row:
 	bpl :-
 
 	; save the screen data
-	lda #^REU_BACKUP_ADDR
-	sta reu::reuaddr+2
-	ldxy #$0400
-	stxy reu::reuaddr
-	stxy reu::c64addr
-	stxy reu::txlen
+	jsr setup_backup
 	jsr reu::store
 
 	; unreverse all characters on screen
@@ -344,15 +339,22 @@ __screen_draw_gutter_row:
 	bpl :-
 
 	; restore the screen data
+	jsr setup_backup
+	jsr reu::load
+
+	jmp draw::refresh_colors
+.endproc
+
+;*******************************************************************************
+; SETUP BACKUP
+; Sets the REU transfer addresses and length for the screen backup
+.proc setup_backup
 	lda #^REU_BACKUP_ADDR
 	sta reu::reuaddr+2
 	ldxy #$0400
 	stxy reu::reuaddr
 	stxy reu::c64addr
 	stxy reu::txlen
-	jsr reu::load
-
-	jmp draw::refresh_colors
 	rts
 .endproc
 

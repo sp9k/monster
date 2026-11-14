@@ -272,6 +272,7 @@ recoffs:
 ; SWAPCUR
 ; If a window has focus, exchanges the live cursor with the saved editor
 ; cursor.  Used around editor drawing so that it sees its own cursor
+; If the editor is focused (not a GUI window), does nothing
 .proc swapcur
 	lda infocus
 	beq @done
@@ -371,7 +372,7 @@ __gui_refresh:
 ;*******************************************************************************
 ; UPDATE EDITOR
 ; Resizes the editor to the height computed by layout, rendering any new rows
-; as needed.
+; as needed and clearing breakpoint markers on rows covered by windows.
 ; Must be called with the .A and .C values returned by layout intact.
 ; IN:
 ;   - .A: the new editor height (index of its last row)
@@ -379,19 +380,21 @@ __gui_refresh:
 ;         cover every row and the editor must be hidden (.A is then invalid)
 .proc update_editor
 @row=zp::guitmp
+@old=zp::guitmp+1
 @edh=zp::guitmp+2
 	bcs @gotedh	; the editor keeps at least one row (0 = only row 0)
 	lda #$ff	; the windows fill every row above the baserow
 
 @gotedh:
 	sta @edh
+	ldx zp::editor_height
+	stx @old
 
 	; check if we need to grow, shrink, hide, or unhide the editor
 	cmp zp::editor_height
 	beq @done
 	cmp #$ff
 	beq @edhide
-	ldx zp::editor_height
 	inx			; was the editor hidden?
 	beq @edunhide
 	cmp zp::editor_height
@@ -400,55 +403,77 @@ __gui_refresh:
 ;-------------------------------------------------------------------------------
 ; SHRINK editor
 @edshrink:
-	jsr swapcur
-	jsr savelb		; save line buffer (clobbered by resize)
-	lda @edh
-	jsr edit::resize	; shrink: reflows the cursor, no redraw
-	jsr restorelb		; restore line buffer
-	jmp swapcur
+	jsr resize_editor
+	jmp @covered
 
 ;-------------------------------------------------------------------------------
 ; HIDE editor
 @edhide:
 	; hide the editor; its cursor is clamped when it is revealed again
 	sta zp::editor_height
+
+@covered:
+	; clear only newly covered rows (including the highlight)
+	ldx @old
+@clear: cpx edit::highlight_row
+	bne :+
+	ldy #$ff
+	sty edit::highlight_row
+
+:	lda #$00
+	sta mem::breakpoint_rows,x
+.ifdef hard8x8
+	sta mem::highlight_rows,x
+	jsr scr::draw_gutter_row
+.endif
+	dex
+	cpx @edh
+	bne @clear
 @done:	rts
 
 ;-------------------------------------------------------------------------------
 ; UNHIDE editor
 @edunhide:
-	; The editor was closed (window maximized), restore it
-	stx zp::editor_height	; editor_height = 0
-	jsr swapcur
-	jsr savelb	; protect the focused window's input line
-	lda @edh
-	jsr edit::resize
-	jsr restorelb
-	ldx #$00
-	beq @grow1	; render rows 0..@edh (branch always)
+	; reflow from the full height, then render each revealed row once
+	lda baserow
+	sta zp::editor_height
+	jsr resize_editor
+	ldx #$ff
+	bne @first		; render starting at row zero
 
 ;-------------------------------------------------------------------------------
 ; GROW editor
 @edgrow:
 	; render the source rows revealed by the shrinking window area
-	jsr swapcur
 	ldx zp::editor_height
-	inx
+@first:	inx
+	stx @row
 	lda @edh
 	sta zp::editor_height
-@grow1:	stx @row
-@grow0:	ldx @row
-	lda #$00
-	sta mem::breakpoint_rows,x
-	jsr draw::resetline	; clear the old title/window color
-	lda @row
-	jsr edit::render_row
-	inc @row
+	jsr swapcur
+
+@grow0:	lda @row
+	jsr edit::render_row	; restore text, color, and breakpoint marker
 	lda @row
 	cmp @edh
+	inc @row		; preserves carry from the last-row check
 	bcc @grow0
-	beq @grow0
 	jmp swapcur
+.endproc
+
+;*******************************************************************************
+; RESIZE EDITOR
+; Updates the editor cursor while preserving the focused window's input
+; IN:
+;   - zp::guitmp+2: new editor height (index of its last row)
+.proc resize_editor
+@edh=zp::guitmp+2
+	jsr swapcur		; temporarily move cursor back to editor
+	jsr savelb		; save line buffer
+	lda @edh
+	jsr edit::resize
+	jsr restorelb		; restore line buffer
+	jmp swapcur		; return cursor to the window
 .endproc
 
 ;*******************************************************************************
@@ -461,7 +486,6 @@ __gui_refresh:
 .proc __gui_refresh_titles
 @row=zp::guitmp
 @i=zp::guitmp+1
-@off=zp::guitmp+2
 @title=r2
 	ldx wtop
 	dex
@@ -494,14 +518,13 @@ __gui_refresh:
 	tax
 
 @pad:	; build the title line with .X leading spaces
-	stx @off
+	txa
+	tay
 	lda #' '
-	ldx #$00
-@sp:	cpx @off
-	bcs @cp
-	sta mem::spare,x
-	inx
-	bne @sp
+@sp:	dey
+	bmi @cp
+	sta mem::spare,y
+	bpl @sp			; branch always (.Y >= 0)
 
 @cp:	ldy #$00
 @cp0:	lda (@title),y
@@ -521,7 +544,15 @@ __gui_refresh:
 	dec @i
 	bpl @t0
 
-	; update the active window type
+	; fall through to update_type
+.endproc
+
+;*******************************************************************************
+; UPDATE TYPE
+; Updates the active window type from the top window record
+; OUT:
+;   - .C: clear when a window is open
+.proc update_type
 	jsr active
 	ldy #WIN_TYPE
 	lda (r0),y
@@ -602,6 +633,7 @@ __gui_refresh:
 	sbc wheight	; .A = last - hght
 	adc #$00	; scroll = last - wheight + 1
 	sta scroll
+@bottom:
 	ldx wheight
 	dex
 	stx select	; select the bottom row
@@ -617,9 +649,7 @@ __gui_refresh:
 	clc
 	adc scroll	; .A = scroll + (select - wheight + 1)
 	sta scroll
-	ldx wheight
-	dex
-	stx select	; select the bottom row
+	jmp @bottom
 @done:	rts
 .endproc
 
@@ -1384,11 +1414,7 @@ __gui_refresh:
 
 	; the window below is active now.  It can only have gained room (the
 	; closed window's title row went away), so its height still fits
-	jsr active
-	ldy #WIN_TYPE
-	lda (r0),y
-	sta __gui_active_type
-	rts
+	jmp update_type
 
 @last:	; that was the last window; restore whole window area to the editor
 	lda #$00

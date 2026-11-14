@@ -50,9 +50,8 @@ endif
 
 LINK_FILE=link-vic20-ultimem
 EXP_SRC=$(wildcard vic20/ultimem/*.asm)
-# flashrom.asm includes the standalone writer in the cartridge's RAM payload.
+# flashrom.asm includes the shared writer in the cartridge's RAM payload.
 CART_EXTRA_DEPS=flasher.asm
-CART_EXTRA_OBJECTS=updater-ram.o
 endif
 ifeq ($(TARGET),c64)
 LINK_FILE=link-c64
@@ -82,7 +81,7 @@ MODE_SRC=$(wildcard $(TARGET)/$(SCREEN_MODE)/*.asm)
 
 # platform independent source files
 # Standalone utilities and included header sources are not separate modules.
-PI_SRC=$(filter-out flasher.asm updater.asm updater-main.asm ramtest.asm version.asm,$(wildcard *.asm))
+PI_SRC=$(filter-out flasher.asm ramtest.asm version.asm,$(wildcard *.asm))
 
 SRC=$(TARGET_SRC) $(PI_SRC) $(MODE_SRC) $(EXP_SRC)
 
@@ -110,7 +109,7 @@ endif
 
 flasher: flasher.prg $(CART_IMAGE) flasher.d81
 
-updater: updater.prg updater.d81
+flasher-jiffy: flasher-jiffy.prg flasher-jiffy.d81
 
 ramtest: ramtest.prg ramtest.d81
 
@@ -136,11 +135,11 @@ $(BUILD_OPTIONS): FORCE
 	@cmp -s $@.tmp $@ || cp $@.tmp $@
 	@$(RM) $@.tmp
 
-$(CART_PRG): $(BOOTSRC) $(SRC) $(ASM_INCLUDES) $(CART_EXTRA_DEPS) $(CART_EXTRA_OBJECTS) $(LINK_FILE)-cart.config Makefile $(BUILD_OPTIONS)
-	$(CL65) -t $(TARGET) -o $@ --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $(BOOTSRC) $(SRC) $(CART_EXTRA_OBJECTS) -Ln labels.txt -v -m map.txt
+$(CART_PRG): $(BOOTSRC) $(SRC) $(ASM_INCLUDES) $(CART_EXTRA_DEPS) $(LINK_FILE)-cart.config Makefile $(BUILD_OPTIONS)
+	$(CL65) -t $(TARGET) -o $@ --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $(BOOTSRC) $(SRC) -Ln labels.txt -v -m map.txt
 
-monster-cart-test.prg: $(BOOTSRC) $(SRC) $(UNIT) $(ASM_INCLUDES) $(CART_EXTRA_DEPS) $(CART_EXTRA_OBJECTS) $(LINK_FILE)-cart.config
-	$(CL65) -t $(TARGET) -o $@ --asm-define TEST --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $(BOOTSRC) $(SRC) $(UNIT) $(CART_EXTRA_OBJECTS) -Ln labels.txt -v -m map.txt
+monster-cart-test.prg: $(BOOTSRC) $(SRC) $(UNIT) $(ASM_INCLUDES) $(CART_EXTRA_DEPS) $(LINK_FILE)-cart.config
+	$(CL65) -t $(TARGET) -o $@ --asm-define TEST --asm-define CART $(ASMFLAGS) -C $(LINK_FILE)-cart.config $(BOOTSRC) $(SRC) $(UNIT) -Ln labels.txt -v -m map.txt
 
 # the linker output is already laid out bank-by-bank for the target's flash
 # (see the MEMORY areas in the link config); pack it into the image format
@@ -150,11 +149,11 @@ $(CART_IMAGE): $(CART_PRG) $(CART_TOOL) VERSION
 $(TEST_IMAGE): monster-cart-test.prg
 	$(PYTHON) make-ultimem-cart.py $< $@
 
+###############################################################################
 monster-disk.prg: $(BOOTSRC) $(SRC)
 	$(CL65) -t $(TARGET) -o $@ $(ASMFLAGS) -C $(LINK_FILE)-disk.config $^ -Ln labels.txt -v -m map.txt
 
-# Runs in an unexpanded VIC-20 and streams only the populated 8 KiB banks from
-# the padded 8 MiB image.  Derive the count from the linker's bank-laid output.
+###############################################################################
 flasher.prg: flasher.asm firmware.inc macros.inc zeropage.inc monster-cart.prg Makefile $(BUILD_OPTIONS)
 	$(CL65) -t vic20 -o $@ -C vic20-asm.cfg \
 		--asm-define DEFAULT_DEVICE=$(FLASHER_DEVICE) \
@@ -165,23 +164,33 @@ flasher.d81: flasher.prg $(UPDATE_IMAGE) Makefile
 	$(C1541) -format "monster flash,mf" d81 $@ -attach $@ \
 		-write flasher.prg flasher.prg -write $(UPDATE_IMAGE) monster.bin
 
-# The disk update is trimmed; padded 8 MiB images remain emulator artifacts.
+###############################################################################
+JIFFY_RAM_OBJECTS=flasher/jiffy-file.o flasher/jiffy-gate.o \
+	flasher/jiffy-serial.o
+
+flasher/jiffy-%.o: vic20/jiffy-%.asm Makefile
+	$(CL65) -t vic20 -c --asm-define JIFFY_RAM -o $@ $<
+
+flasher/jiffy-main.o: flasher.asm firmware.inc macros.inc zeropage.inc \
+		monster-cart.prg Makefile $(BUILD_OPTIONS)
+	$(CL65) -t vic20 -c -o $@ \
+		--asm-define DEFAULT_DEVICE=$(FLASHER_DEVICE) \
+		--asm-define STANDALONE_FLASHER --asm-define FLASHER_JIFFY \
+		--asm-define IMAGE_BLOCKS=$$(($$(wc -c < monster-cart.prg) / 8192)) $<
+
+flasher-jiffy.prg: flasher/jiffy-main.o $(JIFFY_RAM_OBJECTS) \
+		flasher/jiffy.config
+	$(CL65) -t vic20 -o $@ -C flasher/jiffy.config \
+		flasher/jiffy-main.o $(JIFFY_RAM_OBJECTS)
+
+flasher-jiffy.d81: flasher-jiffy.prg $(UPDATE_IMAGE) Makefile
+	$(C1541) -format "monster jiffy,mj" d81 $@ -attach $@ \
+		-write flasher-jiffy.prg flash-jiffy.prg \
+		-write $(UPDATE_IMAGE) monster.bin
+
+###############################################################################
 $(UPDATE_IMAGE): monster-cart.prg make-ultimem-cart.py VERSION
 	$(PYTHON) make-ultimem-cart.py $< $@ --version $(VERSION) --trimmed
-
-updater-ram.o: updater.asm flashio.inc firmware.inc macros.inc zeropage.inc Makefile
-	$(CL65) -t vic20 -c -o $@ updater.asm
-
-updater-standalone.o: updater.asm flashio.inc firmware.inc macros.inc zeropage.inc Makefile
-	$(CL65) -t vic20 -c --asm-define STANDALONE_FLASHER -o $@ updater.asm
-
-updater.prg: updater-main.asm updater-standalone.o updater.inc flashio.inc firmware.inc flasher.asm macros.inc zeropage.inc Makefile $(BUILD_OPTIONS)
-	$(CL65) -t vic20 -o $@ -C vic20-asm.cfg \
-		--asm-define DEFAULT_DEVICE=$(FLASHER_DEVICE) updater-main.asm updater-standalone.o
-
-updater.d81: updater.prg $(UPDATE_IMAGE) Makefile
-	$(C1541) -format "monster update,mu" d81 $@ -attach $@ \
-		-write updater.prg updater.prg -write $(UPDATE_IMAGE) $(UPDATE_IMAGE)
 
 # Same non-destructive bank check as the flasher, without a flash image.
 ramtest.prg: ramtest.asm Makefile
@@ -214,6 +223,7 @@ start-cart-c64: monster.crt test-disk
 	$(X64) -default -sound $(EMU_REGION) -drive8type 1581 -reu -reusize 16384 -cartcrt monster.crt -moncommands moncommands -8 test.d81
 
 clean:
-	rm -f *.prg *.o test.d81 cyclic.d81 monster.d81 flasher.d81 updater.d81 ramtest.d81
+	rm -f *.prg *.o test.d81 cyclic.d81 monster.d81 flasher.d81 ramtest.d81
 	rm -f $(CART_IMAGE) $(TEST_IMAGE)
+	rm -f flasher-jiffy.d81 flasher/*.o
 	rm -f vic20/*.o vic20/ultimem/*.o vic20/hard8x8/*.o vic20/soft4x8/*.o c64/*.o

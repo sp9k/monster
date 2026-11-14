@@ -46,6 +46,7 @@ ALERT_PROMPT_MAX = .min(23, ALERT_TEXT_LEN)
 msg:     .res ALERT_TEXT_LEN+1	; alert message string
 rowbuf:  .res LINESIZE		; row being composed
 colsave: .res ALERT_HEIGHT	; row colors the window is covering
+active:  .byte 0		; an alert owns the saved background
 cnt:     .byte 0		; row counter (0 = the window's top row)
 textcol: .byte 0		; column the next text row starts its text at
 rvsstart: .byte 0		; first column of the prompt's reversed field
@@ -95,7 +96,7 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 
 ;*******************************************************************************
 ; OPEN
-; Draws an alert window containing the given message
+; Draws or replaces an alert
 ; IN:
 ;  - .XY:           the message to display
 ;  - alert::prompt: the prompt to display beneath it
@@ -107,36 +108,29 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 
 ;*******************************************************************************
 ; CLOSE
-; Restores the screen and color under the alert window
+; Restores the screen and color under the alert, if one is open
 .export __alert_close
 .proc __alert_close
-	; restore colors
+	lsr active
+	bcc @done
+
+	; restore each row's color and screen contents
 	lda #ALERT_HEIGHT-1
 	sta cnt
 @uncolor:
-	ldx cnt
-	lda colsave,x
+	ldy cnt
+	tya
+	clc
+	adc #ALERT_ROW
 	pha
-	txa
-	clc
-	adc #ALERT_ROW
 	tax
-	pla
+	lda colsave,y
 	jsr draw::hline
-	dec cnt
-	bpl @uncolor
-
-	; restore screen contents
-	lda #ALERT_HEIGHT-1
-	sta cnt
-@restore:
-	lda cnt
-	clc
-	adc #ALERT_ROW
+	pla
 	jsr scr::restore_row
 	dec cnt
-	bpl @restore
-	rts
+	bpl @uncolor
+@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -161,9 +155,15 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 
 ;*******************************************************************************
 ; DRAWWIN
-; Saves what the window is about to cover and draws it
+; Saves the background to be overwritten by the alert and draws it
 .proc drawwin
 	jsr cur::off
+
+	lda active	; is an alert active?
+	bne @draw	; if so, continue to draw
+
+	; no alert active, back up the area under the alert
+	inc active
 
 	; save the rows the window is about to cover, and their colors
 	lda #ALERT_HEIGHT-1
@@ -179,7 +179,7 @@ __alert_prompt: .word 0		; the prompt "open" draws under the message
 	bpl @save
 
 	; reset colors for the row to draw
-	lda #ALERT_HEIGHT-1
+@draw:	lda #ALERT_HEIGHT-1
 	sta cnt
 @color:	lda cnt
 	clc

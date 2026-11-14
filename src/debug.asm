@@ -226,24 +226,19 @@ showstate_vec                = showstate
 safety_check_vec             = safety_check
 .endif
 
-.export __debug_refresh
-; Keep the raster IRQ from using the shared display while it is redrawn.
-.PUSHSEG
 .ifdef ultimem
-.segment "GUICODE"
+.segment "DEBUGGER"
 .endif
+
+;*******************************************************************************
+; REFRESH
+; Redraws debugger state with the raster IRQ disabled
+.export __debug_refresh
 .proc __debug_refresh
 	jsr scr::blank
 	jsr showstate_vec
 	jmp scr::unblank
 .endproc
-.POPSEG
-
-.ifdef ultimem
-.segment "DEBUGGER"
-.else
-.CODE
-.endif
 
 ;*******************************************************************************
 unblank = scr::unblank
@@ -499,8 +494,13 @@ blank   = scr::blank
 	beq @restore_debugger		; if not, skip PC decrement
 
 @notnmi:
-	decw sim::pc	; BRK pushes PC + 2, subtract 2 from PC
-	decw sim::pc
+	; BRK pushes PC + 2, subtract 2 from PC
+	sec
+	lda sim::pc
+	sbc #$02
+	sta sim::pc
+	bcs @restore_debugger
+	dec sim::pc+1
 
 @restore_debugger:
 	sei
@@ -658,6 +658,19 @@ blank   = scr::blank
 .proc goto_pc
 	ldxy sim::pc
 	jmp __debug_gotoaddr
+.endproc
+
+;*******************************************************************************
+; GO BASIC
+; Resumes debugging or enters BASIC with an editor return NMI
+.export __debug_go_basic
+.proc __debug_go_basic
+	lda edit::debugging
+	bne __debug_go
+
+	; select editor interface for the return from BASIC handler
+	sta __debug_interface
+	jmp run::go_basic
 .endproc
 
 ;*******************************************************************************
@@ -898,10 +911,6 @@ blank   = scr::blank
 ; SWAP USER MEM
 ; Command that swaps in the user program memory, waits for a keypress, and
 ; returns with the debugger's memory swapped back in
-.PUSHSEG
-.ifdef c64
-.segment "GUICODE"
-.endif
 .export __debug_swap_user_mem
 .proc __debug_swap_user_mem
 	jsr blank
@@ -951,11 +960,6 @@ blank   = scr::blank
 	rts
 .endif
 .endproc
-.POPSEG
-
-;*******************************************************************************
-.PUSHSEG
-.segment "GUICODE"
 
 ;*******************************************************************************
 ; PRINT TRACING
@@ -983,7 +987,6 @@ blank   = scr::blank
 	plp
 @done:	rts
 .endproc
-.POPSEG
 
 ;*******************************************************************************
 ; STEP OVER
@@ -1061,10 +1064,8 @@ __debug_step:
 .endif
 	bcc @done		; if ok, continue
 
-	; display the error explaining why we couldn't STEP
-	jsr safety_check_vec
-	sec			; flag that traces should stop
-	rts
+	jsr clear_tracing
+	jmp safety_check_vec	; display the error and flag traces to stop
 
 @done:	RETURN_OK		; return to the debugger
 .endproc
@@ -1424,13 +1425,10 @@ __debug_step:
 	bne @l0
 
 .ifdef ultimem
-	; reset BLK5 RAM area
-	lda #$04
-	sta $9ffe
-	lda #$55
-	sta $9ff2
-.endif
+	jmp reset_blk5_and_ret
+.else
 	jmp (@ret)
+.endif
 .endproc
 
 ;*******************************************************************************

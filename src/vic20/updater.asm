@@ -1,35 +1,28 @@
 ;*******************************************************************************
 ; UPDATER.ASM
 ; This file loads and validates an image in UltiMem RAM for the flasher.
-; STANDALONE_FLASHER selects an update from disk. Monster's built-in flasher
-; reopens the exact file selected and confirmed by flashcheck.asm.
+; Monster's built-in flasher reopens the file that flashcheck.asm selected and
+; the user confirmed.
 ;*******************************************************************************
 
-.include "firmware.inc"
-.include "flashio.inc"
-.include "macros.inc"
+.include "../firmware.inc"
+.include "../flashio.inc"
+.include "../macros.inc"
 
 ;*******************************************************************************
 ; CONFIGURATION
 ; Stage the entire image before allowing the writer to erase the flash chip.
-.ifdef STANDALONE_FLASHER
-.define FLASH_CODE "CODE"
-.define FLASH_RODATA "RODATA"
-.define FLASH_BSS "BSS"
-.else
 .define FLASH_CODE "FLASH_CODE"
 .define FLASH_RODATA "FLASH_RODATA"
 .define FLASH_BSS "FLASH_BSS"
-.endif
-FLASH_BASE    = $6000
 UPDATE_HEADER = $4000
 UPDATE_BANK   = ULTIMEM_BLK2
+.import __kernal_clrchn, __kernal_close
 .scope krn
 	setnam = $ffbd
-	clrchn = $ffcc
-	close  = $ffc3
+	clrchn = __kernal_clrchn
+	close  = __kernal_close
 	chrout = $ffd2
-	getin  = $ffe4
 	plot   = $fff0
 .endscope
 
@@ -52,125 +45,7 @@ ULTIMEM_BLK3  = $9ffc
 .export __updater_prepare
 .proc __updater_prepare
 @ptr=rb
-.ifdef STANDALONE_FLASHER
-	ldx #15
-@template:
-	lda filename_template,x
-	sta flashio::filename,x
-	dex
-	bpl @template
-
-	ldx #4
-@zero:	lda #'0'
-	sta flashio::filename+7,x
-	dex
-	bpl @zero
-
-	ldx #3
-@magic:	lda FLASH_BASE+FIRMWARE_OFFSET,x
-	cmp update_magic,x
-	bne @directory
-	dex
-	bpl @magic
-
-	ldx #4
-@version:
-	lda FLASH_BASE+FIRMWARE_VERSION,x
-	cmp #'0'
-	bcc @directory
-	cmp #'9'+1
-	bcs @directory
-	dex
-	bpl @version
-
-	ldx #4
-@copy_version:
-	lda FLASH_BASE+FIRMWARE_VERSION,x
-	sta flashio::filename+7,x
-	dex
-	bpl @copy_version
-
-@directory:
-	lda #3
-	jsr flashio::screen
-	lda #<msg_installed
-	ldy #>msg_installed
-	jsr flashio::message
-	jsr print_version
-
-	lda #$00
-	sta found_update
-	lda #<msg_searching
-	ldy #>msg_searching
-	jsr flashio::message
-
-	lda #1
-	ldxy #directory_name
-	jsr krn::setnam
-	jsr flashio::open_named
-	bcc :+
-	jmp @io_error
-:
-	; Directory stream: load address, then BASIC lines with link and size.
-	; The first line is the volume label, never an update file.
-	lda #1
-	sta skip_entry
-	jsr directory_byte
-	jsr directory_byte
-
-@line:	jsr directory_byte
-	sta link_low
-	jsr directory_byte
-	ora link_low
-	beq @end_directory
-	jsr directory_byte
-	jsr directory_byte
-	lda #$00
-	sta name_length
-	sta quoted
-
-@text:	jsr directory_byte
-	bne :+
-	lda #$00
-	sta skip_entry
-	jmp @line
-:	cmp #'"'
-	bne @character
-	inc quoted
-	lda quoted
-	cmp #2
-	bne @text
-	lda skip_entry
-	bne @text
-	jsr consider_name
-	jmp @text
-
-@character:
-	ldx quoted
-	cpx #1
-	bne @text
-	ldx name_length
-	cpx #17
-	bcs @text
-	sta candidate,x
-	inc name_length
-	jmp @text
-
-@end_directory:
-	jsr __updater_close
-	lda found_update
-	bne @stage
-	lda #<msg_current
-	ldy #>msg_current
-	jsr flashio::status
-	sec
-	rts
-.else
-	; Monster already checked and confirmed this filename. Re-read only it.
-	jmp @stage
-.endif
-
-@stage:	lda #5
+	lda #5
 	jsr flashio::screen
 	lda #<msg_available
 	ldy #>msg_available
@@ -308,86 +183,6 @@ ULTIMEM_BLK3  = $9ffc
 	lda #<msg_loading_blocks
 	ldy #>msg_loading_blocks
 	jmp flashio::message
-.endproc
-
-;*******************************************************************************
-; DIRECTORY BYTE
-; Reads one directory byte.
-; OUT:
-;  - .A: byte read on success
-;  - .C: set on error
-.proc directory_byte
-	lda flashio::eof
-	bne @error
-	jsr flashio::read
-	bcs @error
-	lda flashio::byte
-	rts
-
-@error:	pla
-	pla
-	lda #<msg_update_io
-	ldy #>msg_update_io
-	jsr flashio::message
-	sec
-	rts
-.endproc
-
-;*******************************************************************************
-; CONSIDER NAME
-; Accepts the full .BIN name, which fits native CBM disks.
-; Compare five decimal digits lexically; preserve the exact name for OPEN.
-.proc consider_name
-	lda name_length
-	cmp #16
-	bne @done
-	tax
-	dex
-@syntax:
-	lda candidate,x
-	cpx #7
-	bcc @literal
-	cpx #12
-	bcs @literal
-	cmp #'0'
-	bcc @done
-	cmp #'9'+1
-	bcs @done
-	bcc @next
-@literal:
-	and #$7f
-	cmp #$61
-	bcc :+
-	cmp #$7b
-	bcs :+
-	and #$df
-:	cmp filename_template,x
-	bne @done
-@next:	dex
-	bpl @syntax
-
-	ldx #$07
-@compare:
-	lda candidate,x
-	cmp flashio::filename,x
-	bcc @done
-	bne @newer
-	inx
-	cpx #12
-	bne @compare
-	rts
-
-@newer:	lda name_length
-	sta __updater_name_length
-	ldx #$00
-@copy:	lda candidate,x
-	sta flashio::filename,x
-	inx
-	cpx __updater_name_length
-	bne @copy
-	lda #$01
-	sta found_update
-@done:	rts
 .endproc
 
 ;*******************************************************************************
@@ -547,74 +342,14 @@ ULTIMEM_BLK3  = $9ffc
 ;*******************************************************************************
 ; PRINT VERSION
 .proc print_version
-	jsr print_version_digits
-	lda #$0d
-	jmp krn::chrout
-.endproc
-
-;*******************************************************************************
-; PRINT VERSION DIGITS
-.proc print_version_digits
 	ldx #$07
 @digit:	lda flashio::filename,x
 	jsr krn::chrout
 	inx
 	cpx #12
 	bne @digit
-	rts
-.endproc
-
-;*******************************************************************************
-; CONFIRM UPDATE
-; Ask only after the image is fully validated, before the first flash erase.
-; Ignore buffered keys and enable the KERNAL IRQ to scan the keyboard.
-.export __updater_confirm
-.proc __updater_confirm
-	lda #2
-	jsr flashio::screen
-	lda #<msg_confirm
-	ldy #>msg_confirm
-	jsr flashio::message
-
-	jsr print_version_digits
-	lda #<msg_yes_no
-	ldy #>msg_yes_no
-	jsr flashio::message
-
-	lda #$00
-	sta $c6				; KERNAL keyboard buffer count
-	cli
-
-@key:	jsr krn::getin
-	cmp #$0d
-	beq @cancel
-	cmp #$03			; RUN/STOP
-	beq @cancel
-	and #$7f
-	and #$df
-	cmp #'N'
-	beq @cancel
-	cmp #'Y'
-	bne @key
-
-	sei
-	jsr krn::chrout
 	lda #$0d
-	jsr krn::chrout
-	clc
-	rts
-
-@cancel:
-	sei
-	lda #'N'
-	jsr krn::chrout
-	lda #$0d
-	jsr krn::chrout
-	lda #<msg_cancelled
-	ldy #>msg_cancelled
-	jsr flashio::status
-	sec
-	rts
+	jmp krn::chrout
 .endproc
 
 ;*******************************************************************************
@@ -635,21 +370,13 @@ ULTIMEM_BLK3  = $9ffc
 
 ;*******************************************************************************
 ; STRINGS
-filename_template:	.byte "MONSTER00000.BIN"
 cart_signature:		.byte "A0", $c3, $c2, $cd
 update_magic:		.byte "MUP1"
-directory_name:		.byte "$"
-msg_installed:		.byte "   INSTALLED ", 0
 msg_available:		.byte "   UPDATE    ", 0
-msg_searching:		.byte " CHECKING FOR UPDATE", $0d, 0
-msg_current:		.byte "   NO NEWER VERSION", $0d, 0
 msg_loading:		.byte "  CHECKING IMAGE...", $0d, 0
 msg_loaded:		.byte "   LOADED ", 0
 msg_remaining:		.byte $0d, "  LEFT   ", 0
 msg_loading_blocks:	.byte " BLOCKS", $0d, 0
-msg_confirm:		.byte " FLASH ", 0
-msg_yes_no:		.byte "? (Y/N) ", 0
-msg_cancelled:		.byte "   UPDATE CANCELLED", $0d, 0
 msg_invalid:		.byte " INVALID UPDATE IMAGE", $0d, 0
 msg_update_io:		.byte "  UPDATE DISK ERROR", $0d, 0
 
@@ -660,15 +387,10 @@ msg_update_io:		.byte "  UPDATE DISK ERROR", $0d, 0
 .export __updater_saved_bank2
 __updater_saved_bank2:	.word 0
 loading_row:		.byte 0
-found_update:		.byte 0
+; Monster writes the confirmed name length before copying the writer to RAM.
 .export __updater_name_length
 __updater_name_length:	.byte 0
 
 ;*******************************************************************************
-link_low:		.byte 0
-quoted:			.byte 0
-skip_entry:		.byte 0
-name_length:		.byte 0
-candidate:		.res 17
 checksum:		.word 0
 expected_checksum:	.word 0

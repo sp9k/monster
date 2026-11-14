@@ -40,18 +40,17 @@ BANKED_CODE "FILEDIR", FINAL_BANK_FILEDIR
 	sta zp::io_status
 	lda zp::device
 	jsr krn::talk
-	lda #$6f		; command channel, without opening or closing files
-	jsr krn::tksa
 	jsr krn::readst
 	beq @ok
 	jsr krn::untlk
 	ldxy #strings::device_not_present
 	jmp seterr
 
-@ok:
+@ok:	lda #$6f		; command channel, without opening/closing files
+	jsr krn::tksa
 
-	; read the error message to mem::drive_err
-@loop:	jsr krn::readst		; READST (read status byte)
+@loop:	; read error message to mem::drive_err
+	jsr krn::readst		; READST (read status byte)
 	bne @eof		; either EOF or read error
 
 	jsr krn::acptr		; receive command-channel data

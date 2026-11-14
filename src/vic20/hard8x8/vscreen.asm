@@ -5,6 +5,7 @@
 
 .include "layout.inc"
 .include "../../zeropage.inc"
+.import __vscreen_rowslo, __vscreen_rowshi
 
 SCREEN_ADDR = $1800			; base of the physical character matrix
 SCREEN_SIZE = PHYS_COLS * SCREEN_HEIGHT	; whole matrix (gutter column included)
@@ -76,4 +77,70 @@ backup: .res SCREEN_SIZE
 	dex
 	bne @l0
 @done:	rts
+.endproc
+
+;*******************************************************************************
+; RESTORE ROW
+; Restores a row's content columns, retaining the current gutter marker
+; IN:
+;   - .A: screen row to restore
+.export __vscreen_restore_row
+.proc __vscreen_restore_row
+	jsr row_ptrs
+	ldx #$01
+@swap:	lda src,x
+	ldy dst,x
+	sta dst,x
+	sty src,x
+	dex
+	bpl @swap
+	jmp copy_row
+.endproc
+
+;*******************************************************************************
+; SAVE ROW
+; Saves a row's content columns in the existing full-screen backup
+; IN:
+;   - .A: screen row to save
+.export __vscreen_save_row
+.proc __vscreen_save_row
+	jsr row_ptrs
+	; fall through to copy_row
+.endproc
+
+;*******************************************************************************
+; COPY ROW
+; Copies the content columns between a screen row and its backup
+; IN:
+;   - r0: source address
+;   - r2: destination address
+.proc copy_row
+	ldy #SCREEN_WIDTH-1
+@byte:	lda (src),y
+	sta (dst),y
+	dey
+	bpl @byte
+	rts
+.endproc
+
+;*******************************************************************************
+; ROW PTRS
+; Locates a row's content columns in the screen and backup buffer
+; IN:
+;   - .A: screen row
+; OUT:
+;   - r0: screen address
+;   - r2: backup address
+.proc row_ptrs
+	tax
+	lda __vscreen_rowslo,x
+	sta src
+	clc
+	adc #<(backup-SCREEN_ADDR)
+	sta dst
+	lda __vscreen_rowshi,x
+	sta src+1
+	adc #>(backup-SCREEN_ADDR)
+	sta dst+1
+	rts
 .endproc

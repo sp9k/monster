@@ -12,6 +12,7 @@
 .import __edit_highlight_en
 .import __edit_highlight_line
 .import __edit_highlight_file
+.import __edit_highlight_row
 .import __edit_init
 .import __edit_load
 .import __edit_open
@@ -50,6 +51,7 @@
 	highlight_en    = __edit_highlight_en
 	highlight_line  = __edit_highlight_line
 	highlight_file  = __edit_highlight_file
+	highlight_row   = __edit_highlight_row
 	init            = __edit_init
 	load            = __edit_load
 	open            = __edit_open

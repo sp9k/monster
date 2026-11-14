@@ -1,8 +1,9 @@
 ;*******************************************************************************
 ; FLASHER.ASM
 ; This file contains the VIC-20 UltiMem flash writer.
-; The standalone flasher streams MONSTER.BIN. The updater validates and
-; stages a versioned image before using the same writer.
+; The standalone flasher streams the declared banks of MONSTER.BIN, accepting
+; trimmed disk images and padded emulator images. Monster's built-in updater
+; validates and stages a versioned image before using the same writer.
 ; Code runs in built-in RAM while BLK3 maps the destination flash bank.
 ;
 ; The flash command sequence follows the UltiMem reference flasher:
@@ -46,15 +47,40 @@ IMAGE_BLOCKS = 28
 
 ;*******************************************************************************
 ; KERNAL
-; Direct ROM calls remain available while the cartridge is being erased.
+.ifdef FLASHER_JIFFY
+.import __jiffy_call_open, __jiffy_call_close, __jiffy_call_chkin
+.import __jiffy_call_clrchn, __jiffy_call_chrin
+.assert .defined(STANDALONE_FLASHER), error, "needs standalone flasher"
+.assert .not .defined(UPDATER), error, "requires streaming flash input"
+.endif
+.ifndef STANDALONE_FLASHER
+.import __kernal_open, __kernal_close, __kernal_chkin
+.import __kernal_clrchn, __kernal_chrin
+.endif
 .scope krn
 	setlfs = $ffba
 	setnam = $ffbd
+.ifdef STANDALONE_FLASHER
+.ifdef FLASHER_JIFFY
+	open   = __jiffy_call_open
+	close  = __jiffy_call_close
+	chkin  = __jiffy_call_chkin
+	clrchn = __jiffy_call_clrchn
+	chrin  = __jiffy_call_chrin
+.else
 	open   = $ffc0
 	close  = $ffc3
 	chkin  = $ffc6
 	clrchn = $ffcc
 	chrin  = $ffcf
+.endif
+.else
+	open   = __kernal_open
+	close  = __kernal_close
+	chkin  = __kernal_chkin
+	clrchn = __kernal_clrchn
+	chrin  = __kernal_chrin
+.endif
 	chrout = $ffd2
 	readst = $ffb7
 	getin  = $ffe4
@@ -80,8 +106,7 @@ FLASH_END_HI  = $80
 FLASH_TOGGLE  = $40
 FLASH_TIMEOUT = $20
 
-; One progress block is one UltiMem flash bank (8192 bytes).  The Makefile
-; derives IMAGE_BLOCKS from the size of the bank-laid monster-cart.prg.
+; one progress block is one 8 KiB bank; the image header supplies the count
 IMAGE_BLOCKS_LO = <IMAGE_BLOCKS
 IMAGE_BLOCKS_HI = >IMAGE_BLOCKS
 IMAGE_LAST_LO   = <(IMAGE_BLOCKS-1)
@@ -92,12 +117,20 @@ IMAGE_LAST_HI   = >(IMAGE_BLOCKS-1)
 	.word @basic_end
 	.word 10
 	.byte $9e
+.ifdef FLASHER_JIFFY
+	.byte "4621", 0			; SYS 4621 ($120d)
+.else
 	.byte "4109", 0			; SYS 4109 ($100d)
+.endif
 @basic_end:
 	.word 0
 
 .segment "CODE"
+.ifdef FLASHER_JIFFY
+.assert * = $120d, error, "update the expanded BASIC SYS address"
+.else
 .assert * = $100d, error, "update the BASIC SYS address"
+.endif
 .endif
 .segment FLASH_CODE
 
@@ -192,12 +225,6 @@ IMAGE_LAST_HI   = >(IMAGE_BLOCKS-1)
 	bcc :+
 	jmp cleanup
 :
-.ifdef STANDALONE_FLASHER
-	jsr updater::confirm
-	bcc :+
-	jmp cleanup
-:
-.endif
 .else
 	jsr __flasher_open_image
 	bcc :+
@@ -218,8 +245,14 @@ IMAGE_LAST_HI   = >(IMAGE_BLOCKS-1)
 	sta image_header,x
 	inc header_position
 	lda header_position
-	cmp #FIRMWARE_VERSION+5
+	cmp #FIRMWARE_OFFSET+FIRMWARE_SIZE
 	bne @header
+	jsr validate_stream_header
+	bcc :+
+	lda #<msg_bad_header
+	ldy #>msg_bad_header
+	jmp fail
+:
 	lda #$00
 	sta header_position
 .endif
@@ -346,6 +379,15 @@ IMAGE_LAST_HI   = >(IMAGE_BLOCKS-1)
 	jsr updater::commit
 	bcc :+
 	jmp fail_program
+:
+.else
+	; trailing emulator padding is outside the declared firmware image
+	lda #<msg_checking_flash
+	ldy #>msg_checking_flash
+	jsr __flasher_status
+	jsr verify_image_checksum
+	bcc :+
+	jmp fail
 :
 .endif
 	jsr cleanup
@@ -495,11 +537,12 @@ IMAGE_LAST_HI   = >(IMAGE_BLOCKS-1)
 .endif
 	ldy #$00
 	jsr krn::setlfs
+
+	; close a partially allocated file if OPEN reports an error
+	lda #$01
+	sta __flasher_file_open
 	jsr krn::open
 	bcs @error
-
-	lda #1
-	sta __flasher_file_open
 	ldx #2
 	jsr krn::chkin
 	bcs @error
@@ -512,11 +555,143 @@ IMAGE_LAST_HI   = >(IMAGE_BLOCKS-1)
 
 ;*******************************************************************************
 .ifndef UPDATER
+; VALIDATE STREAM HEADER
+; checks cartridge and firmware signatures, version digits and bank count
+; IN:
+;  - image_header: complete cartridge and firmware header
+; OUT:
+;  - __flasher_image_blocks: number of banks to write
+;  - __flasher_image_last: index of the final bank
+;  - .C: set if the header is invalid
+.proc validate_stream_header
+	ldx #$08
+@magic:	lda image_header+4,x
+	cmp stream_signature,x
+	bne @bad
+	dex
+	bpl @magic
+
+	ldx #$04
+@digit:	lda image_header+FIRMWARE_VERSION,x
+	cmp #'0'
+	bcc @bad
+	cmp #'9'+1
+	bcs @bad
+	dex
+	bpl @digit
+
+	lda image_header+FIRMWARE_BLOCKS+1
+	bne @bad
+	lda image_header+FIRMWARE_BLOCKS
+	beq @bad
+	cmp #129
+	bcs @bad
+	sta __flasher_image_blocks
+	sec
+	sbc #$01
+	sta __flasher_image_last
+	lda #$00
+	sta __flasher_image_blocks+1
+	sta __flasher_image_last+1
+	clc
+	rts
+
+@bad:	sec
+	rts
+.endproc
+
+;*******************************************************************************
+; VERIFY IMAGE CHECKSUM
+; sums programmed flash in pages, then subtracts the stored checksum bytes
+; IN:
+;  - image_header: validated header containing the expected checksum
+;  - __flasher_image_blocks: number of banks in the image
+; OUT:
+;  - .AY: error message address on failure
+;  - .C: set on a checksum mismatch
+.proc verify_image_checksum
+@ptr=rb
+	lda #$00
+	sta ULTIMEM_BLK3
+	sta ULTIMEM_BLK3+1
+	sta __flasher_block_no
+	sta __flasher_block_no+1
+	sta @ptr
+
+	; verify the checksum field itself before including it in the sum
+	ldx #$01
+@stored:
+	lda FLASH_BASE+FIRMWARE_CHECKSUM,x
+	cmp image_header+FIRMWARE_CHECKSUM,x
+	bne @checksum
+	dex
+	bpl @stored
+
+	lda #>FLASH_BASE
+	sta @ptr+1
+	lda #$00
+	tax			; .XA holds the running 16-bit sum
+	tay
+
+@byte:	clc
+	adc (@ptr),y
+	bcc :+
+	inx
+:	iny
+	bne @byte
+
+	; preserve the low sum while advancing the page or flash bank
+	pha
+	inc @ptr+1
+	lda @ptr+1
+	cmp #FLASH_END_HI
+	bne @page
+	inc __flasher_block_no
+	lda __flasher_block_no
+	cmp __flasher_image_blocks
+	beq @finish
+	sta ULTIMEM_BLK3
+	lda #>FLASH_BASE
+	sta @ptr+1
+@page:	pla
+	jmp @byte
+
+@finish:
+	; exclude the two checksum bytes from the accumulated image sum
+	pla
+	sec
+	sbc image_header+FIRMWARE_CHECKSUM
+	bcs :+
+	dex
+:	sec
+	sbc image_header+FIRMWARE_CHECKSUM+1
+	bcs :+
+	dex
+:
+	cmp image_header+FIRMWARE_CHECKSUM
+	bne @checksum
+	txa
+	cmp image_header+FIRMWARE_CHECKSUM+1
+	bne @checksum
+	clc
+	rts
+
+@checksum:
+	lda #<msg_bad_checksum
+	ldy #>msg_bad_checksum
+	sec
+	rts
+.endproc
+
+;*******************************************************************************
 ; STREAM BYTE
 ; Replays the header before continuing with the rest of the disk image.
+; OUT:
+;  - __flasher_write_byte: next image byte
+;  - .C: set on a disk read error
 .proc stream_byte
 	ldx header_position
-	cpx #FIRMWARE_VERSION+5
+	cpx #FIRMWARE_OFFSET+FIRMWARE_SIZE
 	bcs @read
 	lda image_header,x
 	sta __flasher_write_byte
@@ -1267,6 +1442,10 @@ IMAGE_LAST_HI   = >(IMAGE_BLOCKS-1)
 .export __flasher_filename
 __flasher_filename:	.byte "MONSTER00000.BIN"
 .else
+stream_signature:	.byte $41, $30, $c3, $c2, $cd, "MUP1"
+msg_bad_header:		.byte "BAD IMAGE HEADER", 0
+msg_checking_flash:	.byte " VERIFYING CHECKSUM", 0
+msg_bad_checksum:	.byte "CHECKSUM MISMATCH", 0
 .export __flasher_filename
 __flasher_filename:	.byte "MONSTER.BIN"
 .endif
@@ -1325,7 +1504,7 @@ decimal_width:		 .byte 0
 progress_digits:	 .byte 0
 .ifndef UPDATER
 header_position:	 .byte 0
-image_header:		 .res FIRMWARE_VERSION+5
+image_header:		 .res FIRMWARE_OFFSET+FIRMWARE_SIZE
 .endif
 hex_value:		 .word 0
 hex_byte:		 .byte 0

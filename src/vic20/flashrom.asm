@@ -12,7 +12,8 @@ UPDATER = 1
 ;*******************************************************************************
 ; START
 ; Reinitializes the KERNAL for the RAM writer and discards Monster's return
-; addresses. No Monster code or banked data may be used after entry.
+; addresses. The cassette-buffer serial gate remains available during staging.
+; Staging closes the file before erasure removes the serial ROM bank.
 ; Does not return.
 .export __flash_ram_start
 .proc __flash_ram_start

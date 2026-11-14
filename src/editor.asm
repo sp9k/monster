@@ -196,6 +196,7 @@ getsvec: .word 0		; key handler for gets
 .export __edit_src2screen
 .export __edit_sethighlight
 .export __edit_hl_redraw
+.export __edit_highlight_row = highlight_row
 .export __edit_current_file
 .export __edit_refreshline
 .export __edit_redrawline
@@ -1558,12 +1559,9 @@ CUR_BANK .set FINAL_BANK_EDIT
 
 ;*******************************************************************************
 ; GO BASIC
-; Installs an NMI to return to the editor and (re)enters BASIC.
+; Resumes the debugged program or enters BASIC with an editor return NMI
 .proc go_basic
-	; set interface to GUI so that NMI (RESTORE) returns to editor
-	lda #$00
-	sta dbg::interface
-	JUMPMAIN run::go_basic
+	JUMPMAIN __debug_go_basic
 .endproc
 
 ;*******************************************************************************
@@ -4423,7 +4421,7 @@ flat:
 	jsr blank
 	ldxy @file
 	jsr file::open_w	; open the output filename
-	bcs :-			; failed to open file
+	bcs ::write_asm::error
 
 	sta @file
 
@@ -4460,9 +4458,8 @@ flat:
 
 	ldxy @file
 	jsr file::open_w	; open the output filename
-	bcc :+
-	jmp unblank		; failed to open file
-:	sta @file
+	bcs ::write_asm::error
+	sta @file
 	; fall through
 .endproc
 
@@ -4488,6 +4485,7 @@ flat:
 @err:	jsr unblank
 	jmp report_drive_error
 @done:	jmp unblank
+error = @err
 .endproc
 
 ;*******************************************************************************
@@ -4530,7 +4528,7 @@ flat:
 @scratch:
 	ldxy @file
 	jsr file::scratch	; (try to) delete the existing file
-	; ignore any error here; the file may simply not exist yet
+	bcs @err		; DOS reports no matching file as successful scratch
 
 	; commit the new name only after the disk write succeeds
 @open:	ldxy @file

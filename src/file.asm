@@ -379,19 +379,20 @@ OSPROC fscratch
 	ldy #>@s_colon
 	jsr str::cat		; s:<filename>
 	bcs @err
-	stxy r0
 	jsr krn::clrchn
 
 	lda #$00
 	sta zp::io_status
 	lda zp::device
 	jsr krn::listen
+	lda zp::io_status
+	bne @done		; release the bus and report the missing drive
 	lda #$6f		; send command
 	jsr krn::second
 
-	; cend the scratch command
+	; send the scratch command only after the drive answers
 	ldy #$00
-@send:	lda (r0),y
+@send:	lda mem::spare,y		; command assembled by str::cat
 	beq @done
 	jsr krn::ciout
 	iny

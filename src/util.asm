@@ -22,32 +22,20 @@
 ;  - .C: set if the character is not a valid hex digit
 .export __util_chtohex
 .proc __util_chtohex
-	cmp #$66+1
-	bcs @done
-	cmp #$61
-	bcc @upper
-@lower:
-	sbc #($61-$0a)
-	RETURN_OK
-
-@upper:
-	cmp #$46+1
-	bcs @done
-	cmp #$41
-	bcc @numeric
-	sbc #($41-$0a)
-	RETURN_OK
-
-@numeric:
-	cmp #'9'+1
-	bcs @done
-	cmp #'0'
-	bcc @done
-	;sec
+	sec
 	sbc #'0'
-	RETURN_OK
+	cmp #$0a
+	bcc @ok
 
-@done:	sec
+	; fold both letter ranges into $0a-$0f
+	and #$df
+	sbc #$07		; .C is set by CMP
+	cmp #$0a
+	bcc @bad
+	cmp #$10		; valid letter: .C clear
+	rts
+@ok:	RETURN_OK
+@bad:	sec
 	rts
 .endproc
 
@@ -124,119 +112,80 @@
 ;*******************************************************************************
 ; ATOI
 ; Returns the value of the decimal string given in .XY.
-; The string must be terminated by a \0, $0d (newline), or ','.
+; The string ends at the first separator (see IS SEPARATOR).
 ; IN:
 ;  - .XY: the address of the string to get the value of
 ; OUT:
 ;  - .A: the index after the last character
 ;  - .C: clear on success
 ;  - .XY: the 16 bit value of the string
-; used in the given string
 .export atoi
 .proc atoi
-@tmp=zp::tmp10
+@twice=zp::tmp10
 @str=zp::tmp12
-@scale=zp::tmp14
+@digit=zp::tmp14
 @val=zp::tmp15
-@tmp2=zp::tmp17
-@offset=zp::util+1
 	stxy @str
 	ldy #$00
 	sty @val
 	sty @val+1
 
-	; find terminating char
-	dey			; .Y = $ff
-:	iny
-	lda (@str),y
-	jsr __util_is_separator
-	bne :-
-@endfound:
-	sty @offset
-	cpy #$00
-	beq @unexpectedchar	; no digits given
-	dey
-
-	ldx #$ff
-	stx @scale
-@l0:	inc @scale
-	lda (@str),y
-	cmp #'9'+1
-	bcs @unexpectedchar
-	cmp #'0'
-	bcc @unexpectedchar
+@next:	lda (@str),y
 	sec
 	sbc #'0'
-	sta @tmp
-	lda #$00
-	sta @tmp+1
-	ldx @scale
-	beq @muldone
-@l1:	jsr @mul10
-	bcs @err	; oversized value
-	dex
-	bne @l1
-@muldone:
-	clc
-	lda @tmp
-	adc @val	; add the digit*(10**x)
-	sta @val
-	lda @val+1
-	adc @tmp+1
-	sta @val+1
-	bcc :+
-	lda #ERR_OVERSIZED_OPERAND
-	;sec
-	rts
-:	dey
-	bpl @l0
+	cmp #$0a
+	bcc @number
 
+	; restore the character before testing for a separator
+	adc #'0'-1		; .C is set by CMP
+	jsr __util_is_separator
+	bne @unexpectedchar
+	cpy #$00
+	beq @unexpectedchar
+	tya
 	ldx @val
 	ldy @val+1
-	lda @offset
 	RETURN_OK
 
+@number:
+	sta @digit
+
+	; multiply the accumulated value by ten (eight plus two)
+	lda @val
+	asl
+	rol @val+1
+	bcs @overflow
+	sta @twice
+	ldx @val+1
+	stx @twice+1
+	asl
+	rol @val+1
+	bcs @overflow
+	asl
+	rol @val+1
+	bcs @overflow
+	adc @twice
+	sta @val
+	lda @val+1
+	adc @twice+1
+	sta @val+1
+	bcs @overflow
+
+	; append the next digit
+	lda @val
+	adc @digit
+	sta @val
+	bcc @advance
+	inc @val+1
+	beq @overflow
+@advance:
+	iny
+	bne @next
 @unexpectedchar:
-	lda #ERR_UNEXPECTED_CHAR
-	sec
-@err:	rts
-
-;------------------
-@mul10:
-; multiply (in place) word in @tmp by 10
-; .C is clear on success, set on failure
-	lda @tmp+1
-	sta @tmp2+1
-	lda @tmp
-	sta @tmp2
-
-	asl		; *2
-	rol @tmp+1
-	bcs @mulerr
-	asl		; *4
-	rol @tmp+1
-	bcs @mulerr
-	asl		; *8
-	rol @tmp+1
-	bcs @mulerr
-
-	adc @tmp2	; *9
-	sta @tmp
-	lda @tmp+1
-	adc @tmp2+1
-	bcs @mulerr
-	sta @tmp+1
-
-	lda @tmp	; *10
-	adc @tmp2
-	sta @tmp
-	lda @tmp+1
-	adc @tmp2+1
-	bcs @mulerr
-	sta @tmp+1
-	RETURN_OK
-@mulerr:
+	RETURN_ERR ERR_UNEXPECTED_CHAR
+@overflow:
 	RETURN_ERR ERR_OVERSIZED_OPERAND
+
 .endproc
 
 ;*******************************************************************************

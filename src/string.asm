@@ -103,7 +103,6 @@ SLASH = SPECIAL_CHARS_START+2
 @buff=mem::spare
 @str1=r2
 @str2=r0
-@limit=r4
 	; copy the first string to a spare buffer
 	stxy @str1
 	ldy #$00
@@ -117,25 +116,16 @@ SLASH = SPECIAL_CHARS_START+2
 @toolong:
 	RETURN_ERR ERR_LINE_TOO_LONG
 
-@cat:	tya		; .A = length of the first string
-	eor #$ff
-	sec
-	adc #LINESIZE+1	; @limit = LINESIZE+1 - len1
-	sta @limit
-	tya
-	clc
-	adc #<@buff
-	sta @str1
-	lda #>@buff
-	adc #$00
-	sta @str1+1
+@cat:	tya
+	tax
 
 	ldy #$00
 :	lda (@str2),y
-	sta (@str1),y
+	sta @buff,x
 	beq @done
 	iny
-	cpy @limit
+	inx
+	cpx #LINESIZE+1
 	bcc :-
 	bcs @toolong	; branch always
 

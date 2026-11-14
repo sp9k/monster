@@ -21,6 +21,7 @@
 
 .import __vscreen_save
 .import __vscreen_restore
+.import __vscreen_save_row, __vscreen_restore_row
 
 ;*******************************************************************************
 ; CONSTANTS
@@ -178,17 +179,9 @@ HL_MARKER       = $3e		; '>' current-line indicator glyph
 ;  - .A: the text row to reverse (pixel number / 8)
 .export __screen_rvsline
 .proc __screen_rvsline
-@dst=r0
-	jsr __screen_char_addr
-	stxy @dst
-
-	ldy #NUM_COLS-1
-@l0: 	lda (@dst),y
-	eor #$80
-	sta (@dst),y
-	dey
-	bpl @l0
-	rts
+	ldy #$00
+	ldx #NUM_COLS
+	jmp __screen_rvsline_part_physical
 .endproc
 
 ;*******************************************************************************
@@ -356,7 +349,7 @@ HL_MARKER       = $3e		; '>' current-line indicator glyph
 ;  - .A: the row to restore
 .export __screen_restore_row
 .proc __screen_restore_row
-	; TODO: (see __screen_save)
+	CALL FINAL_BANK_VSCREEN, __vscreen_restore_row
 	rts
 .endproc
 
@@ -367,7 +360,7 @@ HL_MARKER       = $3e		; '>' current-line indicator glyph
 ;  - .A: the row to save
 .export __screen_save_row
 .proc __screen_save_row
-	; TODO: (see __screen_save)
+	CALL FINAL_BANK_VSCREEN, __vscreen_save_row
 	rts
 .endproc
 
@@ -909,6 +902,8 @@ __screen_rowshi: .hibytes rows
 ; SCROLL ROW ADDRESSES
 .pushseg
 .segment "VSCREEN"
+.export __vscreen_rowslo = scroll_rowslo
+.export __vscreen_rowshi = scroll_rowshi
 scroll_rowslo: .lobytes rows
 scroll_rowshi: .hibytes rows
 .popseg

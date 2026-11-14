@@ -79,16 +79,8 @@ save01: .byte 0
 :	sta reu::reuaddr+2
 	jsr reu::load1
 
-@done:	pha
-	lda save01
-	sta $01			; restore caller's memory context
-	pla
-	ldx savexy
-	ldy savexy+1
-	clc
-	pha
-	pla			; restore .N/.Z from the loaded value (in .A)
-	rts
+@done:	clc
+	jmp restore_context
 .endproc
 
 ;*******************************************************************************
@@ -155,11 +147,25 @@ save01: .byte 0
 	pla
 	jsr reu::store1
 
-@done:	pha
+@done:
+	; fall through to restore_context
+.endproc
+
+;*******************************************************************************
+; RESTORE CONTEXT
+; Restores the caller's memory configuration and address registers
+; IN:
+;  - .A: the value read or written
+; OUT:
+;  - .A: the value read or written
+;  - .XY: the caller's address
+;  - .NZ: set from .A
+.proc restore_context
+	pha
 	lda save01
 	sta $01			; restore caller's memory context
-	pla
-	ldxy savexy		; restore .XY
+	ldxy savexy
+	pla			; restore .N/.Z from the value in .A
 	rts
 .endproc
 
