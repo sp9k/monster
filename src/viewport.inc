@@ -14,6 +14,7 @@ VIEWPORT_INC = 1
 .import __view_pan
 .import __view_physical_x
 .import __view_reverse
+.import __view_reveal_selection
 .import __view_scroll_down
 .import __view_scroll_up
 .import __view_slots
@@ -35,6 +36,7 @@ VIEWPORT_INC = 1
 	pan         = __view_pan
 	physical_x  = __view_physical_x
 	reverse     = __view_reverse
+	reveal_selection = __view_reveal_selection
 	scroll_down = __view_scroll_down
 	scroll_up   = __view_scroll_up
 	slots       = __view_slots

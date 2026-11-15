@@ -138,7 +138,7 @@ baserow: .byte STATUS_ROW-1
 .export __gui_active_type
 __gui_active_type: .byte 0
 
-; set while a window has focus (used to keep the editor's cursor saved)
+; saved editor mode while a window has focus, otherwise zero
 .export __gui_infocus
 __gui_infocus:
 infocus: .byte 0
@@ -276,11 +276,15 @@ recoffs:
 ;*******************************************************************************
 ; SWAPCUR
 ; If a window has focus, exchanges the live cursor with the saved editor
-; cursor.  Used around editor drawing so that it sees its own cursor
+; cursor and mode. Used around editor drawing so that it sees its own state
 ; If the editor is focused (not a GUI window), does nothing
 .proc swapcur
 	lda infocus
 	beq @done
+	ldx zp::editor_mode
+	sta zp::editor_mode
+	stx infocus
+
 	; exchange Y, then X
 	ldx #$01
 :	lda zp::curx,x
@@ -443,22 +447,20 @@ __gui_refresh:
 	lda baserow
 	sta zp::editor_height
 	jsr resize_editor
-	ldx #$ff
-	bne @first		; render starting at row zero
+	ldx #$00		; render starting at row zero
 
 ;-------------------------------------------------------------------------------
 ; GROW editor
 @edgrow:
 	; render the source rows revealed by the shrinking window area
-	ldx zp::editor_height
-@first:	inx
+	; .X is the old last row + 1, or zero when unhiding
 	stx @row
 	lda @edh
 	sta zp::editor_height
 	jsr swapcur
 
 @grow0:	lda @row
-	jsr edit::render_row	; restore text, color, and breakpoint marker
+	jsr edit::reveal_row	; restore text, annotations, and selection
 	lda @row
 	cmp @edh
 	inc @row		; preserves carry from the last-row check
@@ -954,7 +956,7 @@ __gui_refresh:
 	jsr cur::off
 	lda #$00
 	sta hidden	; giving a window focus turns rendering back on
-	lda #$01
+	lda zp::editor_mode
 	sta infocus
 
 @loop:	; restore editor cursor before entering a window
@@ -1000,6 +1002,12 @@ __gui_refresh:
 	; the cursor, and the window's input shared the linebuffer
 	jsr edit::refreshline
 	jsr key::flush
+	lda zp::editor_mode
+	cmp #MODE_VISUAL
+	bcc :+
+	lda zp::cury
+	jmp edit::reveal_row	; selection already includes its cursor cell
+:
 	jmp cur::on
 
 @cycle:	jsr rotate

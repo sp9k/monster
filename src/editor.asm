@@ -134,11 +134,15 @@ readonly:  .byte 0	; if !0 no edits are allowed to be made via the editor
 .segment "SHAREBSS2"
 .endif
 visual_start_line:	.word 0	; the line # a selection began at
+.export __edit_visual_line = visual_start_line
+
 visual_start_pos:       .word 0 ; source cursor for visual selection
 .ifdef vic20
 .POPSEG
 .endif
 visual_start_x:		.byte 0	; the x-position a selection began at
+.export __edit_visual_x = visual_start_x
+
 selection_type:    	.byte 0 ; the type of selection (VISUAL_LINE or VISUAL)
 
 overwrite: .byte 0	; for SAVE commands, if !0, overwrite existing file
@@ -419,6 +423,19 @@ main:	jsr key::getui
 .endproc
 
 ;*******************************************************************************
+; REVEAL ROW
+; Renders a revealed source row when a GUI window changes size to uncover it.
+; IN:
+;  - .A: the row to render
+.export __edit_reveal_row = edit_reveal_row
+.proc edit_reveal_row
+	jsr is_visual
+	bne edit_render_row	; ordinary rows need no selection bank call
+	sec
+	bcs ::edit_render_row::start
+.endproc
+
+;*******************************************************************************
 ; RENDER ROW
 ; Renders the source line that belongs at the given screen row without
 ; affecting the cursor, linebuffer, or source position. Rows past the end
@@ -428,6 +445,8 @@ main:	jsr key::getui
 ; IN:
 ;  - .A: the row to render
 .proc edit_render_row
+	clc
+start:	php			; preserve whether to restore the selection
 	pha			; save row
 	jsr text::savebuff	; save linebuffer
 	jsr src::pushp		; save source position
@@ -456,10 +475,16 @@ main:	jsr key::getui
 
 @read:	jsr editor_getline		; leaves the source on the drawn row
 	pla			; restore the row
+	pha
 	jsr print_line
+	pla
+	plp
+	bcc @done
+	jsr viewport::reveal_selection
 	jmp @done
 
 @clr:	pla			; restore the row
+	plp
 	jsr clear_row
 
 @done:	jsr src::popgoto	; restore the source position
@@ -1791,9 +1816,7 @@ cancel = enter_command
 ; Enters COMMAND mode
 .ifdef ultimem
 .export __edit_enter_command = enter_command
-.export __edit_visual_line   = visual_start_line
 .export __edit_visual_pos    = visual_start_pos
-.export __edit_visual_x      = visual_start_x
 .endif
 .proc enter_command
 	lda mode
@@ -3550,7 +3573,11 @@ __edit_universal_key:
 edit_refresh:
 .proc refresh
 	clc
-start:	lda zp::cury
+start:	bit height
+	bpl :+
+	rts			; editor hidden
+
+:	lda zp::cury
 	pha			; save cursor Y-coord
 	php			; preserve the redraw range
 
@@ -3581,10 +3608,7 @@ start:	lda zp::cury
 
 	jsr src::prev	; print_line expects source and zp::cury to be synced
 
-:	ldx zp::cury
-	jsr draw::resetline	; reset color for the row
-
-	jsr print_current_line	; draw the line of text
+:	jsr print_current_line	; draw text, color, and annotations
 	plp			; restore EOF flag
 	bcs @clr		; if EOF, clear rest of lines
 

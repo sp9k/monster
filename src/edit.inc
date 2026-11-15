@@ -23,7 +23,10 @@
 .import __edit_redrawline
 .import __edit_refreshline
 .import __edit_render_row
+.import __edit_reveal_row
 .import __edit_resize
+.import __edit_visual_line
+.import __edit_visual_x
 .import __edit_run
 .import __edit_set_breakpoint
 .import __edit_sethighlight
@@ -63,7 +66,10 @@
 	redrawline      = __edit_redrawline
 	refreshline     = __edit_refreshline
 	render_row      = __edit_render_row
+	reveal_row      = __edit_reveal_row
 	resize          = __edit_resize
+	visual_line     = __edit_visual_line
+	visual_x        = __edit_visual_x
 	run             = __edit_run
 	setbreakpoint   = __edit_set_breakpoint
 	sethighlight    = __edit_sethighlight
@@ -83,3 +89,5 @@
 ; CONSTANTS
 MODE_COMMAND = 1
 MODE_INSERT  = 2
+MODE_VISUAL  = 3
+MODE_VISUAL_LINE = 4

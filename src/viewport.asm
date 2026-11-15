@@ -64,6 +64,20 @@ __view_draw: VIEWJUMP draw_row
 __view_navigate = edit::redrawline
 .endif
 
+;*******************************************************************************
+; REVEAL SELECTION
+; Restores selection on a newly rendered source row from the MAIN context at the
+; current cursor/source position.
+; IN:
+;  - .A: screen row of the source line in the linebuffer
+;  - source cursor: source line being rendered
+;  - zp::curx: selection cursor column
+;  - zp::cury: selection cursor row
+.export __view_reveal_selection
+.proc __view_reveal_selection
+	VIEWJUMP reveal_selection
+.endproc
+
 .export __view_command
 __view_command:     VIEWJUMP command
 __view_pan:         VIEWJUMP pan
@@ -924,6 +938,105 @@ SET_CUR_BANK FINAL_BANK_VSCREEN
 	lda row
 	JUMPMAIN scr::rvsline_part_physical
 
+@done:	rts
+.endproc
+
+;*******************************************************************************
+; REVEAL SELECTION
+; Restores visual selection (if any) on a freshly drawn source row at the
+; current source/cursor position.
+; IN:
+;  - .A: screen row of the source line in the linebuffer
+.proc reveal_selection
+@row=r6
+@anchor=r7
+@left=r4
+@right=r5
+	sta @row
+	ldx zp::editor_mode
+	cpx #MODE_VISUAL
+	beq :+
+	cpx #MODE_VISUAL_LINE
+	beq :+
+
+	; no selection, nothing to re-highlight
+	rts
+
+:	; compare rendered source line with the selection's anchor
+	CALLMAIN src::currline
+	cmpw edit::visual_line
+	beq @equal
+	lda #$ff
+	bcc @direction		; currline < visual_line -> backwards
+	lda #$01
+	bne @direction		; currline > visual_line -> forwards
+
+@equal: lda #$00
+@direction:
+	sta @anchor
+	lda @row
+	cmp zp::cury
+	beq @selected
+	bcc @above
+	lda @anchor
+	bmi @selected
+	beq @selected
+	rts			; below both endpoints
+@above:
+	lda @anchor
+	bmi @done		; above both endpoints
+
+@selected:
+	CALLMAIN text::rendered_line_len
+	stx @right
+	lda #$00
+	sta @left
+	lda zp::editor_mode
+	cmp #MODE_VISUAL_LINE
+	beq @draw
+
+	; clip character selections at either endpoint
+	lda @anchor
+	beq @atanchor		; clip the row where selection began
+	lda @row
+	cmp zp::cury
+	bne @draw
+	lda @anchor
+	bmi @cursorleft
+	ldx zp::curx
+	bpl @rightedge
+@cursorleft:
+	lda zp::curx
+	sta @left
+	bpl @draw
+
+@atanchor:
+	ldx edit::visual_x
+	lda @row
+	cmp zp::cury
+	bcc @anchorleft
+	bne @rightedge
+	; both endpoints are on this row
+	lda zp::curx
+	sta @left
+	cpx @left
+	bcs @rightedge
+	stx @left
+	ldx zp::curx
+	bpl @rightedge
+
+@anchorleft:
+	stx @left
+	jmp @draw
+@rightedge:
+	inx			; selection includes the endpoint character
+	stx @right
+
+@draw:	; apply the highlight where necessary
+	lda @row
+	ldy @left
+	ldx @right
+	jmp reverse
 @done:	rts
 .endproc
 
